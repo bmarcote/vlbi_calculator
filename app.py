@@ -138,77 +138,86 @@ app.layout = html.Div([
                 html.Div(className='row-cols-3', children=[
                 html.Div(className='col-sm-3', style={'max-width': '300px','float': 'left',
                                                       'padding': '2%'}, children=[
-                    html.Label('Observing Band'),
-                    html.Br(),
-                    dcc.Dropdown(id='band',
+                    html.Div(className='form-group', children=[
+                        html.Label('Observing Band'),
+                        dcc.Dropdown(id='band', persistence=True,
                                  options=[{'label': fs.bands[b], 'value': b} for b \
                                 in fs.bands], value='18cm'),
-                    html.Br(),
-                    html.Label('Select default VLBI Network(s)'),
-                    html.Br(),
-                    dcc.Dropdown(id='array', options=[{'label': n, 'value': n} \
-                                for n in default_arrays], value=['EVN'], multi=True),
-                    html.Br(),
-                    html.Div(className='input-group-prepend', children=[
-                        dcc.Checklist(id='e-EVN', className='checkbox',
-                              options=[{'label': ' e-EVN (real-time) mode?',
-                                        'value': 'e-EVN'}], value=[]),
                     ]),
-                    html.Br(),
-                    html.Label('Start of observation (UTC)'),
-                    html.Br(),
-                    # dcc.Input(id='starttime', value='DD/MM/YYYY HH:MM', type='text',
-                    dcc.Input(id='starttime', value='17/04/1967 10:00', type='text',
-                              className='form-control'),
-                    html.Br(),
-                    html.P(id='error_starttime', style={'color': 'red'}),
-                    html.Br(),
-                    html.Label('End of observation (UTC)'),
-                    html.Br(),
-                    # dcc.Input(id='endtime', value='DD/MM/YYYY HH:MM', type='text',
-                    dcc.Input(id='endtime', value='17/04/1967 20:00', type='text',
-                              className='form-control'),
-                    html.Br(),
-                    html.P(id='error_endtime', style={'color': 'red'}),
-                    html.Br(),
-                    html.Label('Target Source Coordinates'),
-                    html.Br(),
-                    # dcc.Input(id='source', value='hh:mm:ss dd:mm:ss', type='text',
-                    dcc.Input(id='source', value='01:20:00 +50:40:30', type='text',
-                              className='form-control'),
-                    html.Br(),
-                    html.P(id='error_source', style={'color': 'red'}),
-                    html.Br(),
-                    html.Label(id='onsourcetime-label', children='Percent. of on-target time'),
-                    html.Br(),
-                    dcc.Slider(id='onsourcetime', min=20, max=100, step=5, value=75,
-                                marks= {i: str(i) for i in range(20, 101, 10)}),
-                    html.Br(),
-                    html.Label('Datarate per station (in Mbps)'),
-                    html.Br(),
-                    dcc.Dropdown(id='datarate', options=[{'label': str(dr), 'value': dr} \
-                                for dr in fs.data_rates], value=1024),
-                    html.Br(),
-                    html.Label('Number of subbands'),
-                    html.Br(),
-                    dcc.Dropdown(id='subbands', options=[{'label': str(sb), 'value': sb} \
-                                for sb in fs.subbands], value=8),
-                    html.Br(),
-                    html.Label('Number of spectral channels'),
-                    html.Br(),
-                    dcc.Dropdown(id='channels', options=[{'label': str(ch), 'value': ch} \
-                                for ch in fs.channels], value=32),
-                    html.Br(),
-                    html.Label('Number of polarizations'),
-                    html.Br(),
-                    dcc.Dropdown(id='pols', options=[{'label': fs.polarizations[p], 'value': p} \
-                                for p in fs.polarizations], value=4),
-                    html.Br(),
-                    html.Label('Integration time (s)'),
-                    html.Br(),
-                    dcc.Dropdown(id='inttime', options=[{'label': fs.inttimes[it], 'value': it} \
-                                for it in fs.inttimes], value=2),
-                    html.Br()
+                    html.Div(className='form-group', children=[
+                        html.Label('Select default VLBI Network(s)'),
+                        dcc.Dropdown(id='array', options=[{'label': n, 'value': n} \
+                                for n in default_arrays], value=['EVN'], multi=True),
+                    ]),
+                    html.Div(className='input-group-prepend', children=[
+                        dcc.Checklist(id='e-EVN', className='checkbox', persistence=True,
+                                      options=[{'label': ' e-EVN (real-time) mode?',
+                                                'value': 'e-EVN'}], value=[]),
+                    ]),
+                    html.Div(className='form-group', children=[
+                        html.Label('Start of observation (UTC)'),
+                        # dcc.Input(id='starttime', value='DD/MM/YYYY HH:MM', type='text',
+                        dcc.Input(id='starttime', value='17/04/1967 10:00', type='text',
+                                  className='form-control', placeholder="dd/mm/yyyy HH:MM",
+                                  persistence=True),
+                        html.Small(id='error_starttime', style={'color': 'red'},
+                                   className='form-text text-muted')
+                    ]),                        
+                    html.Div(className='form-group', children=[
+                        html.Label('End of observation (UTC)'),
+                        # dcc.Input(id='endtime', value='DD/MM/YYYY HH:MM', type='text',
+                        dcc.Input(id='endtime', value='17/04/1967 20:00', type='text',
+                                  className='form-control', placeholder="dd/mm/yyyy HH:MM",
+                                  persistence=True),
+                        html.Small(id='error_endtime', style={'color': 'red'},
+                                   className='form-text text-muted')
+                    ]),
+                    html.Div(className='form-group', children=[
+                        html.Label('Target Source Coordinates'),
+                        # dcc.Input(id='source', value='hh:mm:ss dd:mm:ss', type='text',
+                        dcc.Input(id='source', value='01:20:00 +50:40:30', type='text',
+                                  className='form-control', placeholder="hh:mm:ss dd:mm:ss",
+                                  persistence=True),
+                        html.Small(id='error_source', style={'color': 'red'},
+                                   className='form-text text-muted'),
+                    ]),
+                    html.Div(className='form-group', children=[
+                        html.Label(id='onsourcetime-label',
+                                   children='Percent. of on-target time'),
+                        dcc.Slider(id='onsourcetime', min=20, max=100, step=5, value=75,
+                                   marks= {i: str(i) for i in range(20, 101, 10)},
+                                   persistence=True),
+                    ]),
+                    html.Div(className='form-group', children=[
+                        html.Label('Datarate per station (in Mbps)'),
+                        dcc.Dropdown(id='datarate', placeholder="Select a datarate...",
+                                     options=[{'label': str(dr), 'value': dr} \
+                                     for dr in fs.data_rates], value=1024, persistence=True),
+                    ]),
+                    html.Div(className='form-group', children=[
+                        html.Label('Number of subbands'),
+                        dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
+                                     options=[{'label': str(sb), 'value': sb} \
+                                     for sb in fs.subbands], value=8, persistence=True),
+                    ]),
+                    html.Div(className='form-group', children=[
+                        html.Label('Number of spectral channels'),
+                            dcc.Dropdown(id='channels', placeholder="Select no. channels...",
+                                         options=[{'label': str(ch), 'value': ch} \
+                                         for ch in fs.channels], value=32, persistence=True),
+                    ]),
+                    html.Div(className='form-group', children=[
+                        html.Label('Number of polarizations'),
+                        dcc.Dropdown(id='pols', placeholder="Select polarizations...",
+                                     options=[{'label': fs.polarizations[p], 'value': p} \
+                                     for p in fs.polarizations], value=4, persistence=True),
+                    ]),
+                    html.Div(className='form-group', children=[
+                        html.Label('Integration time (s)'),
+                        dcc.Dropdown(id='inttime', placeholder="Select integration time...",
+                                     options=[{'label': fs.inttimes[it], 'value': it} \
+                                     for it in fs.inttimes], value=2, persistence=True),
+                    ])
                 ]),
                 # html.Div(style={'margin-top': '20px'}, children=[
                 html.Div(className='col-lg-7', style={'float': 'left'}, children=[
@@ -217,7 +226,10 @@ app.layout = html.Div([
                         html.Div(className='antcheck', children=[html.Br(),
                             html.Label(html.H4(f"{an_array}")),
                             html.Br(),
-                            dcc.Checklist(id=f"list_stations_{an_array}",className='antcheck',
+                            dcc.Checklist(id=f"list_stations_{an_array}",
+                                className='antcheck',
+                                labelClassName='form-check-label',
+                                inputClassName='form-check-input',
                                 options=[{'label': s.name, 'value': s.codename,
                                 'disabled': not s.has_band(selected_band)}
                                 for s in all_antennas if s.network == an_array], value=[])
@@ -382,7 +394,8 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
                         (not s.codename in default_arrays['e-EVN'])}
                     for s in all_antennas if s.network == an_array],
                     value=selected_antennas if an_array=='EVN' else [],
-                    className='antcheck')]) for an_array in sorted_networks]
+                    className='antcheck', labelClassName='form-check-label',
+                    inputClassName='form-check-input')]) for an_array in sorted_networks]
     else:
         for an_array in selected_networks:
             selected_antennas += [ant for ant in default_arrays[an_array] \
@@ -397,7 +410,8 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
                     for s in all_antennas if s.network == an_array],
                     value=[s.codename for s in all_antennas \
                             if (s.codename in selected_antennas) and (s.network == an_array)],
-                    className='antcheck')]) for an_array in sorted_networks]
+                    className='antcheck', labelClassName='form-check-label',
+                    inputClassName='form-check-input')]) for an_array in sorted_networks]
 
 
 @app.callback([Output('error_starttime', 'children'),
@@ -538,7 +552,7 @@ def get_fig_ant_up(obs):
     data_dict = obs.is_visible()
     for i,ant in enumerate(data_dict):
         data_fig.append({'x': obs.times.datetime[data_dict[ant]],
-                         'y': np.zeros_like(data_dict[ant][0])+i, 'type': 'scatter',
+                         'y': np.zeros_like(data_dict[ant][0])-i, 'type': 'scatter',
                          # 'mode': 'markers', 'hoverinfo': "skip",
                          'mode': 'markers', 'marker': {'symbol': "41"}, 'hoverinfo': "skip",
                          'name': obs.stations[ant].name})

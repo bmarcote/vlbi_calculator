@@ -111,6 +111,9 @@ external_stylesheets = []
 # app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 app = dash.Dash(__name__)
 
+
+server = app.server
+
 # app.config.requests_pathname_prefix = ''
 # app.css.append_css({"external_url": "https://codepen.io/chriddyp/pen/bWLwgP.css"})
 
@@ -570,7 +573,8 @@ def get_fig_ant_up(obs):
 
 
 if __name__ == '__main__':
-    app.run_server(host='0.0.0.0', debug=True)
+    # app.run_server(host='0.0.0.0', debug=True)
+    app.run_server(debug=True)
     # app.run_server(host='0.0.0.0')
 
 

@@ -1,5 +1,0 @@
-numpy
-matplotlib
-astropy
-astroplan
-mpld3

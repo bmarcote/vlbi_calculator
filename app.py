@@ -1,123 +1,557 @@
 #! /usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""EVN Calculator.
+
+Program to compute the source elevation visibility and expected thermal
+noise level for a given EVN observation.
+"""
+
+__author__ = "Benito Marcote"
+__copyright__ = "Copyright 2020, Joint Insitute for VLBI-ERIC (JIVE)"
+__credits__ = "Benito Marcote"
+__license__ = "GPL"
+__date__ = "2020/04/21"
+__version__ = "0.0.1"
+__maintainer__ = "Benito Marcote"
+__email__ = "marcote@jive.eu"
+__status__ = "Development"   # Prototype, Development, Production.
 
 from os import path
 from time import sleep
+import itertools
+import datetime
 import numpy as np
 import dash
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 import dash_core_components as dcc
 import dash_html_components as html
 import plotly.graph_objs as go
 from datetime import datetime as dt
-from astroplan import Observer
-import stations
-import util_functions as uf
-import plot_functions as pf
+from astropy.time import Time
+from astropy import coordinates as coord
+from astropy import units as u
+from astroplan import FixedTarget
+from src import freqsetups as fs
+from src import stations
+from src import functions as fx
+from src import observation
+
 
 current_directory = path.dirname(path.realpath(__file__))
-stationList =  stations.Stations()
-stationList.add_from_file(current_directory+'/station_location.txt')
-
-
-arrays = {'EVN': ['EF', 'HH', 'JB2', 'MC', 'NT', 'UR', 'ON', 'SR', 'T6', 'TR', 'YS',
-                  'WB', 'BD', 'SV', 'ZC', 'IR', 'MH'],
-          'e-EVN': ['EF', 'HH', 'IR', 'JB2', 'MC', 'NT', 'ON', 'T6', 'TR', 'YS', 'WB'],
-          'LBA': ['ATCA', 'PA', 'MO', 'HO', 'CD', 'TD70', 'WW'],
-          'VLBA': ['VLBA-BR', 'VLBA-FD', 'VLBA-HN', 'VLBA-KP', 'VLBA-LA', 'VLBA-MK',
-                   'VLBA-NL', 'VLBA-OV', 'VLBA-PT', 'VLBA-SC'],
-          'Global': ['EF', 'HH', 'JB2', 'MC', 'NT', 'UR', 'ON', 'SR', 'T6', 'TR', 'YS',
-                     'WB', 'BD', 'SV', 'ZC', 'IR', 'MH', 'VLBA-BR', 'VLBA-FD', 'VLBA-HN',
-                     'VLBA-KP', 'VLBA-LA', 'VLBA-MK', 'VLBA-NL', 'VLBA-OV', 'VLBA-PT',
-                     'VLBA-SC'],
-          'GMVA': ['EF', 'MH', 'ON', 'YS', 'PV', 'VLBA-BR', 'VLBA-FD', 'VLBA-KP',
-                   'VLBA-LA', 'VLBA-MK', 'VLBA-NL', 'VLBA-OV', 'VLBA-PT'],
-          'EHT': ['ALMA', 'PV', 'LMT', 'PdB', 'SMA', 'JCMT', 'APEX', 'SMTO', 'SPT']}
-
-bands = {'92cm': 'P - 92cm', '49cm': 'P - 49cm', '30cm': 'UHF - 30cm', '21cm': 'L - 21cm',
-         '18cm': 'L - 18cm', '13cm': 'S - 13cm', '6cm': 'C - 6cm', '5cm': 'C - 5cm',
-         '3.6cm': 'X - 3.6cm', '2cm': 'U - 2cm', '1.3cm': 'K - 1.3cm', '0.9cm': 'Ka - 0.9cm',
-         '0.7cm': 'Q - 0.7cm', '0.3cm': 'W - 0.3cm', '0.1cm': '0.1cm'}
-
-data_rates = [4096, 2048, 1024, 512, 256, 128, 64, 32, 16, 8]
-
-
-external_stylesheets = ['http://jive.eu/~marcote/style.css']
-n_timestamps = 70 # Number of points (timestamps) for the whole observations.
+# stationList =  stations.Stations()
+# stationList.add_from_file(current_directory+'/station_location.txt')
 
 
 
 
+all_antennas = fx.get_stations_from_file(f"{current_directory}/data/station_location.txt")
+sorted_networks = ('EVN', 'eMERLIN', 'VLBA', 'LBA', 'KVN', 'Other')
+default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6', 'Tr',
+                          'Ys', 'Wb', 'Bd', 'Sv', 'Zc', 'Ir'],
+          'e-EVN': ['Ef', 'Hh', 'Ir', 'Jb2', 'Mc', 'Nt', 'On', 'T6', 'Tr', 'Ys', 'Wb',
+                    'Bd', 'Sv', 'Zc', 'Ir', 'Sr', 'Ur'],
+          'eMERLIN': ['Cm', 'Kn', 'Pi', 'Da', 'De'],
+          'LBA': ['ATCA', 'Pa', 'Mo', 'Ho', 'Cd', 'Td', 'Ww'],
+          'VLBA': ['Br', 'Fd', 'Hh', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
+          'KVN': ['Ky', 'Ku', 'Kt'],
+          'Global VLBI': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
+                          'Tr', 'Ys', 'Wb', 'Bd', 'Sv', 'Zc', 'Ir', 'Br', 'Fd', 'Hn',
+                          'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
+          'GMVA': ['Ef', 'Mh', 'On', 'Ys', 'Pv', 'Br', 'Fd', 'Kp', 'La', 'Mk', 'Nl',
+                   'Ov', 'Pt'],
+          'EHT': ['ALMA', 'Pv', 'LMT', 'PdB', 'SMA', 'JCMT', 'APEX', 'SMTO', 'SPT']}
 
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
-# app = dash.Dash(__name__)
+# Initial values
+target_source = observation.Source('1h2m3s +50d40m30s', 'Source')
+# obs_times = Time('1967-04-17 10:00') + np.arange(0, 600, 15)*u.min
+selected_band = '18cm'
 
-app.config.requests_pathname_prefix = ''
+sensitivity_results_template = """
+
+{band:.2n} ({freq:.2n}) observations with the following antennas:
+
+{antennas}
+
+{sb} ({sbbw:.2n}) subbands with {ch} channels each and {pols} polarization.
+
+Total bandwidth of the observation: {bandwidth:.3n}
+({bandwidth_channel:.3n} per spectral channel)
+
+
+**Estimated image thermal noise** (assuming {ttarget:.3n} on target):  {noise:.3n}
+
+
+Estimated rms thernal noise per spectral channel: {noise_channel:.3n}
+
+**Resulting FITS file size**: {filesize:.3n}
+
+(note that this is only an estimation)
+
+
+**Smearing in the Field of View** (for a 10% loss):
+
+Field of View limited by bandwidth-smearing to: {bw_smearing:.3n}
+
+Field of View limited by time-smearing to: {t_smearing:.3n}
+
+"""
+
+
+
+
+# external_stylesheets = ["https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css", "http://jive.eu/~marcote/style.css"]
+# external_stylesheets = ["https://bmarcote.github.io/temp/style.css"]
+external_stylesheets = []
+# n_timestamps = 70 # Number of points (timestamps) for the whole observations.
+
+
+
+
+
+# app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+app = dash.Dash(__name__)
+
+# app.config.requests_pathname_prefix = ''
 # app.css.append_css({"external_url": "https://codepen.io/chriddyp/pen/bWLwgP.css"})
-app.css.append_css({"external_url": "https://codepen.io/chriddyp/pen/brPBPO.css"})
+
+# app.css.append_css({"external_url": "https://codepen.io/chriddyp/pen/brPBPO.css"})
 
 
 #####################  This is the webpage layout
 app.layout = html.Div([
     html.Div([
-        html.H1('EVN Calculator'),
+        html.H1('EVN Source Visibility'),
         # html.Img(src='http://www.ira.inaf.it/evnnews/archive/evn.gif')
-    ], className='banner'),
-    html.Div([html.Br()], style={'clear': 'both', 'margin-top': '100px'}),
-    # First row containing all buttons/options, list of telescopes, and button with text output
-    html.Div([
-        # Elements in first column ()
-        html.Div([
-            html.Label('Array'),
-            html.Br(),
-            dcc.Dropdown(id='array', options=[{'label': a, 'value': a} for a in arrays],
-                         value='EVN'),# multi=True),
-            html.Br(),
-            html.Label('Observing Band'),
-            html.Br(),
-            dcc.Dropdown(id='band', options=[{'label': bands[b], 'value': b} for b in bands],
-                         value='18cm'),
-            html.Br(),
-            html.Label('Data rate (in Mbps)'),
-            html.Br(),
-            dcc.Dropdown(id='data_rate', options=[{'label': str(dr), 'value': dr} for dr in data_rates],
-                         value=1024),
-            html.Br(),
-            html.Label('Source Coordinates'),
-            html.Br(),
-            # dcc.Input(id='source', value='hh:mm:ss dd:mm:ss', type='text', style={'width': '80%'}),
-            dcc.Input(id='source', value='00:00:00 00:00:00', type='text', className='input_text'),
-            html.Br(),
-            html.Label('Start of observation (UTC)'),
-            html.Br(),
-            # dcc.Input(id='starttime', value='DD/MM/YYYY HH:MM', type='text', style={'width': '80%'}),
-            dcc.Input(id='starttime', value='01/04/2010 12:00', type='text', className='input_text'),
-            html.Br(),
-            html.Label('Duration (in hours)'),
-            html.Br(),
-            dcc.Input(id='duration', value='24.0', type='text', className='input_text'),
-            html.Br()
-        ], className='column left'),
-        # Elements in second column (checkboxes with all stations)
-        html.Div([ # IN OPTIONS DICT,  ADD 'DISABLED' : bool  FOR DISABLED CHECKBOX. checked=checked
-            dcc.Checklist(id='stations_check', options=[{'label': s.name, 'value': s.code}
-                                  for s in stationList.stations], values=[],
-                                  className='check_stations')
-        ], className='column middle'),
-        html.Div([
-            html.Button('Calculate', id='button'),
-            dcc.Markdown(''' ''', id='output-button'),
-        ], className='column right')
     ]),
-    # Second row with Plots
-    html.Div([
-        html.Div([
-            dcc.Graph(id='plot-elevation', className='plot'),
-        ]),
-        html.Div([
-            dcc.Graph(id='plot-visibility', className='plot')
-        ]),
-    ], className='element')
+    # ], className='banner'),
+    html.Div([html.Br()]), #style={'clear': 'both', 'margin-top': '20px'}),
+    # First row containing all buttons/options, list of telescopes, and button with text output
+    dcc.ConfirmDialog(id='error', message=''),
+    # Elements in second column (checkboxes with all stations)
+    html.Div(className='container-fluid', children=[
+        dcc.Tabs([
+            dcc.Tab(label='Observation Setup', className='container', children=[
+                # Elements in first column ()
+                html.Div(className='row-cols-3', children=[
+                html.Div(className='col-sm-3', style={'max-width': '300px','float': 'left',
+                                                      'padding': '2%'}, children=[
+                    html.Label('Observing Band'),
+                    html.Br(),
+                    dcc.Dropdown(id='band',
+                                 options=[{'label': fs.bands[b], 'value': b} for b \
+                                in fs.bands], value='18cm'),
+                    html.Br(),
+                    html.Label('Select default VLBI Network(s)'),
+                    html.Br(),
+                    dcc.Dropdown(id='array', options=[{'label': n, 'value': n} \
+                                for n in default_arrays], value=['EVN'], multi=True),
+                    html.Br(),
+                    html.Div(className='input-group-prepend', children=[
+                        dcc.Checklist(id='e-EVN', className='checkbox',
+                              options=[{'label': ' e-EVN (real-time) mode?',
+                                        'value': 'e-EVN'}], value=[]),
+                    ]),
+                    html.Br(),
+                    html.Label('Start of observation (UTC)'),
+                    html.Br(),
+                    # dcc.Input(id='starttime', value='DD/MM/YYYY HH:MM', type='text',
+                    dcc.Input(id='starttime', value='17/04/1967 10:00', type='text',
+                              className='form-control'),
+                    html.Br(),
+                    html.P(id='error_starttime', style={'color': 'red'}),
+                    html.Br(),
+                    html.Label('End of observation (UTC)'),
+                    html.Br(),
+                    # dcc.Input(id='endtime', value='DD/MM/YYYY HH:MM', type='text',
+                    dcc.Input(id='endtime', value='17/04/1967 20:00', type='text',
+                              className='form-control'),
+                    html.Br(),
+                    html.P(id='error_endtime', style={'color': 'red'}),
+                    html.Br(),
+                    html.Label('Target Source Coordinates'),
+                    html.Br(),
+                    # dcc.Input(id='source', value='hh:mm:ss dd:mm:ss', type='text',
+                    dcc.Input(id='source', value='01:20:00 +50:40:30', type='text',
+                              className='form-control'),
+                    html.Br(),
+                    html.P(id='error_source', style={'color': 'red'}),
+                    html.Br(),
+                    html.Label(id='onsourcetime-label', children='Percent. of on-target time'),
+                    html.Br(),
+                    dcc.Slider(id='onsourcetime', min=20, max=100, step=5, value=75,
+                                marks= {i: str(i) for i in range(20, 101, 10)}),
+                    html.Br(),
+                    html.Label('Datarate per station (in Mbps)'),
+                    html.Br(),
+                    dcc.Dropdown(id='datarate', options=[{'label': str(dr), 'value': dr} \
+                                for dr in fs.data_rates], value=1024),
+                    html.Br(),
+                    html.Label('Number of subbands'),
+                    html.Br(),
+                    dcc.Dropdown(id='subbands', options=[{'label': str(sb), 'value': sb} \
+                                for sb in fs.subbands], value=8),
+                    html.Br(),
+                    html.Label('Number of spectral channels'),
+                    html.Br(),
+                    dcc.Dropdown(id='channels', options=[{'label': str(ch), 'value': ch} \
+                                for ch in fs.channels], value=32),
+                    html.Br(),
+                    html.Label('Number of polarizations'),
+                    html.Br(),
+                    dcc.Dropdown(id='pols', options=[{'label': fs.polarizations[p], 'value': p} \
+                                for p in fs.polarizations], value=4),
+                    html.Br(),
+                    html.Label('Integration time (s)'),
+                    html.Br(),
+                    dcc.Dropdown(id='inttime', options=[{'label': fs.inttimes[it], 'value': it} \
+                                for it in fs.inttimes], value=2),
+                    html.Br()
+                ]),
+                # html.Div(style={'margin-top': '20px'}, children=[
+                html.Div(className='col-lg-7', style={'float': 'left'}, children=[
+                    html.Div(id='antennas-div', className='container', children=[
+                    # List with all antennas
+                        html.Div(className='antcheck', children=[html.Br(),
+                            html.Label(html.H4(f"{an_array}")),
+                            html.Br(),
+                            dcc.Checklist(id=f"list_stations_{an_array}",className='antcheck',
+                                options=[{'label': s.name, 'value': s.codename,
+                                'disabled': not s.has_band(selected_band)}
+                                for s in all_antennas if s.network == an_array], value=[])
+                        ]) for an_array in sorted_networks
+                    ])
+                ]),
+                html.Div(className='col-sm-2', style={'float': 'left'}, children=[
+                    html.Button('Compute Observation', id='antenna-selection-button',
+                                className='btn btn-primary btn-lg',
+                                # style={'margin': '5px 5px 5px 5px'}),
+                                style={'padding': '5px', 'margin-top': '50px'}),
+                ])
+                ])
+            ]),
+
+            dcc.Tab(label='Sensitivity', children=[
+                html.Div(className='col-md-8', children=[
+                # Sensitivity calculations
+                    dcc.Markdown(id='sensitivity-output',
+                                 children="Set the observation first.")
+                ])
+            ]),
+            dcc.Tab(label='Plots', children=[
+                html.Div(className='col-md-8', children=[
+                    # Elevation VS time
+                    html.Div([
+                        dcc.Graph(id='fig-elev-time')
+                    ]),
+                    # Antenna VS time (who can observe)
+                    html.Div([
+                        dcc.Graph(id='fig-ant-time')
+                    ])
+                ])
+            ]),
+            dcc.Tab(label='Images', children=[
+                #  Images
+                html.Div(className='col-md-8', children=[
+                    dcc.Markdown(children="""To be implemented.
+                        The uv coverage and expected dirty images will go here.""")
+                ])
+            ]),
+            dcc.Tab(label='Help', children=[
+                #  Documentation
+                html.Div(className='col-md-8', children=[
+                    dcc.Markdown(children="""The Help/doc.
+                        All explanations and technical details will go here.""")
+                ])
+            ])
+        ])
+    ])
 ])
+
+
+
+
+def convert_colon_coord(colon_coord):
+    """Converts some coordinates given in a str format 'HH:MM:SS DD:MM:SS' to
+    'HHhMMmSSs DDdMMdSSs'.
+    If ':' are not present in colon_coord, then it returns the same str.
+    """
+    if ':' not in colon_coord:
+        return colon_coord
+    for l in ('h', 'm', 'd', 'm'):
+        colon_coord = colon_coord.replace(':', l, 1)
+
+    return colon_coord.replace(' ', 's ')+'s'
+
+
+def get_selected_antennas(list_of_selected_antennas):
+    """Given a list of antenna codenames, it returns a Stations object containing
+    all given antennas.
+    """
+    selected_antennas = stations.Stations('Observation', [])
+
+    for ant in list_of_selected_antennas:
+        selected_antennas.add(all_antennas[ant])
+
+    return selected_antennas
+
+
+def optimal_units(value, units):
+    """Given a value (with some units), returns the unit choice from all
+    `units` possibilities that better suits the value.
+    It is meant for the following use:
+    Given 0.02*u.Jy and units = [u.kJy, u.Jy, u.mJy, u.uJy], it will
+    return 20*u.mJy.
+    units should have a decreasing-scale of units, and all of them
+    compatible with the units in `value`.
+    """
+    for a_unit in units:
+        if 0.8 < value.to(a_unit).value <= 800:
+            return value.to(a_unit)
+
+    # Value too high or too low
+    if value.to(units[0]).value > 1:
+        return value.to(units[0])
+
+    return value.to(units[-1])
+
+
+def update_sensitivity(an_obs):
+    """Given the observation, it sets the text about all properties of the observation.
+    """
+    rms = optimal_units(an_obs.thermal_noise(), [u.MJy, u.kJy, u.Jy, u.mJy, u.uJy])
+    rms_channel = optimal_units(rms*np.sqrt(an_obs.subbands*an_obs.channels),
+                                [u.MJy, u.kJy, u.Jy, u.mJy, u.uJy])
+
+    ants_up = an_obs.is_visible()
+    ant_no_obs = []
+    for an_ant in ants_up:
+        if len(ants_up[an_ant][0]) == 0:
+            ant_no_obs.append(an_ant)
+
+    antennas_text = ', '.join(an_obs.stations.keys())
+    if len(ant_no_obs) > 0:
+        antennas_text += f"\n (note that {', '.join(ant_no_obs)} cannot observe the source)."
+    return sensitivity_results_template.format(
+            band=optimal_units(an_obs.wavelength, [u.m, u.cm, u.mm]),
+            freq=optimal_units(an_obs.frequency, [u.GHz, u.MHz]),
+            antennas=antennas_text,
+            sb=an_obs.subbands,
+            sbbw=optimal_units(an_obs.bandwidth/an_obs.subbands, [u.GHz, u.MHz, u.kHz]),
+            ch=an_obs.channels,
+            pols={1: 'single', 2: 'dual', 4: 'full'}[an_obs.polarizations],
+            ttarget=optimal_units(an_obs.ontarget_fraction*(an_obs.times[-1]-an_obs.times[0]),
+                                  [u.h, u.min, u.s, u.ms]),
+            noise=rms,
+            noise_channel=rms_channel,
+            filesize=optimal_units(an_obs.datasize(), [u.TB, u.GB, u.MB, u.kB]),
+            bw_smearing=optimal_units(an_obs.bandwidth_smearing(), [u.arcmin, u.arcsec]),
+            t_smearing=optimal_units(an_obs.time_smearing(), [u.arcmin, u.arcsec]),
+            bandwidth=optimal_units(an_obs.bandwidth, [u.GHz, u.MHz, u.kHz]),
+            bandwidth_channel=optimal_units(an_obs.bandwidth/(an_obs.subbands*an_obs.channels),
+                                            [u.GHz, u.MHz, u.kHz, u.Hz]))
+
+
+
+@app.callback(Output('onsourcetime-label', 'children'),
+              [Input('onsourcetime', 'value')])
+def update_onsourcetime_label(onsourcetime):
+    return f"Percent. of on-target time ({onsourcetime}%)"
+
+
+@app.callback(Output('antennas-div', 'children'),
+              [Input('band', 'value'), Input('array', 'value'), Input('e-EVN', 'value')])
+def select_antennas(selected_band, selected_networks, is_eEVN):
+    """Given a selected band and selected default networks, it selects the associated
+    antennas from the antenna list.
+    """
+    selected_antennas = []
+    if is_eEVN:
+        selected_antennas = [ant for ant in default_arrays['e-EVN'] \
+                             if (all_antennas[ant].has_band(selected_band) and \
+                                (all_antennas[ant].network == 'EVN'))]
+
+        return [html.Div([html.Br(),
+                html.Label(html.H4(f"{an_array}")),
+                html.Br(),
+                dcc.Checklist(id=f"list_stations_{an_array}",
+                    options=[{'label': s.name, 'value': s.codename,
+                    'disabled': (not s.has_band(selected_band)) or \
+                        (not s.codename in default_arrays['e-EVN'])}
+                    for s in all_antennas if s.network == an_array],
+                    value=selected_antennas if an_array=='EVN' else [],
+                    className='antcheck')]) for an_array in sorted_networks]
+    else:
+        for an_array in selected_networks:
+            selected_antennas += [ant for ant in default_arrays[an_array] \
+                                    if all_antennas[ant].has_band(selected_band)]
+
+        return [html.Div([html.Br(),
+                html.Label(html.H4(f"{an_array}")),
+                html.Br(),
+                dcc.Checklist(id=f"list_stations_{an_array}",
+                    options=[{'label': s.name, 'value': s.codename,
+                    'disabled': not s.has_band(selected_band)}
+                    for s in all_antennas if s.network == an_array],
+                    value=[s.codename for s in all_antennas \
+                            if (s.codename in selected_antennas) and (s.network == an_array)],
+                    className='antcheck')]) for an_array in sorted_networks]
+
+
+@app.callback([Output('error_starttime', 'children'),
+               Output('error_endtime', 'children')],
+              [Input('starttime', 'value'), Input('endtime', 'value')])
+def check_obstime(starttime, endtime):
+    if starttime != 'DD/MM/YYYY HH:MM':
+        try:
+            time0 = Time(datetime.datetime.strptime(starttime, '%d/%m/%Y %H:%M'),
+                         format='datetime')
+        except ValueError as e:
+            return 'Incorrect format (dd/mm/YYYY HH:MM)', dash.no_update
+
+    if endtime != 'DD/MM/YYYY HH:MM':
+        try:
+            time1 = Time(datetime.datetime.strptime(endtime, '%d/%m/%Y %H:%M'),
+                         format='datetime')
+        except ValueError as e:
+            return dash.no_update, 'Incorrect format (dd/mm/YYYY HH:MM)'
+
+    if ('time1' in locals()) and ('time0' in locals()):
+        if (time1 - time0) > 5*u.d:
+            return ["Please, put a time range smaller than 5 days."]*2
+
+    return '', ''
+
+
+@app.callback(Output('error_source', 'children'),
+        [Input('source', 'value')])
+def get_source(source_coord):
+    if source_coord != 'hh:mm:ss dd:mm:ss':
+        try:
+            dummy_target = observation.Source(convert_colon_coord(source_coord), 'Source')
+            return ''
+        except ValueError as e:
+            return "Use 'hh:mm:ss dd:mm:ss' format"
+    else:
+        return dash.no_update
+
+
+
+@app.callback([Output('sensitivity-output', 'children'),
+               Output('fig-elev-time', 'figure'),
+               Output('fig-ant-time', 'figure')],
+              [Input('antenna-selection-button', 'n_clicks')],
+              [State('band', 'value'),
+               State('starttime', 'value'),
+               State('endtime', 'value'),
+               State('source', 'value'),
+               State('onsourcetime', 'value'),
+               State('datarate', 'value'),
+               State('subbands', 'value'),
+               State('channels', 'value'),
+               State('pols', 'value'),
+               State('inttime', 'value'),
+               State('list_stations_EVN', 'value'),
+               State('list_stations_eMERLIN', 'value'),
+               State('list_stations_VLBA', 'value'),
+               State('list_stations_LBA', 'value'),
+               State('list_stations_KVN', 'value'),
+               State('list_stations_Other', 'value')])
+def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime, datarate,
+                        subbands, channels, pols, inttime, *ants):
+                       # subbands, channels, pols, inttime, ants_evn, ants_emerlin,
+                       # ants_vlba, ants_lba, ants_kvn, ants_other):
+    """Computes all products to be shown concerning the set observation.
+    """
+    if n_clicks is None:
+        return dash.no_update, dash.no_update, dash.no_update
+    try:
+        target_source = observation.Source(convert_colon_coord(source), 'Source')
+    except ValueError as e:
+        return f"""Incorrect format for source coordinates:
+        {source} found but 'hh:mm:ss dd:mm:ss' expected.
+        """, dash.no_update, dash.no_update
+    try:
+        time0 = Time(datetime.datetime.strptime(starttime, '%d/%m/%Y %H:%M'),
+                     format='datetime')
+    except ValueError as e:
+        return "Incorrect format for starttime.", dash.no_update, dash.no_update
+
+    try:
+        time1 = Time(datetime.datetime.strptime(endtime, '%d/%m/%Y %H:%M'),
+                     format='datetime')
+    except ValueError as e:
+        return "Incorrect format for endtime.", dash.no_update, dash.no_update
+
+    if time0 >= time1:
+        return "The start time of the observation must be earlier than the end time.", \
+                dash.no_update, dash.no_update
+
+    if (time1 - time0) > 5*u.d:
+        return "Please, put a time range smaller than 5 days.", dash.no_update, dash.no_update
+
+    # TODO: this should not be hardcoded...
+    obs_times = time0 + np.linspace(0, (time1-time0).to(u.min).value, 50)*u.min
+    # obs_times = time0 + np.arange(0, (time1-time0).to(u.min).value, 15)*u.min
+    all_selected_antennas = list(itertools.chain.from_iterable(ants))
+    obs = observation.Observation(target=target_source, times=obs_times, band=band,
+                          datarate=datarate, subbands=subbands, channels=channels,
+                          polarizations=pols, inttime=inttime, ontarget=onsourcetime/100.0,
+                          stations=get_selected_antennas(all_selected_antennas))
+
+
+    # return update_sensitivity(obs), dash.no_update, dash.no_update
+    return update_sensitivity(obs), get_fig_ant_elev(obs), get_fig_ant_up(obs)
+
+
+
+def get_fig_ant_elev(obs):
+    data_fig = []
+    data_dict = obs.elevations()
+    # Some reference lines at low elevations
+    for ant in data_dict:
+        data_fig.append({'x': obs.times.datetime, 'y': data_dict[ant].value,
+                        'mode': 'lines', 'hovertemplate': "Elev: %{y:.2n}º",
+                        'name': obs.stations[ant].name})
+
+    data_fig.append({'x': obs.times.datetime, 'y': np.zeros_like(obs.times)+10,
+                     'mode': 'lines', 'hoverinfo': 'skip', 'name': 'Elev. limit 10º',
+                     'line': {'dash': 'dash', 'opacity': 0.5, 'color': 'gray'}})
+    data_fig.append({'x': obs.times.datetime, 'y': np.zeros_like(obs.times)+20,
+                     'mode': 'lines', 'hoverinfo': 'skip', 'name': 'Elev. limit 20º',
+                     'line': {'dash': 'dot', 'opacity': 0.5, 'color': 'gray'}})
+    return {'data': data_fig,
+            'layout': {'title': 'Source elevation during the observation',
+                       'xaxis': {'title': 'Time (UTC)', 'showgrid': False,
+                                 'ticks': 'inside', 'showline': True, 'mirror': "all",
+                                 'hovermode': 'closest', 'color': 'black'},
+                       'yaxis': {'title': 'Elevation (degrees)', 'range': [0., 92.],
+                                 'ticks': 'inside', 'showline': True, 'mirror': "all",
+                                 'showgrid': False, 'hovermode': 'closest'}}}
+
+
+
+def get_fig_ant_up(obs):
+    data_fig = []
+    data_dict = obs.is_visible()
+    for i,ant in enumerate(data_dict):
+        data_fig.append({'x': obs.times.datetime[data_dict[ant]],
+                         'y': np.zeros_like(data_dict[ant][0])+i, 'type': 'scatter',
+                         # 'mode': 'markers', 'hoverinfo': "skip",
+                         'mode': 'markers', 'marker': {'symbol': "41"}, 'hoverinfo': "skip",
+                         'name': obs.stations[ant].name})
+
+    return {'data': data_fig,
+            'layout': {'title': 'Source visible during the observation',
+                       'xaxis': {'title': 'Time (UTC)', 'showgrid': False,
+                                 'ticks': 'inside', 'showline': True, 'mirror': "all",
+                                 'hovermode': 'closest', 'color': 'black'},
+                       'yaxis': {'ticks': '', 'showline': True, 'mirror': True,
+                                 'showticklabels': False, 'zeroline': False,
+                                 'showgrid': False, 'hovermode': 'closest', 'startline':False}}}
+
+
+
+
 
 # @app.callback(Output('my-graph', 'figure'), [Input('my-dropdown', 'value')])
 # def update_graph(selected_dropdown_value):
@@ -132,150 +566,6 @@ app.layout = html.Div([
 #     }
 
 
-
-@app.callback(
-    dash.dependencies.Output('stations_check', 'values'),
-    [dash.dependencies.Input('array', 'value'),
-    dash.dependencies.Input('band', 'value')])
-def select_antennas(array, band):
-    """Once a button for a specific array is pressed, we select the corresponding
-    antennas.
-    """
-    return [a for a in arrays[array] if stationList[a].has_frequency(band)]
-
-
-@app.callback(
-    dash.dependencies.Output('stations_check', 'options'),
-    [dash.dependencies.Input('array', 'value'),
-    dash.dependencies.Input('band', 'value')])
-def disable_antennas(array, band):
-    return [{'label': s.name, 'value': s.code, 'disabled': not s.has_frequency(band),
-            'className': 'disabled' if not s.has_frequency(band) else 'enabled'} for s
-            in stationList.stations]
-
-
-@app.callback(
-    dash.dependencies.Output('output-button', 'children'),
-    [dash.dependencies.Input('button', 'n_clicks')],
-    [dash.dependencies.State('stations_check', 'values'),
-    dash.dependencies.State('band', 'value'),
-    dash.dependencies.State('data_rate', 'value'),
-    dash.dependencies.State('source', 'value'),
-    dash.dependencies.State('starttime', 'value'),
-    dash.dependencies.State('duration', 'value')])
-def calculate_everything(button, array_codes, band, data_rate, source, starttime, duration):
-    if duration == '0.0' or not (float(duration) > 0.0):
-        return 'Set a duration and press "Calculate"'
-
-    duration = float(duration)
-    antennas = stationList.get_stations_with_codes(array_codes)
-    # If source and/or start of observation are not set, then regular sensitivity calc.
-    if source == 'hh:mm:ss dd:mm:ss' or starttime == 'DD/MM/YYYY HH:MM':
-        obs_times = uf.get_obs_times(uf.get_time('01/01/1993 03:14'), duration, duration)
-        ant_times = [obs_times]*len(antennas)
-        # Dummy elevation (40 deg) for all stations
-        elevations = np.ones((len(antennas), len(obs_times)))*40
-    else:
-        # NOTE: Check for source and startime format!!!!
-        obs_times = uf.get_obs_times(uf.get_time(starttime), duration, duration/n_timestamps)
-        ant_times, elevations = uf.times_elev_with_source_above(uf.get_coordinates(source), antennas, obs_times)
-
-    # Remove all stations that do not observe the source
-    antennas = [a for a,t in zip(antennas,ant_times) if len(t) > 0]
-    if len(antennas) > 0:
-        ant_times = [t for t in ant_times if len(t) > 0]
-        elevations = [e for e in elevations if len(e) > 0]
-        rms = uf.get_thermal_noise(antennas, ant_times, data_rate*1e6, band)
-        return formatted_text(rms, uf.get_bandwidth_smearing(), uf.get_time_smearing())
-
-
-def formatted_text(rms, fov_bandwidth=None, fov_time=None):
-    # rms is passed as Jy/beam. Here I pick the best units
-    if rms > 0.99:
-        rms_units = 'Jy/beam'
-    elif rms > 0.00099:
-        rms_units = 'mJy/beam'
-        rms *= 1000
-    else:
-        rms_units = '&mu;Jy/beam'
-        rms *= 1e6
-
-    noise_str = '''
-    ### Thermal noise
-
-    The image thermal noise is estimated to be {0:.2f} {1} (at 1-sigma level) using natural weighting.
-
-    '''
-    band_str = '''
-    Due to bandwidth smearing the FoV is limited to {} arcsec.
-
-    '''
-    time_str = '''
-    Due to time smearing the FoV is limited to {} arcsec.
-
-    '''
-    fov = '''
-    ### Limitations in field of view (FoV)
-
-    {0}
-    {1}
-
-    These values have been calculated for 10% loss in the response of a point source, and they give
-    the FoV radius from the pointing center.
-    '''
-
-    if (fov_bandwidth is None) and (fov_time is None):
-        return noise_str.format(rms, rms_units).replace('  ', '')
-    else:
-        fov_f = fov.format(band_str.format('{:.2f}'.format(fov_bandwidth) if fov_bandwidth is not None else ''),
-                           time_str.format('{:.2f}'.format(fov_time) if fov_time is not None else ''))
-        return (noise_str.format(rms, rms_units) + fov_f).replace('  ', '')
-
-
-@app.callback(
-    dash.dependencies.Output('plot-elevation', 'figure'),
-    [dash.dependencies.Input('button', 'n_clicks')],
-    [dash.dependencies.State('stations_check', 'values'),
-    dash.dependencies.State('band', 'value'),
-    dash.dependencies.State('source', 'value'),
-    dash.dependencies.State('starttime', 'value'),
-    dash.dependencies.State('duration', 'value')])
-def update_plot_elevation(button, antenna_codes, bands, source, starttime, duration):
-    if (source == 'hh:mm:ss dd:mm:ss' or starttime == 'DD/MM/YYYY HH:MM' or float(duration) <= 0.0):
-        return None
-
-    obs_times = uf.get_obs_times(uf.get_time(starttime), float(duration),
-                                 float(duration)/n_timestamps)
-    antennas = stationList.get_stations_with_codes(antenna_codes)
-    ant_times, elevations = uf.times_elev_with_source_above(uf.get_coordinates(source), antennas, obs_times)
-    antennas = [a for a,t in zip(antennas,ant_times) if len(t) > 0]
-    if len(antennas) > 0:
-        ant_times = [t for t in ant_times if len(t) > 0]
-        elevations = [e for e in elevations if len(e) > 0]
-        return pf.time_elevation(ant_times, elevations, [s.name for s in antennas], xlim=(obs_times[0].datetime, obs_times[-1].datetime))
-
-
-@app.callback(
-    dash.dependencies.Output('plot-visibility', 'figure'),
-    [dash.dependencies.Input('button', 'n_clicks')],
-    [dash.dependencies.State('stations_check', 'values'),
-    dash.dependencies.State('band', 'value'),
-    dash.dependencies.State('source', 'value'),
-    dash.dependencies.State('starttime', 'value'),
-    dash.dependencies.State('duration', 'value')])
-def update_plot_visibility(button, antenna_codes, bands, source, starttime, duration):
-    if (source == 'hh:mm:ss dd:mm:ss' or starttime == 'DD/MM/YYYY HH:MM' or float(duration) <= 0.0):
-        return None
-
-    obs_times = uf.get_obs_times(uf.get_time(starttime), float(duration),
-                                 float(duration)/n_timestamps)
-    antennas = stationList.get_stations_with_codes(antenna_codes)
-    ant_times, elevations = uf.times_elev_with_source_above(uf.get_coordinates(source), antennas, obs_times)
-    antennas = [a for a,t in zip(antennas,ant_times) if len(t) > 0]
-    if len(antennas) > 0:
-        ant_times = [t for t in ant_times if len(t) > 0]
-        elevations = [e for e in elevations if len(e) > 0]
-        return pf.time_visibility(ant_times, elevations, [s.name for s in antennas], xlim=(obs_times[0].datetime, obs_times[-1].datetime))
 
 
 

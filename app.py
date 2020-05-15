@@ -162,7 +162,7 @@ app.layout = html.Div([
                                   persistence=True),
                         html.Small(id='error_starttime', style={'color': 'red'},
                                    className='form-text text-muted')
-                    ]),                        
+                    ]),
                     html.Div(className='form-group', children=[
                         html.Label('End of observation (UTC)'),
                         # dcc.Input(id='endtime', value='DD/MM/YYYY HH:MM', type='text',
@@ -564,7 +564,8 @@ def get_fig_ant_up(obs):
                                  'hovermode': 'closest', 'color': 'black'},
                        'yaxis': {'ticks': '', 'showline': True, 'mirror': True,
                                  'showticklabels': False, 'zeroline': False,
-                                 'showgrid': False, 'hovermode': 'closest', 'startline':False}}}
+                                 'showgrid': False, 'hovermode': 'closest',
+                                 'startline':False}}}
 
 
 
@@ -587,8 +588,8 @@ def get_fig_ant_up(obs):
 
 
 if __name__ == '__main__':
-    app.run_server(host='0.0.0.0', debug=True)
+    # app.run_server(host='0.0.0.0', debug=True)
     # app.run_server(debug=True)
-    # app.run_server(host='0.0.0.0')
+    app.run_server(host='0.0.0.0')
 
 

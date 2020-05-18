@@ -3271,6 +3271,10 @@ input[type=checkbox]:disabled:after {
 }
 
 
+/* FOR TEXT INPUTS I SHOULD ADD AN OFFSET SHADOW (REFACTORING UI TRICKS):
+box-shadow: inset 0 2px 4px 0 hsla(0 0% 0& 0.08);
+*/)
+
 /*     --blue: #007bff; */
 /*     --indigo: #6610f2; */
 /*     --purple: #6f42c1; */

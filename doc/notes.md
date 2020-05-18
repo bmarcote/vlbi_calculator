@@ -149,6 +149,8 @@ Bands([fromfile])
 - observation.Observation.thermal_noise() can be highly optimized.
 - Help buttons and explanatory dialog.
 - Arecibo limits. Currently not shown.
+- Add a per-baseline basis sensitivity? (maybe as a roll-over?)
+- Also, something about the largest angular scale you are sensitive to.
 
 
 

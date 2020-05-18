@@ -129,7 +129,7 @@ app.layout = html.Div([
     # ], className='banner'),
     html.Div([html.Br()]), #style={'clear': 'both', 'margin-top': '20px'}),
     # First row containing all buttons/options, list of telescopes, and button with text output
-    dcc.ConfirmDialog(id='error', message=''),
+    dcc.ConfirmDialog(id='global-error', message=''),
     # Elements in second column (checkboxes with all stations)
     html.Div(className='container-fluid', children=[
         dcc.Tabs([
@@ -282,6 +282,12 @@ app.layout = html.Div([
     ])
 ])
 
+
+
+def error_text(an_error):
+    """Message written in a modal error window.
+    """
+    return f"An error occured.\n{an_error}.\nPlease report to marcote@jive.eu."
 
 
 
@@ -455,7 +461,7 @@ def get_source(source_coord):
 
 @app.callback([Output('sensitivity-output', 'children'),
                Output('fig-elev-time', 'figure'),
-               Output('fig-ant-time', 'figure')],
+               Output('fig-ant-time', 'figure'), Output('global-error', 'message')],
               [Input('antenna-selection-button', 'n_clicks')],
               [State('band', 'value'),
                State('starttime', 'value'),
@@ -480,44 +486,48 @@ def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime
     """Computes all products to be shown concerning the set observation.
     """
     if n_clicks is None:
-        return dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
     try:
         target_source = observation.Source(convert_colon_coord(source), 'Source')
     except ValueError as e:
         return f"""Incorrect format for source coordinates:
         {source} found but 'hh:mm:ss dd:mm:ss' expected.
-        """, dash.no_update, dash.no_update
+        """, dash.no_update, dash.no_update, dash.no_update
     try:
         time0 = Time(datetime.datetime.strptime(starttime, '%d/%m/%Y %H:%M'),
                      format='datetime')
     except ValueError as e:
-        return "Incorrect format for starttime.", dash.no_update, dash.no_update
+        return "Incorrect format for starttime.", dash.no_update, dash.no_update, dash.no_update
 
     try:
         time1 = Time(datetime.datetime.strptime(endtime, '%d/%m/%Y %H:%M'),
                      format='datetime')
     except ValueError as e:
-        return "Incorrect format for endtime.", dash.no_update, dash.no_update
+        return "Incorrect format for endtime.", dash.no_update, dash.no_update, dash.no_update
 
     if time0 >= time1:
         return "The start time of the observation must be earlier than the end time.", \
-                dash.no_update, dash.no_update
+                dash.no_update, dash.no_update, dash.no_update
 
     if (time1 - time0) > 5*u.d:
-        return "Please, put a time range smaller than 5 days.", dash.no_update, dash.no_update
+        return "Please, put a time range smaller than 5 days.", \
+                dash.no_update, dash.no_update, dash.no_update
 
-    # TODO: this should not be hardcoded...
-    obs_times = time0 + np.linspace(0, (time1-time0).to(u.min).value, 50)*u.min
-    # obs_times = time0 + np.arange(0, (time1-time0).to(u.min).value, 15)*u.min
-    all_selected_antennas = list(itertools.chain.from_iterable(ants))
-    obs = observation.Observation(target=target_source, times=obs_times, band=band,
+    try:
+        # TODO: this should not be hardcoded...
+        obs_times = time0 + np.linspace(0, (time1-time0).to(u.min).value, 50)*u.min
+        # obs_times = time0 + np.arange(0, (time1-time0).to(u.min).value, 15)*u.min
+        all_selected_antennas = list(itertools.chain.from_iterable(ants))
+        obs = observation.Observation(target=target_source, times=obs_times, band=band,
                           datarate=datarate, subbands=subbands, channels=channels,
                           polarizations=pols, inttime=inttime, ontarget=onsourcetime/100.0,
                           stations=get_selected_antennas(all_selected_antennas))
+    except Exception as e:
+        return dash.no_update, dash.no_update, dash.no_update, error_text(e)
 
 
     # return update_sensitivity(obs), dash.no_update, dash.no_update
-    return update_sensitivity(obs), get_fig_ant_elev(obs), get_fig_ant_up(obs)
+    return update_sensitivity(obs), get_fig_ant_elev(obs), get_fig_ant_up(obs), dash.no_update
 
 
 

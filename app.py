@@ -30,6 +30,10 @@ from datetime import datetime as dt
 from astropy.time import Time
 from astropy import coordinates as coord
 from astropy import units as u
+# Tweak to not let astroplan crashing...
+from astropy.utils import iers
+iers.conf.auto_max_age = False
+
 from astroplan import FixedTarget
 from src import freqsetups as fs
 from src import stations

@@ -31,8 +31,10 @@ from astropy.time import Time
 from astropy import coordinates as coord
 from astropy import units as u
 # Tweak to not let astroplan crashing...
+
 from astropy.utils import iers
-iers.conf.auto_max_age = False
+# iers.conf.auto_download = False
+iers.conf.auto_max_age = None
 
 from astroplan import FixedTarget
 from src import freqsetups as fs
@@ -55,7 +57,8 @@ default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
           'e-EVN': ['Ef', 'Hh', 'Ir', 'Jb2', 'Mc', 'Nt', 'On', 'T6', 'Tr', 'Ys', 'Wb',
                     'Bd', 'Sv', 'Zc', 'Ir', 'Sr', 'Ur'],
           'eMERLIN': ['Cm', 'Kn', 'Pi', 'Da', 'De'],
-          'LBA': ['ATCA', 'Pa', 'Mo', 'Ho', 'Cd', 'Td', 'Ww'],
+          # 'LBA': ['ATCA', 'Pa', 'Mo', 'Ho', 'Cd', 'Td', 'Ww'],
+          'LBA': ['ATCA', 'Pa', 'Mo', 'Ho', 'Cd', 'Td'],
           'VLBA': ['Br', 'Fd', 'Hh', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
           'KVN': ['Ky', 'Ku', 'Kt'],
           'Global VLBI': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
@@ -489,6 +492,7 @@ def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime
                        # ants_vlba, ants_lba, ants_kvn, ants_other):
     """Computes all products to be shown concerning the set observation.
     """
+    print('test0')
     if n_clicks is None:
         return dash.no_update, dash.no_update, dash.no_update, dash.no_update
     try:
@@ -517,17 +521,18 @@ def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime
         return "Please, put a time range smaller than 5 days.", \
                 dash.no_update, dash.no_update, dash.no_update
 
-    try:
-        # TODO: this should not be hardcoded...
-        obs_times = time0 + np.linspace(0, (time1-time0).to(u.min).value, 50)*u.min
-        # obs_times = time0 + np.arange(0, (time1-time0).to(u.min).value, 15)*u.min
-        all_selected_antennas = list(itertools.chain.from_iterable(ants))
-        obs = observation.Observation(target=target_source, times=obs_times, band=band,
-                          datarate=datarate, subbands=subbands, channels=channels,
-                          polarizations=pols, inttime=inttime, ontarget=onsourcetime/100.0,
-                          stations=get_selected_antennas(all_selected_antennas))
-    except Exception as e:
-        return dash.no_update, dash.no_update, dash.no_update, error_text(e)
+    # try:
+    # TODO: this should not be hardcoded...
+    obs_times = time0 + np.linspace(0, (time1-time0).to(u.min).value, 50)*u.min
+    # obs_times = time0 + np.arange(0, (time1-time0).to(u.min).value, 15)*u.min
+    all_selected_antennas = list(itertools.chain.from_iterable(ants))
+    obs = observation.Observation(target=target_source, times=obs_times, band=band,
+                      datarate=datarate, subbands=subbands, channels=channels,
+                      polarizations=pols, inttime=inttime, ontarget=onsourcetime/100.0,
+                      stations=get_selected_antennas(all_selected_antennas))
+
+    # except Exception as e:
+    #     return dash.no_update, dash.no_update, dash.no_update, error_text(e)
 
 
     # return update_sensitivity(obs), dash.no_update, dash.no_update
@@ -602,8 +607,8 @@ def get_fig_ant_up(obs):
 
 
 if __name__ == '__main__':
-    # app.run_server(host='0.0.0.0', debug=True)
+    app.run_server(host='0.0.0.0', debug=True)
     # app.run_server(debug=True)
-    app.run_server(host='0.0.0.0')
+    # app.run_server(host='0.0.0.0')
 
 

@@ -45,12 +45,13 @@ current_directory = path.dirname(path.realpath(__file__))
 # stationList =  stations.Stations()
 # stationList.add_from_file(current_directory+'/station_location.txt')
 
-# iers.conf.auto_download = False
+iers.conf.auto_download = False
 iers.conf.auto_max_age = None
 local_iers = f"{current_directory}/data/finals2000A.all"
+iers.IERS.iers_table = iers.IERS_A.open(local_iers, cache=True)
 # iers.IERS.iers_table = iers.IERS.open(cache=True)
 # iers.IERS.iers_table = iers.IERS_A.open(iers.IERS_A_URL)
-iers.Conf.iers_auto_url.set('ftp://cddis.gsfc.nasa.gov/pub/products/iers/finals2000A.all')
+# iers.Conf.iers_auto_url.set('ftp://cddis.gsfc.nasa.gov/pub/products/iers/finals2000A.all')
 
 
 

@@ -33,8 +33,6 @@ from astropy import units as u
 # Tweak to not let astroplan crashing...
 
 from astropy.utils import iers
-# iers.conf.auto_download = False
-iers.conf.auto_max_age = None
 
 from astroplan import FixedTarget
 from src import freqsetups as fs
@@ -47,6 +45,11 @@ current_directory = path.dirname(path.realpath(__file__))
 # stationList =  stations.Stations()
 # stationList.add_from_file(current_directory+'/station_location.txt')
 
+iers.conf.auto_download = False
+iers.conf.auto_max_age = None
+local_iers = f"{current_directory}/data/finals2000A.all"
+iers.IERS.iers_table = iers.IERS_A.open(local_iers)
+# iers.IERS.iers_table = iers.IERS_A.open(iers.IERS_A_URL)
 
 
 

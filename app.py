@@ -32,7 +32,11 @@ from astropy import coordinates as coord
 from astropy import units as u
 # Tweak to not let astroplan crashing...
 
+from astropy.utils.data import clear_download_cache
+clear_download_cache()  # to be sure it is really working
 from astropy.utils import iers
+iers.conf.auto_download = False
+iers.conf.iers_auto_url = None
 
 from astroplan import FixedTarget
 from src import freqsetups as fs
@@ -45,16 +49,10 @@ current_directory = path.dirname(path.realpath(__file__))
 # stationList =  stations.Stations()
 # stationList.add_from_file(current_directory+'/station_location.txt')
 
-iers.conf.auto_download = False
-iers.conf.auto_max_age = None
-local_iers = f"{current_directory}/data/finals2000A.all"
-iers.IERS.iers_table = iers.IERS_A.open(local_iers, cache=True)
-iers.conf.remote_timeout = 300
+
 # iers.IERS.iers_table = iers.IERS.open(cache=True)
 # iers.IERS.iers_table = iers.IERS_A.open(iers.IERS_A_URL)
 # iers.Conf.iers_auto_url.set('ftp://cddis.gsfc.nasa.gov/pub/products/iers/finals2000A.all')
-
-
 
 all_antennas = fx.get_stations_from_file(f"{current_directory}/data/station_location.txt")
 sorted_networks = ('EVN', 'eMERLIN', 'VLBA', 'LBA', 'KVN', 'Other')

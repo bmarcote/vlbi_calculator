@@ -492,7 +492,6 @@ def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime
                        # ants_vlba, ants_lba, ants_kvn, ants_other):
     """Computes all products to be shown concerning the set observation.
     """
-    print('test0')
     if n_clicks is None:
         return dash.no_update, dash.no_update, dash.no_update, dash.no_update
     try:

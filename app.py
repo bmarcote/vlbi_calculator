@@ -618,8 +618,8 @@ def get_fig_uvplane(obs):
         uv = np.empty((2*len(bl_uv[bl_name]), 2))
         uv[:len(bl_uv[bl_name]), :] = bl_uv[bl_name]
         uv[len(bl_uv[bl_name]):, :] = -bl_uv[bl_name]
-        data_fig.append({'x': uv[:,0]
-                         'y': uv[:,1]
+        data_fig.append({'x': uv[:,0],
+                         'y': uv[:,1], 
                          # 'type': 'scatter', 'mode': 'lines',
                          'type': 'scatter', 'mode': 'markers',
                          'marker': {'symbol': '.', 'size': 2},

@@ -343,20 +343,18 @@ class Observation(object):
 
         return bl_uv_up
 
-    def get_dirtymap(self):
-        uvdata = self._get_uv()
-        # Generates a N 2-D array with all uv data.
-        tot_length = 0
-        for bl_name in uvdata:
-            tot_length += uvdata[bl_name].shape[0]
+    # def get_dirtymap(self):
+    #     uvdata = self._get_uv()
+    #     # Generates a N 2-D array with all uv data.
+    #     tot_length = 0
+    #     for bl_name in uvdata:
+    #         tot_length += uvdata[bl_name].shape[0]
+    #
+    #     uvvis = np.empty((tot_length, 2))
+    #     i = 0
+    #     for bl_name in uvdata:
+    #         uvvis[i:uvdata[bl_name].shape[0]] = uvdata[bl_name]
+    #         i += uvdata[bl_name].shape[0]
 
-        uvvis = np.empty((tot_length, 2))
-        i = 0
-        for bl_name in uvdata:
-            uvvis[i:uvdata[bl_name].shape[0]] = uvdata[bl_name]
-            i += uvdata[bl_name].shape[0]
-
-
-        scipy.
 
 

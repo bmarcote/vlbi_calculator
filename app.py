@@ -61,8 +61,7 @@ default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
           'e-EVN': ['Ef', 'Hh', 'Ir', 'Jb2', 'Mc', 'Nt', 'On', 'T6', 'Tr', 'Ys', 'Wb',
                     'Bd', 'Sv', 'Zc', 'Ir', 'Sr', 'Ur'],
           'eMERLIN': ['Cm', 'Kn', 'Pi', 'Da', 'De'],
-          # 'LBA': ['ATCA', 'Pa', 'Mo', 'Ho', 'Cd', 'Td', 'Ww'],
-          'LBA': ['ATCA', 'Pa', 'Mo', 'Ho', 'Cd', 'Td'],
+          'LBA': ['ATCA', 'Pa', 'Mo', 'Ho', 'Cd', 'Td', 'Ww'],
           'VLBA': ['Br', 'Fd', 'Hh', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
           'KVN': ['Ky', 'Ku', 'Kt'],
           'Global VLBI': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
@@ -70,7 +69,14 @@ default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
                           'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
           'GMVA': ['Ef', 'Mh', 'On', 'Ys', 'Pv', 'Br', 'Fd', 'Kp', 'La', 'Mk', 'Nl',
                    'Ov', 'Pt'],
-          'EHT': ['ALMA', 'Pv', 'LMT', 'PdB', 'SMA', 'JCMT', 'APEX', 'SMTO', 'SPT']}
+          'EHT': ['ALMA', 'Pv', 'LMT', 'PdB', 'SMA', 'JCMT', 'APEX', 'SMT', 'SPT']}
+
+
+# Safety check that all these antennas are available in the file
+for a_array in default_arrays:
+    for a_station in default_arrays[a_array]:
+        assert a_station in all_antennas.keys()
+
 
 # Initial values
 target_source = observation.Source('1h2m3s +50d40m30s', 'Source')
@@ -158,7 +164,8 @@ app.layout = html.Div([
                     html.Div(className='form-group', children=[
                         html.Label('Select default VLBI Network(s)'),
                         dcc.Dropdown(id='array', options=[{'label': n, 'value': n} \
-                                for n in default_arrays], value=['EVN'], multi=True),
+                                for n in default_arrays if n != 'e-EVN'], value=['EVN'],
+                                multi=True),
                     ]),
                     html.Div(className='input-group-prepend', children=[
                         dcc.Checklist(id='e-EVN', className='checkbox', persistence=True,
@@ -278,8 +285,9 @@ app.layout = html.Div([
             dcc.Tab(label='Images', children=[
                 #  Images
                 html.Div(className='col-md-8', children=[
-                    dcc.Markdown(children="""To be implemented.
-                        The uv coverage and expected dirty images will go here.""")
+                    # dcc.Markdown(children="""To be implemented.
+                    #     The uv coverage and expected dirty images will go here.""")
+                    html.Div([dcc.Graph(id='fig-uvplane')])
                 ])
             ]),
             dcc.Tab(label='Help', children=[
@@ -472,7 +480,8 @@ def get_source(source_coord):
 
 @app.callback([Output('sensitivity-output', 'children'),
                Output('fig-elev-time', 'figure'),
-               Output('fig-ant-time', 'figure'), Output('global-error', 'message')],
+               Output('fig-ant-time', 'figure'),
+               Output('fig-uvplane', 'figure'), Output('global-error', 'message')],
               [Input('antenna-selection-button', 'n_clicks')],
               [State('band', 'value'),
                State('starttime', 'value'),
@@ -497,32 +506,34 @@ def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime
     """Computes all products to be shown concerning the set observation.
     """
     if n_clicks is None:
-        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
     try:
         target_source = observation.Source(convert_colon_coord(source), 'Source')
     except ValueError as e:
         return f"""Incorrect format for source coordinates:
         {source} found but 'hh:mm:ss dd:mm:ss' expected.
-        """, dash.no_update, dash.no_update, dash.no_update
+        """, dash.no_update, dash.no_update, dash.no_update, dash.no_update
     try:
         time0 = Time(datetime.datetime.strptime(starttime, '%d/%m/%Y %H:%M'),
                      format='datetime')
     except ValueError as e:
-        return "Incorrect format for starttime.", dash.no_update, dash.no_update, dash.no_update
+        return "Incorrect format for starttime.", dash.no_update, dash.no_update, \
+                dash.no_update, dash.no_update
 
     try:
         time1 = Time(datetime.datetime.strptime(endtime, '%d/%m/%Y %H:%M'),
                      format='datetime')
     except ValueError as e:
-        return "Incorrect format for endtime.", dash.no_update, dash.no_update, dash.no_update
+        return "Incorrect format for endtime.", dash.no_update, dash.no_update, \
+                dash.no_update, dash.no_update
 
     if time0 >= time1:
         return "The start time of the observation must be earlier than the end time.", \
-                dash.no_update, dash.no_update, dash.no_update
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if (time1 - time0) > 5*u.d:
         return "Please, put a time range smaller than 5 days.", \
-                dash.no_update, dash.no_update, dash.no_update
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     # try:
     # TODO: this should not be hardcoded...
@@ -539,7 +550,8 @@ def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime
 
 
     # return update_sensitivity(obs), dash.no_update, dash.no_update
-    return update_sensitivity(obs), get_fig_ant_elev(obs), get_fig_ant_up(obs), dash.no_update
+    return update_sensitivity(obs), get_fig_ant_elev(obs), get_fig_ant_up(obs), \
+          get_fig_uvplane(obs), dash.no_update
 
 
 
@@ -555,17 +567,23 @@ def get_fig_ant_elev(obs):
     data_fig.append({'x': obs.times.datetime, 'y': np.zeros_like(obs.times)+10,
                      'mode': 'lines', 'hoverinfo': 'skip', 'name': 'Elev. limit 10º',
                      'line': {'dash': 'dash', 'opacity': 0.5, 'color': 'gray'}})
-    data_fig.append({'x': obs.times.datetime, 'y': np.zeros_like(obs.times)+20,
+    data_fig.append({'x': obs.gstimes.value, 'y': np.zeros_like(obs.times)+20, 'xaxis': 'x2',
                      'mode': 'lines', 'hoverinfo': 'skip', 'name': 'Elev. limit 20º',
                      'line': {'dash': 'dot', 'opacity': 0.5, 'color': 'gray'}})
     return {'data': data_fig,
             'layout': {'title': 'Source elevation during the observation',
+                       'hovermode': 'closest',
                        'xaxis': {'title': 'Time (UTC)', 'showgrid': False,
-                                 'ticks': 'inside', 'showline': True, 'mirror': "all",
+                                 'ticks': 'inside', 'showline': True, 'mirror': False,
                                  'hovermode': 'closest', 'color': 'black'},
+                       'xaxis2': {'title': {'text': 'Time (GST)', 'standoff': 0},
+                                  'showgrid': False, 'overlaying': 'x',
+                                  'ticks': 'inside', 'showline': True, 'mirror': False,
+                                  'hovermode': 'closest', 'color': 'black', 'side': 'top'},
                        'yaxis': {'title': 'Elevation (degrees)', 'range': [0., 92.],
                                  'ticks': 'inside', 'showline': True, 'mirror': "all",
-                                 'showgrid': False, 'hovermode': 'closest'}}}
+                                 'showgrid': False, 'hovermode': 'closest'},
+                                 'zeroline': True, 'zerolinecolor': 'k'}}
 
 
 
@@ -592,19 +610,34 @@ def get_fig_ant_up(obs):
 
 
 
+def get_fig_uvplane(obs):
+    data_fig = []
+    bl_uv = obs.get_uv()
+    for bl_name in bl_uv:
+        # accounting for complex conjugate
+        uv = np.empty((2*len(bl_uv[bl_name]), 2))
+        uv[:len(bl_uv[bl_name]), :] = bl_uv[bl_name]
+        uv[len(bl_uv[bl_name]):, :] = -bl_uv[bl_name]
+        data_fig.append({'x': uv[:,0]
+                         'y': uv[:,1]
+                         # 'type': 'scatter', 'mode': 'lines',
+                         'type': 'scatter', 'mode': 'markers',
+                         'marker': {'symbol': '.', 'size': 2},
+                         'name': bl_name, 'hovertext': bl_name, 'hoverinfo': 'name', 'hovertemplate': ''})
+    return {'data': data_fig,
+            'layout': {'title': 'uv coverage', 'showlegend': False,
+                       'hovermode': 'closest',
+                       'width': 700, 'height': 700,
+                       'xaxis': {'title': 'u (lambda)', 'showgrid': False, 'zeroline': False,
+                                 'ticks': 'inside', 'showline': True, 'mirror': "all",
+                                 'color': 'black'},
+                       'yaxis': {'title': 'v (lambda)', 'showgrid': False, 'scaleanchor': 'x',
+                                 'ticks': 'inside', 'showline': True, 'mirror': "all",
+                                 'color': 'black', 'zeroline': False}}}
 
-# @app.callback(Output('my-graph', 'figure'), [Input('my-dropdown', 'value')])
-# def update_graph(selected_dropdown_value):
-#     #df = web.DataReader(
-#     #    selected_dropdown_value, data_source='google',
-#     #    start=dt(2017, 1, 1), end=dt.now())
-#     return {
-#         'data': [{
-#             'x': [1, 2, 3, 4, 5, 6],
-#             'y': [3, 4, 5, 4, 5, 6]
-#         }]
-#     }
 
+def get_fig_dirty_map(obs):
+    pass
 
 
 

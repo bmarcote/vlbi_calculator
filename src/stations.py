@@ -205,7 +205,7 @@ class Stations(object):
 
     def __getitem__(self, key):
         if isinstance(key, int):
-            return self._stations[self.keys[key]]
+            return self._stations[self.keys()[key]]
         else:
             return self._stations[key]
 

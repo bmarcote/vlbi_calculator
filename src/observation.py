@@ -4,6 +4,7 @@ time range and the observing band.
 """
 
 import numpy as np
+from scipy.interpolate import griddata
 from astropy.time import Time
 from astropy import coordinates as coord
 from astropy import units as u
@@ -305,13 +306,18 @@ class Observation(object):
 
 
     def get_uv(self):
-        """Returns the uvw values for each baseline and each timestamp.
-        It returns a list with the two antenna codes and the uvw values in meters.
+        """Returns the uv values for each baseline and each timestamp when the source
+        is visible.
+        It returns a dictionary containing the uv values in lambda units
+        for each baseline as key.
+        Complex conjugates are not provided.
         """
+        bl_uv_up = {}
         hourangle = self.target.ra.to(u.hourangle) - self.gstimes
         nstat = len(self.stations)
         # Determines the xyz of all baselines. Time independent
         bl_xyz = np.empty(((nstat*(nstat-1))//2, 3))
+        bl_names = []
         s = [ant.location for ant in self.stations]
         for i in range(nstat):
             for j in range(i+1, nstat):
@@ -319,6 +325,8 @@ class Observation(object):
                 k = int( i*(nstat-1) - sum(range(i)) + j-i )
                 bl_xyz[k-1,:] = np.array([ii.value for ii in s[i].to_geocentric()]) - \
                              np.array([ii.value for ii in s[j].to_geocentric()])
+                bl_names.append("{}-{}".format(self.stations[i].codename,
+                                               self.stations[j].codename))
 
         # Matrix to convert xyz to uvw for each timestamp (w is not considered)
         m = np.array([[np.sin(hourangle), np.cos(hourangle), np.zeros(len(hourangle))],
@@ -326,5 +334,29 @@ class Observation(object):
                       np.sin(self.target.dec)*np.sin(hourangle),
                       np.cos(self.target.dec)*np.ones(len(hourangle))]])
 
-        return m @ bl_xyz
+        bl_uv = np.array([m[:,:,i] @ bl_xyz.T  for i in range(m.shape[-1])])
+        ants_up = self.is_visible()
+        for i,bl_name in enumerate(bl_names):
+            ant1, ant2 = bl_name.split('-')
+            bl_up = (np.array([a for a in ants_up[ant1][0] if a in ants_up[ant2][0]]), )
+            bl_uv_up[bl_name] = bl_uv[:,:,i][bl_up]/self.wavelength.to(u.m).value
+
+        return bl_uv_up
+
+    def get_dirtymap(self):
+        uvdata = self._get_uv()
+        # Generates a N 2-D array with all uv data.
+        tot_length = 0
+        for bl_name in uvdata:
+            tot_length += uvdata[bl_name].shape[0]
+
+        uvvis = np.empty((tot_length, 2))
+        i = 0
+        for bl_name in uvdata:
+            uvvis[i:uvdata[bl_name].shape[0]] = uvdata[bl_name]
+            i += uvdata[bl_name].shape[0]
+
+
+        scipy.
+
 

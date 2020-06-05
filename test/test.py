@@ -34,7 +34,8 @@ obs.inttime = 2
 
 
 all_stations = fx.get_stations_from_file()
-evn6 = fx.stations_with_band(all_stations['EVN'], '6cm') # 19 ants
+evn6 = fx.stations_with_band(all_stations, '6cm') # 19 ants
+evn6 = stations.Stations('EVN-6cm', [s for s in evn6 if s.network == 'EVN'])
 obs.stations = evn6
 
 

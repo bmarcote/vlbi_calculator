@@ -76,6 +76,7 @@ Observation
     - target : FixedTarget
     - times : Time
     - gstimes :  Longitude (hourangle)
+	- duration : Time
     - band : str
     - wavelength : u.Quantity
     - frequency : u.Quantity
@@ -85,6 +86,7 @@ Observation
     - polarizations : int
     - inttime : u.Quantity
     - ontarget_fraction : float
+	- ontarget_time : Time
     - bandwidth : u.Quantity
     - bitsampling : u.Quantity
     - stations : Stations
@@ -94,6 +96,8 @@ Observation
     + elevations() --> dict[codename]: list
     + altaz() --> dict[codename]: list
     + is_visible() --> dict[codename]: list
+	+ longest_baseline() --> (str, u.Quantity)
+	+ shortest_baseline() --> (str, u.Quantity)
     + bandwidth_smearing() --> u.Quantity
     + time_smearing() --> u.Quantity
     + datasize() --> u.Quantity
@@ -113,10 +117,8 @@ Observation
 
 + get_stations_from_file(filename) --> dict
 + stations_with_band(networks : dict/Stations, band) --> Stations
++ print_obs_times(obs, dateformat='%d &m &Y')
 
-
-+ get_bandwidth_smearing()
-+ get_time_smearing()
 
 
 
@@ -143,8 +145,8 @@ Bands([fromfile])
 
 - Strike antenna name text if does not have the given frequency.
 - Put some "loading" times.
-- Add GST times.
-- In sensitivity: highlight antennas that cannot observe the source.
+X Add GST times.
+X In sensitivity: highlight antennas that cannot observe the source.
 - Add some pop up (`card` on Bootstrap) on each antenna with info: picture?, codename, country, etc.
 - observation.Observation.thermal_noise() can be highly optimized.
 - Help buttons and explanatory dialog.

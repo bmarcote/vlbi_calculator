@@ -114,3 +114,41 @@ def stations_with_band(networks, band, output_network_name=None):
     return antennas
 
 
+def print_obs_times(obs, date_format='%d %b %Y'):
+    """Given an observation, it returns the time range (starttime-endtime) in a smart
+    way. If the observation lasts for less than one day it omits the end date:
+            20 Jan 1971 10:00-20:00UT
+
+    Input:
+        - obs : observation.Observation
+            It must already have set the .times part with an array of astropy.Time times.
+        - date_format : str [optional]
+            Format for the date part (only the date part) of the string to represent
+            the time range.
+    Output:
+        - printed_time : str
+            A string showing the time-range of the observation.
+
+    """
+    if obs.times[0].datetime.date() == obs.times[-1].datetime.date():
+        return "{} {}-{} UTC".format(obs.times[0].datetime.strftime(date_format),
+                                    obs.times[0].datetime.strftime('%H:%M'),
+                                    obs.times[-1].datetime.strftime('%H:%M'))
+    else:
+        return "{} {} to {} {} UTC".format(obs.times[0].datetime.strftime(date_format),
+                                    obs.times[0].datetime.strftime('%H:%M'),
+                                    obs.times[-1].datetime.strftime(date_format),
+                                    obs.times[-1].datetime.strftime('%H:%M'))
+        
+
+
+
+
+
+
+
+
+
+
+
+

@@ -45,7 +45,8 @@
 html {
     font-family: sans-serif;
     line-height: 1.15;
-    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 90%;
+    -webkit-text-size-adjust: 90%;
     -webkit-tap-highlight-color:rgba(0, 0, 0, 0)
 }
 
@@ -3199,7 +3200,7 @@ input[type="submit"].btn-block, input[type="reset"].btn-block, input[type="butto
 
 
 /* Custom styles */
- 
+
 input[type=checkbox] {
     -webkit-appearance: none;
     -moz-appearance: none;
@@ -3208,9 +3209,11 @@ input[type=checkbox] {
 }
 
 input[type=checkbox] {
-    width: 25px;
-    height: 20px;
-    margin-right: 8px;
+    width: 17px;
+    height: 17px;
+    line-height: 17px;
+    margin-right: 0px;
+    margin-bottom: 20px;
     cursor: pointer;
     font-size: 17px;
     visibility: hidden;
@@ -3222,12 +3225,13 @@ input[type=checkbox]:after {
     background-color: #fff;
     display: inline-block;
     color: #00BFF0;
-    width: 19px;
-    height: 19px;
+    width: 17px;
+    height: 17px;
     visibility: visible;
     border: 1px solid #00BFF0;
     padding-left: 5px;
     border-radius: 5px;
+    margin-bottom: 0px;
 }
 
 input[type=checkbox]:not(:disabled):after {
@@ -3235,45 +3239,146 @@ input[type=checkbox]:not(:disabled):after {
     font-weight: bold;
     color: #00BFF0;
     border: 1px solid #00BFF0;
-} 
+}
 
-input[type=checkbox]:hover:after {
-    content: " ";
+input[type=checkbox]:not(:disabled):not(checked):hover:after {
+    content: "";
     color: gray;
     background-color: rgb(232, 222, 222);
-} 
+}
 
 input[type=checkbox]:checked:after {
     content: "\2714";
+    font-family: "FontAwesome";
+    /* content: "\f00c"; */
     font-weight: bold;
     color: green;
-    border: 1px solid green;
-    background-color: rgb(176, 225, 176);
-}
-                            
-input[type=checkbox]:disabled:after {
-    content: "X";
-    border: 1px solid #FF304F;
-    color: red;
-    /* background-color: #dc3545; */
-    background-color: rgba(234, 116, 113);
+    font-size: 1.1rem;
+    -moz-font-size: 1.1rem;
+    /* line-height: 0px; */
+    border: none;
+    background-color: none;
+    margin-left: -0.1rem;
 }
 
-/* input[type=checkbox]:disabled:before+label { */
-/*     color: red; */
-/* } */
+input[type=checkbox]:not(:disabled):checked:hover:after {
+    content: " ";
+    color: gray;
+    background-color: rgb(232, 222, 222);
+    content: "\2714";
+    font-weight: bold;
+    color: green;
+    font-size: 1.5rem;
+}
+
+
+input[type=checkbox]:disabled:after {
+    /* content: "X"; */
+    font-family: "FontAwesome";
+    content: "\2715";
+    border: none;
+    /* color: #a01d26; */
+    color: #F0959B;
+    background-color: none;
+    margin-left: -0.1rem;
+}
 
 
 .antcheck label {
-    padding-left: 10pt; 
-    padding-right: 10pt; 
+    padding-left: 10pt;
+    padding-right: 10pt;
     width: 135pt;
 }
 
 
+.card {
+    min-width: 19rem;
+    max-width: 19rem;
+    border: 1px solid #CCCCCC;
+    border-left: 5px solid #a01d26;
+}
+
+.card-title {
+   color: #a01d26;
+}
+
+.btn-primary {
+    color: #a01d26;
+    background-color: #F0959B;
+    border-color: #F0959B;
+    margin-top: 50px;
+    width: 20rem;
+}
+
+.btn-primary:hover {
+    color: #fff;
+    background-color: #a01d26;
+    border-color: #a01d26;
+}
+
+.btn-primary:focus, .btn-primary.focus {
+    box-shadow:0 0 0 .2rem rgba(255, 79, 105, 0.5)
+}
+
+.custom-tab:active {
+    color: #586069;
+/*     border-top-left-radius: 3px; */
+/*     border-top-right-radius: 3px; */
+/*     border-top: 3px solid transparent !important; */
+/*     border-left: 0px !important; */
+/*     border-right: 0px !important; */
+/*     border-bottom: 0px !important; */
+    background-color: #f4f4ef;
+    border-color: #a01d26;
+    /* border-bottom: 3px solid #a01d26; */
+/*     padding: 12px !important; */
+/*     font-family: "system-ui"; */
+/*     display: flex !important; */
+/*     align-items: center; */
+/*     justify-content: center; */
+}
+
+.custom-tabs-container .tab--selected {
+    background-color: #F0959B;
+    color: #a01d26;
+    border-color: #a01d26;
+    border-top: 3px solid #a01d26 !important;
+
+}
+
+.navbar-brand {
+    height: 70px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0 20px;
+    border: none;
+    text-align: right;
+    min-height: 50px;
+    background: #f4f4ef;
+}
+
+.banner:after {
+    content: " ";
+    display: table;
+    clear: both;
+}
+
+.navbar-brand a {
+    margin: 0;
+    padding: 0;
+}
+
+.navbar-brand img {
+    margin: 0;
+    padding: 0;
+    margin-top: -15px;
+}
+
 /* FOR TEXT INPUTS I SHOULD ADD AN OFFSET SHADOW (REFACTORING UI TRICKS):
 box-shadow: inset 0 2px 4px 0 hsla(0 0% 0& 0.08);
-*/)
+*/
+
+/* evlbi.org color:  #a01d26 */
 
 /*     --blue: #007bff; */
 /*     --indigo: #6610f2; */

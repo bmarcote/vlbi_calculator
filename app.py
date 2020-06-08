@@ -62,7 +62,7 @@ default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
                     'Bd', 'Sv', 'Zc', 'Ir', 'Sr', 'Ur'],
           'eMERLIN': ['Cm', 'Kn', 'Pi', 'Da', 'De'],
           'LBA': ['ATCA', 'Pa', 'Mo', 'Ho', 'Cd', 'Td', 'Ww'],
-          'VLBA': ['Br', 'Fd', 'Hh', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
+          'VLBA': ['Br', 'Fd', 'Hn', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
           'KVN': ['Ky', 'Ku', 'Kt'],
           'Global VLBI': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
                           'Tr', 'Ys', 'Wb', 'Bd', 'Sv', 'Zc', 'Ir', 'Br', 'Fd', 'Hn',
@@ -82,36 +82,6 @@ for a_array in default_arrays:
 target_source = observation.Source('1h2m3s +50d40m30s', 'Source')
 # obs_times = Time('1967-04-17 10:00') + np.arange(0, 600, 15)*u.min
 selected_band = '18cm'
-
-sensitivity_results_template = """
-
-{band:.2n} ({freq:.2n}) observations with the following antennas:
-
-{antennas}
-
-{sb} ({sbbw:.2n}) subbands with {ch} channels each and {pols} polarization.
-
-Total bandwidth of the observation: {bandwidth:.3n}
-({bandwidth_channel:.3n} per spectral channel)
-
-
-**Estimated image thermal noise** (assuming {ttarget:.3n} on target):  {noise:.3n}
-
-
-Estimated rms thernal noise per spectral channel: {noise_channel:.3n}
-
-**Resulting FITS file size**: {filesize:.3n}
-
-(note that this is only an estimation)
-
-
-**Smearing in the Field of View** (for a 10% loss):
-
-Field of View limited by bandwidth-smearing to: {bw_smearing:.3n}
-
-Field of View limited by time-smearing to: {t_smearing:.3n}
-
-"""
 
 
 
@@ -139,8 +109,17 @@ server = app.server
 
 #####################  This is the webpage layout
 app.layout = html.Div([
-    html.Div([
-        html.H1('EVN Source Visibility'),
+    html.Div(id='banner', className='navbar-brand d-flex p-3 shadow-sm', children=[
+        html.A(className='d-inline-block mr-md-auto', href="https://www.evlbi.org", children=[
+            html.Img(height='70px', src=app.get_asset_url("logo_evn.png"),
+                     alt='European VLBI Network (EVN)',
+                     className="d-inline-block align-top"),
+        ]),
+        html.H2('EVN Source Visibility', className='d-inline-block align-middle mx-auto'),
+        html.A(className='d-inline-block ml-auto pull-right', href="https://www.jive.eu", children=[
+            html.Img(src=app.get_asset_url("logo_jive.png"), height='70px',
+                     alt='Joinst Institute for VLBI ERIC (JIVE)')
+        ])
         # html.Img(src='http://www.ira.inaf.it/evnnews/archive/evn.gif')
     ]),
     # ], className='banner'),
@@ -149,14 +128,16 @@ app.layout = html.Div([
     dcc.ConfirmDialog(id='global-error', message=''),
     # Elements in second column (checkboxes with all stations)
     html.Div(className='container-fluid', children=[
-        dcc.Tabs([
-            dcc.Tab(label='Observation Setup', className='container', children=[
+        dcc.Tabs(parent_className='custom-tabs', className='custom-tabs-container', children=[
+            dcc.Tab(label='Observation Setup', className='custom-tab',
+                    selected_className='custom-tab--selected', children=[
                 # Elements in first column ()
-                html.Div(className='row-cols-3', children=[
+                html.Div(className='row justify-content-center', children=[
                 html.Div(className='col-sm-3', style={'max-width': '300px','float': 'left',
                                                       'padding': '2%'}, children=[
                     html.Div(className='form-group', children=[
                         html.Label('Observing Band'),
+                    #data-content="This popover appears on the right", data-toggle="popover"),
                         dcc.Dropdown(id='band', persistence=True,
                                  options=[{'label': fs.bands[b], 'value': b} for b \
                                 in fs.bands], value='18cm'),
@@ -169,7 +150,7 @@ app.layout = html.Div([
                     ]),
                     html.Div(className='input-group-prepend', children=[
                         dcc.Checklist(id='e-EVN', className='checkbox', persistence=True,
-                                      options=[{'label': ' e-EVN (real-time) mode?',
+                                      options=[{'label': ' e-EVN (real-time) mode',
                                                 'value': 'e-EVN'}], value=[]),
                     ]),
                     html.Div(className='form-group', children=[
@@ -238,7 +219,13 @@ app.layout = html.Div([
                     ])
                 ]),
                 # html.Div(style={'margin-top': '20px'}, children=[
-                html.Div(className='col-lg-7', style={'float': 'left'}, children=[
+                html.Div(className='col-9', children=[
+                    html.Div(className='col-9 text-center justify-content-center', children=[
+                        html.Button('Compute Observation', id='antenna-selection-button',
+                                className='btn btn-primary btn-lg'),
+                        dcc.Loading(id="loading", children=[html.Div(id="loading-output")],
+                                    type="dot")
+                    ]),
                     html.Div(id='antennas-div', className='container', children=[
                     # List with all antennas
                         html.Div(className='antcheck', children=[html.Br(),
@@ -254,23 +241,24 @@ app.layout = html.Div([
                         ]) for an_array in sorted_networks
                     ])
                 ]),
-                html.Div(className='col-sm-2', style={'float': 'left'}, children=[
-                    html.Button('Compute Observation', id='antenna-selection-button',
-                                className='btn btn-primary btn-lg',
-                                # style={'margin': '5px 5px 5px 5px'}),
-                                style={'padding': '5px', 'margin-top': '50px'}),
-                ])
+                # html.Div(className='col-sm-2', style={'float': 'left'}, children=[
+                # ])
                 ])
             ]),
 
-            dcc.Tab(label='Sensitivity', children=[
-                html.Div(className='col-md-8', children=[
+            dcc.Tab(label='Summary', className='custom-tab',
+                    selected_className='custom-tab--selected', children=[
+                html.Div(className='row justify-content-center', children=[
                 # Sensitivity calculations
-                    dcc.Markdown(id='sensitivity-output',
-                                 children="Set the observation first.")
+                    # dcc.Markdown(id='sensitivity-output',
+                    #              children="Set the observation first.")
+                    html.Div(className='col-12', id='sensitivity-output',
+                            children=[html.Br(), html.P("Set the observation first.")])
                 ])
             ]),
-            dcc.Tab(label='Plots', children=[
+            dcc.Tab(label='Elevations', className='custom-tab',
+                    selected_className='custom-tab--selected', children=[
+                html.Div(className='row justify-content-center', children=[
                 html.Div(className='col-md-8', children=[
                     # Elevation VS time
                     html.Div([
@@ -280,22 +268,26 @@ app.layout = html.Div([
                     html.Div([
                         dcc.Graph(id='fig-ant-time')
                     ])
-                ])
+                ])])
             ]),
-            dcc.Tab(label='Images', children=[
+            dcc.Tab(label='Imaging', className='custom-tab',
+                    selected_className='custom-tab--selected', children=[
                 #  Images
+                html.Div(className='row justify-content-center', children=[
                 html.Div(className='col-md-8', children=[
                     # dcc.Markdown(children="""To be implemented.
                     #     The uv coverage and expected dirty images will go here.""")
                     html.Div([dcc.Graph(id='fig-uvplane')])
-                ])
+                ])])
             ]),
-            dcc.Tab(label='Help', children=[
+            dcc.Tab(label='Documentation', className='custom-tab',
+                    selected_className='custom-tab--selected', children=[
                 #  Documentation
+                html.Div(className='row justify-content-center', children=[
                 html.Div(className='col-md-8', children=[
                     dcc.Markdown(children="""The Help/doc.
                         All explanations and technical details will go here.""")
-                ])
+                ])])
             ])
         ])
     ])
@@ -355,40 +347,89 @@ def optimal_units(value, units):
     return value.to(units[-1])
 
 
-def update_sensitivity(an_obs):
+def create_sensitivity_card(title, message):
+    """Defines one of the cards that are shown in the Sensitivity tab. Each tab
+    shows a title `title` and a message `message`.
+    If message is a list (of strings), it is assumed as different paragraphs.
+    It returns the HTML code of the card.
+    """
+    ps = []
+    if type(message) is list:
+        for a_msg in message:
+            ps.append(html.P(className='card-text', children=a_msg))
+    else:
+        ps = [html.P(className='card-text', children=message)]
+
+    # return [html.Div(className='card', style={'min-width': '15rem', 'max-width': '25rem'}, children=[
+    return [html.Div(className='card m-3', children=[
+            html.Div(className='card-body', children=[
+                html.H5(className='card-title', children=title)] + ps)])
+        ]
+
+
+
+
+def update_sensitivity(obs):
     """Given the observation, it sets the text about all properties of the observation.
     """
-    rms = optimal_units(an_obs.thermal_noise(), [u.MJy, u.kJy, u.Jy, u.mJy, u.uJy])
-    rms_channel = optimal_units(rms*np.sqrt(an_obs.subbands*an_obs.channels),
+    pol_dict = {1: 'single', 2: 'dual', 4: 'full'}
+    rms = optimal_units(obs.thermal_noise(), [u.MJy, u.kJy, u.Jy, u.mJy, u.uJy])
+    rms_time = optimal_units(obs.thermal_noise()/np.sqrt(obs.inttime/obs.duration),
+                             [u.MJy, u.kJy, u.Jy, u.mJy, u.uJy])
+    rms_channel = optimal_units(rms*np.sqrt(obs.subbands*obs.channels),
                                 [u.MJy, u.kJy, u.Jy, u.mJy, u.uJy])
 
-    ants_up = an_obs.is_visible()
+    ants_up = obs.is_visible()
     ant_no_obs = []
     for an_ant in ants_up:
         if len(ants_up[an_ant][0]) == 0:
             ant_no_obs.append(an_ant)
 
-    antennas_text = ', '.join(an_obs.stations.keys())
+    ant_text = ', '.join(obs.stations.keys()) + '.'
     if len(ant_no_obs) > 0:
-        antennas_text += f"\n (note that {', '.join(ant_no_obs)} cannot observe the source)."
-    return sensitivity_results_template.format(
-            band=optimal_units(an_obs.wavelength, [u.m, u.cm, u.mm]),
-            freq=optimal_units(an_obs.frequency, [u.GHz, u.MHz]),
-            antennas=antennas_text,
-            sb=an_obs.subbands,
-            sbbw=optimal_units(an_obs.bandwidth/an_obs.subbands, [u.GHz, u.MHz, u.kHz]),
-            ch=an_obs.channels,
-            pols={1: 'single', 2: 'dual', 4: 'full'}[an_obs.polarizations],
-            ttarget=optimal_units(an_obs.ontarget_fraction*(an_obs.times[-1]-an_obs.times[0]),
-                                  [u.h, u.min, u.s, u.ms]),
-            noise=rms,
-            noise_channel=rms_channel,
-            filesize=optimal_units(an_obs.datasize(), [u.TB, u.GB, u.MB, u.kB]),
-            bw_smearing=optimal_units(an_obs.bandwidth_smearing(), [u.arcmin, u.arcsec]),
-            t_smearing=optimal_units(an_obs.time_smearing(), [u.arcmin, u.arcsec]),
-            bandwidth=optimal_units(an_obs.bandwidth, [u.GHz, u.MHz, u.kHz]),
-            bandwidth_channel=optimal_units(an_obs.bandwidth/(an_obs.subbands*an_obs.channels),
-                                            [u.GHz, u.MHz, u.kHz, u.Hz]))
+        ant_text += f"<p class='text-danger'>Note that {', '.join(ant_no_obs)} cannot observe the source.</p>"
+
+    cards = []
+    # The time card
+    temp_msg = [f"{fx.print_obs_times(obs)}."]
+    temp_msg += [f"Observing for {optimal_units(obs.duration, [u.h, u.min, u.s, u.ms]):.3n} in total, with {optimal_units(obs.ontarget_time, [u.h, u.min, u.s, u.ms]):.3n} on target."]
+    temp_msg += [f"With a time integration of {optimal_units(obs.inttime, [u.s,u.ms,u.us]):.2n} the expected FITS file size is {optimal_units(obs.datasize(), [u.TB, u.GB, u.MB, u.kB]):.3n}."]
+    cards += create_sensitivity_card('Observing Time', temp_msg)
+    # Antennas
+    longest_bl = obs.longest_baseline()[1]
+    # Using dummy units to allow the conversion
+    longest_bl_lambda = optimal_units(((longest_bl*u.m)/obs.wavelength).to(u.m),
+                                      [u.Gm, u.Mm, u.km])
+    temp_msg = [f"{len(ants_up)-len(ant_no_obs)} participating antennas: {ant_text}"]
+    temp_msg += [f"The longest (projected) baseline is {optimal_units(longest_bl, [u.km, u.m]):.5n} ({longest_bl_lambda.value:.3n} {longest_bl_lambda.unit.name[0]}lambda)."]
+    synthbeam = obs.synthesized_beam()
+    synthbeam_units = optimal_units(synthbeam['bmaj'], [u.arcsec, u.mas, u.uas]).unit
+    temp_msg += [f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.2n} x {synthbeam['bmin'].to(synthbeam_units):.2n}^2, PA = {synthbeam['pa']:.2n}."]
+    cards += create_sensitivity_card('Antennas', temp_msg)
+
+    # Frequency
+    temp_msg = [f"Observing at a central frequency of {optimal_units(obs.frequency, [u.GHz, u.MHz]):.3n} ({optimal_units(obs.wavelength, [u.m, u.cm, u.mm]):.2n})."]
+    temp_msg += [f"The total bandwidth of {optimal_units(obs.bandwidth, [u.GHz, u.MHz, u.kHz]):.3n} will be divided into {obs.subbands} subbands of {optimal_units(obs.bandwidth/obs.subbands, [u.GHz, u.MHz, u.kHz]):.3n} each, with {obs.channels} channels ({optimal_units(obs.bandwidth/(obs.subbands*obs.channels), [u.GHz, u.MHz, u.kHz, u.Hz]):.3n} wide)."]
+    temp_msg += [f"Recording {pol_dict[obs.polarizations]} circular polarization."]
+    cards += create_sensitivity_card('Frequency Setup', temp_msg)
+
+    # RMS
+    temp_msg = [f"Considering the sensitivities of the antennas, the estimated thermal noise is {rms:.3n}/beam."]
+    temp_msg += [f"This would imply a rms of {rms_channel:.3n}/beam per spectral channel, or approx. {rms_time:.3n}/beam per time integration ({optimal_units(obs.inttime, [u.s,u.ms,u.us]):.3n})."]
+    cards += create_sensitivity_card('Sensitivity', temp_msg)
+
+    # resolution and FITS files
+    # temp_msg = [f""]
+    # cards += create_sensitivity_card('Resolution')
+
+    # FoV smearing
+    shortest_bl = obs.shortest_baseline()[1]
+    largest_ang_scales = ((2.063e8*u.mas)*(obs.wavelength/shortest_bl)).to(u.mas)
+    temp_msg = [f"The Field of View would be limited by time smearing to {optimal_units(obs.time_smearing(), [u.arcmin, u.arcsec]):.3n} and by frequency smearing to {optimal_units(obs.bandwidth_smearing(), [u.arcmin, u.arcsec]):.3n} (for a 10% loss)."]
+    temp_msg += [f"Considering the shortest baseline in the array ({optimal_units(shortest_bl, [u.km, u.m]):.5n}), you will filter out emission on angular scales larger than {optimal_units(largest_ang_scales, [u.arcmin, u.arcsec, u.mas]):.3n}."]
+    cards += create_sensitivity_card('FoV limitations', temp_msg)
+
+    return [html.Div(className='card-deck col-12', children=cards)]
 
 
 
@@ -478,7 +519,8 @@ def get_source(source_coord):
 
 
 
-@app.callback([Output('sensitivity-output', 'children'),
+@app.callback([Output('loading-output', 'children'),
+               Output('sensitivity-output', 'children'),
                Output('fig-elev-time', 'figure'),
                Output('fig-ant-time', 'figure'),
                Output('fig-uvplane', 'figure'), Output('global-error', 'message')],
@@ -506,34 +548,37 @@ def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime
     """Computes all products to be shown concerning the set observation.
     """
     if n_clicks is None:
-        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return '', dash.no_update, dash.no_update, dash.no_update, \
+               dash.no_update, dash.no_update
     try:
         target_source = observation.Source(convert_colon_coord(source), 'Source')
     except ValueError as e:
-        return f"""Incorrect format for source coordinates:
+        return "Incorrect format for source coordinates", f"""Incorrect format for source coordinates:
         {source} found but 'hh:mm:ss dd:mm:ss' expected.
         """, dash.no_update, dash.no_update, dash.no_update, dash.no_update
     try:
         time0 = Time(datetime.datetime.strptime(starttime, '%d/%m/%Y %H:%M'),
-                     format='datetime')
+                     format='datetime', scale='utc')
     except ValueError as e:
-        return "Incorrect format for starttime.", dash.no_update, dash.no_update, \
-                dash.no_update, dash.no_update
+        return "Incorrect format for starttime", "Incorrect format for starttime.", \
+               dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     try:
         time1 = Time(datetime.datetime.strptime(endtime, '%d/%m/%Y %H:%M'),
-                     format='datetime')
+                     format='datetime', scale='utc')
     except ValueError as e:
-        return "Incorrect format for endtime.", dash.no_update, dash.no_update, \
-                dash.no_update, dash.no_update
+        return "Incorrect format for endtime", "Incorrect format for endtime.", \
+               dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if time0 >= time1:
-        return "The start time of the observation must be earlier than the end time.", \
-                dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return "The start time of the observation must be earlier than the end time", \
+               "The start time of the observation must be earlier than the end time.", \
+               dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if (time1 - time0) > 5*u.d:
-        return "Please, put a time range smaller than 5 days.", \
-                dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return "Please, put a time range smaller than 5 days", \
+               "Please, put a time range smaller than 5 days.", \
+               dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     # try:
     # TODO: this should not be hardcoded...
@@ -550,8 +595,9 @@ def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime
 
 
     # return update_sensitivity(obs), dash.no_update, dash.no_update
-    return update_sensitivity(obs), get_fig_ant_elev(obs), get_fig_ant_up(obs), \
-          get_fig_uvplane(obs), dash.no_update
+    # TODO: parallelize all these functions
+    return 'You can check now the results in the different tabs', update_sensitivity(obs), \
+           get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), dash.no_update
 
 
 
@@ -598,7 +644,7 @@ def get_fig_ant_up(obs):
                          'name': obs.stations[ant].name})
 
     return {'data': data_fig,
-            'layout': {'title': 'Source visible during the observation',
+            'layout': {'title': 'Source visible (>10 deg) during the observation',
                        'xaxis': {'title': 'Time (UTC)', 'showgrid': False,
                                  'ticks': 'inside', 'showline': True, 'mirror': "all",
                                  'hovermode': 'closest', 'color': 'black'},
@@ -619,7 +665,7 @@ def get_fig_uvplane(obs):
         uv[:len(bl_uv[bl_name]), :] = bl_uv[bl_name]
         uv[len(bl_uv[bl_name]):, :] = -bl_uv[bl_name]
         data_fig.append({'x': uv[:,0],
-                         'y': uv[:,1], 
+                         'y': uv[:,1],
                          # 'type': 'scatter', 'mode': 'lines',
                          'type': 'scatter', 'mode': 'markers',
                          'marker': {'symbol': '.', 'size': 2},

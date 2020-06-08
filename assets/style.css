@@ -3338,6 +3338,15 @@ input[type=checkbox]:disabled:after {
 /*     justify-content: center; */
 }
 
+
+.custom-tabs-container {
+    border-top: 0px solid #F0959B;
+}
+
+.custom-tabs {
+    border-top: 0px solid #F0959B !important;
+}
+
 .custom-tabs-container .tab--selected {
     background-color: #F0959B;
     color: #a01d26;

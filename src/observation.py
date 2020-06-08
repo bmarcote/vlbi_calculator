@@ -406,11 +406,21 @@ class Observation(object):
         bl_bmaj = np.max(uvvis_polar[:,0])
         bl_bmaj_theta = uvvis_polar[:,1][np.where(uvvis_polar[:,0] == bl_bmaj)][0]
         # Estimates the BMIN
-        cond = np.where((uvvis_polar[:,1] > (bl_bmaj_theta+np.pi/3) % (2*np.pi)) & (uvvis_polar[:,1] < (bl_bmaj_theta+2*np.pi/3) % (2*np.pi) ))
+        cond = [[]]
         if len(cond[0]) == 0:
             cond = np.where((uvvis_polar[:,1] > (bl_bmaj_theta+4*np.pi/3) % (2*np.pi)) & (uvvis_polar[:,1] < (bl_bmaj_theta+5*np.pi/3) % (2*np.pi) ))
 
-        bl_bmin = np.max( uvvis_polar[:,0][cond] )
+        check_intervals = [(np.pi/3, 2*np.pi/3), (4*np.pi/3, 5*np.pi/3), (np.pi/4, 3*np.pi/4),
+                           (5*np.pi/4, 7*np.pi/4)]
+        try:
+            while len(cond[0]) == 0:
+                ci = check_intervals.pop()
+                cond = np.where((uvvis_polar[:,1] > (bl_bmaj_theta+ci[0]) % (2*np.pi)) & \
+                                (uvvis_polar[:,1] < (bl_bmaj_theta+ci[1]) % (2*np.pi) ))
+
+            bl_bmin = np.max( uvvis_polar[:,0][cond] )
+        except IndexError:
+            bl_bmin = bl_bmaj/10
 
         return {'bmaj': resolution(bl_bmin), 'bmin': resolution(bl_bmaj), 'pa': (bl_bmaj_theta*u.rad).to(u.deg)}
 

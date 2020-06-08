@@ -176,7 +176,7 @@ app.layout = html.Div([
                     html.Div(className='form-group', children=[
                         html.Label('Target Source Coordinates'),
                         # dcc.Input(id='source', value='hh:mm:ss dd:mm:ss', type='text',
-                        dcc.Input(id='source', value='01:20:00 +50:40:30', type='text',
+                        dcc.Input(id='source', value='12:29:06.7 +02:03:08.6', type='text',
                                   className='form-control', placeholder="hh:mm:ss dd:mm:ss",
                                   persistence=True),
                         html.Small(id='error_source', style={'color': 'red'},
@@ -255,7 +255,9 @@ app.layout = html.Div([
                     # dcc.Markdown(id='sensitivity-output',
                     #              children="Set the observation first.")
                     html.Div(className='col-12', id='sensitivity-output',
-                            children=[html.Br(), html.P("Set the observation first.")])
+                            children=[html.Div(className='col-6 justify-content-center', children=[html.Br(),
+                                html.P("You need to set the observation and click in the 'Compute Observation' buttom first (go to the previous tab).")])
+                    ])
                 ])
             ]),
             dcc.Tab(label='Elevations', className='custom-tab',

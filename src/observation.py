@@ -269,14 +269,14 @@ class Observation(object):
         """
         # TODO: Check if with units it works
         return ((49500*u.arcsec*u.MHz*u.km)*self.channels/ \
-            (self.longest_baseline()[1]*self.bandwidth)).to(u.arcsec)
+            (self.longest_baseline()[1]*self.bandwidth/self.subbands)).to(u.arcsec)
 
     def time_smearing(self):
         """Returns the time smearing expected for the given observation.
         """
         # TODO: Check if with units it works
-        return ((18560*u.arcsec*u.km*u.s/u.cm)*\
-                (self.wavelength/self.longest_baseline()[1])/self.inttime).to(u.arcsec)
+        return ((18560*u.arcsec*u.km*u.s/u.cm)* \
+                (self.wavelength/(self.longest_baseline()[1])*self.inttime)).to(u.arcsec)
 
     def datasize(self):
         """Returns the expected size for the output FITS files.

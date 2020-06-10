@@ -440,8 +440,6 @@ def update_sensitivity(obs):
             ant_no_obs.append(an_ant)
 
     ant_text = ', '.join(obs.stations.keys()) + '.'
-    if len(ant_no_obs) > 0:
-        ant_text += f"<p class='text-danger'>Note that {', '.join(ant_no_obs)} cannot observe the source.</p>"
 
     cards = []
     # The time card
@@ -455,6 +453,9 @@ def update_sensitivity(obs):
     longest_bl_lambda = optimal_units(((longest_bl*u.m)/obs.wavelength).to(u.m),
                                       [u.Gm, u.Mm, u.km])
     temp_msg = [f"{len(ants_up)-len(ant_no_obs)} participating antennas: {ant_text}"]
+    if len(ant_no_obs) > 0:
+        temp_msg += [html.P(className='text-danger', children=f"Note that {', '.join(ant_no_obs)} cannot observe the source.")]
+
     temp_msg += [f"The longest (projected) baseline is {optimal_units(longest_bl, [u.km, u.m]):.5n} ({longest_bl_lambda.value:.3n} {longest_bl_lambda.unit.name[0]}lambda)."]
     synthbeam = obs.synthesized_beam()
     synthbeam_units = optimal_units(synthbeam['bmaj'], [u.arcsec, u.mas, u.uas]).unit
@@ -490,7 +491,7 @@ def update_sensitivity(obs):
 @app.callback(Output('onsourcetime-label', 'children'),
               [Input('onsourcetime', 'value')])
 def update_onsourcetime_label(onsourcetime):
-    return f"Percent. of on-target time ({onsourcetime}%)"
+    return f"% of on-target time ({onsourcetime}%)"
 
 
 @app.callback(Output('antennas-div', 'children'),

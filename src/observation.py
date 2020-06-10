@@ -276,7 +276,7 @@ class Observation(object):
         """
         # TODO: Check if with units it works
         return ((18560*u.arcsec*u.km*u.s/u.cm)* \
-                (self.wavelength/(self.longest_baseline()[1])*self.inttime)).to(u.arcsec)
+                (self.wavelength/(self.longest_baseline()[1]*self.inttime))).to(u.arcsec)
 
     def datasize(self):
         """Returns the expected size for the output FITS files.

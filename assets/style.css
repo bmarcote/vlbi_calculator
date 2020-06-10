@@ -3431,7 +3431,7 @@ input[type=checkbox]:disabled:after {
     position: absolute;
     width: 0;
     height: 0;
-    border-color: transparent;
+    border-color: #a01d26;
     border-style: solid;
     color: #a01d26 !important;
 }
@@ -3445,9 +3445,9 @@ input[type=checkbox]:disabled:after {
 }
 
 .tooltip-class.top-left .tooltip-class-arrow {  bottom: 0;  right: 5px;  margin-bottom: -5px;  border-width: 5px 5px 0;  border-top-color: #a01d26;}
-.tooltip-class.top-right .tooltip-class-arrow {  bottom: 0;  left: 5px;  margin-bottom: -5px;  border-width: 5px 5px 0;  border-top-color: #a01d26; color: #a01d26;}
-.tooltip-class.right .tooltip-class-arrow {  top: 50%;  left: 0;  margin-top: -5px;  border-width: 5px 5px 5px 0;  border-right-color: #a01d26;}
-.tooltip-class.left .tooltip-class-arrow {  top: 50%;  right: 0;  margin-top: -5px;  border-width: 5px 0 5px 5px;  border-left-color: #a01d26;}
+.tooltip-class.top-right .tooltip-class-arrow {  bottom: 0;  left: 5px;  margin-bottom: -5px;  border-width: 5px 5px 0;  border-top-color: #a01d26;}
+.tooltip-class.right .tooltip-class-arrow {  top: 50%;  left: 0;  margin-top: -5px;  border-width: 5px 5px 5px 0;  border-right-color: #a01d26; color: #a01d26 !important;}
+.tooltip-class.left .tooltip-class-arrow {  top: 50%;  right: 0;  margin-top: -5px;  border-width: 5px 0 5px 5px;  border-left-color: #a01d26; color: #a01d26 !important;}
 .tooltip-class.bottom .tooltip-class-arrow {  top: 0;  left: 50%;  margin-left: -5px;  border-width: 0 5px 5px;  border-bottom-color: #a01d26;}
 .tooltip-class.bottom-left .tooltip-class-arrow {  top: 0;  right: 5px;  margin-top: -5px;  border-width: 0 5px 5px;  border-bottom-color: #a01d26;}
 .tooltip-class.bottom-right .tooltip-class-arrow {  top: 0;  left: 5px;  margin-top: -5px;  border-width: 0 5px 5px;  border-bottom-color: #a01d26;}

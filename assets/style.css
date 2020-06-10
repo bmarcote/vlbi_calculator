@@ -3262,13 +3262,13 @@ input[type=checkbox]:checked:after {
 }
 
 input[type=checkbox]:not(:disabled):checked:hover:after {
-    content: " ";
-    color: gray;
+    /* content: " "; */
+    /* color: gray; */
     background-color: rgb(232, 222, 222);
     content: "\2714";
-    font-weight: bold;
+    /* font-weight: bold; */
     color: green;
-    font-size: 1.5rem;
+    /* font-size: 1.1rem; */
 }
 
 
@@ -3383,6 +3383,89 @@ input[type=checkbox]:disabled:after {
     margin-top: -15px;
 }
 
+
+.popover-link {
+    color: gray;
+}
+
+.tooltip {
+  position: absolute;
+  /* z-index: 1070; */
+  display: block;
+  /* font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; */
+  font-size: 12px;
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1.42857143;
+  text-align: left;
+  text-decoration: none;
+  text-shadow: none;
+  text-transform: none;
+  letter-spacing: normal;
+  word-break: normal;
+  word-spacing: normal;
+  word-wrap: normal;
+  white-space: normal;
+  opacity: 0;
+  line-break: auto;
+}
+
+.tooltip-inner {
+    max-width: 200px;
+    padding: 3px 8px;
+    color: gray;
+    text-align: left;
+    /* background-color: #f4f4ef; */
+    background-color: white;
+    border-radius: 4px;
+    border: 1px solid #a01d26;
+}
+
+.tooltip-class.in {  opacity: 1;}
+.tooltip-class.top {  margin-top: -3px;  padding: 5px 0;}
+.tooltip-class.right {  margin-left: 3px;  padding: 0 5px;}
+.tooltip-class.bottom {  margin-top: 3px;  padding: 5px 0;}
+.tooltip-class.left {  margin-left: -3px;  padding: 0 5px;}
+
+.tooltip-class-arrow {
+    position: absolute;
+    width: 0;
+    height: 0;
+    border-color: transparent;
+    border-style: solid;
+    color: #a01d26;
+}
+
+.tooltip-class.top .tooltip-class-arrow {
+    bottom: 0;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px 5px 0;
+    border-top-color: #a01d26;
+}
+
+.tooltip-class.top-left .tooltip-class-arrow {  bottom: 0;  right: 5px;  margin-bottom: -5px;  border-width: 5px 5px 0;  border-top-color: #a01d26;}
+.tooltip-class.top-right .tooltip-class-arrow {  bottom: 0;  left: 5px;  margin-bottom: -5px;  border-width: 5px 5px 0;  border-top-color: #a01d26;}
+.tooltip-class.right .tooltip-class-arrow {  top: 50%;  left: 0;  margin-top: -5px;  border-width: 5px 5px 5px 0;  border-right-color: #a01d26;}
+.tooltip-class.left .tooltip-class-arrow {  top: 50%;  right: 0;  margin-top: -5px;  border-width: 5px 0 5px 5px;  border-left-color: #a01d26;}
+.tooltip-class.bottom .tooltip-class-arrow {  top: 0;  left: 50%;  margin-left: -5px;  border-width: 0 5px 5px;  border-bottom-color: #a01d26;}
+.tooltip-class.bottom-left .tooltip-class-arrow {  top: 0;  right: 5px;  margin-top: -5px;  border-width: 0 5px 5px;  border-bottom-color: #a01d26;}
+.tooltip-class.bottom-right .tooltip-class-arrow {  top: 0;  left: 5px;  margin-top: -5px;  border-width: 0 5px 5px;  border-bottom-color: #a01d26;}
+
+.alert-warning {
+    /* color:#07767a; */
+    color: #856404;
+    background-color: #fff3cd;
+    border-color: #ffeeba;
+}
+
+.alert-warning hr {
+    border-top-color: #ffe8a1;
+}
+
+.alert-warning .alert-link {
+    color: #533f03;
+}
 /* FOR TEXT INPUTS I SHOULD ADD AN OFFSET SHADOW (REFACTORING UI TRICKS):
 box-shadow: inset 0 2px 4px 0 hsla(0 0% 0& 0.08);
 */

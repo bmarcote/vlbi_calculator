@@ -65,6 +65,8 @@ Stations
 
 ### observation.py
 
+SourceNotVisible(Exception)
+
 Source
     - name : str
     - coord : coord.SkyCord
@@ -153,6 +155,7 @@ X In sensitivity: highlight antennas that cannot observe the source.
 - Arecibo limits. Currently not shown.
 - Add a per-baseline basis sensitivity? (maybe as a roll-over?)
 - Also, something about the largest angular scale you are sensitive to.
+- Add favicon.ico to the assets folder.
 
 
 

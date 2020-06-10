@@ -13,6 +13,9 @@ from astroplan import FixedTarget
 from . import stations
 
 
+class SourceNotVisible(Exception):
+    pass
+
 class Source(FixedTarget):
     """Defines a source with some coordinates and a name.
     Inputs
@@ -278,7 +281,7 @@ class Observation(object):
     def datasize(self):
         """Returns the expected size for the output FITS files.
         """
-        temp = len(self.stations)**2*(self.times[-1]-self.times[0])/self.inttime
+        temp = len(self.stations)**2*((self.times[-1]-self.times[0])/self.inttime).decompose()
         temp *= self.polarizations*self.subbands*self.channels
         temp *= 1.75*u.GB/(131072*3600)
         return temp.to(u.GB)
@@ -341,6 +344,8 @@ class Observation(object):
         It returns a dictionary containing the uv values in lambda units
         for each baseline as key.
         Complex conjugates are not provided.
+        It may raise the exception SourceNotVisible if no antennas can observe the source
+        at all during the observation.
         """
         bl_uv_up = {}
         hourangle = self.target.ra.to(u.hourangle) - self.gstimes
@@ -369,7 +374,11 @@ class Observation(object):
         for i,bl_name in enumerate(bl_names):
             ant1, ant2 = bl_name.split('-')
             bl_up = (np.array([a for a in ants_up[ant1][0] if a in ants_up[ant2][0]]), )
-            bl_uv_up[bl_name] = bl_uv[:,:,i][bl_up]/self.wavelength.to(u.m).value
+            if len(bl_up[0]) > 0:
+                bl_uv_up[bl_name] = bl_uv[:,:,i][bl_up]/self.wavelength.to(u.m).value
+
+        if len(bl_uv_up.keys()) == 0:
+            raise SourceNotVisible
 
         return bl_uv_up
 

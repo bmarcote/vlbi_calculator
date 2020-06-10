@@ -25,6 +25,7 @@ import dash
 from dash.dependencies import Input, Output, State
 import dash_core_components as dcc
 import dash_html_components as html
+import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
 from datetime import datetime as dt
 from astropy.time import Time
@@ -108,9 +109,30 @@ server = app.server
 
 # app.css.append_css({"external_url": "https://codepen.io/chriddyp/pen/brPBPO.css"})
 
+def tooltip(message, idname, trigger='?', placement='right', **kwargs):
+    """Defines a tooltip (popover) that will be shown in the rendered page.
+    It will place a <sup>`trigger`</sup> in the page within a span tag.
+    Returns the list with all html elements.
+    """
+    return [html.Span(children=html.Sup(trigger, className='popover-link'), id=idname),
+            dbc.Tooltip(message, target=idname, placement=placement,
+                        # className='tooltip-class', #innerClassName='tooltip-class-inner',
+                        **kwargs)]
+
+
 
 #####################  This is the webpage layout
 app.layout = html.Div([
+    html.Script("""
+ $(document).ready(function() {
+  $('[data-toggle="popover"]').popover({
+      placement : 'bottom',
+      title : '<div style="text-align:center; color:red; text-decoration:underline; font-size:14px;"> Muah ha ha</div>', //this is the top title bar of the popover. add some basic css
+      html: 'true',
+      content : '<div id="popOverBox"><img src="http://www.hd-report.com/wp-content/uploads/2008/08/mr-evil.jpg" width="251" height="201" /></div>' //this is the content of the html box. add the image here or anything you want really.
+});
+});
+"""),
     html.Div(id='banner', className='navbar-brand d-flex p-3 shadow-sm', children=[
         html.A(className='d-inline-block mr-md-auto', href="https://www.evlbi.org", children=[
             html.Img(height='70px', src=app.get_asset_url("logo_evn.png"),
@@ -139,13 +161,14 @@ app.layout = html.Div([
                                                       'padding': '2%'}, children=[
                     html.Div(className='form-group', children=[
                         html.Label('Observing Band'),
-                    #data-content="This popover appears on the right", data-toggle="popover"),
+                        *tooltip(idname='popover-band', message="First select the observing band. Antenna list will be updated and only the ones that can observe at this band will be enable."),
                         dcc.Dropdown(id='band', persistence=True,
                                  options=[{'label': fs.bands[b], 'value': b} for b \
                                 in fs.bands], value='18cm'),
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Select default VLBI Network(s)'),
+                        *tooltip(idname='popover-network', message="Automatically selects the default antennas for the selected VLBI network(s)."),
                         dcc.Dropdown(id='array', options=[{'label': n, 'value': n} \
                                 for n in default_arrays if n != 'e-EVN'], value=['EVN'],
                                 multi=True),
@@ -154,6 +177,8 @@ app.layout = html.Div([
                         dcc.Checklist(id='e-EVN', className='checkbox', persistence=True,
                                       options=[{'label': ' e-EVN (real-time) mode',
                                                 'value': 'e-EVN'}], value=[]),
+                        *tooltip(idname='popover-eevn',
+                            message="Only available for the EVN: real-time correlation mode.")
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Start of observation (UTC)'),
@@ -175,6 +200,8 @@ app.layout = html.Div([
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Target Source Coordinates'),
+                        *tooltip(idname='popover-target',
+                                 message="J2000 coordinates are assumed."),
                         # dcc.Input(id='source', value='hh:mm:ss dd:mm:ss', type='text',
                         dcc.Input(id='source', value='12:29:06.7 +02:03:08.6', type='text',
                                   className='form-control', placeholder="hh:mm:ss dd:mm:ss",
@@ -184,37 +211,54 @@ app.layout = html.Div([
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label(id='onsourcetime-label',
-                                   children='Percent. of on-target time'),
+                                   children='% of on-target time'),
+                        *tooltip(idname='popover-ontarget',
+                                 message="Assumes that you will only spend this amount of the total observing time on the given target source. It affects the expected sensitivity."),
                         dcc.Slider(id='onsourcetime', min=20, max=100, step=5, value=75,
                                    marks= {i: str(i) for i in range(20, 101, 10)},
                                    persistence=True),
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Datarate per station (in Mbps)'),
+                        *tooltip(idname='popover-datarate',
+                                 message=["Expected datarate for each station, assuming all of them run at the same rate.",
+                                     html.Ul([
+                                        html.Li("The EVN can run typically at up to 2 Gbps (1 Gbps at L band), although a few antennas may observe at lower datarates."),
+                                        html.Li("The VLBA can now observe up to 4 Gbps."),
+                                        html.Li("The LBA typically observes at 512 Mbps but can run up to 1 Gbps."),
+                                        html.Li("Check the documentation from other networks to be sure about their capabilities.")])]),
                         dcc.Dropdown(id='datarate', placeholder="Select a datarate...",
                                      options=[{'label': str(dr), 'value': dr} \
                                      for dr in fs.data_rates], value=1024, persistence=True),
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Number of subbands'),
+                        *tooltip(idname='popover-subbands',
+                                 message="In how many subbands the total band will be split during correlation."),
                         dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
                                      options=[{'label': str(sb), 'value': sb} \
                                      for sb in fs.subbands], value=8, persistence=True),
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Number of spectral channels'),
+                        *tooltip(idname='popover-channels',
+                                 message="How many channels per subband will be produced after correlation."),
                             dcc.Dropdown(id='channels', placeholder="Select no. channels...",
                                          options=[{'label': str(ch), 'value': ch} \
                                          for ch in fs.channels], value=32, persistence=True),
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Number of polarizations'),
+                        *tooltip(idname='popover-pols',
+                            message="Number of polarizations to correlate. Note that VLBI observes circular polarizations. Full polarization implies the four stokes: RR, LL, RL, LR; while dual polarization implies RR and LL only."),
                         dcc.Dropdown(id='pols', placeholder="Select polarizations...",
                                      options=[{'label': fs.polarizations[p], 'value': p} \
                                      for p in fs.polarizations], value=4, persistence=True),
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Integration time (s)'),
+                        *tooltip(idname='popover-inttime',
+                            message="Integration time to compute each visibility. Note that for continuum observations values of 1-2 seconds are typical."),
                         dcc.Dropdown(id='inttime', placeholder="Select integration time...",
                                      options=[{'label': fs.inttimes[it], 'value': it} \
                                      for it in fs.inttimes], value=2, persistence=True),
@@ -255,7 +299,8 @@ app.layout = html.Div([
                     # dcc.Markdown(id='sensitivity-output',
                     #              children="Set the observation first.")
                     html.Div(className='col-12', id='sensitivity-output',
-                            children=[html.Div(className='col-6 justify-content-center', children=[html.Br(),
+                            children=[html.Div(className='col-6 justify-content-center',
+                                children=[html.Br(),
                                 html.P("You need to set the observation and click in the 'Compute Observation' buttom first (go to the previous tab).")])
                     ])
                 ])
@@ -296,6 +341,7 @@ app.layout = html.Div([
         ])
     ])
 ])
+
 
 
 
@@ -408,7 +454,7 @@ def update_sensitivity(obs):
     temp_msg += [f"The longest (projected) baseline is {optimal_units(longest_bl, [u.km, u.m]):.5n} ({longest_bl_lambda.value:.3n} {longest_bl_lambda.unit.name[0]}lambda)."]
     synthbeam = obs.synthesized_beam()
     synthbeam_units = optimal_units(synthbeam['bmaj'], [u.arcsec, u.mas, u.uas]).unit
-    temp_msg += [f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.2n} x {synthbeam['bmin'].to(synthbeam_units):.2n}^2, PA = {synthbeam['pa']:.2n}."]
+    temp_msg += [f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.2n} x {synthbeam['bmin'].to(synthbeam_units):.2n}^2, PA = {synthbeam['pa']:.3n}."]
     cards += create_sensitivity_card('Antennas', temp_msg)
 
     # Frequency
@@ -589,18 +635,28 @@ def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime
     obs_times = time0 + np.linspace(0, (time1-time0).to(u.min).value, 50)*u.min
     # obs_times = time0 + np.arange(0, (time1-time0).to(u.min).value, 15)*u.min
     all_selected_antennas = list(itertools.chain.from_iterable(ants))
-    obs = observation.Observation(target=target_source, times=obs_times, band=band,
+    try:
+        obs = observation.Observation(target=target_source, times=obs_times, band=band,
                       datarate=datarate, subbands=subbands, channels=channels,
                       polarizations=pols, inttime=inttime, ontarget=onsourcetime/100.0,
                       stations=get_selected_antennas(all_selected_antennas))
-
-    # except Exception as e:
-    #     return dash.no_update, dash.no_update, dash.no_update, error_text(e)
-
+        sensitivity_results = update_sensitivity(obs)
+    except observation.SourceNotVisible:
+        return [html.Br(),dbc.Alert([html.H4("Warning!", className='alert-heading'),
+                html.P(["Your source cannot be observed within the arranged observation.",
+                        html.Br(),
+                        "The source is not visible for any of the selected antennas " \
+                      + "in the given observing time."]),
+                html.P("Modify the observing time of select a different array to observe" \
+                       + " this source.")],\
+                        color='warning', dismissable=True)], \
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     # return update_sensitivity(obs), dash.no_update, dash.no_update
     # TODO: parallelize all these functions
-    return 'You can check now the results in the different tabs', update_sensitivity(obs), \
+    return [html.Br(),
+            dbc.Alert("You can check now the results in the different tabs", color='info', \
+                      dismissable=True)], sensitivity_results, \
            get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), dash.no_update
 
 

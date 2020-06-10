@@ -56,7 +56,11 @@ current_directory = path.dirname(path.realpath(__file__))
 # iers.Conf.iers_auto_url.set('ftp://cddis.gsfc.nasa.gov/pub/products/iers/finals2000A.all')
 
 all_antennas = fx.get_stations_from_file(f"{current_directory}/data/station_location.txt")
-sorted_networks = ('EVN', 'eMERLIN', 'VLBA', 'LBA', 'KVN', 'Other')
+sorted_networks = {'EVN': 'EVN: European VLBI Network', 'eMERLIN': 'eMERLIN',
+                   'VLBA': 'VLBA: Very Long Baseline Array',
+                   'LBA': 'LBA: Australian Long Baseline Array',
+                   'KVN': 'Korean VLBI Network',
+                   'Other': 'Other antennas'}
 default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6', 'Tr',
                           'Ys', 'Wb', 'Bd', 'Sv', 'Zc', 'Ir'],
           'e-EVN': ['Ef', 'Hh', 'Ir', 'Jb2', 'Mc', 'Nt', 'On', 'T6', 'Tr', 'Ys', 'Wb',
@@ -275,7 +279,7 @@ app.layout = html.Div([
                     html.Div(id='antennas-div', className='container', children=[
                     # List with all antennas
                         html.Div(className='antcheck', children=[html.Br(),
-                            html.Label(html.H4(f"{an_array}")),
+                            html.Label(html.H4(f"{sorted_networks[an_array]}")),
                             html.Br(),
                             dcc.Checklist(id=f"list_stations_{an_array}",
                                 className='antcheck',
@@ -502,7 +506,7 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
                                 (all_antennas[ant].network == 'EVN'))]
 
         return [html.Div([html.Br(),
-                html.Label(html.H4(f"{an_array}")),
+                html.Label(html.H4(f"{sorted_networks[an_array]}")),
                 html.Br(),
                 dcc.Checklist(id=f"list_stations_{an_array}",
                     options=[{'label': s.name, 'value': s.codename,
@@ -518,7 +522,7 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
                                     if all_antennas[ant].has_band(selected_band)]
 
         return [html.Div([html.Br(),
-                html.Label(html.H4(f"{an_array}")),
+                html.Label(html.H4(f"{sorted_networks[an_array]}")),
                 html.Br(),
                 dcc.Checklist(id=f"list_stations_{an_array}",
                     options=[{'label': s.name, 'value': s.codename,

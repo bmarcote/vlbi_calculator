@@ -450,8 +450,8 @@ def update_sensitivity(obs):
     # Antennas
     longest_bl = obs.longest_baseline()[1]
     # Using dummy units to allow the conversion
-    longest_bl_lambda = optimal_units(((longest_bl*u.m)/obs.wavelength).to(u.m),
-                                      [u.Gm, u.Mm, u.km])
+    longest_bl_lambda = longest_bl/obs.wavelength
+    longest_bl_lambda = optimal_units(longest_bl_lambda*u.m, [u.Gm, u.Mm, u.km])
     temp_msg = [f"{len(ants_up)-len(ant_no_obs)} participating antennas: {ant_text}"]
     if len(ant_no_obs) > 0:
         temp_msg += [html.P(className='text-danger', children=f"Note that {', '.join(ant_no_obs)} cannot observe the source.")]

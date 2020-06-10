@@ -21,15 +21,15 @@ from src import observation
 
 
 
-target = observation.Source('10h10m10s +0d30m20s', name='Target')
+target = observation.Source('10h58m29.6s +81d33m58.8s', name='Target')
 
 obs = observation.Observation(target=target)
-obs.times = Time('2020-04-01 10:00', scale='utc') + np.arange(0, 600, 10)*u.min
-obs.band = '6cm'
+obs.times = Time('2020-06-15 10:00', scale='utc') + np.arange(0, 360, 10)*u.min
+obs.band = '18cm'
 obs.datarate = 1024
 obs.subbands = 8
-obs.channels = 64
-obs.polarizations = 4
+obs.channels = 32
+obs.polarizations = 2
 obs.inttime = 2
 
 

@@ -348,7 +348,7 @@ class Observation(object):
         at all during the observation.
         """
         bl_uv_up = {}
-        hourangle = self.target.ra.to(u.hourangle) - self.gstimes
+        hourangle = (self.gstimes - self.target.ra.to(u.hourangle)).value % 24*u.hourangle
         nstat = len(self.stations)
         # Determines the xyz of all baselines. Time independent
         bl_xyz = np.empty(((nstat*(nstat-1))//2, 3))
@@ -369,13 +369,13 @@ class Observation(object):
                       np.sin(self.target.dec)*np.sin(hourangle),
                       np.cos(self.target.dec)*np.ones(len(hourangle))]])
 
-        bl_uv = np.array([m[:,:,i] @ bl_xyz.T  for i in range(m.shape[-1])])
+        bl_uv = np.array([m[:,:,i] @ bl_xyz.T  for i in range(m.shape[-1])])*u.m
         ants_up = self.is_visible()
         for i,bl_name in enumerate(bl_names):
             ant1, ant2 = bl_name.split('-')
             bl_up = (np.array([a for a in ants_up[ant1][0] if a in ants_up[ant2][0]]), )
             if len(bl_up[0]) > 0:
-                bl_uv_up[bl_name] = bl_uv[:,:,i][bl_up]/self.wavelength.to(u.m).value
+                bl_uv_up[bl_name] = (bl_uv[:,:,i][bl_up]/self.wavelength).decompose()
 
         if len(bl_uv_up.keys()) == 0:
             raise SourceNotVisible

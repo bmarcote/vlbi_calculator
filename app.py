@@ -421,6 +421,18 @@ def create_sensitivity_card(title, message):
         ]
 
 
+def alert_message(message, title="Warning!"):
+    """Produces an alert-warning message.
+    message can be either a string or a list with different string/dash components.
+    """
+    if type(message) == str:
+        return [html.Br(), \
+                dbc.Alert([html.H4(title, className='alert-heading'), message], \
+                        color='warning', dismissable=True)]
+    else:
+        return [html.Br(), \
+                dbc.Alert([html.H4(title, className='alert-heading'), *message], \
+                        color='warning', dismissable=True)]
 
 
 def update_sensitivity(obs):
@@ -555,7 +567,9 @@ def check_obstime(starttime, endtime):
 
     if ('time1' in locals()) and ('time0' in locals()):
         if (time1 - time0) > 5*u.d:
-            return ["Please, put a time range smaller than 5 days."]*2
+            return ["Please, put an observation shorter than 5 d"]*2
+        elif (time0 - time1) >= 0*u.d:
+            return ["Start time must be earlier than end time"]*2
 
     return '', ''
 
@@ -608,31 +622,34 @@ def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime
     try:
         target_source = observation.Source(convert_colon_coord(source), 'Source')
     except ValueError as e:
-        return "Incorrect format for source coordinates", f"""Incorrect format for source coordinates:
-        {source} found but 'hh:mm:ss dd:mm:ss' expected.
-        """, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return alert_message(["Incorrect format for source coordinates.", html.Br(),
+                f"{'Empty value' if source=='' else source} found but 'hh:mm:ss dd:mm:ss' expected."]),\
+               "First, set correctly an observation in the previous tab.", \
+               dash.no_update, dash.no_update, dash.no_update, dash.no_update
     try:
         time0 = Time(datetime.datetime.strptime(starttime, '%d/%m/%Y %H:%M'),
                      format='datetime', scale='utc')
     except ValueError as e:
-        return "Incorrect format for starttime", "Incorrect format for starttime.", \
+        return alert_message("Incorrect format for starttime."), \
+               "First, set correctly an observation in the previous tab.", \
                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     try:
         time1 = Time(datetime.datetime.strptime(endtime, '%d/%m/%Y %H:%M'),
                      format='datetime', scale='utc')
     except ValueError as e:
-        return "Incorrect format for endtime", "Incorrect format for endtime.", \
+        return alert_message("Incorrect format for endtime."), \
+               "First, set correctly an observation in the previous tab.", \
                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if time0 >= time1:
-        return "The start time of the observation must be earlier than the end time", \
-               "The start time of the observation must be earlier than the end time.", \
+        return alert_message("The start time must be earlier than the end time"), \
+               "First, set correctly an observation in the previous tab.", \
                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if (time1 - time0) > 5*u.d:
-        return "Please, put a time range smaller than 5 days", \
-               "Please, put a time range smaller than 5 days.", \
+        return alert_message("Please, set an observation that last for less than 5 days."), \
+               "First, set correctly an observation in the previous tab.", \
                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     # try:
@@ -647,14 +664,13 @@ def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime
                       stations=get_selected_antennas(all_selected_antennas))
         sensitivity_results = update_sensitivity(obs)
     except observation.SourceNotVisible:
-        return [html.Br(),dbc.Alert([html.H4("Warning!", className='alert-heading'),
-                html.P(["Your source cannot be observed within the arranged observation.",
-                        html.Br(),
-                        "The source is not visible for any of the selected antennas " \
-                      + "in the given observing time."]),
-                html.P("Modify the observing time of select a different array to observe" \
-                       + " this source.")],\
-                        color='warning', dismissable=True)], \
+        return alert_message([
+                    html.P(["Your source cannot be observed within the arranged observation.",
+                    html.Br(),
+                    "The source is not visible for any of the selected antennas " \
+                    + "in the given observing time."]),
+                    html.P("Modify the observing time of select a different array to observe" \
+                    + " this source.")], title="Warning!"), \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     # return update_sensitivity(obs), dash.no_update, dash.no_update

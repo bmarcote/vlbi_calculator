@@ -303,6 +303,10 @@ class Observation(object):
                 for k in range(j+1, len(sefds)):
                     temp += (self.times[i+1]-self.times[i]).to(u.s).value/(sefds[j]*sefds[k])
 
+        if temp == 0.0:
+            # No sources visible
+            raise SourceNotVisible('No single baseline can observe the source.')
+
         temp = 1.0/np.sqrt(temp*self.ontarget_fraction)
         # TODO: fix units problem.
         return ((1.0/0.7)*temp/np.sqrt(self.datarate.to(u.bit/u.s).value/2))*u.Jy

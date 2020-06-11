@@ -319,7 +319,8 @@ app.layout = html.Div([
                     html.Div([
                         html.P("""Plots showing the source elevation for the different
                         antennas during the observation, and when the source is observable
-                        (by default assumed to be when it has an elevation larger than 10 deg.
+                        (by default assumed to be when the sourcehas an elevation >10 deg,
+                        except for some antennas like Arecibo).
                         """), \
                         html.P(["Clicking at one station in the legend will hide/show it. ", \
                                "Double-click will hide/show all other antennas."])]),

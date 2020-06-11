@@ -75,8 +75,8 @@ def get_stations_from_file(filename='data/station_location.txt'):
 
         a_loc = coord.EarthLocation(a_line['x']*u.m, a_line['y']*u.m, a_line['z']*u.m)
         # For now this is hard-coded
-        if a_line['station'] is 'Arecibo':
-            min_elev = 80*u.deg
+        if a_line['code'] == 'Ar':
+            min_elev = 65*u.deg
         else:
             min_elev = 10*u.deg
 
@@ -139,7 +139,7 @@ def print_obs_times(obs, date_format='%d %b %Y'):
                                     obs.times[0].datetime.strftime('%H:%M'),
                                     obs.times[-1].datetime.strftime(date_format),
                                     obs.times[-1].datetime.strftime('%H:%M'))
-        
+
 
 
 

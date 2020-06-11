@@ -278,7 +278,7 @@ app.layout = html.Div([
                     ]),
                     html.Div(id='antennas-div', className='container', children=[
                     # List with all antennas
-                        html.Div(className='antcheck', children=[html.Br(),
+                        html.Div(className='antcheck', children=[html.Br(), html.Br(),
                             html.Label(html.H4(f"{sorted_networks[an_array]}")),
                             html.Br(),
                             dcc.Checklist(id=f"list_stations_{an_array}",
@@ -302,8 +302,9 @@ app.layout = html.Div([
                 # Sensitivity calculations
                     # dcc.Markdown(id='sensitivity-output',
                     #              children="Set the observation first.")
-                    html.Div(className='col-12', id='sensitivity-output',
-                            children=[html.Div(className='col-6 justify-content-center',
+                    html.Div(className='col-10 justify-content-center',
+                             id='sensitivity-output',
+                             children=[html.Div(className='col-6 justify-content-center',
                                 children=[html.Br(),
                                 html.P("You need to set the observation and click in the 'Compute Observation' buttom first (go to the previous tab).")])
                     ])
@@ -312,7 +313,7 @@ app.layout = html.Div([
             dcc.Tab(label='Elevations', className='custom-tab',
                     selected_className='custom-tab--selected', children=[
                 html.Div(className='row justify-content-center', children=[
-                html.Div(className='col-md-8', children=[
+                html.Div(className='col-md-8 justify-content-center', children=[
                     # Elevation VS time
                     html.Div([
                         dcc.Graph(id='fig-elev-time')
@@ -327,7 +328,7 @@ app.layout = html.Div([
                     selected_className='custom-tab--selected', children=[
                 #  Images
                 html.Div(className='row justify-content-center', children=[
-                html.Div(className='col-md-8', children=[
+                html.Div(className='col-md-8 justify-content-center', children=[
                     # dcc.Markdown(children="""To be implemented.
                     #     The uv coverage and expected dirty images will go here.""")
                     html.Div([dcc.Graph(id='fig-uvplane')])
@@ -497,7 +498,7 @@ def update_sensitivity(obs):
     temp_msg += [f"Considering the shortest baseline in the array ({optimal_units(shortest_bl, [u.km, u.m]):.5n}), you will filter out emission on angular scales larger than {optimal_units(largest_ang_scales, [u.arcmin, u.arcsec, u.mas]):.3n}."]
     cards += create_sensitivity_card('FoV limitations', temp_msg)
 
-    return [html.Div(className='card-deck col-12', children=cards)]
+    return [html.Div(className='card-deck col-12 justify-content-center', children=cards)]
 
 
 
@@ -519,7 +520,7 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
                              if (all_antennas[ant].has_band(selected_band) and \
                                 (all_antennas[ant].network == 'EVN'))]
 
-        return [html.Div([html.Br(),
+        return [html.Div([html.Br(), html.Br(),
                 html.Label(html.H4(f"{sorted_networks[an_array]}")),
                 html.Br(),
                 dcc.Checklist(id=f"list_stations_{an_array}",
@@ -535,7 +536,7 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
             selected_antennas += [ant for ant in default_arrays[an_array] \
                                     if all_antennas[ant].has_band(selected_band)]
 
-        return [html.Div([html.Br(),
+        return [html.Div([html.Br(), html.Br(),
                 html.Label(html.H4(f"{sorted_networks[an_array]}")),
                 html.Br(),
                 dcc.Checklist(id=f"list_stations_{an_array}",

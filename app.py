@@ -471,7 +471,8 @@ def update_sensitivity(obs):
     temp_msg += [f"The longest (projected) baseline is {optimal_units(longest_bl, [u.km, u.m]):.5n} ({longest_bl_lambda.value:.3n} {longest_bl_lambda.unit.name[0]}lambda)."]
     synthbeam = obs.synthesized_beam()
     synthbeam_units = optimal_units(synthbeam['bmaj'], [u.arcsec, u.mas, u.uas]).unit
-    temp_msg += [f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.2n} x {synthbeam['bmin'].to(synthbeam_units):.2n}^2, PA = {synthbeam['pa']:.3n}."]
+    temp_msg += [html.P([f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.2n} x {synthbeam['bmin'].to(synthbeam_units):.2n}", html.Sup("2"), \
+            f", PA = {synthbeam['pa']:.3n}."])]
     cards += create_sensitivity_card('Antennas', temp_msg)
 
     # Frequency

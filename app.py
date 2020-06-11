@@ -739,7 +739,7 @@ def get_fig_ant_up(obs):
 
 def get_fig_uvplane(obs):
     data_fig = []
-    bl_uv = obs.get_uv()
+    bl_uv = obs.get_uv_baseline()
     for bl_name in bl_uv:
         # accounting for complex conjugate
         uv = np.empty((2*len(bl_uv[bl_name]), 2))

@@ -54,6 +54,10 @@ class Observation(object):
 
         self.bitsampling = bits
         self.ontarget_fraction = ontarget
+        self._uv_baseline = None
+        self._uv_array = None
+        self._rms = None
+        self._synth_beam = None
 
 
     @property
@@ -64,7 +68,10 @@ class Observation(object):
     def target(self, new_target):
         assert isinstance(new_target, Source)
         self._target = new_target
-        # TODO: update the elevation...
+        self._uv_baseline = None
+        self._uv_array = None
+        self._rms = None
+        self._synth_beam = None
 
     @property
     def times(self):
@@ -75,6 +82,10 @@ class Observation(object):
         assert isinstance(new_times, Time)
         self._times = new_times
         self._gstimes = self._times.sidereal_time('mean', 'greenwich')
+        self._uv_baseline = None
+        self._uv_array = None
+        self._rms = None
+        self._synth_beam = None
 
     @property
     def gstimes(self):
@@ -91,6 +102,10 @@ class Observation(object):
     @band.setter
     def band(self, new_band):
         self._band = new_band
+        self._uv_baseline = None
+        self._uv_array = None
+        self._rms = None
+        self._synth_beam = None
 
     @property
     def wavelength(self):
@@ -120,6 +135,8 @@ class Observation(object):
             self._datarate = new_datarate.to(u.Mbit/u.s)
         else:
             raise ValueError(f"Unknown type for {new_datarate} (int/Quantity(bit/s) expected)")
+
+        self._rms = None
 
     @property
     def subbands(self):
@@ -173,6 +190,7 @@ class Observation(object):
     def ontarget_fraction(self, ontarget):
         assert 0.0 < ontarget <= 1.0
         self._ontarget = ontarget
+        self._rms = None
 
     @property
     def ontarget_time(self):
@@ -206,8 +224,10 @@ class Observation(object):
     def stations(self, new_stations):
         assert isinstance(new_stations, stations.Stations)
         self._stations = new_stations
-        # TODO: update elevation
-
+        self._uv_baseline = None
+        self._uv_array = None
+        self._rms = None
+        self._synth_beam = None
 
     def elevations(self):
         """Returns the target elevations for all stations along the observation.
@@ -238,7 +258,7 @@ class Observation(object):
         It retuns the tuple ((ant1,ant2), length)
         where `ant1,ant2` are the antennas in such baseline, and `length` its length.
         """
-        uv = self.get_uv()
+        uv = self.get_uv_baseline()
         longest_bl = {'bl': '', 'value': None}
         for a_bl in uv:
             bl_length = np.sqrt(np.max((uv[a_bl]**2).sum(axis=1)))
@@ -253,7 +273,7 @@ class Observation(object):
         It retuns the tuple ((ant1,ant2), length)
         where `ant1,ant2` are the antennas in such baseline, and `length` its length.
         """
-        uv = self.get_uv()
+        uv = self.get_uv_baseline()
         shortest_bl = {'bl': '', 'value': None}
         for a_bl in uv:
             bl_length = np.sqrt(np.max((uv[a_bl]**2).sum(axis=1)))
@@ -290,6 +310,9 @@ class Observation(object):
     def thermal_noise(self):
         """Returns the expected thermal noise for the given observation
         """
+        if self._rms is not None:
+            return self._rms
+
         main_matrix = np.zeros((len(self.times), len(self.stations)))
         visible = self.is_visible()
         for i,stat in enumerate(self.stations):
@@ -309,40 +332,11 @@ class Observation(object):
 
         temp = 1.0/np.sqrt(temp*self.ontarget_fraction)
         # TODO: fix units problem.
-        return ((1.0/0.7)*temp/np.sqrt(self.datarate.to(u.bit/u.s).value/2))*u.Jy
-
-    # def _get_baseline_numbers(self):
-    #     """Returns the (int) number corresponding to the each baseline.
-    #     It basically transforms each baseline in the array to a int number:
-    #         (0,1), (0,2), ... (0, N), (1, 2),... --> 1, 2, ..., N, N+1, ...
-    #     Inputs:
-    #         - ant1, ant2 : str
-    #             The codename of each antenna in the baseline
-    #     Returns:
-    #         - dict { 'Ant1Ant2': int,... } where Ant1Ant2 is a str composite of
-    #                 the two antena codenames.
-    #     """
-    #     statcodes = [s.codename for s in self.stations]
-    #     d = {}
-    #     for i,si in enumerate(statcodes):
-    #         for j in range(i+1, len(statcodes)):
-    #             d[si+statcodes[j]] =
-    #
-    # def _get_baseline_number(self, ant1, ant2):
-    #     """Returns the (int) number corresponding to the given baseline.
-    #     It basically transforms each baseline in the array to a int number:
-    #         (0,1), (0,2), ... (0, N), (1, 2),... --> 1, 2, ..., N, N+1, ...
-    #     Inputs:
-    #         - ant1, ant2 : str
-    #             The codename of each antenna in the baseline
-    #     Returns int.
-    #     """
-    #     statcodes = [s.codename for s in self.stations]
-    #     for i,si in enumerate(statcodes):
-    #         for j in range(i+1, len(statcodes)):
+        self._rms = ((1.0/0.7)*temp/np.sqrt(self.datarate.to(u.bit/u.s).value/2))*u.Jy
+        return self._rms
 
 
-    def get_uv(self):
+    def get_uv_baseline(self):
         """Returns the uv values for each baseline and each timestamp when the source
         is visible.
         It returns a dictionary containing the uv values in lambda units
@@ -351,6 +345,9 @@ class Observation(object):
         It may raise the exception SourceNotVisible if no antennas can observe the source
         at all during the observation.
         """
+        if self._uv_baseline is not None:
+            return self._uv_baseline
+
         bl_uv_up = {}
         hourangle = (self.gstimes - self.target.ra.to(u.hourangle)).value % 24*u.hourangle
         nstat = len(self.stations)
@@ -384,7 +381,30 @@ class Observation(object):
         if len(bl_uv_up.keys()) == 0:
             raise SourceNotVisible
 
+        self._uv_baseline = bl_uv_up
         return bl_uv_up
+
+
+    def get_uv_array(self):
+        """Returns a 2-D array with the (u,v) points from this observation.
+        Note that complex conjugates are not provided, thus one should compute
+        V(-u, -v), V(u, v) if the full uv coverage is desired.
+        """
+        if self._uv_array is not None:
+            return self._uv_array
+
+        bl_uv_up = self.get_uv_baseline()
+        tot_length = 0
+        for bl_name in bl_uv_up:
+            tot_length += bl_uv_up[bl_name].shape[0]
+
+        uvvis = np.empty((tot_length, 2))
+        i = 0
+        for bl_name in bl_uv_up:
+            uvvis[i:i+bl_uv_up[bl_name].shape[0],:] = bl_uv_up[bl_name]
+            i += bl_uv_up[bl_name].shape[0]
+        self._uv_array = uvvis
+        return self._uv_array
 
 
     def synthesized_beam(self):
@@ -397,20 +417,11 @@ class Observation(object):
 
         returns a dict with the following keys: bmaj, bmin, pa.
         """
+        if self._synth_beam is not None:
+            return self._synth_beam
+
         resolution = lambda bl : ((2.063e8*u.mas)/bl).to(u.mas)
-        uvdata = self.get_uv()
-        # Generates a N 2-D array with all uv data.
-        tot_length = 0
-        for bl_name in uvdata:
-            tot_length += uvdata[bl_name].shape[0]
-
-        uvvis = np.empty((tot_length, 2))
-        i = 0
-        for bl_name in uvdata:
-            uvvis[i:i+uvdata[bl_name].shape[0],:] = uvdata[bl_name]
-            i += uvdata[bl_name].shape[0]
-
-        del uvdata
+        uvvis = self.get_uv_array()
         # Transform the uv points into r,theta (polar) points
         uvvis_polar = np.empty_like(uvvis)
         uvvis_polar[:,0] = np.sqrt((uvvis**2).sum(axis=1)) # radius
@@ -433,10 +444,11 @@ class Observation(object):
 
             bl_bmin = np.max( uvvis_polar[:,0][cond] )
         except IndexError:
-            bl_bmin = bl_bmaj/10
+            bl_bmin = bl_bmaj/50
 
-        return {'bmaj': resolution(bl_bmin), 'bmin': resolution(bl_bmaj), 'pa': (bl_bmaj_theta*u.rad).to(u.deg)}
-
+        self._synth_beam = {'bmaj': resolution(bl_bmin), 'bmin': resolution(bl_bmaj),
+                            'pa': (bl_bmaj_theta*u.rad).to(u.deg)}
+        return self._synth_beam
 
     # def get_dirtymap(self):
     #     uvdata = self._get_uv()

@@ -104,7 +104,8 @@ Observation
     + time_smearing() --> u.Quantity
     + datasize() --> u.Quantity
     + thermal_noise() --> u.Quantity
-    + get_uv() --> dict[baseline-codename]: np.array (lambda units)
+    + get_uv_baseline() --> dict[baseline-codename]: np.array (lambda units)
+    + get_uv_array() --> np.array (lambda units)
 
     <!-- + \_get_baseline_numbers() -->
     <!-- + \_get_baseline_number(ant1, ant2)  -> int -->

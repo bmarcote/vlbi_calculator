@@ -315,6 +315,15 @@ app.layout = html.Div([
                 html.Div(className='row justify-content-center', children=[
                 html.Div(className='col-md-8 justify-content-center', children=[
                     # Elevation VS time
+                    html.Br(),
+                    html.Div([
+                        html.P("""Plots showing the source elevation for the different
+                        antennas during the observation, and when the source is observable
+                        (by default assumed to be when it has an elevation larger than 10 deg.
+                        """), \
+                        html.P(["Clicking at one station in the legend will hide/show it. ", \
+                               "Double-click will hide/show all other antennas."])]),
+                    html.Br(),
                     html.Div([
                         dcc.Graph(id='fig-elev-time')
                     ]),
@@ -331,7 +340,8 @@ app.layout = html.Div([
                 html.Div(className='col-md-8 justify-content-center', children=[
                     # dcc.Markdown(children="""To be implemented.
                     #     The uv coverage and expected dirty images will go here.""")
-                    html.Div([dcc.Graph(id='fig-uvplane')])
+                    html.Div(className='col-md-8 justify-content-center',
+                             children=[dcc.Graph(id='fig-uvplane')])
                 ])])
             ]),
             dcc.Tab(label='Documentation', className='custom-tab',

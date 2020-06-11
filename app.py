@@ -462,7 +462,7 @@ def update_sensitivity(obs):
         if len(ants_up[an_ant][0]) == 0:
             ant_no_obs.append(an_ant)
 
-    ant_text = ', '.join(obs.stations.keys()) + '.'
+    ant_text = ', '.join([ant for ant in obs.stations.keys() if ant not in ant_no_obs]) + '.'
 
     cards = []
     # The time card

@@ -16,6 +16,7 @@ __maintainer__ = "Benito Marcote"
 __email__ = "marcote@jive.eu"
 __status__ = "Development"   # Prototype, Development, Production.
 
+import os
 from os import path
 from time import sleep
 import itertools
@@ -54,6 +55,9 @@ current_directory = path.dirname(path.realpath(__file__))
 # iers.IERS.iers_table = iers.IERS.open(cache=True)
 # iers.IERS.iers_table = iers.IERS_A.open(iers.IERS_A_URL)
 # iers.Conf.iers_auto_url.set('ftp://cddis.gsfc.nasa.gov/pub/products/iers/finals2000A.all')
+
+if path.isfile(current_directory + '/.astropy/cache/download/py3/lock'):
+    os.remove(current_directory + '/.astropy/cache/download/py3/lock')
 
 # all_antennas = fx.get_stations_from_file(f"{current_directory}/data/station_location.txt")
 all_antennas = fx.get_stations_from_configfile(f"{current_directory}/data/stations_catalog.inp")

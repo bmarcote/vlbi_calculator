@@ -56,7 +56,7 @@ current_directory = path.dirname(path.realpath(__file__))
 # iers.Conf.iers_auto_url.set('ftp://cddis.gsfc.nasa.gov/pub/products/iers/finals2000A.all')
 
 all_antennas = fx.get_stations_from_file(f"{current_directory}/data/station_location.txt")
-sorted_networks = {'EVN': 'EVN: European VLBI Network', 'eMERLIN': 'eMERLIN',
+sorted_networks = {'EVN': 'EVN: European VLBI Network', 'eMERLIN': 'eMERLIN (out-stations)',
                    'VLBA': 'VLBA: Very Long Baseline Array',
                    'LBA': 'LBA: Australian Long Baseline Array',
                    'KVN': 'Korean VLBI Network',
@@ -84,6 +84,9 @@ for a_array in default_arrays:
     for a_station in default_arrays[a_array]:
         assert a_station in all_antennas.keys()
 
+doc_files = {'About this tool': '/doc/doc-contact.md',
+             'About the antennas': '/doc/doc-antennas.md',
+             'Technical background': '/doc/doc-estimations.md'}
 
 # Initial values
 target_source = observation.Source('1h2m3s +50d40m30s', 'Source')
@@ -97,12 +100,14 @@ selected_band = '18cm'
 # external_stylesheets = ["https://bmarcote.github.io/temp/style.css"]
 external_stylesheets = []
 # n_timestamps = 70 # Number of points (timestamps) for the whole observations.
+# external_scripts = ["https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js", \
+#         "https://polyfill.io/v3/polyfill.min.js?features=es6"]
+#         "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"]
 
 
 
 
-
-# app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+# app = dash.Dash(__name__, external_scripts=external_scripts)
 app = dash.Dash(__name__)
 
 
@@ -124,19 +129,68 @@ def tooltip(message, idname, trigger='?', placement='right', **kwargs):
                         **kwargs)]
 
 
+def create_accordion_card(title, text, id, is_open=True):
+    """Given a title (header) and a text (which can be either text, a dcc/html object),
+    it will return a dbc.Card object which is one input for an accordion.
+    """
+    card_header = dbc.CardHeader(html.H2(dbc.Button(title, color='link',
+                                 id=f"group-{id}-toggle", className='')), className='accordion-header')
+    card_body = dbc.Collapse(dbc.CardBody(text), id=f"collapse-{id}", is_open=is_open,
+                            className='accordion-collapse')
+    return dbc.Card([card_header, card_body], className='accordion-card')
+
+
+def get_doc_text():
+    """Reads the doc files and returns it as a Div object.
+    """
+    temp = []
+    for i,a_topic in enumerate(doc_files):
+        with open(current_directory + doc_files[a_topic], 'r') as f:
+            # Some files will have references to images/files in the form '{src:filename}'
+            # We parse this
+            parsed_text = f.read()
+            while '{src:' in parsed_text:
+                i0 = parsed_text.index('{src:')
+                i1 = i0 + parsed_text[i0:].index('}')
+                filename = parsed_text[i0+5:i1]
+                parsed_text = parsed_text.replace( parsed_text[i0:i1+1], app.get_asset_url(filename) )
+
+            temp += [create_accordion_card(a_topic, dcc.Markdown(parsed_text), id=str(i))]
+
+    return html.Div(temp, className='col-12 accordion')
+
+
+@app.callback([Output(f"collapse-{i}", "is_open") for i in range(len(doc_files))],
+        [Input(f"group-{i}-toggle", "n_clicks") for i in range(len(doc_files))],
+        [State(f"collapse-{i}", "is_open") for i in range(len(doc_files))])
+def toggle_accordion(*args):
+    defaults = list(args[len(doc_files):])
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return [dash.no_update]*len(doc_files)
+    else:
+        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+    for i in range(len(doc_files)):
+        if (button_id == f"group-{i}-toggle") and (args[i] is not None):
+            defaults[i] = not defaults[i]
+
+    return defaults
+
+
 
 #####################  This is the webpage layout
 app.layout = html.Div([
-    html.Script("""
- $(document).ready(function() {
-  $('[data-toggle="popover"]').popover({
-      placement : 'bottom',
-      title : '<div style="text-align:center; color:red; text-decoration:underline; font-size:14px;"> Muah ha ha</div>', //this is the top title bar of the popover. add some basic css
-      html: 'true',
-      content : '<div id="popOverBox"><img src="http://www.hd-report.com/wp-content/uploads/2008/08/mr-evil.jpg" width="251" height="201" /></div>' //this is the content of the html box. add the image here or anything you want really.
-});
-});
-"""),
+#     html.Script("""
+#  $(document).ready(function() {
+#   $('[data-toggle="popover"]').popover({
+#       placement : 'bottom',
+#       title : '<div style="text-align:center; color:red; text-decoration:underline; font-size:14px;"> Muah ha ha</div>', //this is the top title bar of the popover. add some basic css
+#       html: 'true',
+#       content : '<div id="popOverBox"><img src="http://www.hd-report.com/wp-content/uploads/2008/08/mr-evil.jpg" width="251" height="201" /></div>' //this is the content of the html box. add the image here or anything you want really.
+# });
+# });
+# """),
     html.Div(id='banner', className='navbar-brand d-flex p-3 shadow-sm', children=[
         html.A(className='d-inline-block mr-md-auto', href="https://www.evlbi.org", children=[
             html.Img(height='70px', src=app.get_asset_url("logo_evn.png"),
@@ -327,11 +381,11 @@ app.layout = html.Div([
                     html.Br(),
                     html.Div([
                         dcc.Graph(id='fig-elev-time')
-                    ]),
+                    ],className='tex2jax_ignore'),
                     # Antenna VS time (who can observe)
                     html.Div([
                         dcc.Graph(id='fig-ant-time')
-                    ])
+                    ],className='tex2jax_ignore')
                 ])])
             ]),
             dcc.Tab(label='Imaging', className='custom-tab',
@@ -349,10 +403,9 @@ app.layout = html.Div([
                     selected_className='custom-tab--selected', children=[
                 #  Documentation
                 html.Div(className='row justify-content-center', children=[
-                html.Div(className='col-md-8', children=[
-                    dcc.Markdown(children="""The Help/doc.
-                        All explanations and technical details will go here.""")
-                ])])
+                    html.Div([html.Br(), html.Br()]),
+                    html.Div(className='col-md-8', children=get_doc_text())
+                ])
             ])
         ])
     ])
@@ -510,6 +563,8 @@ def update_sensitivity(obs):
     cards += create_sensitivity_card('FoV limitations', temp_msg)
 
     return [html.Div(className='card-deck col-12 justify-content-center', children=cards)]
+
+
 
 
 
@@ -738,7 +793,7 @@ def get_fig_ant_up(obs):
                          'name': obs.stations[ant].name})
 
     return {'data': data_fig,
-            'layout': {'title': 'Source visible (>10 deg) during the observation',
+            'layout': {'title': 'Source visible during the observation',
                        'xaxis': {'title': 'Time (UTC)', 'showgrid': False,
                                  'ticks': 'inside', 'showline': True, 'mirror': "all",
                                  'hovermode': 'closest', 'color': 'black'},

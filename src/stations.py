@@ -8,7 +8,8 @@ from astroplan import Observer
 
 class Station(object):
 
-    def __init__(self, name, codename, network, location, freqs_sefds, min_elevation=20*u.deg):
+    def __init__(self, name, codename, network, location, freqs_sefds, min_elevation=20*u.deg,
+                 fullname=None, all_networks=None, country=''):
         """Initializes a station. The given name must be the name of the station that
         observes, with the typical 2-letter format used in the EVN (with exceptions).
 
@@ -27,6 +28,12 @@ class Station(object):
         - min_elevation : Quantity
             Minimum elevation that the station can observe a source. If no units
             provided, degrees are assumed. By default it 20 degrees.
+        - fullname : str [OPTIONAL]
+            Full name of the station. If not given, `name` is assumed.
+        - all_networks : str [OPTIONAL]
+            Networks where the station can participate (free style).
+        - country : str [OPTIONAL]
+            Country where the station is placed.
         """
         self.observer = Observer(name=name.replace('_', ' '), location=location)
         self._codename = codename
@@ -36,6 +43,18 @@ class Station(object):
             self._min_elev = min_elevation*u.deg
         else:
             self._min_elev = min_elevation
+
+        if fullname is None:
+            self._fullname = name
+        else:
+            self._fullname = fullname
+
+        if all_networks is None:
+            self._all_networks = network
+        else:
+            self._all_networks = all_networks
+
+        self._country = country
 
 
     @property
@@ -51,10 +70,24 @@ class Station(object):
         return self._codename
 
     @property
+    def fullname(self):
+        return self._fullname
+
+    @property
     def network(self):
         """Name of the network to which the station belongs.
         """
         return self._network
+
+    @property
+    def all_networks(self):
+        """Name of all networks to which the station belongs.
+        """
+        return self._all_networks
+
+    @property
+    def country(self):
+        return self._country
 
     @property
     def location(self):
@@ -133,10 +166,10 @@ class Station(object):
 
 class SelectedStation(Station):
     def __init__(self, name, codename, network, location, freqs_sefds, min_elevation=20*u.deg,
-                selected=True):
+                 fullname=None, all_networks=None, country='', selected=True):
         self._selected = selected
         super().__init__(name, codename, network, location, freqs_sefds,
-                                            min_elevation=min_elevation)
+                         min_elevation, fullname, all_networks, country)
 
     @property
     def selected(self):

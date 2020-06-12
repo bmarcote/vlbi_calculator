@@ -16,6 +16,11 @@ In the case of ALMA we consider the participation of all 37 telescopes that can 
 
 
 
+#### Brief summary from all antennas
+
+A brief summary of all antennas can be shown in the following. Note that all images have been obtained from [Wikimedia Commons](https://commons.wikimedia.org/wiki/Main_Page).
+
+
 
 
 

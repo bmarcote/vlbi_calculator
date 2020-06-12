@@ -39,13 +39,17 @@ Layout:
 Station
     - observer : Observer
     - name : str
+	- fullname : str
+	- country : str
+	- all_networks : str
     - codename : str
     - network : str
     - location : EarthLocation
     - bands : list
     - sefds : dict
     - min_elevation
-    + __init__(name, codename, location, freqs_sefds, min_elevation=20)
+    + __init__(name, codename, location, freqs_sefds, min_elevation=20, fullname=None,
+all_networks=None, country=None)
     + elevation(obs_times, target) --> ndarray
     + is_visible(obs_times, target) --> ndarray of bool?
     + has_band(band) --> bool

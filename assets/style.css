@@ -3563,6 +3563,53 @@ img[alt=equation2] {
     margin-bottom: 1rem;
 }
 
+
+
+.card.card-antenna {
+    background-color: white !important;
+    min-width: 12rem;
+    max-width: 12rem;
+    font-size: 0.8rem;
+    border: 1px solid #a01d26 !important;
+    /* text-align: left; */
+    /* text-color: #a01d26; */
+    /* border: none; */
+    /* outline: none; */
+    /* border: 1px solid #CCCCCC; */
+    margin: 8px;
+}
+
+.card.card-antenna .card-img {
+    min-height: 40%;
+    height: 40%;
+    min-width: 100%;
+    overflow: hidden;
+}
+.card.card-antenna .card-title {
+    font-size: 1rem;
+    margin-bottom: 0.3rem;
+}
+
+.card.card-antenna .card-title2 {
+    font-size: 0.9rem;
+}
+
+.card.card-antenna .card-subtitle {
+    color: #CCCCCC;
+    font-size: 0.8rem;
+    margin-bottom: 0.5rem;
+}
+
+.card.card-antenna .card-body {
+    padding: 0.9rem;
+}
+
+.card.card-antenna .card-body p {
+    margin-top: 0px;
+    margin-bottom: 0px;
+}
+
+
 /* .accordion button:after { */
 /*   content: '\02795'; /* Unicode character for "plus" sign (+) */ */
 /*   font-size: 13px; */

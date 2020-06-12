@@ -55,7 +55,8 @@ current_directory = path.dirname(path.realpath(__file__))
 # iers.IERS.iers_table = iers.IERS_A.open(iers.IERS_A_URL)
 # iers.Conf.iers_auto_url.set('ftp://cddis.gsfc.nasa.gov/pub/products/iers/finals2000A.all')
 
-all_antennas = fx.get_stations_from_file(f"{current_directory}/data/station_location.txt")
+# all_antennas = fx.get_stations_from_file(f"{current_directory}/data/station_location.txt")
+all_antennas = fx.get_stations_from_configfile(f"{current_directory}/data/stations_catalog.inp")
 sorted_networks = {'EVN': 'EVN: European VLBI Network', 'eMERLIN': 'eMERLIN (out-stations)',
                    'VLBA': 'VLBA: Very Long Baseline Array',
                    'LBA': 'LBA: Australian Long Baseline Array',
@@ -85,8 +86,8 @@ for a_array in default_arrays:
         assert a_station in all_antennas.keys()
 
 doc_files = {'About this tool': '/doc/doc-contact.md',
-             'Technical background': '/doc/doc-estimations.md',
-             'About the antennas': '/doc/doc-antennas.md'}
+             'About the antennas': '/doc/doc-antennas.md',
+             'Technical background': '/doc/doc-estimations.md'}
 
 # Initial values
 target_source = observation.Source('1h2m3s +50d40m30s', 'Source')
@@ -128,6 +129,34 @@ def tooltip(message, idname, trigger='?', placement='right', **kwargs):
                         # className='tooltip-class', #innerClassName='tooltip-class-inner',
                         **kwargs)]
 
+def antenna_card(station):
+    """Generates a card showing the basic information for the given station
+    """
+    s = lambda st : st[::-1].replace(' ,',' dna ',1)[::-1]
+    card = dbc.Card([
+        dbc.CardImg(src=app.get_asset_url(f"ant-{station.name.replace(' ','_').lower()}.jpg"),
+                    top=True, className='card-img'),
+        dbc.CardBody([
+            html.H4(station.name, className='card-title'),
+            html.H6(station.fullname if station.fullname != station.name else '',
+                    className='card-title2'),
+            html.H6(station.country, className='card-subtitle'),
+            # html.P(f"&#127462; Participates in {station.all_networks}.\n"
+            dcc.Markdown(f"Listed for the {s(station.all_networks)}.\n" if \
+                          station.all_networks != '' else '', className='card-text'),
+            dcc.Markdown("Can observe at "
+                         f"{', '.join([i.replace('cm', '') for i in station.bands])} cm.",
+                         className='card-text')
+            ])
+        ], className='card-antenna')
+    return card
+
+def antenna_cards():
+    cards = dbc.Row([antenna_card(s) for s in all_antennas],
+            className='row justify-content-center')
+    return cards
+
+
 
 def create_accordion_card(title, text, id, is_open=True):
     """Given a title (header) and a text (which can be either text, a dcc/html object),
@@ -153,9 +182,14 @@ def get_doc_text():
                 i0 = parsed_text.index('{src:')
                 i1 = i0 + parsed_text[i0:].index('}')
                 filename = parsed_text[i0+5:i1]
-                parsed_text = parsed_text.replace( parsed_text[i0:i1+1], app.get_asset_url(filename) )
+                parsed_text = parsed_text.replace( parsed_text[i0:i1+1],
+                                                   app.get_asset_url(filename) )
 
-            temp += [create_accordion_card(a_topic, dcc.Markdown(parsed_text), id=str(i))]
+            if a_topic == 'About the antennas':
+                temp += [create_accordion_card(a_topic,
+                    [dcc.Markdown(parsed_text), antenna_cards()], id=str(i))]
+            else:
+                temp += [create_accordion_card(a_topic, dcc.Markdown(parsed_text), id=str(i))]
 
     return html.Div(temp, className='col-12 accordion')
 

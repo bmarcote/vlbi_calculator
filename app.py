@@ -441,7 +441,8 @@ app.layout = html.Div([
                     html.Div(className='col-md-8', children=get_doc_text())
                 ])
             ])
-        ])
+        ]),
+    html.Div(className='container-fluid', children=[html.Br(), html.Br()])
     ])
 ])
 

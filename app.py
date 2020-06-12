@@ -85,8 +85,8 @@ for a_array in default_arrays:
         assert a_station in all_antennas.keys()
 
 doc_files = {'About this tool': '/doc/doc-contact.md',
-             'About the antennas': '/doc/doc-antennas.md',
-             'Technical background': '/doc/doc-estimations.md'}
+             'Technical background': '/doc/doc-estimations.md',
+             'About the antennas': '/doc/doc-antennas.md'}
 
 # Initial values
 target_source = observation.Source('1h2m3s +50d40m30s', 'Source')

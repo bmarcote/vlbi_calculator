@@ -7,7 +7,7 @@ VLBI observations are typically limited by the data rate: the amount of data tha
 
 The data rate for a given station is determined as
 ![equation2]({src:eq-datarate.png})
-where _&#916;&#957;_ is the total observed bandwidth, _Np_ is the number of recorded polarizations (one or two), _N<sub>b</sub>_ is the number of bits used to sample the data (VLBI observations typically record at 2-bit sampling), and the last 2 is related to the Nyquist sampling.
+where _&#916;&#957;_ is the total observed bandwidth, _Np_ is the number of recorded polarizations (one or two), _Nb_ is the number of bits used to sample the data (VLBI observations typically record at 2-bit sampling), and the last 2 is related to the Nyquist sampling.
 
 
 

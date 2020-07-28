@@ -45,6 +45,7 @@ from src import freqsetups as fs
 from src import stations
 from src import functions as fx
 from src import observation
+from src import graphical_elements as ge
 
 
 current_directory = path.dirname(path.realpath(__file__))
@@ -64,12 +65,12 @@ all_antennas = fx.get_stations_from_configfile(f"{current_directory}/data/statio
 sorted_networks = {'EVN': 'EVN: European VLBI Network', 'eMERLIN': 'eMERLIN (out-stations)',
                    'VLBA': 'VLBA: Very Long Baseline Array',
                    'LBA': 'LBA: Australian Long Baseline Array',
-                   'KVN': 'Korean VLBI Network',
+                   'KVN': 'KVN: Korean VLBI Network',
                    'Other': 'Other antennas'}
 default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6', 'Tr',
                           'Ys', 'Wb', 'Bd', 'Sv', 'Zc', 'Ir'],
           'e-EVN': ['Ef', 'Hh', 'Ir', 'Jb2', 'Mc', 'Nt', 'On', 'T6', 'Tr', 'Ys', 'Wb',
-                    'Bd', 'Sv', 'Zc', 'Ir', 'Sr', 'Ur'],
+                    'Bd', 'Sv', 'Zc', 'Ir', 'Sr', 'Ur', 'Cm', 'Kn', 'Pi', 'Da', 'De'],
           'eMERLIN': ['Cm', 'Kn', 'Pi', 'Da', 'De', 'Jb2'],
           'LBA': ['ATCA', 'Pa', 'Mo', 'Ho', 'Cd', 'Td', 'Ww'],
           'VLBA': ['Br', 'Fd', 'Hn', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
@@ -94,10 +95,34 @@ doc_files = {'About this tool': '/doc/doc-contact.md',
              'Technical background': '/doc/doc-estimations.md'}
 
 # Initial values
-target_source = observation.Source('1h2m3s +50d40m30s', 'Source')
+target_source = observation.Source('10h2m3s +50d40m30s', 'Source')
 # obs_times = Time('1967-04-17 10:00') + np.arange(0, 600, 15)*u.min
 selected_band = '18cm'
 
+
+
+obs = observation.Observation(target=target_source)
+obs.times = Time('2020-06-15 20:00', scale='utc') + np.arange(0, 1200, 30)*u.min
+obs.band = selected_band
+obs.datarate = 1024
+obs.subbands = 8
+obs.channels = 32
+obs.polarizations = 2
+obs.inttime = 2
+
+def get_selected_antennas(list_of_selected_antennas):
+    """Given a list of antenna codenames, it returns a Stations object containing
+    all given antennas.
+    """
+    selected_antennas = stations.Stations('Observation', [])
+
+    for ant in list_of_selected_antennas:
+        selected_antennas.add(all_antennas[ant])
+
+    return selected_antennas
+
+evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc']
+obs.stations = get_selected_antennas(evn6)
 
 
 
@@ -123,54 +148,6 @@ server = app.server
 
 # app.css.append_css({"external_url": "https://codepen.io/chriddyp/pen/brPBPO.css"})
 
-def tooltip(message, idname, trigger='?', placement='right', **kwargs):
-    """Defines a tooltip (popover) that will be shown in the rendered page.
-    It will place a <sup>`trigger`</sup> in the page within a span tag.
-    Returns the list with all html elements.
-    """
-    return [html.Span(children=html.Sup(trigger, className='popover-link'), id=idname),
-            dbc.Tooltip(message, target=idname, placement=placement,
-                        # className='tooltip-class', #innerClassName='tooltip-class-inner',
-                        **kwargs)]
-
-def antenna_card(station):
-    """Generates a card showing the basic information for the given station
-    """
-    s = lambda st : st[::-1].replace(' ,',' dna ',1)[::-1]
-    card = dbc.Card([
-        dbc.CardImg(src=app.get_asset_url(f"ant-{station.name.replace(' ','_').lower()}.jpg"),
-                    top=True, className='card-img'),
-        dbc.CardBody([
-            html.H4(station.name, className='card-title'),
-            html.H6(station.fullname if station.fullname != station.name else '',
-                    className='card-title2'),
-            html.H6(station.country, className='card-subtitle'),
-            # html.P(f"&#127462; Participates in {station.all_networks}.\n"
-            dcc.Markdown(f"Listed for the {s(station.all_networks)}.\n" if \
-                          station.all_networks != '' else '', className='card-text'),
-            dcc.Markdown("Can observe at "
-                         f"{', '.join([i.replace('cm', '') for i in station.bands])} cm.",
-                         className='card-text')
-            ])
-        ], className='card-antenna')
-    return card
-
-def antenna_cards():
-    cards = dbc.Row([antenna_card(s) for s in all_antennas],
-            className='row justify-content-center')
-    return cards
-
-
-
-def create_accordion_card(title, text, id, is_open=True):
-    """Given a title (header) and a text (which can be either text, a dcc/html object),
-    it will return a dbc.Card object which is one input for an accordion.
-    """
-    card_header = dbc.CardHeader(html.H2(dbc.Button(title, color='link',
-                                 id=f"group-{id}-toggle", className='')), className='accordion-header')
-    card_body = dbc.Collapse(dbc.CardBody(text), id=f"collapse-{id}", is_open=is_open,
-                            className='accordion-collapse')
-    return dbc.Card([card_header, card_body], className='accordion-card')
 
 
 def get_doc_text():
@@ -190,10 +167,11 @@ def get_doc_text():
                                                    app.get_asset_url(filename) )
 
             if a_topic == 'About the antennas':
-                temp += [create_accordion_card(a_topic,
-                    [dcc.Markdown(parsed_text), antenna_cards()], id=str(i))]
+                temp += [ge.create_accordion_card(a_topic,
+                   [dcc.Markdown(parsed_text), ge.antenna_cards(app, all_antennas)], id=str(i))]
             else:
-                temp += [create_accordion_card(a_topic, dcc.Markdown(parsed_text), id=str(i))]
+                temp += [ge.create_accordion_card(a_topic, dcc.Markdown(parsed_text),
+                         id=str(i))]
 
     return html.Div(temp, className='col-12 accordion')
 
@@ -216,6 +194,60 @@ def toggle_accordion(*args):
     return defaults
 
 
+def error_text(an_error):
+    """Message written in a modal error window.
+    """
+    return f"An error occured.\n{an_error}.\nPlease report to marcote@jive.eu."
+
+
+
+def convert_colon_coord(colon_coord):
+    """Converts some coordinates given in a str format 'HH:MM:SS DD:MM:SS' to
+    'HHhMMmSSs DDdMMdSSs'.
+    If ':' are not present in colon_coord, then it returns the same str.
+    """
+    if ':' not in colon_coord:
+        return colon_coord
+    for l in ('h', 'm', 'd', 'm'):
+        colon_coord = colon_coord.replace(':', l, 1)
+
+    return colon_coord.replace(' ', 's ')+'s'
+
+
+
+
+
+def alert_message(message, title="Warning!"):
+    """Produces an alert-warning message.
+    message can be either a string or a list with different string/dash components.
+    """
+    if type(message) == str:
+        return [html.Br(), \
+                dbc.Alert([html.H4(title, className='alert-heading'), message], \
+                        color='warning', dismissable=True)]
+    else:
+        return [html.Br(), \
+                dbc.Alert([html.H4(title, className='alert-heading'), *message], \
+                        color='warning', dismissable=True)]
+
+
+def update_sensitivity(obs):
+    """Given the observation, it sets the text about all properties of the observation.
+    """
+    cards = []
+    # The time card
+    cards += ge.summary_card_times(app, obs)
+    cards += ge.summary_card_antennas(app, obs)
+    cards += ge.summary_card_beam(app, obs)
+    cards += ge.summary_card_frequency(app, obs)
+    cards += ge.summary_card_rms(app, obs)
+    cards += ge.summary_card_fov(app, obs)
+
+    # return [html.Div(className='card-columns col-12 justify-content-center', children=cards)]
+    return [html.Div(className='card-deck col-12 justify-content-center', children=cards)]
+
+
+
 
 #####################  This is the webpage layout
 app.layout = html.Div([
@@ -235,7 +267,7 @@ app.layout = html.Div([
                      alt='European VLBI Network (EVN)',
                      className="d-inline-block align-top"),
         ]),
-        html.H2('EVN Source Visibility', className='d-inline-block align-middle mx-auto'),
+        html.H2('EVN Observation Planner', className='d-inline-block align-middle mx-auto'),
         html.A(className='d-inline-block ml-auto pull-right', href="https://www.jive.eu", children=[
             html.Img(src=app.get_asset_url("logo_jive.png"), height='70px',
                      alt='Joinst Institute for VLBI ERIC (JIVE)')
@@ -256,15 +288,8 @@ app.layout = html.Div([
                 html.Div(className='col-sm-3', style={'max-width': '300px','float': 'left',
                                                       'padding': '2%'}, children=[
                     html.Div(className='form-group', children=[
-                        html.Label('Observing Band'),
-                        *tooltip(idname='popover-band', message="First select the observing band. Antenna list will be updated and only the ones that can observe at this band will be enable."),
-                        dcc.Dropdown(id='band', persistence=True,
-                                 options=[{'label': fs.bands[b], 'value': b} for b \
-                                in fs.bands], value='18cm'),
-                    ]),
-                    html.Div(className='form-group', children=[
                         html.Label('Select default VLBI Network(s)'),
-                        *tooltip(idname='popover-network', message="Automatically selects the default antennas for the selected VLBI network(s)."),
+                        *ge.tooltip(idname='popover-network', message="Automatically selects the default antennas for the selected VLBI network(s)."),
                         dcc.Dropdown(id='array', options=[{'label': n, 'value': n} \
                                 for n in default_arrays if n != 'e-EVN'], value=['EVN'],
                                 multi=True),
@@ -273,7 +298,7 @@ app.layout = html.Div([
                         dcc.Checklist(id='e-EVN', className='checkbox', persistence=True,
                                       options=[{'label': ' e-EVN (real-time) mode',
                                                 'value': 'e-EVN'}], value=[]),
-                        *tooltip(idname='popover-eevn',
+                        *ge.tooltip(idname='popover-eevn',
                             message="Only available for the EVN: real-time correlation mode.")
                     ]),
                     html.Div(className='form-group', children=[
@@ -285,6 +310,18 @@ app.layout = html.Div([
                         html.Small(id='error_starttime', style={'color': 'red'},
                                    className='form-text text-muted')
                     ]),
+                    ######################
+                    # html.Div(className='form-group', children=[
+                    #     html.Label('Start of observation (UTC)'),
+                    #     dcc.DatePickerSingle(id='starttime2', min_date_allowed=dt(1900, 1, 1),
+                    #                          max_date_allowed=dt(2100, 1, 1),
+                    #                          display_format='D MMM YYYY (DDD)',
+                    #                          placeholder='Start date',
+                    #                          first_day_of_week=1,
+                    #                          initial_visible_month=dt.today(),
+                    #                          persistence=True,
+                    #                          className='form-picker')
+                    # ]),
                     html.Div(className='form-group', children=[
                         html.Label('End of observation (UTC)'),
                         # dcc.Input(id='endtime', value='DD/MM/YYYY HH:MM', type='text',
@@ -296,7 +333,7 @@ app.layout = html.Div([
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Target Source Coordinates'),
-                        *tooltip(idname='popover-target',
+                        *ge.tooltip(idname='popover-target',
                                  message="J2000 coordinates are assumed."),
                         # dcc.Input(id='source', value='hh:mm:ss dd:mm:ss', type='text',
                         dcc.Input(id='source', value='12:29:06.7 +02:03:08.6', type='text',
@@ -308,7 +345,7 @@ app.layout = html.Div([
                     html.Div(className='form-group', children=[
                         html.Label(id='onsourcetime-label',
                                    children='% of on-target time'),
-                        *tooltip(idname='popover-ontarget',
+                        *ge.tooltip(idname='popover-ontarget',
                                  message="Assumes that you will only spend this amount of the total observing time on the given target source. It affects the expected sensitivity."),
                         dcc.Slider(id='onsourcetime', min=20, max=100, step=5, value=75,
                                    marks= {i: str(i) for i in range(20, 101, 10)},
@@ -316,7 +353,7 @@ app.layout = html.Div([
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Datarate per station (in Mbps)'),
-                        *tooltip(idname='popover-datarate',
+                        *ge.tooltip(idname='popover-datarate',
                                  message=["Expected datarate for each station, assuming all of them run at the same rate.",
                                      html.Ul([
                                         html.Li("The EVN can run typically at up to 2 Gbps (1 Gbps at L band), although a few antennas may observe at lower datarates."),
@@ -329,7 +366,7 @@ app.layout = html.Div([
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Number of subbands'),
-                        *tooltip(idname='popover-subbands',
+                        *ge.tooltip(idname='popover-subbands',
                                  message="In how many subbands the total band will be split during correlation."),
                         dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
                                      options=[{'label': str(sb), 'value': sb} \
@@ -337,7 +374,7 @@ app.layout = html.Div([
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Number of spectral channels'),
-                        *tooltip(idname='popover-channels',
+                        *ge.tooltip(idname='popover-channels',
                                  message="How many channels per subband will be produced after correlation."),
                             dcc.Dropdown(id='channels', placeholder="Select no. channels...",
                                          options=[{'label': str(ch), 'value': ch} \
@@ -345,7 +382,7 @@ app.layout = html.Div([
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Number of polarizations'),
-                        *tooltip(idname='popover-pols',
+                        *ge.tooltip(idname='popover-pols',
                             message="Number of polarizations to correlate. Note that VLBI observes circular polarizations. Full polarization implies the four stokes: RR, LL, RL, LR; while dual polarization implies RR and LL only."),
                         dcc.Dropdown(id='pols', placeholder="Select polarizations...",
                                      options=[{'label': fs.polarizations[p], 'value': p} \
@@ -353,7 +390,7 @@ app.layout = html.Div([
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Integration time (s)'),
-                        *tooltip(idname='popover-inttime',
+                        *ge.tooltip(idname='popover-inttime',
                             message="Integration time to compute each visibility. Note that for continuum observations values of 1-2 seconds are typical."),
                         dcc.Dropdown(id='inttime', placeholder="Select integration time...",
                                      options=[{'label': fs.inttimes[it], 'value': it} \
@@ -362,18 +399,46 @@ app.layout = html.Div([
                 ]),
                 # html.Div(style={'margin-top': '20px'}, children=[
                 html.Div(className='col-9', children=[
+                    html.Div(id='first-advise', children=[
+                        html.P(["This is the ", html.B("EVN Observation Planner"),
+                               ". First select the "
+                               "band (frequency/wavelength) at which you want to observe, "
+                               "then customize your observation setup (left options and "
+                               "select wished antennas), and finally "
+                               "run ", html.B("'compute observation'"),
+                               ". You will get a detailed "
+                               "summary of the planned observation (like when the source "
+                               "is visible, expected rms noise level, etc.) in the different "
+                               "tabs."]),
+                    ], style={'margin-top': '2rem', 'margin-bottom': '2rem'}),
+                    html.Div(className='col-9 form-group row align-items-end', children=[
+                        html.Div(className='col-md-6', children=[
+                            html.Label('First select your observing Band'),
+                            *ge.tooltip(idname='popover-band',
+                                    message="First select at which frequency/wavelength "
+                                            "you want to observe. This will update the "
+                                            "antenna list showing the ones that can observe "
+                                            "at that given frequency."),
+                            dcc.Dropdown(id='band', persistence=True,
+                                 options=[{'label': fs.bands[b], 'value': b} for b \
+                                # in fs.bands], value='18cm'),
+                                in fs.bands], placeholder='Select observing band...')
+                        ]),
+                        html.Div(className='col-sm-3', children=[
+                            html.Button('Compute Observation', id='antenna-selection-button',
+                                        className='btn btn-primary btn-lg'),
+                        ])
+                    ]),
                     html.Div(className='col-9 text-center justify-content-center', children=[
-                        html.Button('Compute Observation', id='antenna-selection-button',
-                                className='btn btn-primary btn-lg'),
                         dcc.Loading(id="loading", children=[html.Div(id="loading-output")],
                                     type="dot")
                     ]),
                     html.Div(id='antennas-div', className='container', children=[
-                    # List with all antennas
                         html.Div(className='antcheck', children=[html.Br(), html.Br(),
-                            html.Label(html.H4(f"{sorted_networks[an_array]}")),
+                            html.Label(html.H4(f"{sorted_networks[an_array]}"),
+                                       style={'width': '100%'}),
                             html.Br(),
-                            dcc.Checklist(id=f"list_stations_{an_array}",
+                            dbc.Checklist(id=f"list_stations_{an_array}", inline=True,
                                 className='antcheck',
                                 labelClassName='form-check-label',
                                 inputClassName='form-check-input',
@@ -396,10 +461,7 @@ app.layout = html.Div([
                     #              children="Set the observation first.")
                     html.Div(className='col-10 justify-content-center',
                              id='sensitivity-output',
-                             children=[html.Div(className='col-6 justify-content-center',
-                                children=[html.Br(),
-                                html.P("You need to set the observation and click in the 'Compute Observation' buttom first (go to the previous tab).")])
-                    ])
+                             children=update_sensitivity(obs))
                 ])
             ]),
             dcc.Tab(label='Elevations', className='custom-tab',
@@ -426,7 +488,7 @@ app.layout = html.Div([
                     ],className='tex2jax_ignore')
                 ])])
             ]),
-            dcc.Tab(label='Imaging', className='custom-tab',
+            dcc.Tab(label='Coverage', className='custom-tab',
                     selected_className='custom-tab--selected', children=[
                 #  Images
                 html.Div(className='row justify-content-center', children=[
@@ -453,158 +515,6 @@ app.layout = html.Div([
 
 
 
-def error_text(an_error):
-    """Message written in a modal error window.
-    """
-    return f"An error occured.\n{an_error}.\nPlease report to marcote@jive.eu."
-
-
-
-def convert_colon_coord(colon_coord):
-    """Converts some coordinates given in a str format 'HH:MM:SS DD:MM:SS' to
-    'HHhMMmSSs DDdMMdSSs'.
-    If ':' are not present in colon_coord, then it returns the same str.
-    """
-    if ':' not in colon_coord:
-        return colon_coord
-    for l in ('h', 'm', 'd', 'm'):
-        colon_coord = colon_coord.replace(':', l, 1)
-
-    return colon_coord.replace(' ', 's ')+'s'
-
-
-def get_selected_antennas(list_of_selected_antennas):
-    """Given a list of antenna codenames, it returns a Stations object containing
-    all given antennas.
-    """
-    selected_antennas = stations.Stations('Observation', [])
-
-    for ant in list_of_selected_antennas:
-        selected_antennas.add(all_antennas[ant])
-
-    return selected_antennas
-
-
-def optimal_units(value, units):
-    """Given a value (with some units), returns the unit choice from all
-    `units` possibilities that better suits the value.
-    It is meant for the following use:
-    Given 0.02*u.Jy and units = [u.kJy, u.Jy, u.mJy, u.uJy], it will
-    return 20*u.mJy.
-    units should have a decreasing-scale of units, and all of them
-    compatible with the units in `value`.
-    """
-    for a_unit in units:
-        if 0.8 < value.to(a_unit).value <= 800:
-            return value.to(a_unit)
-
-    # Value too high or too low
-    if value.to(units[0]).value > 1:
-        return value.to(units[0])
-
-    return value.to(units[-1])
-
-
-def create_sensitivity_card(title, message):
-    """Defines one of the cards that are shown in the Sensitivity tab. Each tab
-    shows a title `title` and a message `message`.
-    If message is a list (of strings), it is assumed as different paragraphs.
-    It returns the HTML code of the card.
-    """
-    ps = []
-    if type(message) is list:
-        for a_msg in message:
-            ps.append(html.P(className='card-text', children=a_msg))
-    else:
-        ps = [html.P(className='card-text', children=message)]
-
-    # return [html.Div(className='card', style={'min-width': '15rem', 'max-width': '25rem'}, children=[
-    return [html.Div(className='card m-3', children=[
-            html.Div(className='card-body', children=[
-                html.H5(className='card-title', children=title)] + ps)])
-        ]
-
-
-def alert_message(message, title="Warning!"):
-    """Produces an alert-warning message.
-    message can be either a string or a list with different string/dash components.
-    """
-    if type(message) == str:
-        return [html.Br(), \
-                dbc.Alert([html.H4(title, className='alert-heading'), message], \
-                        color='warning', dismissable=True)]
-    else:
-        return [html.Br(), \
-                dbc.Alert([html.H4(title, className='alert-heading'), *message], \
-                        color='warning', dismissable=True)]
-
-
-def update_sensitivity(obs):
-    """Given the observation, it sets the text about all properties of the observation.
-    """
-    pol_dict = {1: 'single', 2: 'dual', 4: 'full'}
-    rms = optimal_units(obs.thermal_noise(), [u.MJy, u.kJy, u.Jy, u.mJy, u.uJy])
-    rms_time = optimal_units(obs.thermal_noise()/np.sqrt(obs.inttime/obs.duration),
-                             [u.MJy, u.kJy, u.Jy, u.mJy, u.uJy])
-    rms_channel = optimal_units(rms*np.sqrt(obs.subbands*obs.channels),
-                                [u.MJy, u.kJy, u.Jy, u.mJy, u.uJy])
-
-    ants_up = obs.is_visible()
-    ant_no_obs = []
-    for an_ant in ants_up:
-        if len(ants_up[an_ant][0]) == 0:
-            ant_no_obs.append(an_ant)
-
-    ant_text = ', '.join([ant for ant in obs.stations.keys() if ant not in ant_no_obs]) + '.'
-
-    cards = []
-    # The time card
-    temp_msg = [f"{fx.print_obs_times(obs)}."]
-    temp_msg += [f"Observing for {optimal_units(obs.duration, [u.h, u.min, u.s, u.ms]):.3n} in total, with {optimal_units(obs.ontarget_time, [u.h, u.min, u.s, u.ms]):.3n} on target."]
-    temp_msg += [f"With a time integration of {optimal_units(obs.inttime, [u.s,u.ms,u.us]):.2n} the expected FITS file size is {optimal_units(obs.datasize(), [u.TB, u.GB, u.MB, u.kB]):.3n}."]
-    cards += create_sensitivity_card('Observing Time', temp_msg)
-    # Antennas
-    longest_bl = obs.longest_baseline()[1]
-    # Using dummy units to allow the conversion
-    longest_bl_lambda = longest_bl/obs.wavelength
-    longest_bl_lambda = optimal_units(longest_bl_lambda*u.m, [u.Gm, u.Mm, u.km])
-    temp_msg = [f"{len(ants_up)-len(ant_no_obs)} participating antennas: {ant_text}"]
-    if len(ant_no_obs) > 0:
-        temp_msg += [html.P(className='text-danger', children=f"Note that {', '.join(ant_no_obs)} cannot observe the source.")]
-
-    temp_msg += [f"The longest (projected) baseline is {optimal_units(longest_bl, [u.km, u.m]):.5n} ({longest_bl_lambda.value:.3n} {longest_bl_lambda.unit.name[0]}lambda)."]
-    synthbeam = obs.synthesized_beam()
-    synthbeam_units = optimal_units(synthbeam['bmaj'], [u.arcsec, u.mas, u.uas]).unit
-    temp_msg += [html.P([f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.2n} x {synthbeam['bmin'].to(synthbeam_units):.2n}", html.Sup("2"), \
-            f", PA = {synthbeam['pa']:.3n}."])]
-    cards += create_sensitivity_card('Antennas', temp_msg)
-
-    # Frequency
-    temp_msg = [f"Observing at a central frequency of {optimal_units(obs.frequency, [u.GHz, u.MHz]):.3n} ({optimal_units(obs.wavelength, [u.m, u.cm, u.mm]):.2n})."]
-    temp_msg += [f"The total bandwidth of {optimal_units(obs.bandwidth, [u.GHz, u.MHz, u.kHz]):.3n} will be divided into {obs.subbands} subbands of {optimal_units(obs.bandwidth/obs.subbands, [u.GHz, u.MHz, u.kHz]):.3n} each, with {obs.channels} channels ({optimal_units(obs.bandwidth/(obs.subbands*obs.channels), [u.GHz, u.MHz, u.kHz, u.Hz]):.3n} wide)."]
-    temp_msg += [f"Recording {pol_dict[obs.polarizations]} circular polarization."]
-    cards += create_sensitivity_card('Frequency Setup', temp_msg)
-
-    # RMS
-    temp_msg = [f"Considering the sensitivities of the antennas, the estimated thermal noise is {rms:.3n}/beam."]
-    temp_msg += [f"This would imply a rms of {rms_channel:.3n}/beam per spectral channel, or approx. {rms_time:.3n}/beam per time integration ({optimal_units(obs.inttime, [u.s,u.ms,u.us]):.3n})."]
-    cards += create_sensitivity_card('Sensitivity', temp_msg)
-
-    # resolution and FITS files
-    # temp_msg = [f""]
-    # cards += create_sensitivity_card('Resolution')
-
-    # FoV smearing
-    shortest_bl = obs.shortest_baseline()[1]
-    largest_ang_scales = ((2.063e8*u.mas)*(obs.wavelength/shortest_bl)).to(u.mas)
-    temp_msg = [f"The Field of View would be limited by time smearing to {optimal_units(obs.time_smearing(), [u.arcmin, u.arcsec]):.3n} and by frequency smearing to {optimal_units(obs.bandwidth_smearing(), [u.arcmin, u.arcsec]):.3n} (for a 10% loss)."]
-    temp_msg += [f"Considering the shortest baseline in the array ({optimal_units(shortest_bl, [u.km, u.m]):.5n}), you will filter out emission on angular scales larger than {optimal_units(largest_ang_scales, [u.arcmin, u.arcsec, u.mas]):.3n}."]
-    cards += create_sensitivity_card('FoV limitations', temp_msg)
-
-    return [html.Div(className='card-deck col-12 justify-content-center', children=cards)]
-
-
-
 
 
 @app.callback(Output('onsourcetime-label', 'children'),
@@ -628,14 +538,17 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
         return [html.Div([html.Br(), html.Br(),
                 html.Label(html.H4(f"{sorted_networks[an_array]}")),
                 html.Br(),
-                dcc.Checklist(id=f"list_stations_{an_array}",
+                dbc.Checklist(id=f"list_stations_{an_array}", inline=True,
+                    className='antcheck',
+                    labelClassName='form-check-label',
+                    inputClassName='form-check-input',
                     options=[{'label': s.name, 'value': s.codename,
-                    'disabled': (not s.has_band(selected_band)) or \
-                        (not s.codename in default_arrays['e-EVN'])}
-                    for s in all_antennas if s.network == an_array],
+                        'disabled': (not s.has_band(selected_band)) or \
+                            (not s.codename in default_arrays['e-EVN'])}
+                        for s in all_antennas if s.network == an_array],
                     value=selected_antennas if an_array=='EVN' else [],
-                    className='antcheck', labelClassName='form-check-label',
-                    inputClassName='form-check-input')]) for an_array in sorted_networks]
+                    )]) for an_array in sorted_networks
+                ]
     else:
         for an_array in selected_networks:
             selected_antennas += [ant for ant in default_arrays[an_array] \
@@ -644,14 +557,18 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
         return [html.Div([html.Br(), html.Br(),
                 html.Label(html.H4(f"{sorted_networks[an_array]}")),
                 html.Br(),
-                dcc.Checklist(id=f"list_stations_{an_array}",
+                dbc.Checklist(id=f"list_stations_{an_array}", inline=True,
+                    className='antcheck',
+                    labelClassName='form-check-label',
+                    inputClassName='form-check-input',
                     options=[{'label': s.name, 'value': s.codename,
-                    'disabled': not s.has_band(selected_band)}
-                    for s in all_antennas if s.network == an_array],
+                        'disabled': not s.has_band(selected_band)}
+                        for s in all_antennas if s.network == an_array],
                     value=[s.codename for s in all_antennas \
                             if (s.codename in selected_antennas) and (s.network == an_array)],
-                    className='antcheck', labelClassName='form-check-label',
-                    inputClassName='form-check-input')]) for an_array in sorted_networks]
+                    )]) for an_array in sorted_networks
+                ]
+
 
 
 @app.callback([Output('error_starttime', 'children'),

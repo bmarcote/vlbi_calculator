@@ -815,6 +815,26 @@ pre code {
     transition:border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out
 }
 
+.form-picker, .SingleDataPicker {
+    width: 100%;
+}
+
+.SingleDataPickerInput {
+    display: block;
+    width: 100%;
+    height: calc(1.5em + .75rem + 2px);
+    padding: .375rem .75rem;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #495057;
+    background-color: #fff;
+    background-clip: padding-box;
+    border: 1px solid #ced4da;
+    border-radius: .25rem;
+    transition:border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out
+}
+
 @media (prefers-reduced-motion: reduce) {
     .form-control {
         transition:none
@@ -1270,7 +1290,7 @@ textarea.form-control {
     user-select: none;
     background-color: transparent;
     border: 1px solid transparent;
-    padding: .375rem .75rem;
+    padding: .375rem .7rem;
     font-size: 1rem;
     line-height: 1.5;
     border-radius: .25rem;
@@ -3283,16 +3303,35 @@ input[type=checkbox]:disabled:after {
     margin-left: -0.1rem;
 }
 
+/* #band { */
+/*     background-color: #F0959B; */
+/* } */
+
 
 .antcheck label {
-    padding-left: 10pt;
-    padding-right: 10pt;
+    padding-left: 0pt;
+    padding-right: 2pt;
     width: 135pt;
 }
 
+/* input[type=checkbox]:disabled ~ .antcheck2 label { */
+.custom-control-input:disabled ~ .custom-control-label {
+    text-decoration: line-through;
+}
+
+.custom-control-input:checked ~ .custom-control-label {
+    color: green;
+}
+
+.custom-checkbox .custom-control-input:checked~.custom-control-label::before {
+    border: none;
+    background-color: green;
+}
+
+
 .card {
-    min-width: 19rem;
-    max-width: 19rem;
+    min-width: 21rem;
+    max-width: 21rem;
     border: 1px solid #CCCCCC;
     border-left: 5px solid #a01d26;
 }
@@ -3305,8 +3344,9 @@ input[type=checkbox]:disabled:after {
     color: #a01d26;
     background-color: #F0959B;
     border-color: #F0959B;
-    margin-top: 50px;
     width: 20rem;
+    height: 2.3rem;
+    padding: 0;
 }
 
 .btn-primary:hover {
@@ -3451,6 +3491,22 @@ input[type=checkbox]:disabled:after {
 .tooltip-class.bottom-left .tooltip-class-arrow {  top: 0;  right: 5px;  margin-top: -5px;  border-width: 0 5px 5px;  border-bottom-color: #a01d26;}
 .tooltip-class.bottom-right .tooltip-class-arrow {  top: 0;  left: 5px;  margin-top: -5px;  border-width: 0 5px 5px;  border-bottom-color: #a01d26;}
 
+.tooltip-card-inner {
+    border-color: 0 !important;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    background-color: transparent !important;
+}
+
+.arrow.tooltip-card-arrow {
+    color: transparent;
+    border: 0;
+    background-color: transparent !important;
+}
+
+
+
 .alert-warning {
     /* color:#07767a; */
     color: #856404;
@@ -3580,12 +3636,12 @@ img[alt=equation2] {
 }
 
 .card.card-antenna .card-img {
-	object-fit: cover;
-	width: 100%;
-	height: 40%;
+    object-fit: cover;
+    width: 100%;
+    height: 40%;
     overflow: hidden;
-	border-bottom-left-radius: 0;
-	border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
 }
 
 .card.card-antenna .card-title {
@@ -3610,6 +3666,65 @@ img[alt=equation2] {
 .card.card-antenna .card-body p {
     margin-top: 0px;
     margin-bottom: 0px;
+}
+
+.popover-link {
+    color: #a01d26;
+}
+
+.baseline-table {
+    align: center;
+    margin-bottom: -0.2rem;
+}
+
+.baseline-tr {
+    width: 100%;
+}
+
+.baseline-td-img {
+    vertical-align: middle;
+}
+
+.baseline-td-hr {
+    vertical-align: bottom;
+}
+
+.hr-baseline {
+    border: 2px solid #a01d26 !important;
+    border-radius: 4rem;
+}
+
+.col.col-baseline {
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
+    column-width: 31px !important;
+}
+
+.img-baseline {
+    margin-left: 0.4rem;
+    margin-right: 0.4rem;
+    padding-left: 0;
+    padding-right: 0;
+    vertical-align: baseline;
+}
+
+
+.fig-on-card {
+    width: 30rem;
+}
+
+.bandpass {
+    border: 3px solid #a01d26;
+    border-bottom: 0px solid #a01d26;
+    border-top-left-radius: 20%;
+    border-top-right-radius: 20%;
+    display: inline-block;
+    margin-right: -2px;
+    margin-left: -1px;
+    margin-bottom: 0;
+    margin-top: 1rem;
 }
 
 

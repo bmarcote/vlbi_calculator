@@ -32,12 +32,22 @@ obs.channels = 32
 obs.polarizations = 2
 obs.inttime = 2
 
+all_stations = fx.get_stations_from_configfile(f"data/stations_catalog.inp")
 
-all_stations = fx.get_stations_from_file()
-evn6 = fx.stations_with_band(all_stations, '6cm') # 19 ants
-evn6 = stations.Stations('EVN-6cm', [s for s in evn6 if s.network == 'EVN'])
-obs.stations = evn6
+def get_selected_antennas(list_of_selected_antennas):
+    """Given a list of antenna codenames, it returns a Stations object containing
+    all given antennas.
+    """
+    selected_antennas = stations.Stations('Observation', [])
+    for ant in list_of_selected_antennas:
+        selected_antennas.add(all_stations[ant])
 
+    return selected_antennas
+
+
+
+evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc']
+obs.stations = get_selected_antennas(evn6)
 
 
 elevs = obs.elevations()
@@ -79,7 +89,7 @@ def gst2t(t):
     offset = -obs.times.datetime[0].hour-obs.times.datetime[0].minute/60 + \
              obs.gstimes[0].hour
     return ((t - offset)/gst_t_slope) % 24
-    
+
 
 
 ax_gst = ax.secondary_xaxis("top", functions=(t2gst, gst2t))

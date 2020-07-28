@@ -173,7 +173,11 @@ def print_obs_times(obs, date_format='%d %b %Y'):
 
     """
     if obs.times[0].datetime.date() == obs.times[-1].datetime.date():
-        return "{} {}-{} UTC".format(obs.times[0].datetime.strftime(date_format),
+        return "{}\n{}-{} UTC".format(obs.times[0].datetime.strftime(date_format),
+                                    obs.times[0].datetime.strftime('%H:%M'),
+                                    obs.times[-1].datetime.strftime('%H:%M'))
+    elif (obs.times[-1] - obs.times[0]) < 24*u.h:
+        return "{}\n{}-{} UTC (+1d)".format(obs.times[0].datetime.strftime(date_format),
                                     obs.times[0].datetime.strftime('%H:%M'),
                                     obs.times[-1].datetime.strftime('%H:%M'))
     else:

@@ -12,6 +12,7 @@
     - sources.py
     - plots.py
     - functions.py
+    - graphical_elements.py
 - data/
     - antenna_positions.txt
     - antenna_sefd.txt
@@ -33,15 +34,33 @@ Layout:
     - pols
     - inttime
 
++ get_doc_text()
+
+
+
+### graphical_elements.py
+
++ tooltip(message, idname, trigger='?', placement='right', \*\*kwargs)
++ tooltip_card(a_card, idname, trigger='?', placement='right', \*\*kwargs)
++ create_accordion_card(title, text, id, is_open=True)
++ antenna_card(app, station)
++ antenna_cards(app, stations)
++ baseline_img(app, is_long=True)
+
+
+### summary_cards.py
+
+
+
 
 ### stations.py
 
 Station
     - observer : Observer
     - name : str
-	- fullname : str
-	- country : str
-	- all_networks : str
+    - fullname : str
+    - country : str
+    - all_networks : str
     - codename : str
     - network : str
     - location : EarthLocation
@@ -82,7 +101,7 @@ Observation
     - target : FixedTarget
     - times : Time
     - gstimes :  Longitude (hourangle)
-	- duration : Time
+    - duration : Time
     - band : str
     - wavelength : u.Quantity
     - frequency : u.Quantity
@@ -92,7 +111,7 @@ Observation
     - polarizations : int
     - inttime : u.Quantity
     - ontarget_fraction : float
-	- ontarget_time : Time
+    - ontarget_time : Time
     - bandwidth : u.Quantity
     - bitsampling : u.Quantity
     - stations : Stations
@@ -102,8 +121,8 @@ Observation
     + elevations() --> dict[codename]: list
     + altaz() --> dict[codename]: list
     + is_visible() --> dict[codename]: list
-	+ longest_baseline() --> (str, u.Quantity)
-	+ shortest_baseline() --> (str, u.Quantity)
+    + longest_baseline() --> (str, u.Quantity)
+    + shortest_baseline() --> (str, u.Quantity)
     + bandwidth_smearing() --> u.Quantity
     + time_smearing() --> u.Quantity
     + datasize() --> u.Quantity

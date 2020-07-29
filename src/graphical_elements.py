@@ -80,7 +80,9 @@ def antenna_card(app, station):
             html.H4(station.name, className='card-title'),
             html.H6(station.fullname if station.fullname != station.name else '',
                     className='card-title2'),
-            html.H6(station.country, className='card-subtitle'),
+            html.H6([html.Span(station.country),
+                     html.Span(station.diameter, style={'float': 'right'}),
+                    ], className='card-subtitle'),
             # html.P(f"&#127462; Participates in {station.all_networks}.\n"
             dcc.Markdown(f"Listed for the {s(station.all_networks)}.\n" if \
                           station.all_networks != '' else '', className='card-text'),

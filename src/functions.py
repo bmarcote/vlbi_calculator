@@ -101,6 +101,7 @@ def get_stations_from_configfile(filename='data/stations_catalog.inp'):
     network - main network to which it belongs to.
     possible_networks - all networks the station can participate in (including 'network')
     country - country where the station is located.
+    diameter - string with the diameter of the station.
     position = x, y, z (in meters). Geoposition of the station.
     min_elevation (in degrees) - minimum elevation the station can observe.
     SEFD_**  - SEFD of the station at the **cm band. If a given band is not present,
@@ -125,7 +126,7 @@ def get_stations_from_configfile(filename='data/stations_catalog.inp'):
         new_station = stations.SelectedStation(stationname, config[stationname]['code'],
                 config[stationname]['network'], a_loc, sefds, min_elev,
                 config[stationname]['station'], config[stationname]['possible_networks'],
-                config[stationname]['country'])
+                config[stationname]['country'], config[stationname]['diameter'])
         networks.add(new_station)
 
     return networks

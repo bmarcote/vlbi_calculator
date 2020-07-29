@@ -9,7 +9,7 @@ from astroplan import Observer
 class Station(object):
 
     def __init__(self, name, codename, network, location, freqs_sefds, min_elevation=20*u.deg,
-                 fullname=None, all_networks=None, country=''):
+                 fullname=None, all_networks=None, country='', diameter=''):
         """Initializes a station. The given name must be the name of the station that
         observes, with the typical 2-letter format used in the EVN (with exceptions).
 
@@ -55,6 +55,7 @@ class Station(object):
             self._all_networks = all_networks
 
         self._country = country
+        self._diameter = diameter
 
 
     @property
@@ -88,6 +89,10 @@ class Station(object):
     @property
     def country(self):
         return self._country
+
+    @property
+    def diameter(self):
+        return self._diameter
 
     @property
     def location(self):
@@ -166,10 +171,10 @@ class Station(object):
 
 class SelectedStation(Station):
     def __init__(self, name, codename, network, location, freqs_sefds, min_elevation=20*u.deg,
-                 fullname=None, all_networks=None, country='', selected=True):
+                 fullname=None, all_networks=None, country='', diameter='', selected=True):
         self._selected = selected
         super().__init__(name, codename, network, location, freqs_sefds,
-                         min_elevation, fullname, all_networks, country)
+                         min_elevation, fullname, all_networks, country, diameter)
 
     @property
     def selected(self):

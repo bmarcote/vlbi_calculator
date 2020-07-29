@@ -815,15 +815,76 @@ pre code {
     transition:border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out
 }
 
-.form-picker, .SingleDataPicker {
-    width: 100%;
+.form-picker {
+    display: inline-block;
+    width: 60%;
+    min-width: 120px;
+    height: calc(1.5em + .75rem + 2px);
+    padding: 0;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #495057;
+    background-color: #fff;
+    background-clip: padding-box;
+    border: none;
+    margin-right: 0;
+    margin-left: 0;
+    float: left;
 }
 
-.SingleDataPickerInput {
+.SingleDatePicker {;
+    width: 100%;
+    height: calc(1.5em + .75rem + 2px);
+    padding: 0;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #495057;
+    background-color: #fff;
+    background-clip: padding-box;
+    border: none;
+}
+
+
+.form-hour {
+    display: inline-block;
+    width: 40%;
+    min-width: 100px;
+    height: calc(1.5em + .75rem + 2px);
+    padding: 0;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #495057;
+    background-color: #fff;
+    background-clip: padding-box;
+    border: none;
+    margin-right: 0;
+    margin-left: 0;
+}
+
+input[type=time] {
     display: block;
     width: 100%;
     height: calc(1.5em + .75rem + 2px);
-    padding: .375rem .75rem;
+    padding: 0;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #495057;
+    border: 1px solid #ced4da;
+    border-radius: .25rem;
+    background-color: #fff;
+    background-clip: padding-box;
+}
+
+.SingleDatePickerInput {
+    display: block;
+    width: 100%;
+    height: calc(1.5em + .75rem + 2px);
+    padding: 0;
+    /* padding: .375rem .75rem; */
     font-size: 1rem;
     font-weight: 400;
     line-height: 1.5;
@@ -833,6 +894,24 @@ pre code {
     border: 1px solid #ced4da;
     border-radius: .25rem;
     transition:border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out
+}
+
+.DateInput {
+    width: 100%;
+    background-color: transparent;
+    background-clip: padding-box;
+}
+
+.DateInput_input {
+    width: 100%;
+    height: calc(1.5em + .75rem + 2px);
+    /* padding: .375rem .75rem; */
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #495057;
+    background-color: transparent;
+    background-clip: padding-box;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1284,6 +1363,7 @@ textarea.form-control {
 .btn {
     display: inline-block;
     font-weight: 400;
+    margin-top: 10px;
     color: #212529;
     text-align: center;
     vertical-align: middle;

@@ -120,7 +120,10 @@ def summary_card_antennas(app, obs):
             ant_text += [html.Span(", ")]
 
     # Remove the trailing ,
-    ant_text[-1] = html.Span(".")
+    if len(ant_text) > 0:
+        ant_text[-1] = html.Span(".")
+    else:
+        ant_text = ["None."]
     # TODO: This is the worldmap... I think it does not fit here.
     # temp_msg = [ge.worldmap_plot([obs.stations[a] for a in obs.stations.keys() \
     #             if a not in ant_no_obs])]

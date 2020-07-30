@@ -24,7 +24,7 @@ from src import observation
 target = observation.Source('10h58m29.6s +81d33m58.8s', name='Target')
 
 obs = observation.Observation(target=target)
-obs.times = Time('2020-06-15 10:00', scale='utc') + np.arange(0, 360, 10)*u.min
+obs.times = Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min
 obs.band = '18cm'
 obs.datarate = 1024
 obs.subbands = 8

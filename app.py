@@ -20,7 +20,7 @@ import os
 from os import path
 from time import sleep
 import itertools
-import datetime
+from datetime import datetime as dt
 import numpy as np
 import dash
 from dash.dependencies import Input, Output, State
@@ -28,7 +28,6 @@ import dash_core_components as dcc
 import dash_html_components as html
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
-from datetime import datetime as dt
 from astropy.time import Time
 from astropy import coordinates as coord
 from astropy import units as u
@@ -130,15 +129,16 @@ obs.stations = get_selected_antennas(evn6)
 # external_stylesheets = ["https://bmarcote.github.io/temp/style.css"]
 external_stylesheets = []
 # n_timestamps = 70 # Number of points (timestamps) for the whole observations.
-# external_scripts = ["https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js", \
+external_scripts = ["https://kit.fontawesome.com/69c65a0ab5.js"]
+#external_scripts = ["""https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js", \
 #         "https://polyfill.io/v3/polyfill.min.js?features=es6"]
 #         "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"]
 
 
 
 
-# app = dash.Dash(__name__, external_scripts=external_scripts)
-app = dash.Dash(__name__)
+app = dash.Dash(__name__, external_scripts=external_scripts)
+# app = dash.Dash(__name__)
 
 
 server = app.server
@@ -285,11 +285,12 @@ app.layout = html.Div([
                     selected_className='custom-tab--selected', children=[
                 # Elements in first column ()
                 html.Div(className='row justify-content-center', children=[
-                html.Div(className='col-sm-3', style={'max-width': '300px','float': 'left',
+                html.Div(className='col-sm-3', style={'max-width': '350px','float': 'left',
                                                       'padding': '2%'}, children=[
                     html.Div(className='form-group', children=[
                         html.Label('Select default VLBI Network(s)'),
-                        *ge.tooltip(idname='popover-network', message="Automatically selects the default antennas for the selected VLBI network(s)."),
+                        *ge.tooltip(idname='popover-network', message="Automatically selects "
+                                    "the default antennas for the selected VLBI network(s)."),
                         dcc.Dropdown(id='array', options=[{'label': n, 'value': n} \
                                 for n in default_arrays if n != 'e-EVN'], value=['EVN'],
                                 multi=True),
@@ -301,36 +302,70 @@ app.layout = html.Div([
                         *ge.tooltip(idname='popover-eevn',
                             message="Only available for the EVN: real-time correlation mode.")
                     ]),
+                    # html.Div(className='form-group', children=[
+                    #     html.Label('Start of observation (UTC)'),
+                    #     # dcc.Input(id='starttime', value='DD/MM/YYYY HH:MM', type='text',
+                    #     dcc.Input(id='starttime', value='17/04/1967 10:00', type='text',
+                    #               className='form-control', placeholder="dd/mm/yyyy HH:MM",
+                    #               persistence=True)
+                    # ]),
                     html.Div(className='form-group', children=[
                         html.Label('Start of observation (UTC)'),
-                        # dcc.Input(id='starttime', value='DD/MM/YYYY HH:MM', type='text',
-                        dcc.Input(id='starttime', value='17/04/1967 10:00', type='text',
-                                  className='form-control', placeholder="dd/mm/yyyy HH:MM",
-                                  persistence=True),
+                        *ge.tooltip(idname='popover-startime', message="Select the date and "
+                                    "time of the start of the observation (Universal, UTC, "
+                                    "time). You will also see the day of the year (DOY) in "
+                                    "brackets once the date is selected."),
+                        dcc.DatePickerSingle(id='starttime', min_date_allowed=dt(1900, 1, 1),
+                                             max_date_allowed=dt(2100, 1, 1),
+                                             display_format='DD-MM-YYYY (DDD)',
+                                             placeholder='Start date',
+                                             first_day_of_week=1,
+                                             initial_visible_month=dt.today(),
+                                             persistence=True,
+                                             className='form-picker'),
+                        dcc.Dropdown(id='starthour', placeholder="Start time",
+                                     options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
+                                               'value': f"{hm//60:02n}:{hm % 60:02n}"} \
+                                              for hm in range(0, 24*60, 15)],
+                                     persistence=True, className='form-hour'),
+                        # dcc.Input(id='starthour', className='form-text', type='time',
+                        #           placeholder='HH:MM'),
                         html.Small(id='error_starttime', style={'color': 'red'},
                                    className='form-text text-muted')
                     ]),
-                    ######################
-                    # html.Div(className='form-group', children=[
-                    #     html.Label('Start of observation (UTC)'),
-                    #     dcc.DatePickerSingle(id='starttime2', min_date_allowed=dt(1900, 1, 1),
-                    #                          max_date_allowed=dt(2100, 1, 1),
-                    #                          display_format='D MMM YYYY (DDD)',
-                    #                          placeholder='Start date',
-                    #                          first_day_of_week=1,
-                    #                          initial_visible_month=dt.today(),
-                    #                          persistence=True,
-                    #                          className='form-picker')
-                    # ]),
                     html.Div(className='form-group', children=[
                         html.Label('End of observation (UTC)'),
-                        # dcc.Input(id='endtime', value='DD/MM/YYYY HH:MM', type='text',
-                        dcc.Input(id='endtime', value='17/04/1967 20:00', type='text',
-                                  className='form-control', placeholder="dd/mm/yyyy HH:MM",
-                                  persistence=True),
+                        *ge.tooltip(idname='popover-endtime', message="Select the date and "
+                                    "time of the end of the observation (Universal, UTC, "
+                                    "time). You will also see the day of the year (DOY) in "
+                                    "brackets once the date is selected."),
+                        dcc.DatePickerSingle(id='endtime', min_date_allowed=dt(1900, 1, 1),
+                                             max_date_allowed=dt(2100, 1, 1),
+                                             display_format='DD-MM-YYYY (DDD)',
+                                             placeholder='End date',
+                                             first_day_of_week=1,
+                                             initial_visible_month=dt.today(),
+                                             persistence=True,
+                                             className='form-picker'),
+                        dcc.Dropdown(id='endhour', placeholder="End time",
+                                     options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
+                                               'value': f"{hm//60:02n}:{hm % 60:02n}"} \
+                                              for hm in range(0, 24*60, 15)],
+                                     persistence=True, className='form-hour'),
+                        # dcc.Input(id='starthour', className='form-text', type='time',
+                        #           placeholder='HH:MM'),
                         html.Small(id='error_endtime', style={'color': 'red'},
                                    className='form-text text-muted')
                     ]),
+                    # html.Div(className='form-group', children=[
+                    #     html.Label('End of observation (UTC)'),
+                    #     # dcc.Input(id='endtime', value='DD/MM/YYYY HH:MM', type='text',
+                    #     dcc.Input(id='endtime', value='17/04/1967 20:00', type='text',
+                    #               className='form-control', placeholder="dd/mm/yyyy HH:MM",
+                    #               persistence=True),
+                    #     html.Small(id='error_endtime', style={'color': 'red'},
+                    #                className='form-text text-muted')
+                    # ]),
                     html.Div(className='form-group', children=[
                         html.Label('Target Source Coordinates'),
                         *ge.tooltip(idname='popover-target',
@@ -351,6 +386,7 @@ app.layout = html.Div([
                                    marks= {i: str(i) for i in range(20, 101, 10)},
                                    persistence=True),
                     ]),
+                    html.H4("Advanced setup"),
                     html.Div(className='form-group', children=[
                         html.Label('Datarate per station (in Mbps)'),
                         *ge.tooltip(idname='popover-datarate',
@@ -360,24 +396,28 @@ app.layout = html.Div([
                                         html.Li("The VLBA can now observe up to 4 Gbps."),
                                         html.Li("The LBA typically observes at 512 Mbps but can run up to 1 Gbps."),
                                         html.Li("Check the documentation from other networks to be sure about their capabilities.")])]),
-                        dcc.Dropdown(id='datarate', placeholder="Select a datarate...",
-                                     options=[{'label': str(dr), 'value': dr} \
+                        dcc.Dropdown(id='datarate',
+                                     placeholder="Select the datarate...",
+                                     options=[{'label': f"Datarate: {dr} Mbps", 'value': dr} \
                                      for dr in fs.data_rates], value=1024, persistence=True),
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Number of subbands'),
                         *ge.tooltip(idname='popover-subbands',
-                                 message="In how many subbands the total band will be split during correlation."),
+                                 message="Number of subbands the total observed bandwidth "
+                                         "will be split during correlation."),
                         dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
-                                     options=[{'label': str(sb), 'value': sb} \
+                                     options=[{'label': f"{sb} subbands", 'value': sb} \
                                      for sb in fs.subbands], value=8, persistence=True),
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Number of spectral channels'),
                         *ge.tooltip(idname='popover-channels',
-                                 message="How many channels per subband will be produced after correlation."),
+                                 message="How many channels per subband will be produced "
+                                         "during correlation."),
                             dcc.Dropdown(id='channels', placeholder="Select no. channels...",
-                                         options=[{'label': str(ch), 'value': ch} \
+                                         options=[{'label': f"{ch} channels per subband",
+                                                   'value': ch} \
                                          for ch in fs.channels], value=32, persistence=True),
                     ]),
                     html.Div(className='form-group', children=[
@@ -471,18 +511,33 @@ app.layout = html.Div([
                     # Elevation VS time
                     html.Br(),
                     html.Div([
-                        html.P("""Plots showing the source elevation for the different
-                        antennas during the observation, and when the source is observable
-                        (by default assumed to be when the sourcehas an elevation >10 deg,
-                        except for some antennas like Arecibo).
-                        """), \
-                        html.P(["Clicking at one station in the legend will hide/show it. ", \
-                               "Double-click will hide/show all other antennas."])]),
-                    html.Br(),
+                        html.Br(),
+                        html.H4("When is your source visible?"),
+                        html.Br(),
+                        dbc.Alert([html.H4("Info on plots", className='alert-heading'),
+                                   html.P("A single click on one station in the legend will "
+                                           "hide/show it. Double-click will hide/show "
+                                           "all other antennas. You can also save the plot "
+                                           "as png."),
+                                  ], color='info', dismissable=True),
+                        html.Br(),
+                        html.P("The following plot shows the source elevation for the "
+                        "different antennas during the proposed observation. The horizontal "
+                        "solid and dashed lines represent the elevation of 20 and 10 degrees, "
+                        "respectively.")
+                    ]),
                     html.Div([
                         dcc.Graph(id='fig-elev-time')
                     ],className='tex2jax_ignore'),
-                    # Antenna VS time (who can observe)
+                    html.Br(),
+                    html.Div([
+                        html.P("""The following plot shows when the source may be observed
+                        for the different antennas, assuming a minimum elevation of 10 degrees
+                        for most antennas (except e.g. Arecibo). Note that some antennas may
+                        have additional constraints por some particular azimuth or elevation
+                        angles that are not considered here.
+                        """)
+                    ]),
                     html.Div([
                         dcc.Graph(id='fig-ant-time')
                     ],className='tex2jax_ignore')
@@ -573,27 +628,23 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
 
 @app.callback([Output('error_starttime', 'children'),
                Output('error_endtime', 'children')],
-              [Input('starttime', 'value'), Input('endtime', 'value')])
-def check_obstime(starttime, endtime):
-    if starttime != 'DD/MM/YYYY HH:MM':
-        try:
-            time0 = Time(datetime.datetime.strptime(starttime, '%d/%m/%Y %H:%M'),
-                         format='datetime')
-        except ValueError as e:
-            return 'Incorrect format (dd/mm/YYYY HH:MM)', dash.no_update
+              [Input('starttime', 'date'), Input('starthour', 'value'),
+               Input('endtime', 'date'), Input('endhour', 'value')])
+def check_obstime(starttime, starthour, endtime, endhour):
+    times = [None, None]
+    if None not in (starttime, starthour):
+        times[0] = Time(dt.strptime(f"{starttime} {starthour}", '%Y-%m-%d %H:%M'))
 
-    if endtime != 'DD/MM/YYYY HH:MM':
-        try:
-            time1 = Time(datetime.datetime.strptime(endtime, '%d/%m/%Y %H:%M'),
-                         format='datetime')
-        except ValueError as e:
-            return dash.no_update, 'Incorrect format (dd/mm/YYYY HH:MM)'
+    if None not in (endtime, endhour):
+        times[1] = Time(dt.strptime(f"{endtime} {endhour}", '%Y-%m-%d %H:%M'))
 
-    if ('time1' in locals()) and ('time0' in locals()):
-        if (time1 - time0) > 5*u.d:
-            return ["Please, put an observation shorter than 5 d"]*2
-        elif (time0 - time1) >= 0*u.d:
-            return ["Start time must be earlier than end time"]*2
+    if None in times:
+        return '', ''
+
+    if (times[1] - times[0]) > 5*u.d:
+        return ["Please, put an observation shorter than 5 d"]*2
+    elif (times[0] - times[1]) >= 0*u.d:
+        return ["Start time must be earlier than end time"]*2
 
     return '', ''
 
@@ -619,8 +670,10 @@ def get_source(source_coord):
                Output('fig-uvplane', 'figure'), Output('global-error', 'message')],
               [Input('antenna-selection-button', 'n_clicks')],
               [State('band', 'value'),
-               State('starttime', 'value'),
-               State('endtime', 'value'),
+               State('starttime', 'date'),
+               State('starthour', 'value'),
+               State('endtime', 'date'),
+               State('endhour', 'value'),
                State('source', 'value'),
                State('onsourcetime', 'value'),
                State('datarate', 'value'),
@@ -634,10 +687,8 @@ def get_source(source_coord):
                State('list_stations_LBA', 'value'),
                State('list_stations_KVN', 'value'),
                State('list_stations_Other', 'value')])
-def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime, datarate,
-                        subbands, channels, pols, inttime, *ants):
-                       # subbands, channels, pols, inttime, ants_evn, ants_emerlin,
-                       # ants_vlba, ants_lba, ants_kvn, ants_other):
+def compute_observation(n_clicks, band, starttime, starthour, endtime, endhour, source,
+                        onsourcetime, datarate, subbands, channels, pols, inttime, *ants):
     """Computes all products to be shown concerning the set observation.
     """
     if n_clicks is None:
@@ -651,7 +702,7 @@ def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime
                "First, set correctly an observation in the previous tab.", \
                dash.no_update, dash.no_update, dash.no_update, dash.no_update
     try:
-        time0 = Time(datetime.datetime.strptime(starttime, '%d/%m/%Y %H:%M'),
+        time0 = Time(dt.strptime(f"{starttime} {starthour}", '%Y-%m-%d %H:%M'),
                      format='datetime', scale='utc')
     except ValueError as e:
         return alert_message("Incorrect format for starttime."), \
@@ -659,7 +710,7 @@ def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime
                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     try:
-        time1 = Time(datetime.datetime.strptime(endtime, '%d/%m/%Y %H:%M'),
+        time1 = Time(dt.strptime(f"{endtime} {endhour}", '%Y-%m-%d %H:%M'),
                      format='datetime', scale='utc')
     except ValueError as e:
         return alert_message("Incorrect format for endtime."), \
@@ -691,10 +742,10 @@ def compute_observation(n_clicks, band, starttime, endtime, source, onsourcetime
         return alert_message([
                     html.P(["Your source cannot be observed within the arranged observation.",
                     html.Br(),
-                    "The source is not visible for any of the selected antennas " \
-                    + "in the given observing time."]),
-                    html.P("Modify the observing time of select a different array to observe" \
-                    + " this source.")], title="Warning!"), \
+                    "There are no antennas that can simultaneously observe your source "
+                    "during the given observing time."]),
+                    html.P("Modify the observing time or change the selected antennas"
+                           " to observe this source.")], title="Warning!"), \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     # return update_sensitivity(obs), dash.no_update, dash.no_update
@@ -712,15 +763,16 @@ def get_fig_ant_elev(obs):
     # Some reference lines at low elevations
     for ant in data_dict:
         data_fig.append({'x': obs.times.datetime, 'y': data_dict[ant].value,
-                        'mode': 'lines', 'hovertemplate': "Elev: %{y:.2n}º",
+                        'mode': 'lines', 'hovertemplate': "Elev: %{y:.2n}º (%{x})",
                         'name': obs.stations[ant].name})
 
     data_fig.append({'x': obs.times.datetime, 'y': np.zeros_like(obs.times)+10,
                      'mode': 'lines', 'hoverinfo': 'skip', 'name': 'Elev. limit 10º',
                      'line': {'dash': 'dash', 'opacity': 0.5, 'color': 'gray'}})
-    data_fig.append({'x': obs.gstimes.value, 'y': np.zeros_like(obs.times)+20, 'xaxis': 'x2',
-                     'mode': 'lines', 'hoverinfo': 'skip', 'name': 'Elev. limit 20º',
-                     'line': {'dash': 'dot', 'opacity': 0.5, 'color': 'gray'}})
+    data_fig.append({'x': np.unwrap(obs.gstimes.value), 'y': np.zeros_like(obs.times)+20,
+                     'xaxis': 'x2', 'mode': 'lines', 'hoverinfo': 'skip',
+                     'name': 'Elev. limit 20º', 'line': {'dash': 'dot', 'opacity': 0.5,
+                     'color': 'gray'}})
     return {'data': data_fig,
             'layout': {'title': 'Source elevation during the observation',
                        'hovermode': 'closest',
@@ -728,7 +780,11 @@ def get_fig_ant_elev(obs):
                                  'ticks': 'inside', 'showline': True, 'mirror': False,
                                  'hovermode': 'closest', 'color': 'black'},
                        'xaxis2': {'title': {'text': 'Time (GST)', 'standoff': 0},
-                                  'showgrid': False, 'overlaying': 'x',
+                                  'showgrid': False, 'overlaying': 'x', #'dtick': 1.0,
+                                  'tickvals': np.arange(np.ceil(obs.gstimes.value[0]),
+                                            np.floor(np.unwrap(obs.gstimes.value)[-1])+1),
+                                  'ticktext': np.arange(np.ceil(obs.gstimes.value[0]),
+                                            np.floor(np.unwrap(obs.gstimes.value)[-1])+1) % 24,
                                   'ticks': 'inside', 'showline': True, 'mirror': False,
                                   'hovermode': 'closest', 'color': 'black', 'side': 'top'},
                        'yaxis': {'title': 'Elevation (degrees)', 'range': [0., 92.],
@@ -744,19 +800,31 @@ def get_fig_ant_up(obs):
     for i,ant in enumerate(data_dict):
         data_fig.append({'x': obs.times.datetime[data_dict[ant]],
                          'y': np.zeros_like(data_dict[ant][0])-i, 'type': 'scatter',
-                         # 'mode': 'markers', 'hoverinfo': "skip",
+                         'hovertemplate': "%{x}",
                          'mode': 'markers', 'marker': {'symbol': "41"}, 'hoverinfo': "skip",
                          'name': obs.stations[ant].name})
 
+    data_fig.append({'x': np.unwrap(obs.gstimes.value), 'y': np.zeros_like(obs.times)-0.5,
+                     'xaxis': 'x2',
+                     'mode': 'lines', 'hoverinfo': 'skip', 'showlegend': False,
+                     'line': {'dash': 'dot', 'opacity': 0.0, 'color': 'white'}})
     return {'data': data_fig,
             'layout': {'title': 'Source visible during the observation',
                        'xaxis': {'title': 'Time (UTC)', 'showgrid': False,
-                                 'ticks': 'inside', 'showline': True, 'mirror': "all",
+                                 'ticks': 'inside', 'showline': True, 'mirror': False,
                                  'hovermode': 'closest', 'color': 'black'},
+                       'xaxis2': {'title': {'text': 'Time (GST)', 'standoff': 0},
+                                  'showgrid': False, 'overlaying': 'x', #'dtick': 1.0,
+                                  'tickvals': np.arange(np.ceil(obs.gstimes.value[0]),
+                                            np.floor(np.unwrap(obs.gstimes.value)[-1])+1),
+                                  'ticktext': np.arange(np.ceil(obs.gstimes.value[0]),
+                                            np.floor(np.unwrap(obs.gstimes.value)[-1])+1) % 24,
+                                  'ticks': 'inside', 'showline': True, 'mirror': False,
+                                  'hovermode': 'closest', 'color': 'black', 'side': 'top'},
                        'yaxis': {'ticks': '', 'showline': True, 'mirror': True,
                                  'showticklabels': False, 'zeroline': False,
                                  'showgrid': False, 'hovermode': 'closest',
-                                 'startline':False}}}
+                                 'startline': False}}}
 
 
 

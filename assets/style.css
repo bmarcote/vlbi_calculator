@@ -3508,25 +3508,25 @@ input[type=checkbox]:disabled:after {
 }
 
 .tooltip {
-  position: absolute;
-  /* z-index: 1070; */
-  display: block;
-  /* font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; */
-  font-size: 12px;
-  font-style: normal;
-  font-weight: normal;
-  line-height: 1.42857143;
-  text-align: left;
-  text-decoration: none;
-  text-shadow: none;
-  text-transform: none;
-  letter-spacing: normal;
-  word-break: normal;
-  word-spacing: normal;
-  word-wrap: normal;
-  white-space: normal;
-  opacity: 1 !important;
-  line-break: auto;
+    position: absolute;
+    /* z-index: 1070; */
+    display: block;
+    /* font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; */
+    font-size: 12px;
+    font-style: normal;
+    font-weight: normal;
+    line-height: 1.42857143;
+    text-align: left;
+    text-decoration: none;
+    text-shadow: none;
+    text-transform: none;
+    letter-spacing: normal;
+    word-break: normal;
+    word-spacing: normal;
+    word-wrap: normal;
+    white-space: normal;
+    opacity: 1 !important;
+    line-break: auto;
 }
 
 .tooltip-inner {
@@ -3538,6 +3538,11 @@ input[type=checkbox]:disabled:after {
     background-color: white;
     border-radius: 4px;
     border: 1px solid #a01d26;
+}
+
+
+.tooltip.right {
+    margin-right: -10rem;
 }
 
 .tooltip-class.in {  opacity: 1;}
@@ -3705,6 +3710,7 @@ img[alt=equation2] {
     background-color: white !important;
     min-width: 12rem;
     max-width: 12rem;
+    height: 20rem;
     font-size: 0.8rem;
     border: 1px solid #a01d26 !important;
     /* text-align: left; */

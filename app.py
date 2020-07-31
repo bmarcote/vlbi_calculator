@@ -45,6 +45,8 @@ from src import stations
 from src import functions as fx
 from src import observation
 from src import graphical_elements as ge
+# adding the possibility of disabled
+from src.Checkbox import Checkbox
 
 
 current_directory = path.dirname(path.realpath(__file__))
@@ -68,8 +70,8 @@ sorted_networks = {'EVN': 'EVN: European VLBI Network', 'eMERLIN': 'eMERLIN (out
                    'Other': 'Other antennas'}
 default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6', 'Tr',
                           'Ys', 'Wb', 'Bd', 'Sv', 'Zc', 'Ir'],
-          'e-EVN': ['Ef', 'Hh', 'Ir', 'Jb2', 'Mc', 'Nt', 'On', 'T6', 'Tr', 'Ys', 'Wb',
-                    'Bd', 'Sv', 'Zc', 'Ir', 'Sr', 'Ur', 'Cm', 'Kn', 'Pi', 'Da', 'De'],
+          'e-EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'On', 'T6', 'Tr', 'Ys', 'Wb',
+                    'Bd', 'Sv', 'Zc', 'Ir', 'Sr', 'Ur'],
           'eMERLIN': ['Cm', 'Kn', 'Pi', 'Da', 'De', 'Jb2'],
           'LBA': ['ATCA', 'Pa', 'Mo', 'Ho', 'Cd', 'Td', 'Ww'],
           'VLBA': ['Br', 'Fd', 'Hn', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
@@ -83,6 +85,8 @@ default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
                    'Ov', 'Pt'],
           'EHT': ['ALMA', 'Pv', 'LMT', 'PdB', 'SMA', 'JCMT', 'APEX', 'SMT', 'SPT']}
 
+does_eEVN = ['Ef', 'Hh', 'Jb2', 'Jb1', 'Mc', 'Nt', 'On', 'T6', 'Mh', 'Tr', 'Ys', 'Wb',
+                    'Bd', 'Sv', 'Zc', 'Ir', 'Sr', 'Ur', 'Cm', 'Kn', 'Pi', 'Da', 'De']
 
 # Safety check that all these antennas are available in the file
 for a_array in default_arrays:
@@ -296,19 +300,13 @@ app.layout = html.Div([
                                 multi=True),
                     ]),
                     html.Div(className='input-group-prepend', children=[
-                        dcc.Checklist(id='e-EVN', className='checkbox', persistence=True,
+                        dbc.Checklist(id='e-EVN', className='checkbox', persistence=True,
                                       options=[{'label': ' e-EVN (real-time) mode',
                                                 'value': 'e-EVN'}], value=[]),
                         *ge.tooltip(idname='popover-eevn',
                             message="Only available for the EVN: real-time correlation mode.")
                     ]),
-                    # html.Div(className='form-group', children=[
-                    #     html.Label('Start of observation (UTC)'),
-                    #     # dcc.Input(id='starttime', value='DD/MM/YYYY HH:MM', type='text',
-                    #     dcc.Input(id='starttime', value='17/04/1967 10:00', type='text',
-                    #               className='form-control', placeholder="dd/mm/yyyy HH:MM",
-                    #               persistence=True)
-                    # ]),
+                    html.Br(),
                     html.Div(className='form-group', children=[
                         html.Label('Start of observation (UTC)'),
                         *ge.tooltip(idname='popover-startime', message="Select the date and "
@@ -328,8 +326,6 @@ app.layout = html.Div([
                                                'value': f"{hm//60:02n}:{hm % 60:02n}"} \
                                               for hm in range(0, 24*60, 15)],
                                      persistence=True, className='form-hour'),
-                        # dcc.Input(id='starthour', className='form-text', type='time',
-                        #           placeholder='HH:MM'),
                         html.Small(id='error_starttime', style={'color': 'red'},
                                    className='form-text text-muted')
                     ]),
@@ -352,20 +348,9 @@ app.layout = html.Div([
                                                'value': f"{hm//60:02n}:{hm % 60:02n}"} \
                                               for hm in range(0, 24*60, 15)],
                                      persistence=True, className='form-hour'),
-                        # dcc.Input(id='starthour', className='form-text', type='time',
-                        #           placeholder='HH:MM'),
                         html.Small(id='error_endtime', style={'color': 'red'},
                                    className='form-text text-muted')
                     ]),
-                    # html.Div(className='form-group', children=[
-                    #     html.Label('End of observation (UTC)'),
-                    #     # dcc.Input(id='endtime', value='DD/MM/YYYY HH:MM', type='text',
-                    #     dcc.Input(id='endtime', value='17/04/1967 20:00', type='text',
-                    #               className='form-control', placeholder="dd/mm/yyyy HH:MM",
-                    #               persistence=True),
-                    #     html.Small(id='error_endtime', style={'color': 'red'},
-                    #                className='form-text text-muted')
-                    # ]),
                     html.Div(className='form-group', children=[
                         html.Label('Target Source Coordinates'),
                         *ge.tooltip(idname='popover-target',
@@ -453,7 +438,8 @@ app.layout = html.Div([
                     ], style={'margin-top': '2rem', 'margin-bottom': '2rem'}),
                     html.Div(className='col-9 form-group row align-items-end', children=[
                         html.Div(className='col-md-6', children=[
-                            html.Label('First select your observing Band'),
+                            html.Label('First Step: Select your observing Band',
+                                        style={'color': '#a01d26'}),
                             *ge.tooltip(idname='popover-band',
                                     message="First select at which frequency/wavelength "
                                             "you want to observe. This will update the "
@@ -473,18 +459,27 @@ app.layout = html.Div([
                         dcc.Loading(id="loading", children=[html.Div(id="loading-output")],
                                     type="dot")
                     ]),
+                    html.Div([dbc.Tooltip(ge.antenna_card(app, s), placement='right',
+                        hide_arrow=True, target=f"_input_{s.codename}",
+                        innerClassName='tooltip-card-inner') for s in all_antennas
+                    ]),
                     html.Div(id='antennas-div', className='container', children=[
                         html.Div(className='antcheck', children=[html.Br(), html.Br(),
                             html.Label(html.H4(f"{sorted_networks[an_array]}"),
                                        style={'width': '100%'}),
                             html.Br(),
-                            dbc.Checklist(id=f"list_stations_{an_array}", inline=True,
-                                className='antcheck',
-                                labelClassName='form-check-label',
-                                inputClassName='form-check-input',
-                                options=[{'label': s.name, 'value': s.codename,
-                                'disabled': not s.has_band(selected_band)}
-                                for s in all_antennas if s.network == an_array], value=[])
+                            html.Div(className='antcheck', children=[
+                                dbc.FormGroup([
+                                    Checkbox(id=f"check_{s.codename}",
+                                             className='custom-control-input',
+                                             disabled=not s.has_band(selected_band)),
+                                    dbc.Label(s.name, html_for=f"check_{s.codename}",
+                                              id=f"_input_{s.codename}",
+                                             className='custom-control-label form-check-label')
+                                ], check=True, inline=True, className="form-check-input "
+                                "custom-checkbox custom-control custom-control-inline")
+                                for s in all_antennas if s.network == an_array
+                            ])
                         ]) for an_array in sorted_networks
                     ])
                 ]),
@@ -578,7 +573,8 @@ def update_onsourcetime_label(onsourcetime):
     return f"% of on-target time ({onsourcetime}%)"
 
 
-@app.callback(Output('antennas-div', 'children'),
+@app.callback([Output(f"check_{s.codename}", 'checked') for s in all_antennas] + \
+              [Output(f"check_{s.codename}", 'disabled') for s in all_antennas],
               [Input('band', 'value'), Input('array', 'value'), Input('e-EVN', 'value')])
 def select_antennas(selected_band, selected_networks, is_eEVN):
     """Given a selected band and selected default networks, it selects the associated
@@ -587,42 +583,18 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
     selected_antennas = []
     if is_eEVN:
         selected_antennas = [ant for ant in default_arrays['e-EVN'] \
-                             if (all_antennas[ant].has_band(selected_band) and \
-                                (all_antennas[ant].network == 'EVN'))]
+                             if all_antennas[ant].has_band(selected_band)]
 
-        return [html.Div([html.Br(), html.Br(),
-                html.Label(html.H4(f"{sorted_networks[an_array]}")),
-                html.Br(),
-                dbc.Checklist(id=f"list_stations_{an_array}", inline=True,
-                    className='antcheck',
-                    labelClassName='form-check-label',
-                    inputClassName='form-check-input',
-                    options=[{'label': s.name, 'value': s.codename,
-                        'disabled': (not s.has_band(selected_band)) or \
-                            (not s.codename in default_arrays['e-EVN'])}
-                        for s in all_antennas if s.network == an_array],
-                    value=selected_antennas if an_array=='EVN' else [],
-                    )]) for an_array in sorted_networks
-                ]
+        return [True if s.codename in selected_antennas else False for s in all_antennas] + \
+               [False if (s.has_band(selected_band) and s.codename in does_eEVN) else True \
+                for s in all_antennas]
     else:
         for an_array in selected_networks:
             selected_antennas += [ant for ant in default_arrays[an_array] \
                                     if all_antennas[ant].has_band(selected_band)]
 
-        return [html.Div([html.Br(), html.Br(),
-                html.Label(html.H4(f"{sorted_networks[an_array]}")),
-                html.Br(),
-                dbc.Checklist(id=f"list_stations_{an_array}", inline=True,
-                    className='antcheck',
-                    labelClassName='form-check-label',
-                    inputClassName='form-check-input',
-                    options=[{'label': s.name, 'value': s.codename,
-                        'disabled': not s.has_band(selected_band)}
-                        for s in all_antennas if s.network == an_array],
-                    value=[s.codename for s in all_antennas \
-                            if (s.codename in selected_antennas) and (s.network == an_array)],
-                    )]) for an_array in sorted_networks
-                ]
+        return [True if s.codename in selected_antennas else False for s in all_antennas] + \
+               [False if s.has_band(selected_band) else True for s in all_antennas]
 
 
 
@@ -680,13 +652,8 @@ def get_source(source_coord):
                State('subbands', 'value'),
                State('channels', 'value'),
                State('pols', 'value'),
-               State('inttime', 'value'),
-               State('list_stations_EVN', 'value'),
-               State('list_stations_eMERLIN', 'value'),
-               State('list_stations_VLBA', 'value'),
-               State('list_stations_LBA', 'value'),
-               State('list_stations_KVN', 'value'),
-               State('list_stations_Other', 'value')])
+               State('inttime', 'value')] + \
+               [State(f"check_{s.codename}", 'checked') for s in all_antennas])
 def compute_observation(n_clicks, band, starttime, starthour, endtime, endhour, source,
                         onsourcetime, datarate, subbands, channels, pols, inttime, *ants):
     """Computes all products to be shown concerning the set observation.
@@ -730,13 +697,14 @@ def compute_observation(n_clicks, band, starttime, starthour, endtime, endhour, 
     # try:
     # TODO: this should not be hardcoded...
     obs_times = time0 + np.linspace(0, (time1-time0).to(u.min).value, 50)*u.min
-    # obs_times = time0 + np.arange(0, (time1-time0).to(u.min).value, 15)*u.min
-    all_selected_antennas = list(itertools.chain.from_iterable(ants))
+    # all_selected_antennas = list(itertools.chain.from_iterable(ants))
     try:
         obs = observation.Observation(target=target_source, times=obs_times, band=band,
                       datarate=datarate, subbands=subbands, channels=channels,
                       polarizations=pols, inttime=inttime, ontarget=onsourcetime/100.0,
-                      stations=get_selected_antennas(all_selected_antennas))
+                      stations=stations.Stations('Observation',
+                                                 itertools.compress(all_antennas, ants)))
+                      # stations=get_selected_antennas(all_selected_antennas))
         sensitivity_results = update_sensitivity(obs)
     except observation.SourceNotVisible:
         return alert_message([

@@ -161,6 +161,7 @@ def print_obs_times(obs, date_format='%d %b %Y'):
     """Given an observation, it returns the time range (starttime-endtime) in a smart
     way. If the observation lasts for less than one day it omits the end date:
             20 Jan 1971 10:00-20:00UT
+    It also adds the GST range after that.
 
     Input:
         - obs : observation.Observation
@@ -173,19 +174,25 @@ def print_obs_times(obs, date_format='%d %b %Y'):
             A string showing the time-range of the observation.
 
     """
+    gsttext = "{:02n}:{:02.2n}-{:02n}:{:02.2n}".format((obs.gstimes[0].hour*60) // 60,
+                                              (obs.gstimes[0].hour*60) % 60,
+                                              (obs.gstimes[-1].hour*60) // 60,
+                                              (obs.gstimes[0].hour*60) % 60)
     if obs.times[0].datetime.date() == obs.times[-1].datetime.date():
-        return "{}\n{}-{} UTC".format(obs.times[0].datetime.strftime(date_format),
+        return "{}\n{}-{} UTC\nGST: {}".format(obs.times[0].datetime.strftime(date_format),
                                     obs.times[0].datetime.strftime('%H:%M'),
-                                    obs.times[-1].datetime.strftime('%H:%M'))
+                                    obs.times[-1].datetime.strftime('%H:%M'), gsttext)
     elif (obs.times[-1] - obs.times[0]) < 24*u.h:
-        return "{}\n{}-{} UTC (+1d)".format(obs.times[0].datetime.strftime(date_format),
+        return "{}\n{}-{} UTC (+1d)\nGST: {}".format(
+                                    obs.times[0].datetime.strftime(date_format),
                                     obs.times[0].datetime.strftime('%H:%M'),
-                                    obs.times[-1].datetime.strftime('%H:%M'))
+                                    obs.times[-1].datetime.strftime('%H:%M'), gsttext)
     else:
-        return "{} {} to {} {} UTC".format(obs.times[0].datetime.strftime(date_format),
+        return "{} {} to {} {} UTC\nGST: {}".format(
+                                    obs.times[0].datetime.strftime(date_format),
                                     obs.times[0].datetime.strftime('%H:%M'),
                                     obs.times[-1].datetime.strftime(date_format),
-                                    obs.times[-1].datetime.strftime('%H:%M'))
+                                    obs.times[-1].datetime.strftime('%H:%M'), gsttext)
 
 
 

@@ -192,8 +192,9 @@ def summary_card_times(app, obs):
     prtobstimes = fx.print_obs_times(obs)
     if '\n' in prtobstimes:
         tmp = [html.Span(t) for t in fx.print_obs_times(obs).split('\n')]
-        tmp.insert(1, html.Br())
-        temp_msg = [tmp]
+        for i in range(len(tmp)-1):
+            tmp.insert(2*i+1, html.Br())
+            temp_msg = [tmp]
     else:
         temp_msg = [f"{fx.print_obs_times(obs)}."]
 

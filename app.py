@@ -470,7 +470,7 @@ app.layout = html.Div([
                             html.Br(),
                             html.Div(className='antcheck', children=[
                                 dbc.FormGroup([
-                                    Checkbox(id=f"check_{s.codename}",
+                                    Checkbox(id=f"check_{s.codename}", persistence=True,
                                              className='custom-control-input',
                                              disabled=not s.has_band(selected_band)),
                                     dbc.Label(s.name, html_for=f"check_{s.codename}",

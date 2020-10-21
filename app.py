@@ -352,7 +352,7 @@ app.layout = html.Div([
                                         html.Li("Check the documentation from other networks to be sure about their capabilities.")])]),
                         dcc.Dropdown(id='datarate',
                                      placeholder="Select the datarate...",
-                                     options=[{'label': f"Datarate: {dr} Mbps", 'value': dr} \
+                                     options=[{'label': f"{dr} Mbps", 'value': dr} \
                                      for dr in fs.data_rates], value=2048, persistence=True),
                     ]),
                     html.Div(className='form-group', children=[

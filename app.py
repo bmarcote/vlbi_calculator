@@ -11,7 +11,7 @@ __copyright__ = "Copyright 2020, Joint Insitute for VLBI-ERIC (JIVE)"
 __credits__ = "Benito Marcote"
 __license__ = "GPL"
 __date__ = "2020/04/21"
-__version__ = "0.0.1"
+__version__ = "1.0"
 __maintainer__ = "Benito Marcote"
 __email__ = "marcote@jive.eu"
 __status__ = "Development"   # Prototype, Development, Production.
@@ -31,8 +31,10 @@ import plotly.graph_objs as go
 from astropy.time import Time
 from astropy import coordinates as coord
 from astropy import units as u
-# Tweak to not let astroplan crashing...
 
+## THIS WILL NEED TO GO AWAY IN THE NEW VERSION OF ASTROPY, WHICH IS STILL NOT
+## SUPPORTED BY THE CURRENT VERSION OF ASTROPLAN
+# Tweak to not let astroplan crashing...
 from astropy.utils.data import clear_download_cache
 from astropy.utils import iers
 clear_download_cache()  # to be sure it is really working
@@ -55,19 +57,9 @@ from src.Checkbox import Checkbox
 
 
 current_directory = path.dirname(path.realpath(__file__))
-# stationList =  stations.Stations()
-# stationList.add_from_file(current_directory+'/station_location.txt')
 
-
-# iers.IERS.iers_table = iers.IERS.open(cache=True)
-# iers.IERS.iers_table = iers.IERS_A.open(iers.IERS_A_URL)
-# iers.Conf.iers_auto_url.set('ftp://cddis.gsfc.nasa.gov/pub/products/iers/finals2000A.all')
-
-if path.isfile(current_directory + '/.astropy/cache/download/py3/lock'):
-    os.remove(current_directory + '/.astropy/cache/download/py3/lock')
-
-# all_antennas = fx.get_stations_from_file(f"{current_directory}/data/station_location.txt")
 all_antennas = fx.get_stations_from_configfile(f"{current_directory}/data/stations_catalog.inp")
+
 sorted_networks = {'EVN': 'EVN: European VLBI Network', 'eMERLIN': 'eMERLIN (out-stations)',
                    'VLBA': 'VLBA: Very Long Baseline Array',
                    'LBA': 'LBA: Australian Long Baseline Array',
@@ -90,8 +82,6 @@ default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
                    'Ov', 'Pt'],
           'EHT': ['ALMA', 'Pv', 'LMT', 'PdB', 'SMA', 'JCMT', 'APEX', 'SMT', 'SPT']}
 
-does_eEVN = ['Ef', 'Hh', 'Jb2', 'Jb1', 'Mc', 'Nt', 'On', 'T6', 'Mh', 'Tr', 'Ys', 'Wb',
-                    'Bd', 'Sv', 'Zc', 'Ir', 'Sr', 'Ur', 'Cm', 'Kn', 'Pi', 'Da', 'De']
 
 # Safety check that all these antennas are available in the file
 for a_array in default_arrays:
@@ -144,19 +134,8 @@ external_scripts = ["https://kit.fontawesome.com/69c65a0ab5.js"]
 #         "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"]
 
 
-
-
 app = dash.Dash(__name__, external_scripts=external_scripts)
-# app = dash.Dash(__name__)
-
-
 server = app.server
-
-# app.config.requests_pathname_prefix = ''
-# app.css.append_css({"external_url": "https://codepen.io/chriddyp/pen/bWLwgP.css"})
-
-# app.css.append_css({"external_url": "https://codepen.io/chriddyp/pen/brPBPO.css"})
-
 
 
 def get_doc_text():
@@ -260,16 +239,6 @@ def update_sensitivity(obs):
 
 #####################  This is the webpage layout
 app.layout = html.Div([
-#     html.Script("""
-#  $(document).ready(function() {
-#   $('[data-toggle="popover"]').popover({
-#       placement : 'bottom',
-#       title : '<div style="text-align:center; color:red; text-decoration:underline; font-size:14px;"> Muah ha ha</div>', //this is the top title bar of the popover. add some basic css
-#       html: 'true',
-#       content : '<div id="popOverBox"><img src="http://www.hd-report.com/wp-content/uploads/2008/08/mr-evil.jpg" width="251" height="201" /></div>' //this is the content of the html box. add the image here or anything you want really.
-# });
-# });
-# """),
     html.Div(id='banner', className='navbar-brand d-flex p-3 shadow-sm', children=[
         html.A(className='d-inline-block mr-md-auto', href="https://www.evlbi.org", children=[
             html.Img(height='70px', src=app.get_asset_url("logo_evn.png"),
@@ -281,10 +250,8 @@ app.layout = html.Div([
             html.Img(src=app.get_asset_url("logo_jive.png"), height='70px',
                      alt='Joinst Institute for VLBI ERIC (JIVE)')
         ])
-        # html.Img(src='http://www.ira.inaf.it/evnnews/archive/evn.gif')
     ]),
-    # ], className='banner'),
-    html.Div([html.Br()]), #style={'clear': 'both', 'margin-top': '20px'}),
+    html.Div([html.Br()]),
     # First row containing all buttons/options, list of telescopes, and button with text output
     dcc.ConfirmDialog(id='global-error', message=''),
     # Elements in second column (checkboxes with all stations)
@@ -591,7 +558,7 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
                              if all_antennas[ant].has_band(selected_band)]
 
         return [True if s.codename in selected_antennas else False for s in all_antennas] + \
-               [False if (s.has_band(selected_band) and s.codename in does_eEVN) else True \
+               [False if (s.has_band(selected_band) and s.real_time) else True \
                 for s in all_antennas]
     else:
         for an_array in selected_networks:
@@ -774,7 +741,8 @@ def get_fig_ant_up(obs):
         data_fig.append({'x': obs.times.datetime[data_dict[ant]],
                          'y': np.zeros_like(data_dict[ant][0])-i, 'type': 'scatter',
                          'hovertemplate': "%{x}",
-                         'mode': 'markers', 'marker': {'symbol': "41"}, 'hoverinfo': "skip",
+                         'mode': 'markers', 'marker_symbol': "41",
+                         'hoverinfo': "skip",
                          'name': obs.stations[ant].name})
 
     data_fig.append({'x': np.unwrap(obs.gstimes.value), 'y': np.zeros_like(obs.times)-0.5,

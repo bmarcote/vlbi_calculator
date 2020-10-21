@@ -9,87 +9,6 @@ from astropy.io import ascii
 from src import stations
 
 
-def get_networks_from_file(filename='data/station_location.txt'):
-    """Retrieves all the stations given in the filename and
-    creates different arrays. Returns a dict with all arrays.
-    The file must contain the information for each antenna on each
-    row, with the following header (written at the beginning of the file):
-        - station : full name of the station
-        - code : code name of the station
-        - network : name of the network the station belongs to.
-        - x : x coordinates of the station, in meters.
-        - y : y coordinates of the station, in meters.
-        - z : z coordinates of the station, in meters.
-        - SEFD-XX : SEFD of the station at XX cm (-1 if this band cannot be observed)
-    """
-    datafile = ascii.read(filename)
-    # Creates a `Stations` object for each network, for now with no stations
-    network_labels = set(datafile['network'])
-    networks = {}
-    for network in network_labels:
-        networks[network] = stations.Stations(network, [])
-
-    sefd_names = datafile.colnames[6:]
-    for a_line in datafile:
-        # Create each station and add it to the correct noetwork
-        sefds = {}
-        for sefd_name in sefd_names:
-            if a_line[sefd_name] > 0.0:
-                sefds[f"{sefd_name.replace('SEFD-','').strip()}cm"] = a_line[sefd_name]
-
-        a_loc = coord.EarthLocation(a_line['x']*u.m, a_line['y']*u.m, a_line['z']*u.m)
-        # For now this is hard-coded
-        if a_line['station'] is 'Arecibo':
-            min_elev = 80*u.deg
-        else:
-            min_elev = 10*u.deg
-
-        new_station = stations.SelectedStation(a_line['station'], a_line['code'],
-             location=a_loc, freqs_sefds=sefds, min_elevation=min_elev, selected=False)
-
-        networks[a_line['network']].add(new_station)
-
-    return networks
-
-def get_stations_from_file(filename='data/station_location.txt'):
-    """Retrieves all the stations given in the filename and
-    creates a Stations object containing all stations, which is returned.
-    The file must contain the information for each antenna on each
-    row, with the following header (written at the beginning of the file):
-        - station : full name of the station
-        - code : code name of the station
-        - network : name of the network the station belongs to.
-        - x : x coordinates of the station, in meters.
-        - y : y coordinates of the station, in meters.
-        - z : z coordinates of the station, in meters.
-        - SEFD-XX : SEFD of the station at XX cm (-1 if this band cannot be observed)
-    """
-    datafile = ascii.read(filename)
-    networks = stations.Stations('network', [])
-    sefd_names = datafile.colnames[6:]
-    for a_line in datafile:
-        # Create each station and add it to the correct noetwork
-        sefds = {}
-        for sefd_name in sefd_names:
-            if a_line[sefd_name] > 0.0:
-                sefds[f"{sefd_name.replace('SEFD-','').strip()}cm"] = a_line[sefd_name]
-
-        a_loc = coord.EarthLocation(a_line['x']*u.m, a_line['y']*u.m, a_line['z']*u.m)
-        # For now this is hard-coded
-        if a_line['code'] == 'Ar':
-            min_elev = 65*u.deg
-        else:
-            min_elev = 10*u.deg
-
-        new_station = stations.SelectedStation(a_line['station'], a_line['code'],
-             network=a_line['network'], location=a_loc, freqs_sefds=sefds,
-             min_elevation=min_elev, selected=False)
-
-        networks.add(new_station)
-
-    return networks
-
-
 def get_stations_from_configfile(filename='data/stations_catalog.inp'):
     """Retrieves the information concerning all stations available in the 'filename'
     file. Creates a Stations object containing the stations and the information on it.
@@ -104,6 +23,7 @@ def get_stations_from_configfile(filename='data/stations_catalog.inp'):
     diameter - string with the diameter of the station.
     position = x, y, z (in meters). Geoposition of the station.
     min_elevation (in degrees) - minimum elevation the station can observe.
+    real_time = yes/no - if the station can participate in real-time observations (e.g. e-EVN).
     SEFD_**  - SEFD of the station at the **cm band. If a given band is not present,
                 it is assumed that the station cannot observe it.
     [optional]
@@ -118,15 +38,17 @@ def get_stations_from_configfile(filename='data/stations_catalog.inp'):
         a_loc = coord.EarthLocation(temp[0]*u.m, temp[1]*u.m, temp[2]*u.m)
         # Getting the SEFD values for the bands
         min_elev = float(config[stationname]['min_elevation'])*u.deg
+        does_real_time = True if config[stationname]['real_time']=='yes' else False
         sefds = {}
         for akey in config[stationname].keys():
             if 'SEFD_' in akey.upper():
                 sefds[f"{akey.upper().replace('SEFD_', '').strip()}cm"] = \
                                     float(config[stationname][akey])
+
         new_station = stations.SelectedStation(stationname, config[stationname]['code'],
                 config[stationname]['network'], a_loc, sefds, min_elev,
                 config[stationname]['station'], config[stationname]['possible_networks'],
-                config[stationname]['country'], config[stationname]['diameter'])
+                config[stationname]['country'], config[stationname]['diameter'], does_real_time)
         networks.add(new_station)
 
     return networks

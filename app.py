@@ -393,7 +393,7 @@ app.layout = html.Div([
                 ]),
                 # html.Div(style={'margin-top': '20px'}, children=[
                 html.Div(className='col-9', children=[
-                    html.Div(id='first-advise', children=[
+                    html.Div(id='first-advise', className='col-sm-9', children=[
                         html.P(["This is the ", html.B("EVN Observation Planner"),
                                ". First select the "
                                "band (frequency/wavelength) at which you want to observe, "

@@ -20,7 +20,7 @@ bands = {'92cm': 'P band (92 cm or 0.33 GHz)', '49cm': 'P band (49 cm or 0.6 GHz
          '0.7cm': 'Q band (0.7 cm or 43 GHz)', '0.3cm': 'W band (0.3 cm or 100 GHz)',
          '0.1cm': '0.1 cm or 300 GHz'}
 
-data_rates = (2**i for i in range(13, 2, -1)) # from 4 to 4096
+data_rates = (2**i for i in range(15, 2, -1)) # from 4 Mbps to 32 Gbps
 subbands = (2**i for i in range(5, 0, -1)) # from 1 to 16
 channels = (2**i for i in range(14, 4, -1)) # from 16 to 8192.
 polarizations = {4: '4 (Full polarization)', 2: '2 (dual polarization)',

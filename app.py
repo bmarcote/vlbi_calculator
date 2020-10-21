@@ -81,6 +81,8 @@ default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
           'GMVA': ['Ef', 'Mh', 'On', 'Ys', 'Pv', 'Br', 'Fd', 'Kp', 'La', 'Mk', 'Nl',
                    'Ov', 'Pt'],
           'EHT': ['ALMA', 'Pv', 'LMT', 'PdB', 'SMA', 'JCMT', 'APEX', 'SMT', 'SPT']}
+default_datarates = {'EVN': 2048, 'e-EVN': 2048, 'eMERLIN': 4096, 'LBA': 1024, 'VLBA': 4096, 'KVN': 4096,
+                     'Global VLBI': 2048, 'HSA': 2048, 'GMVA': 4096, 'EHT': 2**15}
 
 
 # Safety check that all these antennas are available in the file
@@ -188,7 +190,6 @@ def error_text(an_error):
     return f"An error occured.\n{an_error}.\nPlease report to marcote@jive.eu."
 
 
-
 def convert_colon_coord(colon_coord):
     """Converts some coordinates given in a str format 'HH:MM:SS DD:MM:SS' to
     'HHhMMmSSs DDdMMdSSs'.
@@ -200,9 +201,6 @@ def convert_colon_coord(colon_coord):
         colon_coord = colon_coord.replace(':', l, 1)
 
     return colon_coord.replace(' ', 's ')+'s'
-
-
-
 
 
 def alert_message(message, title="Warning!"):
@@ -233,7 +231,6 @@ def update_sensitivity(obs):
 
     # return [html.Div(className='card-columns col-12 justify-content-center', children=cards)]
     return [html.Div(className='card-deck col-12 justify-content-center', children=cards)]
-
 
 
 
@@ -345,7 +342,7 @@ app.layout = html.Div([
                     ]),
                     html.H4("Advanced setup"),
                     html.Div(className='form-group', children=[
-                        html.Label('Datarate per station (in Mbps)'),
+                        html.Label('Datarate per station'),
                         *ge.tooltip(idname='popover-datarate',
                                  message=["Expected datarate for each station, assuming all of them run at the same rate.",
                                      html.Ul([
@@ -356,7 +353,7 @@ app.layout = html.Div([
                         dcc.Dropdown(id='datarate',
                                      placeholder="Select the datarate...",
                                      options=[{'label': f"Datarate: {dr} Mbps", 'value': dr} \
-                                     for dr in fs.data_rates], value=1024, persistence=True),
+                                     for dr in fs.data_rates], value=2048, persistence=True),
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label('Number of subbands'),
@@ -546,7 +543,8 @@ def update_onsourcetime_label(onsourcetime):
 
 
 @app.callback([Output(f"check_{s.codename}", 'checked') for s in all_antennas] + \
-              [Output(f"check_{s.codename}", 'disabled') for s in all_antennas],
+              [Output(f"check_{s.codename}", 'disabled') for s in all_antennas] + \
+              [Output('datarate', 'value')],
               [Input('band', 'value'), Input('array', 'value'), Input('e-EVN', 'value')])
 def select_antennas(selected_band, selected_networks, is_eEVN):
     """Given a selected band and selected default networks, it selects the associated
@@ -556,17 +554,20 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
     if is_eEVN:
         selected_antennas = [ant for ant in default_arrays['e-EVN'] \
                              if all_antennas[ant].has_band(selected_band)]
-
+        datarate = default_datarates['e-EVN'] if selected_band not in ('18cm', '21cm') else 1024
         return [True if s.codename in selected_antennas else False for s in all_antennas] + \
                [False if (s.has_band(selected_band) and s.real_time) else True \
-                for s in all_antennas]
+                for s in all_antennas] + [datarate]
     else:
+        datarate = -1
         for an_array in selected_networks:
             selected_antennas += [ant for ant in default_arrays[an_array] \
                                     if all_antennas[ant].has_band(selected_band)]
+            datarate = max(datarate, default_datarates[an_array] if not ((an_array == 'EVN') and \
+                                                    (selected_band in ('18cm', '21cm'))) else 1024)
 
         return [True if s.codename in selected_antennas else False for s in all_antennas] + \
-               [False if s.has_band(selected_band) else True for s in all_antennas]
+               [False if s.has_band(selected_band) else True for s in all_antennas] + [datarate]
 
 
 

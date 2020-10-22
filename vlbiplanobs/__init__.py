@@ -7,5 +7,5 @@ from astropy.io import ascii
 from astropy.time import Time
 from astroplan import FixedTarget
 from astroplan import Observer
-import stations
-import functions
+from . import stations
+from . import functions

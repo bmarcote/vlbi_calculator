@@ -19,6 +19,7 @@ import os
 from os import path
 from time import sleep
 import itertools
+from importlib import resources
 from datetime import datetime as dt
 import numpy as np
 import dash
@@ -48,7 +49,6 @@ from astroplan import FixedTarget
 
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs import stations
-from vlbiplanobs import functions as fx
 from vlbiplanobs import observation
 from vlbiplanobs import graphical_elements as ge
 # adding the possibility of disabled
@@ -57,7 +57,7 @@ from vlbiplanobs.Checkbox import Checkbox
 
 current_directory = path.dirname(path.realpath(__file__))
 
-all_antennas = fx.get_stations_from_configfile(f"{current_directory}/data/stations_catalog.inp")
+all_antennas = stations.Stations.get_stations_from_configfile()
 
 sorted_networks = {'EVN': 'EVN: European VLBI Network', 'eMERLIN': 'eMERLIN (out-stations)',
                    'VLBA': 'VLBA: Very Long Baseline Array',
@@ -89,9 +89,9 @@ for a_array in default_arrays:
     for a_station in default_arrays[a_array]:
         assert a_station in all_antennas.keys()
 
-doc_files = {'About this tool': '/doc/doc-contact.md',
-             'About the antennas': '/doc/doc-antennas.md',
-             'Technical background': '/doc/doc-estimations.md'}
+doc_files = {'About this tool': 'doc-contact.md',
+             'About the antennas': 'doc-antennas.md',
+             'Technical background': 'doc-estimations.md'}
 
 # Initial values
 target_source = observation.Source('10h2m3s +50d40m30s', 'Source')
@@ -144,7 +144,7 @@ def get_doc_text():
     """
     temp = []
     for i,a_topic in enumerate(doc_files):
-        with open(current_directory + doc_files[a_topic], 'r') as f:
+        with resources.open_text("doc", doc_files[a_topic]) as f:
             # Some files will have references to images/files in the form '{src:filename}'
             # We parse this
             parsed_text = f.read()

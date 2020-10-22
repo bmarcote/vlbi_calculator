@@ -7,8 +7,6 @@ import dash_html_components as html
 import dash_bootstrap_components as dbc
 import plotly.express as px
 
-from vlbiplanobs import functions
-
 
 def tooltip(message, idname, trigger='?', placement='right',trigger_is_sup=True,  **kwargs):
     """Defines a tooltip (popover) that will be shown in the rendered page.
@@ -188,14 +186,14 @@ def summary_card_beam(app, obs):
 def summary_card_times(app, obs):
     """Creates a summary card showing the observing times, and the resulting data size.
     """
-    prtobstimes = functions.print_obs_times(obs)
+    prtobstimes = obs.print_obs_times()
     if '\n' in prtobstimes:
-        tmp = [html.Span(t) for t in functions.print_obs_times(obs).split('\n')]
+        tmp = [html.Span(t) for t in obs.print_obs_times().split('\n')]
         for i in range(len(tmp)-1):
             tmp.insert(2*i+1, html.Br())
             temp_msg = [tmp]
     else:
-        temp_msg = [f"{functions.print_obs_times(obs)}."]
+        temp_msg = [f"{obs.print_obs_times()}."]
 
     temp_msg += [f"The observation lasts for {optimal_units(obs.duration, [u.h, u.min, u.s, u.ms]):.3n}, of which {optimal_units(obs.ontarget_time, [u.h, u.min, u.s, u.ms]):.3n} are on target."]
     n_files = int(np.ceil(obs.datasize()/(2.0*u.GB)))

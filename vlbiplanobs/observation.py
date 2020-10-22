@@ -449,4 +449,45 @@ class Observation(object):
     #         i += uvdata[bl_name].shape[0]
 
 
+    def print_obs_times(self, date_format='%d %B %Y'):
+        """Given an observation, it returns the time range (starttime-endtime) in a smart
+        way. If the observation lasts for less than one day it omits the end date:
+                20 Jan 1971 10:00-20:00UT
+        It also adds the GST range after that.
+
+        Input:
+            - obs : observation.Observation
+                It must already have set the .times part with an array of astropy.Time times.
+            - date_format : str [optional]
+                Format for the date part (only the date part) of the string to represent
+                the time range.
+        Output:
+            - printed_time : str
+                A string showing the time-range of the observation.
+
+        """
+        gsttext = "{:02n}:{:02.2n}-{:02n}:{:02.2n}".format((self.gstimes[0].hour*60) // 60,
+                                                  (self.gstimes[0].hour*60) % 60,
+                                                  (self.gstimes[-1].hour*60) // 60,
+                                                  (self.gstimes[0].hour*60) % 60)
+        if self.times[0].datetime.date() == self.times[-1].datetime.date():
+            return "{}\n{}-{} UTC\nGST: {}".format(self.times[0].datetime.strftime(date_format),
+                                        self.times[0].datetime.strftime('%H:%M'),
+                                        self.times[-1].datetime.strftime('%H:%M'), gsttext)
+        elif (self.times[-1] - self.times[0]) < 24*u.h:
+            return "{}\n{}-{} UTC (+1d)\nGST: {}".format(
+                                        self.times[0].datetime.strftime(date_format),
+                                        self.times[0].datetime.strftime('%H:%M'),
+                                        self.times[-1].datetime.strftime('%H:%M'), gsttext)
+        else:
+            return "{} {} to {} {} UTC\nGST: {}".format(
+                                        self.times[0].datetime.strftime(date_format),
+                                        self.times[0].datetime.strftime('%H:%M'),
+                                        self.times[-1].datetime.strftime(date_format),
+                                        self.times[-1].datetime.strftime('%H:%M'), gsttext)
+
+
+
+
+
 

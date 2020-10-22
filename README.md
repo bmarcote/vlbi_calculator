@@ -45,8 +45,22 @@ import vlbiplanobs
 
 # Two main modules that can also be imported directly
 from vlbiplanobs import stations
-from vlbiplanobs import observations
+from vlbiplanobs import observation
 
+# You can define your source and telescopes before setting the observation:
+
+# You can define the source you want to observe with:
+source = observation.Source(coordinates='XXhXXmXXs XXdXXmXXs', name='my_source')
+
+# To can then retrieve the coordinates (as in a astropy.coordinates.angles.Longitude/Latitude object) with:
+source.ra
+source.dec
+
+# Or retrieve the full astropy.coordinates object as
+source.coord
+
+
+# Then you can set the observation
 
 
 

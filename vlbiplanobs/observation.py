@@ -98,6 +98,7 @@ class Observation(object):
 
     @band.setter
     def band(self, new_band):
+        assert isinstance(new_band, str) and 'cm' in new_band
         self._band = new_band
         self._uv_baseline = None
         self._uv_array = None

@@ -276,8 +276,10 @@ class Stations(object):
         return self._stations.__contains__(item)
 
     @staticmethod
-    def get_stations_from_configfile(filename=None):
-        """Retrieves the information concerning all stations available in the 'filename'
+    def get_stations_from_configfile(filename=None, codenames=None):
+        """
+        codenames : list with the codenames of the stations you want to import
+        Retrieves the information concerning all stations available in the 'filename'
         file. Creates a Stations object containing the stations and the information on it.
         The file must have a format readable by the Python ConfigParser.
         Each section will be named with the name of the station, and then it must have
@@ -306,22 +308,23 @@ class Stations(object):
 
         networks = Stations('network', [])
         for stationname in config.sections():
-            temp = [float(i.strip()) for i in config[stationname]['position'].split(',')]
-            a_loc = coord.EarthLocation(temp[0]*u.m, temp[1]*u.m, temp[2]*u.m)
-            # Getting the SEFD values for the bands
-            min_elev = float(config[stationname]['min_elevation'])*u.deg
-            does_real_time = True if config[stationname]['real_time']=='yes' else False
-            sefds = {}
-            for akey in config[stationname].keys():
-                if 'SEFD_' in akey.upper():
-                    sefds[f"{akey.upper().replace('SEFD_', '').strip()}cm"] = \
-                                        float(config[stationname][akey])
+            if (codenames is None) or (config[stationname]['code'] in codenames):
+                temp = [float(i.strip()) for i in config[stationname]['position'].split(',')]
+                a_loc = coord.EarthLocation(temp[0]*u.m, temp[1]*u.m, temp[2]*u.m)
+                # Getting the SEFD values for the bands
+                min_elev = float(config[stationname]['min_elevation'])*u.deg
+                does_real_time = True if config[stationname]['real_time']=='yes' else False
+                sefds = {}
+                for akey in config[stationname].keys():
+                    if 'SEFD_' in akey.upper():
+                        sefds[f"{akey.upper().replace('SEFD_', '').strip()}cm"] = \
+                                            float(config[stationname][akey])
 
-            new_station = SelectedStation(stationname, config[stationname]['code'],
-                    config[stationname]['network'], a_loc, sefds, min_elev,
-                    config[stationname]['station'], config[stationname]['possible_networks'],
-                    config[stationname]['country'], config[stationname]['diameter'], does_real_time)
-            networks.add(new_station)
+                new_station = SelectedStation(stationname, config[stationname]['code'],
+                        config[stationname]['network'], a_loc, sefds, min_elev,
+                        config[stationname]['station'], config[stationname]['possible_networks'],
+                        config[stationname]['country'], config[stationname]['diameter'], does_real_time)
+                networks.add(new_station)
 
         return networks
 
@@ -334,7 +337,7 @@ class Stations(object):
         if output_network_name is None:
             output_network_name = f"Stations@{band}"
 
-        antennas = stations.Stations(output_network_name, [])
+        antennas = Stations(output_network_name, [])
         for station in self.stations:
             if band in station.bands:
                 antennas.add(station)

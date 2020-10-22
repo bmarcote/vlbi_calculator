@@ -1,3 +1,10 @@
+import numpy as np
+from astropy import units as u
+from astropy import coordinates as coord
+from astropy.time import Time
+from astroplan import FixedTarget
+from vlbiplanobs import stations
+
 
 """Defines an observation with given network(s), a target source,
 time range and the observing band.

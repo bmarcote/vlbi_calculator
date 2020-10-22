@@ -37,10 +37,20 @@ python app.py
 
 ## But you can also use it inside your Python programs or interactively!
 
-The EVN Observation Planner can also be used inside a Python environment or inside your own programs without the need of running a server.
+The EVN Observation Planner can also be used inside a Python environment or inside your own programs without the need of running a server, ignoring the Dash server.
 
-*Note that this part is still under development and a detailed use will be specified soon*
 
+```python
+import vlbiplanobs
+
+# Two main modules that can also be imported directly
+from vlbiplanobs import stations
+from vlbiplanobs import observations
+
+
+
+
+```
 
 
 

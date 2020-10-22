@@ -350,8 +350,8 @@ app.layout = html.Div([
                                         html.Li("The LBA typically observes at 512 Mbps but can run up to 1 Gbps."),
                                         html.Li("Check the documentation from other networks to be sure about their capabilities.")])]),
                         dcc.Dropdown(id='datarate',
-                                     placeholder="Select the datarate...",
-                                     options=[{'label': f"{dr} Mbps", 'value': dr} \
+                                     placeholder="Select the data rate...",
+                                     options=[{'label': fs.data_rates[dr], 'value': dr} \
                                      for dr in fs.data_rates], value=2048, persistence=True),
                     ]),
                     html.Div(className='form-group', children=[

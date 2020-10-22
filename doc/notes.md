@@ -2,6 +2,16 @@
 #  EVN Source Elevation App
 
 
+## To Do
+
+[ ] Update the 'install_requires' in setup.py (line 54).
+[ ] Move the app.py into bin/ folder, so it is directly called from terminal.
+    https://python-packaging.readthedocs.io/en/latest/command-line-scripts.html
+
+
+
+
+
 ## Program structure
 
 - app.py

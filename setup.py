@@ -55,16 +55,19 @@ setup(name='vlbiplanobs',
 
         # If there are data files included in your packages that need to be
         # installed, specify them here.
-        # package_data={
-        #     'sample': ['package_data.dat'],
-        # },
+        package_data={
+            'stations': ['data/stations_catalog.inp'],
+            'docs': ['docs/*'],
+            'assets': ['assets/*']
+        },
 
         # Although 'package_data' is the preferred approach, in some case you may
         # need to place data files outside of your packages. See:
         # http://docs.python.org/distutils/setupscript.html#installing-additional-files
         #
         # In this case, 'data_file' will be installed into '<sys.prefix>/my_data'
-        data_files=[('data', ['data/stations_catalog.inp'])],
+        # data_files=[('data', ['data/stations_catalog.inp'])],
+        include_package_data=True,
         # List additional URLs that are relevant to your project as a dict.
         #
         # This field corresponds to the "Project-URL" metadata fields:

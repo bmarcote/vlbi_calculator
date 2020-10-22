@@ -1,17 +1,16 @@
 #! /usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""EVN Calculator.
+"""EVN Observation Planner.
 
-Program to compute the source elevation visibility and expected thermal
-noise level for a given EVN observation.
+Program to compute the source elevation visibility
+and expected thermal noise level for a given EVN observation.
 """
 
 __author__ = "Benito Marcote"
-__copyright__ = "Copyright 2020, Joint Insitute for VLBI-ERIC (JIVE)"
 __credits__ = "Benito Marcote"
-__license__ = "GPL"
+__license__ = "LGPLv3+"
 __date__ = "2020/04/21"
-__version__ = "1.0"
+__version__ = "0.3b2"
 __maintainer__ = "Benito Marcote"
 __email__ = "marcote@jive.eu"
 __status__ = "Development"   # Prototype, Development, Production.
@@ -47,13 +46,13 @@ iers.conf.download_cache_lock_attempts = 10
 
 from astroplan import FixedTarget
 
-from src import freqsetups as fs
-from src import stations
-from src import functions as fx
-from src import observation
-from src import graphical_elements as ge
+from vlbiplanobs import freqsetups as fs
+from vlbiplanobs import stations
+from vlbiplanobs import functions as fx
+from vlbiplanobs import observation
+from vlbiplanobs import graphical_elements as ge
 # adding the possibility of disabled
-from src.Checkbox import Checkbox
+from vlbiplanobs.Checkbox import Checkbox
 
 
 current_directory = path.dirname(path.realpath(__file__))

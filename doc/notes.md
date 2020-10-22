@@ -2,16 +2,12 @@
 #  EVN Source Elevation App
 
 
-
-does_eEVN = ['Ef', 'Hh', 'Jb2', 'Jb1', 'Mc', 'Nt', 'On', 'T6', 'Mh', 'Tr', 'Ys', 'Wb', 'Bd', 'Sv', 'Zc', 'Ir', 'Sr', 'Ur', 'Cm', 'Kn', 'Pi', 'Da', 'De']
-
-
 ## Program structure
 
 - app.py
 - README.md
 - docs/
-- src/
+- vlbiplanobs/
     - stations.py
     - sources.py
     - plots.py

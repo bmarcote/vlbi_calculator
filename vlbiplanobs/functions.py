@@ -1,13 +1,6 @@
 """Different functions that are required to operate the program
 """
-
 import configparser
-from astropy import coordinates as coord
-from astropy import units as u
-from astropy.io import ascii
-
-from src import stations
-
 
 def get_stations_from_configfile(filename='data/stations_catalog.inp'):
     """Retrieves the information concerning all stations available in the 'filename'

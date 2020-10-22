@@ -1,9 +1,3 @@
-import numpy as np
-import astropy.units as u
-import astropy.coordinates as coord
-from astropy.time import Time
-from astropy.io import ascii
-from astroplan import Observer
 
 
 class Station(object):

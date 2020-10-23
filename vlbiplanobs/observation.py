@@ -3,7 +3,8 @@ from astropy import units as u
 from astropy import coordinates as coord
 from astropy.time import Time
 from astroplan import FixedTarget
-from vlbiplanobs import stations
+
+import vlbiplanobs
 
 
 """Defines an observation with given network(s), a target source,
@@ -48,6 +49,8 @@ class Observation(object):
             self.inttime = inttime
         if stations is not None:
             self.stations = stations
+        else:
+            self.stations = vlbiplanobs.stations.Stations('empty', [])
 
         self.bitsampling = bits
         self.ontarget_fraction = ontarget
@@ -220,7 +223,7 @@ class Observation(object):
 
     @stations.setter
     def stations(self, new_stations):
-        assert isinstance(new_stations, stations.Stations)
+        assert isinstance(new_stations, vlbiplanobs.stations.Stations)
         self._stations = new_stations
         self._uv_baseline = None
         self._uv_array = None

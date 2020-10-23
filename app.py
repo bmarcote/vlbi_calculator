@@ -51,11 +51,9 @@ from vlbiplanobs import freqsetups as fs
 from vlbiplanobs import stations
 from vlbiplanobs import observation
 from vlbiplanobs import graphical_elements as ge
-# adding the possibility of disabled
+# adding the possibility of disabled. Will be implemented in a future version of dash_bootstrap_components
 from vlbiplanobs.Checkbox import Checkbox
 
-
-current_directory = path.dirname(path.realpath(__file__))
 
 all_antennas = stations.Stations.get_stations_from_configfile()
 
@@ -94,29 +92,20 @@ doc_files = {'About this tool': 'doc-contact.md',
              'Technical background': 'doc-estimations.md'}
 
 # Initial values
-target_source = observation.Source('10h2m3s +50d40m30s', 'Source')
-obs_times = Time('1967-04-17 10:00') + np.arange(0, 600, 15)*u.min
-selected_band = '18cm'
+# target_source = observation.Source('10h2m3s +50d40m30s', 'Source')
+# obs_times = Time('1967-04-17 10:00') + np.arange(0, 600, 15)*u.min
 
-obs = observation.Observation(target=target_source)
-obs.times = Time('2020-06-15 20:00', scale='utc') + np.arange(0, 1200, 30)*u.min
-obs.band = selected_band
-obs.datarate = 1024
-obs.subbands = 8
-obs.channels = 32
-obs.polarizations = 2
-obs.inttime = 2
+selected_band = ''
+obs = observation.Observation()
+# obs = observation.Observation(target=target_source)
+# obs.times = Time('2020-06-15 20:00', scale='utc') + np.arange(0, 1200, 30)*u.min
+# obs.band = selected_band
+# obs.datarate = 1024
+# obs.subbands = 8
+# obs.channels = 32
+# obs.polarizations = 2
+# obs.inttime = 2
 
-def get_selected_antennas(list_of_selected_antennas):
-    """Given a list of antenna codenames, it returns a Stations object containing
-    all given antennas.
-    """
-    selected_antennas = stations.Stations('Observation', [])
-
-    for ant in list_of_selected_antennas:
-        selected_antennas.add(all_antennas[ant])
-
-    return selected_antennas
 
 
 
@@ -181,7 +170,8 @@ def toggle_accordion(*args):
 def error_text(an_error):
     """Message written in a modal error window.
     """
-    return f"An error occured.\n{an_error}.\nPlease report to marcote@jive.eu."
+    return f"An error occured.\n{an_error}.\nPlease report to marcote@jive.eu " \
+            "or in https://github.com/bmarcote/vlbi_calculator."
 
 
 def convert_colon_coord(colon_coord):
@@ -222,8 +212,6 @@ def update_sensitivity(obs):
     cards += ge.summary_card_frequency(app, obs)
     cards += ge.summary_card_rms(app, obs)
     cards += ge.summary_card_fov(app, obs)
-
-    # return [html.Div(className='card-columns col-12 justify-content-center', children=cards)]
     return [html.Div(className='card-deck col-12 justify-content-center', children=cards)]
 
 
@@ -259,7 +247,7 @@ app.layout = html.Div([
                         *ge.tooltip(idname='popover-network', message="Automatically selects "
                                     "the default antennas for the selected VLBI network(s)."),
                         dcc.Dropdown(id='array', options=[{'label': n, 'value': n} \
-                                for n in default_arrays if n != 'e-EVN'], value=['EVN'],
+                                for n in default_arrays if n != 'e-EVN'], value=[],
                                 multi=True),
                     ]),
                     html.Div(className='input-group-prepend', children=[
@@ -317,9 +305,11 @@ app.layout = html.Div([
                     html.Div(className='form-group', children=[
                         html.Label('Target Source Coordinates'),
                         *ge.tooltip(idname='popover-target',
-                                 message="J2000 coordinates are assumed."),
-                        # dcc.Input(id='source', value='hh:mm:ss dd:mm:ss', type='text',
-                        dcc.Input(id='source', value='12:29:06.7 +02:03:08.6', type='text',
+                                 message="Right Ascension and Declination of the source " \
+                                         "J2000 coordinates are assumed. Both, 00:00:00 00:00:00 and " \
+                                         "00h00m00s 00d00m00s syntaxes are allowed."),
+                        # dcc.Input(id='source', value='12:29:06.7 +02:03:08.6', type='text',
+                        dcc.Input(id='source', value='', type='text',
                                   className='form-control', placeholder="hh:mm:ss dd:mm:ss",
                                   persistence=True),
                         html.Small(id='error_source', style={'color': 'red'},
@@ -329,7 +319,9 @@ app.layout = html.Div([
                         html.Label(id='onsourcetime-label',
                                    children='% of on-target time'),
                         *ge.tooltip(idname='popover-ontarget',
-                                 message="Assumes that you will only spend this amount of the total observing time on the given target source. It affects the expected sensitivity."),
+                                 message="Assumes that you will only spend this amount of the total " \
+                                         "observing time on the given target source. It affects the " \
+                                         "expected sensitivity."),
                         dcc.Slider(id='onsourcetime', min=20, max=100, step=5, value=75,
                                    marks= {i: str(i) for i in range(20, 101, 10)},
                                    persistence=True),
@@ -338,12 +330,15 @@ app.layout = html.Div([
                     html.Div(className='form-group', children=[
                         html.Label('Datarate per station'),
                         *ge.tooltip(idname='popover-datarate',
-                                 message=["Expected datarate for each station, assuming all of them run at the same rate.",
+                                 message=["Expected datarate for each station, assuming all " \
+                                          "of them run at the same rate.",
                                      html.Ul([
-                                        html.Li("The EVN can run typically at up to 2 Gbps (1 Gbps at L band), although a few antennas may observe at lower datarates."),
+                                        html.Li("The EVN can run typically at up to 2 Gbps (1 Gbps at L band), " \
+                                                "although a few antennas may observe at lower datarates."),
                                         html.Li("The VLBA can now observe up to 4 Gbps."),
-                                        html.Li("The LBA typically observes at 512 Mbps but can run up to 1 Gbps."),
-                                        html.Li("Check the documentation from other networks to be sure about their capabilities.")])]),
+                                        html.Li("The LBA typically runs at 512 Mbps but can reach up to 1 Gbps."),
+                                        html.Li("Check the documentation from other networks to be " \
+                                                "sure about their capabilities.")])]),
                         dcc.Dropdown(id='datarate',
                                      placeholder="Select the data rate...",
                                      options=[{'label': fs.data_rates[dr], 'value': dr} \
@@ -371,7 +366,9 @@ app.layout = html.Div([
                     html.Div(className='form-group', children=[
                         html.Label('Number of polarizations'),
                         *ge.tooltip(idname='popover-pols',
-                            message="Number of polarizations to correlate. Note that VLBI observes circular polarizations. Full polarization implies the four stokes: RR, LL, RL, LR; while dual polarization implies RR and LL only."),
+                            message="Number of polarizations to correlate. Note that VLBI uses circular " \
+                                    "polarizations. Full polarization implies the four stokes: RR, LL, RL, LR; " \
+                                    "while dual polarization implies RR and LL only."),
                         dcc.Dropdown(id='pols', placeholder="Select polarizations...",
                                      options=[{'label': fs.polarizations[p], 'value': p} \
                                      for p in fs.polarizations], value=4, persistence=True),
@@ -379,13 +376,13 @@ app.layout = html.Div([
                     html.Div(className='form-group', children=[
                         html.Label('Integration time (s)'),
                         *ge.tooltip(idname='popover-inttime',
-                            message="Integration time to compute each visibility. Note that for continuum observations values of 1-2 seconds are typical."),
+                            message="Integration time to compute each visibility. Note that for continuum " \
+                                    "observations values of 1-2 seconds are typical."),
                         dcc.Dropdown(id='inttime', placeholder="Select integration time...",
                                      options=[{'label': fs.inttimes[it], 'value': it} \
                                      for it in fs.inttimes], value=2, persistence=True),
                     ])
                 ]),
-                # html.Div(style={'margin-top': '20px'}, children=[
                 html.Div(className='col-9', children=[
                     html.Div(id='first-advise', className='col-sm-9', children=[
                         html.P(["This is the ", html.B("EVN Observation Planner"),
@@ -454,12 +451,16 @@ app.layout = html.Div([
             dcc.Tab(label='Summary', className='custom-tab',
                     selected_className='custom-tab--selected', children=[
                 html.Div(className='row justify-content-center', children=[
-                # Sensitivity calculations
-                    # dcc.Markdown(id='sensitivity-output',
-                    #              children="Set the observation first.")
                     html.Div(className='col-10 justify-content-center',
                              id='sensitivity-output',
-                             children=update_sensitivity(obs))
+                             children=[html.Div(className='col-md-6', children=[
+                                html.Br(), html.Br(), html.H2("Set the observation first"),
+                                html.P("Here you will see a summary of your observation, "
+                                       "with information about all participating stations, longest and "
+                                       "shortest baseline, expected size of the data once is correlated, "
+                                       "reached resolution and sensitivity, and the limitations in your "
+                                       "field of view due to time and frequency smearing.")])
+                            ])
                 ])
             ]),
             dcc.Tab(label='Elevations', className='custom-tab',
@@ -524,7 +525,6 @@ app.layout = html.Div([
     html.Div(className='container-fluid', children=[html.Br(), html.Br()])
     ])
 ])
-
 
 
 
@@ -671,7 +671,6 @@ def compute_observation(n_clicks, band, starttime, starthour, endtime, endhour, 
                       polarizations=pols, inttime=inttime, ontarget=onsourcetime/100.0,
                       stations=stations.Stations('Observation',
                                                  itertools.compress(all_antennas, ants)))
-                      # stations=get_selected_antennas(all_selected_antennas))
         sensitivity_results = update_sensitivity(obs)
     except observation.SourceNotVisible:
         return alert_message([

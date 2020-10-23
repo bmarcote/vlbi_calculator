@@ -345,3 +345,29 @@ class Stations(object):
         return antennas
 
 
+    def select_stations(self, codenames):
+        """Returns a new Stations object which will only contain the stations
+        defined by the given list of codenames. It will thus be a subset of the current
+        Stations object.
+
+        Input
+            - codenames : list
+                List with the codenames of the stations that should remain
+        Returns
+            - new_array : Stations
+                A new Stations object containing only the defined stations.
+        Exceptions
+            - It may raise KeyError if one of the given codenames are not present
+              among the current stations.
+        """
+        substations = Stations('Sub-stations', [])
+
+        for codename in codenames:
+            substations.add(self.stations[codename])
+
+        return substations
+
+
+
+
+

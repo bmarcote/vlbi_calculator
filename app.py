@@ -1,4 +1,4 @@
-#! /usr/bin/env python3
+#! /usr/bin/env python
 # -*- coding: utf-8 -*-
 """EVN Observation Planner.
 
@@ -51,6 +51,7 @@ current_directory = path.dirname(path.realpath(__file__))
 if path.isfile(current_directory + '/.astropy/cache/download/py3/lock'):
     os.remove(current_directory + '/.astropy/cache/download/py3/lock')
 
+# import vlbiplanobs
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs import stations
 from vlbiplanobs import observation
@@ -123,7 +124,7 @@ external_scripts = ["https://kit.fontawesome.com/69c65a0ab5.js"]
 #         "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"]
 
 
-app = dash.Dash(__name__, external_scripts=external_scripts)
+app = dash.Dash(__name__, external_scripts=external_scripts, assets_folder=current_directory + '/assets/')
 server = app.server
 
 

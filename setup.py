@@ -1,4 +1,5 @@
 from setuptools import setup
+from setuptools import find_packages
 import pathlib
 
 # Get the long description from the README file
@@ -40,17 +41,19 @@ setup(name='vlbiplanobs',
             'Programming Language :: Python :: 3 :: Only',
         ],
         keywords='astronomy, astrophysics, cosmology, radio, science, observations, planner, coordinate',
+        python_requires='>=3.7, <4',
         # When your source code is in a subdirectory under the project root, e.g.
         # `src/`, it is necessary to specify the `package_dir` argument.
         # package_dir={'': 'src'},  # Optional
-        packages=find_packages(where='vlbiplanobs'),
-        python_requires='>=3.7, <4',
+        packages=find_packages(),
+        scripts=['bin/vlbiplanobs'],
         # This field lists other packages that your project depends on to run.
         # Any package you put here will be installed by pip when your project is
         # installed, so they must be valid existing projects.
         #
         # For an analysis of "install_requires" vs pip's requirements files see:
         # https://packaging.python.org/en/latest/requirements.html
+        # TODO
         # install_requires=[''],
 
         # If there are data files included in your packages that need to be

@@ -1,1 +1,1 @@
-web: gunicorn --chdir bin vlbiplanobs:server
+web: gunicorn app:server

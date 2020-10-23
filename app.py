@@ -10,7 +10,7 @@ __author__ = "Benito Marcote"
 __credits__ = "Benito Marcote"
 __license__ = "LGPLv3+"
 __date__ = "2020/04/21"
-__version__ = "0.3b2"
+__version__ = "1.0rc1"
 __maintainer__ = "Benito Marcote"
 __email__ = "marcote@jive.eu"
 __status__ = "Development"   # Prototype, Development, Production.
@@ -95,10 +95,8 @@ doc_files = {'About this tool': 'doc-contact.md',
 
 # Initial values
 target_source = observation.Source('10h2m3s +50d40m30s', 'Source')
-# obs_times = Time('1967-04-17 10:00') + np.arange(0, 600, 15)*u.min
+obs_times = Time('1967-04-17 10:00') + np.arange(0, 600, 15)*u.min
 selected_band = '18cm'
-
-
 
 obs = observation.Observation(target=target_source)
 obs.times = Time('2020-06-15 20:00', scale='utc') + np.arange(0, 1200, 30)*u.min
@@ -119,9 +117,6 @@ def get_selected_antennas(list_of_selected_antennas):
         selected_antennas.add(all_antennas[ant])
 
     return selected_antennas
-
-evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc']
-obs.stations = get_selected_antennas(evn6)
 
 
 

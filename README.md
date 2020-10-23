@@ -127,6 +127,7 @@ obs.time_smearing()
 
 ```
 
+You can then use of favourite tools or your own scripts to process this information.
 
 
 
@@ -151,5 +152,8 @@ SEFD_YY = ZZ   # Multiple inputs providing the estimated System Equivalent Flux 
 ```
 
 
+We are more than glad to integrate any additional station that can be relevant to the purposes of this program.
+
+If you have any suggestion, please open an issue in the GitHub repository, or [mailto:marcote@jive.eu](contact the author).
 
 

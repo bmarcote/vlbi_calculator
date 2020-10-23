@@ -9,7 +9,7 @@ setup(name='vlbiplanobs',
         # Versions should comply with PEP 440:
         # https://www.python.org/dev/peps/pep-0440/
         # [N!]N(.N)*[{a|b|rc}N][.postN][.devN]
-        version='1.0b2',
+        version='1.0rc1',
         # one-line description or tagline of what your project does
         description='Planner for VLBI observations',
         # "Description" metadata field

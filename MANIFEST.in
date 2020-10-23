@@ -1,3 +1,5 @@
 include data/stations_catalog.inp
 include docs/*
 include assets/*
+include README.md
+include CHANGES.txt

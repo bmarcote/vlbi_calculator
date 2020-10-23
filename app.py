@@ -679,7 +679,6 @@ def compute_observation(n_clicks, band, starttime, starthour, endtime, endhour, 
                "First, set correctly an observation in the previous tab.", \
                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    # TODO: this should not be hardcoded...
     obs_times = time0 + np.linspace(0, (time1-time0).to(u.min).value, 50)*u.min
     try:
         obs = observation.Observation(target=target_source, times=obs_times, band=band,

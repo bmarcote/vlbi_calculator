@@ -47,6 +47,10 @@ iers.conf.download_cache_lock_attempts = 10
 
 from astroplan import FixedTarget
 
+current_directory = path.dirname(path.realpath(__file__))
+if path.isfile(current_directory + '/.astropy/cache/download/py3/lock'):
+    os.remove(current_directory + '/.astropy/cache/download/py3/lock'
+
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs import stations
 from vlbiplanobs import observation

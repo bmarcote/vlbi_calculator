@@ -125,23 +125,22 @@ def summary_card_antennas(app, obs):
     # temp_msg = [ge.worldmap_plot([obs.stations[a] for a in obs.stations.keys() \
     #             if a not in ant_no_obs])]
     temp_msg = []
-    longest_bl = obs.longest_baseline()
-    ant_l1, ant_l2 = longest_bl[0].split('-')
-    # Using dummy units to allow the conversion
-    longest_bl_lambda = longest_bl[1]/obs.wavelength
-    longest_bl_lambda = optimal_units(longest_bl_lambda*u.m, [u.Gm, u.Mm, u.km])
     temp_msg += [[f"{len(ants_up)-len(ant_no_obs)} participating antennas: ", *ant_text]]
     if len(ant_no_obs) > 0:
+        ant_text = []
         for ant in ant_no_obs:
             ant_text += tooltip_card(antenna_card(app, obs.stations[ant]),
                             idname=f"basel-{ant}", trigger=ant, placement='top')
             ant_text += [html.Span(", ")]
 
-        # Remove the trailing ,
-        ant_text[-1] = html.Span(".")
-        temp_msg += [html.P(className='text-danger', children=["Note that", ant_text,
-                                                    "cannot observe the source."])]
+        temp_msg += [html.P(className='text-danger', children=["Note that ", *ant_text[:-1],
+                                                    " cannot observe the source."])]
 
+    longest_bl = obs.longest_baseline()
+    ant_l1, ant_l2 = longest_bl[0].split('-')
+    # Using dummy units to allow the conversion
+    longest_bl_lambda = longest_bl[1]/obs.wavelength
+    longest_bl_lambda = optimal_units(longest_bl_lambda*u.m, [u.Gm, u.Mm, u.km])
     temp_msg += [[*baseline_img(app, is_long=True),
                 *tooltip_card(antenna_card(app, obs.stations[ant_l1]), idname='basel-l1',
                              trigger=ant_l1, placement='top'),

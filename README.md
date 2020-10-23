@@ -157,3 +157,21 @@ We are more than glad to integrate any additional station that can be relevant t
 If you have any suggestion, please open an issue in the GitHub repository, or [mailto:marcote@jive.eu](contact the author).
 
 
+
+
+## Installation
+
+You can install the package simply by running
+
+```bash
+python setup.py install
+```
+
+Note that the current version requires the package `astropy` **version 4.0.1** and latest `astroplan`. This restriction in the version of `astropy` is produced by a bug in versions <4.0.1 only triggered when multiple instances run the program at the same time [(see issue #10114 from astropy)](https://github.com/astropy/astropy/issues/10114). If you are running vlbiplanobs only through the command line you will not be affected. On the other hand, versions >4.0.1 are not supported by the current version of `astroplan` (0.6). This will be fixed once version 0.7 is released, unlocking the more recent versions of `astropy`.
+
+
+
+
+
+
+

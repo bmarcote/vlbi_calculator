@@ -95,7 +95,7 @@ doc_files = {'About this tool': 'doc-contact.md',
 # target_source = observation.Source('10h2m3s +50d40m30s', 'Source')
 # obs_times = Time('1967-04-17 10:00') + np.arange(0, 600, 15)*u.min
 
-selected_band = ''
+selected_band = None
 obs = observation.Observation()
 # obs = observation.Observation(target=target_source)
 # obs.times = Time('2020-06-15 20:00', scale='utc') + np.arange(0, 1200, 30)*u.min
@@ -264,7 +264,7 @@ app.layout = html.Div([
                                     "time of the start of the observation (Universal, UTC, "
                                     "time). You will also see the day of the year (DOY) in "
                                     "brackets once the date is selected."),
-                        dcc.DatePickerSingle(id='starttime', min_date_allowed=dt(1900, 1, 1),
+                        dcc.DatePickerSingle(id='starttime', date=None, min_date_allowed=dt(1900, 1, 1),
                                              max_date_allowed=dt(2100, 1, 1),
                                              display_format='DD-MM-YYYY (DDD)',
                                              placeholder='Start date',
@@ -272,7 +272,7 @@ app.layout = html.Div([
                                              initial_visible_month=dt.today(),
                                              persistence=True,
                                              className='form-picker'),
-                        dcc.Dropdown(id='starthour', placeholder="Start time",
+                        dcc.Dropdown(id='starthour', placeholder="Start time", value=None,
                                      options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
                                                'value': f"{hm//60:02n}:{hm % 60:02n}"} \
                                               for hm in range(0, 24*60, 15)],
@@ -286,7 +286,7 @@ app.layout = html.Div([
                                     "time of the end of the observation (Universal, UTC, "
                                     "time). You will also see the day of the year (DOY) in "
                                     "brackets once the date is selected."),
-                        dcc.DatePickerSingle(id='endtime', min_date_allowed=dt(1900, 1, 1),
+                        dcc.DatePickerSingle(id='endtime', date=None, min_date_allowed=dt(1900, 1, 1),
                                              max_date_allowed=dt(2100, 1, 1),
                                              display_format='DD-MM-YYYY (DDD)',
                                              placeholder='End date',
@@ -294,7 +294,7 @@ app.layout = html.Div([
                                              initial_visible_month=dt.today(),
                                              persistence=True,
                                              className='form-picker'),
-                        dcc.Dropdown(id='endhour', placeholder="End time",
+                        dcc.Dropdown(id='endhour', placeholder="End time", value=None,
                                      options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
                                                'value': f"{hm//60:02n}:{hm % 60:02n}"} \
                                               for hm in range(0, 24*60, 15)],
@@ -405,7 +405,7 @@ app.layout = html.Div([
                                             "you want to observe. This will update the "
                                             "antenna list showing the ones that can observe "
                                             "at that given frequency."),
-                            dcc.Dropdown(id='band', persistence=True,
+                            dcc.Dropdown(id='band', persistence=True, value=None,
                                  options=[{'label': fs.bands[b], 'value': b} for b \
                                 # in fs.bands], value='18cm'),
                                 in fs.bands], placeholder='Select observing band...')
@@ -591,7 +591,7 @@ def check_obstime(starttime, starthour, endtime, endhour):
 @app.callback(Output('error_source', 'children'),
         [Input('source', 'value')])
 def get_source(source_coord):
-    if source_coord != 'hh:mm:ss dd:mm:ss':
+    if source_coord != 'hh:mm:ss dd:mm:ss' and source_coord != None:
         try:
             dummy_target = observation.Source(convert_colon_coord(source_coord), 'Source')
             return ''
@@ -628,11 +628,29 @@ def compute_observation(n_clicks, band, starttime, starthour, endtime, endhour, 
     if n_clicks is None:
         return '', dash.no_update, dash.no_update, dash.no_update, \
                dash.no_update, dash.no_update
+
+    # All options must be completed
+    if (band is None) or (starttime is None) or (starthour is None) or (endtime is None) or \
+                 (endhour is None) or (source is None) or (datarate is None) or \
+                 (subbands is None) or (channels is None) or (pols is None) or (inttime is None):
+        return alert_message(["Complete all fields and options before computing the observation"]), \
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+    if ants.count(True) == 0:
+        return alert_message(["You need to select the antennas you wish to observe your source. " \
+                              "Either manually or by selected a default VLBI network at your top left."]), \
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    # A single antenna computation is not supported
+    if ants.count(True) == 1:
+        return alert_message(["Single-antenna computations are not suported. " \
+                              "Please choose at least two antennas"]), \
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
     try:
         target_source = observation.Source(convert_colon_coord(source), 'Source')
     except ValueError as e:
         return alert_message(["Incorrect format for source coordinates.", html.Br(),
-                f"{'Empty value' if source=='' else source} found but 'hh:mm:ss dd:mm:ss' expected."]),\
+                f"{'Empty value' if source=='' else source} found but 'hh:mm:ss dd:mm:ss' expected."]), \
                "First, set correctly an observation in the previous tab.", \
                dash.no_update, dash.no_update, dash.no_update, dash.no_update
     try:
@@ -661,10 +679,8 @@ def compute_observation(n_clicks, band, starttime, starthour, endtime, endhour, 
                "First, set correctly an observation in the previous tab.", \
                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    # try:
     # TODO: this should not be hardcoded...
     obs_times = time0 + np.linspace(0, (time1-time0).to(u.min).value, 50)*u.min
-    # all_selected_antennas = list(itertools.chain.from_iterable(ants))
     try:
         obs = observation.Observation(target=target_source, times=obs_times, band=band,
                       datarate=datarate, subbands=subbands, channels=channels,
@@ -682,7 +698,6 @@ def compute_observation(n_clicks, band, starttime, starthour, endtime, endhour, 
                            " to observe this source.")], title="Warning!"), \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    # return update_sensitivity(obs), dash.no_update, dash.no_update
     # TODO: parallelize all these functions
     return [html.Br(),
             dbc.Alert("You can check now the results in the different tabs", color='info', \

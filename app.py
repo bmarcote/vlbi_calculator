@@ -309,7 +309,7 @@ app.layout = html.Div([
                                          "J2000 coordinates are assumed. Both, 00:00:00 00:00:00 and " \
                                          "00h00m00s 00d00m00s syntaxes are allowed."),
                         # dcc.Input(id='source', value='12:29:06.7 +02:03:08.6', type='text',
-                        dcc.Input(id='source', value='', type='text',
+                        dcc.Input(id='source', value=None, type='text',
                                   className='form-control', placeholder="hh:mm:ss dd:mm:ss",
                                   persistence=True),
                         html.Small(id='error_source', style={'color': 'red'},

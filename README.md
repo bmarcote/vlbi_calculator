@@ -27,11 +27,23 @@ After all this, you only need to press a button (`computer observation`) and you
 - A plot showing the expected _u, v_ coverage. Note that depending on how filled the (_u,v_) plane is, the better reconstructed the resulting image will be.
 
 
-You can also run it locally by downloading the code and running:
+
+## Installing it locally
+
+But if you want to run it in your local machine, you can also install the package simply by running
 
 ```bash
-python app.py
+python setup.py install
 ```
+
+Soon we will upload it to PyPy so you will be able to install it from `pip`.
+
+
+Note that the current version requires the package `astropy` **version 4.0.1** and latest `astroplan`. This restriction in the version of `astropy` is produced by a bug in versions <4.0.1 only triggered when multiple instances run the program at the same time [(see issue #10114 from astropy)](https://github.com/astropy/astropy/issues/10114). If you are running vlbiplanobs only through the command line you will not be affected. On the other hand, versions >4.0.1 are not supported by the current version of `astroplan` (0.6). This will be fixed once version 0.7 is released, unlocking the more recent versions of `astropy`.
+
+
+Once you have it installed, you can simply run it by typing `vlbiplanobs` in the terminal.  It will start to run the server and you will be able to access it in your browser by following the typed url (likely http://0.0.0.0:8050/).
+
 
 
 
@@ -155,20 +167,6 @@ SEFD_YY = ZZ   # Multiple inputs providing the estimated System Equivalent Flux 
 We are more than glad to integrate any additional station that can be relevant to the purposes of this program.
 
 If you have any suggestion, please open an issue in the GitHub repository, or [mailto:marcote@jive.eu](contact the author).
-
-
-
-
-## Installation
-
-You can install the package simply by running
-
-```bash
-python setup.py install
-```
-
-Note that the current version requires the package `astropy` **version 4.0.1** and latest `astroplan`. This restriction in the version of `astropy` is produced by a bug in versions <4.0.1 only triggered when multiple instances run the program at the same time [(see issue #10114 from astropy)](https://github.com/astropy/astropy/issues/10114). If you are running vlbiplanobs only through the command line you will not be affected. On the other hand, versions >4.0.1 are not supported by the current version of `astroplan` (0.6). This will be fixed once version 0.7 is released, unlocking the more recent versions of `astropy`.
-
 
 
 

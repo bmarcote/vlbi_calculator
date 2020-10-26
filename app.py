@@ -9,11 +9,11 @@ and expected thermal noise level for a given EVN observation.
 __author__ = "Benito Marcote"
 __credits__ = "Benito Marcote"
 __license__ = "LGPLv3+"
-__date__ = "2020/04/21"
-__version__ = "1.0"
+__date__ = "2020/10/26"
+__version__ = "1.0.1"
 __maintainer__ = "Benito Marcote"
 __email__ = "marcote@jive.eu"
-__status__ = "Development"   # Prototype, Development, Production.
+__status__ = "Production"   # Prototype, Development, Production.
 
 import os
 from os import path
@@ -50,8 +50,8 @@ from astroplan import FixedTarget
 current_directory = path.dirname(path.realpath(__file__))
 if path.isfile(current_directory + '/.astropy/cache/download/py3/lock'):
     os.remove(current_directory + '/.astropy/cache/download/py3/lock')
+#########   All the previous part will be removed with astropy 4.1+ and astroplan 0.7+
 
-# import vlbiplanobs
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs import stations
 from vlbiplanobs import observation
@@ -96,32 +96,11 @@ doc_files = {'About this tool': 'doc-contact.md',
              'About the antennas': 'doc-antennas.md',
              'Technical background': 'doc-estimations.md'}
 
-# Initial values
-# target_source = observation.Source('10h2m3s +50d40m30s', 'Source')
-# obs_times = Time('1967-04-17 10:00') + np.arange(0, 600, 15)*u.min
-
 selected_band = None
 obs = observation.Observation()
-# obs = observation.Observation(target=target_source)
-# obs.times = Time('2020-06-15 20:00', scale='utc') + np.arange(0, 1200, 30)*u.min
-# obs.band = selected_band
-# obs.datarate = 1024
-# obs.subbands = 8
-# obs.channels = 32
-# obs.polarizations = 2
-# obs.inttime = 2
 
-
-
-
-# external_stylesheets = ["https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css", "http://jive.eu/~marcote/style.css"]
-# external_stylesheets = ["https://bmarcote.github.io/temp/style.css"]
 external_stylesheets = []
-# n_timestamps = 70 # Number of points (timestamps) for the whole observations.
 external_scripts = ["https://kit.fontawesome.com/69c65a0ab5.js"]
-#external_scripts = ["""https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js", \
-#         "https://polyfill.io/v3/polyfill.min.js?features=es6"]
-#         "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"]
 
 
 app = dash.Dash(__name__, external_scripts=external_scripts, assets_folder=current_directory + '/assets/')
@@ -158,6 +137,8 @@ def get_doc_text():
         [Input(f"group-{i}-toggle", "n_clicks") for i in range(len(doc_files))],
         [State(f"collapse-{i}", "is_open") for i in range(len(doc_files))])
 def toggle_accordion(*args):
+    """Allows the expansion/collapse of an HTML accordion block.
+    """
     defaults = list(args[len(doc_files):])
     ctx = dash.callback_context
     if not ctx.triggered:
@@ -173,7 +154,8 @@ def toggle_accordion(*args):
 
 
 def error_text(an_error):
-    """Message written in a modal error window.
+    """Standard error message written in a modal error window.
+    It returns a str mentioning 'an_error' and the contact details to report it.
     """
     return f"An error occured.\n{an_error}.\nPlease report to marcote@jive.eu " \
             "or in https://github.com/bmarcote/vlbi_calculator."
@@ -189,7 +171,7 @@ def convert_colon_coord(colon_coord):
     for l in ('h', 'm', 'd', 'm'):
         colon_coord = colon_coord.replace(':', l, 1)
 
-    return colon_coord.replace(' ', 's ')+'s'
+    return ' '.join([f"{s}s" for s in colon_coord.split()])
 
 
 def alert_message(message, title="Warning!"):

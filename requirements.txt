@@ -1,3 +1,4 @@
+wheel==0.35.1
 astroplan==0.7
 astropy==4.1
 backcall==0.2.0

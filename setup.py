@@ -17,7 +17,7 @@ setup(name='vlbiplanobs',
         long_description=long_description,
         long_description_content_type='text/markdown',
         url='https://github.com/bmarcote/vlbi_calculator',
-        download_url='https://github.com/bmarcote/vlbi_calculator/tarball/1.0',
+        download_url='https://github.com/bmarcote/vlbi_calculator/tarball/1.0.1',
         author='B. Marcote',
         author_email='marcote@jive.eu',
         # Classifiers help users find your project by categorizing it.

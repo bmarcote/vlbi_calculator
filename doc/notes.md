@@ -4,10 +4,10 @@
 
 ## To Do
 
-[ ] Update the 'install_requires' in setup.py (line 54).
-[ ] Move the app.py into bin/ folder, so it is directly called from terminal.
+[X] Update the 'install_requires' in setup.py (line 54).
+[X] Move the app.py into bin/ folder, so it is directly called from terminal.
     https://python-packaging.readthedocs.io/en/latest/command-line-scripts.html
-[ ] Add __all__ = ['', ...]   line in all modules (functions/classes to be imported with \*).
+[X] Add __all__ = ['', ...]   line in all modules (functions/classes to be imported with \*).
 [ ] Target field allowing source name instead of only coordinates.
 [ ] Resolution with different robust weighting.
 

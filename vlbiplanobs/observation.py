@@ -6,6 +6,7 @@ from astroplan import FixedTarget
 
 from vlbiplanobs.stations import Stations
 
+__all__ = ['SourceNotVisible', 'Source', 'Observation']
 
 """Defines an observation, which basically consist of a given network of stations,
 observing a target source for a given time range and at an observing band.

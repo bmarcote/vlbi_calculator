@@ -176,7 +176,7 @@ def summary_card_beam(app, obs):
                         bmin=f"{5*synthbeam['bmin'].to(u.mas)/synthbeam['bmaj'].to(u.mas)}rem",
                         pa=f"{synthbeam['pa'].to(u.deg).value}deg")])]
     # TODO: Check that the rotation is the correct.
-    temp_msg += [html.Br(), html.P([f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.2n} x {synthbeam['bmin'].to(synthbeam_units):.2n}", html.Sup("2"), \
+    temp_msg += [html.Br(), html.P([f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.3n} x {synthbeam['bmin'].to(synthbeam_units):.3n}", html.Sup("2"), \
             f", PA = {synthbeam['pa']:.3n}."])]
     temp_msg += [html.P("Note that the synthesized beam can significantly change depending "
                         "on the weighting used during imaging.")]

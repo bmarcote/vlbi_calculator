@@ -35,15 +35,15 @@ from astropy import units as u
 ## THIS WILL NEED TO GO AWAY IN THE NEW VERSION OF ASTROPY, WHICH IS STILL NOT
 ## SUPPORTED BY THE CURRENT VERSION OF ASTROPLAN
 # Tweak to not let astroplan crashing...
-from astropy.utils.data import clear_download_cache
-from astropy.utils import iers
-clear_download_cache()  # to be sure it is really working
-
-iers.conf.auto_download = False
-iers.conf.iers_auto_url = None
-iers.conf.auto_max_age = None
-iers.conf.remote_timeout = 100.0
-iers.conf.download_cache_lock_attempts = 10
+# from astropy.utils.data import clear_download_cache
+# from astropy.utils import iers
+# clear_download_cache()  # to be sure it is really working
+#
+# iers.conf.auto_download = False
+# iers.conf.iers_auto_url = None
+# iers.conf.auto_max_age = None
+# iers.conf.remote_timeout = 100.0
+# iers.conf.download_cache_lock_attempts = 10
 
 from astroplan import FixedTarget
 
@@ -90,7 +90,7 @@ default_datarates = {'EVN': 2048, 'e-EVN': 2048, 'eMERLIN': 4096, 'LBA': 1024, '
 # Safety check that all these antennas are available in the file
 for a_array in default_arrays:
     for a_station in default_arrays[a_array]:
-        assert a_station in all_antennas.keys()
+        assert a_station in all_antennas.codenames
 
 doc_files = {'About this tool': 'doc-contact.md',
              'About the antennas': 'doc-antennas.md',
@@ -176,7 +176,7 @@ def convert_colon_coord(colon_coord):
 
 def alert_message(message, title="Warning!"):
     """Produces an alert-warning message.
-    message can be either a string or a list with different string/dash components.
+    'message' can be either a string or a list with different string/dash components.
     """
     if type(message) == str:
         return [html.Br(), \
@@ -189,7 +189,8 @@ def alert_message(message, title="Warning!"):
 
 
 def update_sensitivity(obs):
-    """Given the observation, it sets the text about all properties of the observation.
+    """Given the observation, it sets the text for all summary cards
+    with information about the observation.
     """
     cards = []
     # The time card
@@ -520,6 +521,8 @@ app.layout = html.Div([
 @app.callback(Output('onsourcetime-label', 'children'),
               [Input('onsourcetime', 'value')])
 def update_onsourcetime_label(onsourcetime):
+    """Keeps the on-source time label updated with the value selected by the user.
+    """
     return f"% of on-target time ({onsourcetime}%)"
 
 
@@ -557,6 +560,12 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
               [Input('starttime', 'date'), Input('starthour', 'value'),
                Input('endtime', 'date'), Input('endhour', 'value')])
 def check_obstime(starttime, starthour, endtime, endhour):
+    """Verify the introduced times/dates for correct values.
+    Once the user has introduced all values for the start and end of the observation,
+    it guarantees that they have the correct shape:
+        - the end of the observation is afte the start of the observation.
+        - The total observing length is less than five days (value chosen for computational reasons).
+    """
     times = [None, None]
     if None not in (starttime, starthour):
         times[0] = Time(dt.strptime(f"{starttime} {starthour}", '%Y-%m-%d %H:%M'))
@@ -578,12 +587,15 @@ def check_obstime(starttime, starthour, endtime, endhour):
 @app.callback(Output('error_source', 'children'),
         [Input('source', 'value')])
 def get_source(source_coord):
+    """Verifies that the introduced source coordinates have a right format.
+    If they are correct, it does nothing. If they are incorrect, it shows an error label.
+    """
     if source_coord != 'hh:mm:ss dd:mm:ss' and source_coord != None:
         try:
             dummy_target = observation.Source(convert_colon_coord(source_coord), 'Source')
             return ''
         except ValueError as e:
-            return "Use 'hh:mm:ss dd:mm:ss' format"
+            return "Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs' format"
     else:
         return dash.no_update
 

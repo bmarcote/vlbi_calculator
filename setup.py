@@ -10,7 +10,7 @@ setup(name='vlbiplanobs',
         # Versions should comply with PEP 440:
         # https://www.python.org/dev/peps/pep-0440/
         # [N!]N(.N)*[{a|b|rc}N][.postN][.devN]
-        version='1.0',
+        version='1.0.1',
         # one-line description or tagline of what your project does
         description='Planner for VLBI observations',
         # "Description" metadata field
@@ -54,8 +54,7 @@ setup(name='vlbiplanobs',
         #
         # For an analysis of "install_requires" vs pip's requirements files see:
         # https://packaging.python.org/en/latest/requirements.html
-        # TODO
-        # install_requires=[''],
+        install_requires=['numpy', 'astropy>=4.0.2', 'astroplan>=0.7'],
 
         # If there are data files included in your packages that need to be
         # installed, specify them here.

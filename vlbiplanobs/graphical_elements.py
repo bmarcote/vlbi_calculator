@@ -108,9 +108,9 @@ def summary_card_antennas(app, obs):
         if len(ants_up[an_ant][0]) == 0:
             ant_no_obs.append(an_ant)
 
-    ant_text = ', '.join([ant for ant in obs.stations.keys() if ant not in ant_no_obs]) + '.'
+    ant_text = ', '.join([ant for ant in obs.stations.codenames if ant not in ant_no_obs]) + '.'
     ant_text = []
-    for ant in obs.stations.keys():
+    for ant in obs.stations.codenames:
         if ant not in ant_no_obs:
             ant_text += tooltip_card(antenna_card(app, obs.stations[ant]),
                             idname=f"basel-{ant}", trigger=ant, placement='top')

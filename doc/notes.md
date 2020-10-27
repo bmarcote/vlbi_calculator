@@ -7,7 +7,23 @@
 [ ] Update the 'install_requires' in setup.py (line 54).
 [ ] Move the app.py into bin/ folder, so it is directly called from terminal.
     https://python-packaging.readthedocs.io/en/latest/command-line-scripts.html
-[ ] Add __all__ = ['', ...]   line in all modules (functions/classes to be imported with *).
+[ ] Add __all__ = ['', ...]   line in all modules (functions/classes to be imported with \*).
+[ ] Target field allowing source name instead of only coordinates.
+[ ] Resolution with different robust weighting.
+
+
+## Dependencies
+
+App.py
+numpy
+dash
+dash_core_components
+dash_html_components
+dash_bootstrap_components
+plotly
+astropy
+astroplan
+
 
 
 
@@ -108,7 +124,7 @@ Source
     + __init__(coordinates : coord.SkyCoord, name=None)
 
 Observation
-    - target : FixedTarget
+    - target : Source
     - times : Time
     - gstimes :  Longitude (hourangle)
     - duration : Time

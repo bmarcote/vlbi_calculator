@@ -7,16 +7,15 @@ Note that this is not a full test...
 import os
 import sys
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+# import matplotlib.pyplot as plt
+# import matplotlib.dates as mdates
 from astropy import coordinates as coord
 from astropy import units as u
 from astropy.time import Time
 from astropy.io import ascii
-from src import freqsetups as fs
-from src import stations
-from src import functions as fx
-from src import observation
+from vlbiplanobs import freqsetups as fs
+from vlbiplanobs import stations
+from vlbiplanobs import observation
 
 
 
@@ -32,7 +31,7 @@ obs.channels = 32
 obs.polarizations = 2
 obs.inttime = 2
 
-all_stations = fx.get_stations_from_configfile(f"data/stations_catalog.inp")
+all_stations = stations.Stations.get_stations_from_configfile(f"data/stations_catalog.inp")
 
 def get_selected_antennas(list_of_selected_antennas):
     """Given a list of antenna codenames, it returns a Stations object containing
@@ -53,15 +52,15 @@ obs.stations = get_selected_antennas(evn6)
 elevs = obs.elevations()
 srcup = obs.is_visible()
 
-fig, ax = plt.subplots()
+# fig, ax = plt.subplots()
 
 
-for ant in elevs:
-    ax.plot(obs.times.datetime[srcup[ant]], elevs[ant][srcup[ant]].deg, '-', label=ant)
+# for ant in elevs:
+#     ax.plot(obs.times.datetime[srcup[ant]], elevs[ant][srcup[ant]].deg, '-', label=ant)
 
 
-ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-ax.set_xlabel(f"Time (UTC) - {obs.times.datetime[0].strftime('%d-%m-%Y')}")
+# ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+# ax.set_xlabel(f"Time (UTC) - {obs.times.datetime[0].strftime('%d-%m-%Y')}")
 
 
 
@@ -92,9 +91,8 @@ def gst2t(t):
 
 
 
-ax_gst = ax.secondary_xaxis("top", functions=(t2gst, gst2t))
-
-ax_gst.cla()
+# ax_gst = ax.secondary_xaxis("top", functions=(t2gst, gst2t))
+# ax_gst.cla()
 
 
 

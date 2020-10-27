@@ -1,1 +1,4 @@
-v1.0,  2020-10-23 -- First stable release.
+v1.0.1  2020-10-26 -- Source coordinates from server processed seamlessly with extra empty spaces between RA and DEC.
+                   -- Improved documentation in functions.
+                   -- Improved stability of the code with additional checks and explicit type hints.
+v1.0    2020-10-23 -- First stable release.

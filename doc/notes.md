@@ -9,7 +9,12 @@
     https://python-packaging.readthedocs.io/en/latest/command-line-scripts.html
 [X] Add __all__ = ['', ...]   line in all modules (functions/classes to be imported with \*).
 [ ] Target field allowing source name instead of only coordinates.
+    Probably with a pop-up window confirming the coordinates reported.
 [ ] Resolution with different robust weighting.
+
+
+Ref:
+https://safe.nrao.edu/wiki/pub/Main/RadioTutorial/BandwidthSmearing.pdf
 
 
 ## Dependencies
@@ -183,31 +188,6 @@ Band()
 Bands([fromfile])
     - names
     - frequencies
-
-
-
-
-## For the doc:
-
-- See the summary part, modal popover... Like accordion but only text from Bootstrap. Useful for different sections.
-- There is a `address` style in Bootstrap, probably to implement in doc.
-
-
-## To Do list
-
-- Strike antenna name text if does not have the given frequency.
-- Put some "loading" times.
-X Add GST times.
-X In sensitivity: highlight antennas that cannot observe the source.
-- Add some pop up (`card` on Bootstrap) on each antenna with info: picture?, codename, country, etc.
-- observation.Observation.thermal_noise() can be highly optimized.
-- Help buttons and explanatory dialog.
-- Arecibo limits. Currently not shown.
-- Add a per-baseline basis sensitivity? (maybe as a roll-over?)
-- Also, something about the largest angular scale you are sensitive to.
-- Add favicon.ico to the assets folder.
-
-
 
 
 

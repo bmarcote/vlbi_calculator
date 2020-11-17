@@ -203,6 +203,38 @@ def update_sensitivity(obs):
     return [html.Div(className='card-deck col-12 justify-content-center', children=cards)]
 
 
+def arrays_with_band(arrays, a_band):
+    """Returns the given arrays that can observe the given band with at least two antennas.
+    It excludes e-EVN if it is included in arrays.
+
+    Inputs
+    - arrays : dict
+        The keys are the name of the array and the values must be a list with the codenames
+        of the antennas in the array.
+    - a_band : str
+        The band to be observed, following the criteria in fs.bands.
+
+    Returns
+    - arrays_with_band : str
+        Comma-separated list of the arrays that can observe the given band.
+    """
+    tmp = []   # the list of arrays that can observe the given band
+    for an_array in arrays:
+        if an_array != 'e-EVN':
+            if np.sum([all_antennas[a_station].has_band(a_band) for a_station in arrays[an_array]]) > 1:
+                tmp.append(an_array)
+
+    if len(tmp) == 0:
+        return 'none'
+    elif len(tmp) == 2:
+        return ' and '.join(tmp)
+    elif len(tmp) in (1, 3):
+        return ', '.join(tmp)
+    else: # >= 4
+        return ', '.join(tmp[:-1]) + ' and ' + tmp[-1]
+
+
+
 
 #####################  This is the webpage layout
 app.layout = html.Div([
@@ -219,6 +251,45 @@ app.layout = html.Div([
         ])
     ]),
     html.Div([html.Br()]),
+    html.Div(id='main-window', children=[
+        html.Div(className='row justify-content-center',
+            children=html.Div(className='col-sm-7 justify-content-center',
+                    children=[html.Div(className='col-sm-7',
+                            children=[html.P(["This tool allows you to plan observations with the ",
+                                html.A(href="https://www.evlbi.org", children="European VLBI Network"),
+                                " (EVN) and other Very Long Baseline Interferometry (VLBI) networks. "
+                                "This tool allows you to determine when you can schedule the observation "
+                                "of a given source (e.g. when it is visible in the sky "
+                                "for the different antennas), and estimating the outcome of the observation "
+                                "(e.g. reached resolution or sensitivity)."]),
+                            html.P(["First, ", html.B("pick the band (wavelength or frequency)"),
+                                " at which you want to observe. "
+                                "Note that you will still be able to change your selection afterwards "
+                                "in case you want to compare different bands."])
+                        ], style={'text:align': 'justify !important'}),
+                        html.Br(),
+                        dbc.Row([dbc.Card(dbc.CardBody([
+                            html.H5(f"{fs.bands[a_band].split('(')[0].strip()}", className="card-title"),
+                        #     html.P([html.Span("Wavelength:", className='card-subtitle'),
+                        #         f"{fs.bands[a_band].split('(')[1].split('or')[0].strip()}.",
+                        #         html.Br(),
+                        #         html.Span("Frequency:", className='card-subtitle'),
+                        #         f"{fs.bands[a_band].split('(')[1].split('or')[1].replace(')', '').strip()}.",
+                        #         html.Br(),
+                        #         f"Can be observed with the {arrays_with_band(default_arrays, a_band)}."
+                        #     ], className="card-text"),
+                        ]), className="w-50", style={'margin-right': '2rem', 'margin-bottom': '2rem'})
+                        for a_band in fs.bands])
+                        ])
+                )])
+        ])
+
+
+
+@app.callback(Output('main-window', 'children'),
+              [Input('first-dialog', 'value')])
+def update_onsourcetime_label(onsourcetime):
+    return [
     # First row containing all buttons/options, list of telescopes, and button with text output
     dcc.ConfirmDialog(id='global-error', message=''),
     # Elements in second column (checkboxes with all stations)
@@ -512,7 +583,7 @@ app.layout = html.Div([
         ]),
     html.Div(className='container-fluid', children=[html.Br(), html.Br()])
     ])
-])
+    ]
 
 
 

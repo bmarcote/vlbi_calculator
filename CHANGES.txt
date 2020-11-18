@@ -1,3 +1,6 @@
+v2.0    2020-11-18 -- Target source can now be processed by providing source name.
+                   -- New first-window to select the band. Avoids confusion among users.
+				   -- README updated with new location of the online server.
 v1.0.1  2020-10-26 -- Source coordinates from server processed seamlessly with extra empty spaces between RA and DEC.
                    -- Improved documentation in functions.
                    -- Improved stability of the code with additional checks and explicit type hints.

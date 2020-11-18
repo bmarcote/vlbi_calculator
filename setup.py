@@ -10,14 +10,14 @@ setup(name='vlbiplanobs',
         # Versions should comply with PEP 440:
         # https://www.python.org/dev/peps/pep-0440/
         # [N!]N(.N)*[{a|b|rc}N][.postN][.devN]
-        version='1.0.1',
+        version='2.0',
         # one-line description or tagline of what your project does
         description='Planner for VLBI observations',
         # "Description" metadata field
         long_description=long_description,
         long_description_content_type='text/markdown',
         url='https://github.com/bmarcote/vlbi_calculator',
-        download_url='https://github.com/bmarcote/vlbi_calculator/tarball/1.0.1',
+        download_url='https://github.com/bmarcote/vlbi_calculator/tarball/2.0',
         author='B. Marcote',
         author_email='marcote@jive.eu',
         # Classifiers help users find your project by categorizing it.

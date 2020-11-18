@@ -10,7 +10,7 @@ Note that the EVN Observation Planner has been designed as a complementary, but 
 
 ## It runs online!
 
-You can make use of the EVN Observation Planner just by going to [the Heroku running server](https://vlbi-calculator.herokuapp.com/), without installing anything. Note that this is a temporary link, and soon it will be hosted in its final location inside the [EVN](https://www.evlbi.org) website.
+You can make use of the EVN Observation Planner just by going to [the online tool hosted at JIVE](http://planobs.jive.eu:8080), without installing anything.
 
 
 It only requires the minimal information to be able to compute the results of the observation:

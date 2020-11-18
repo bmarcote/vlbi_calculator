@@ -390,7 +390,7 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                                    className='form-text text-muted')
                     ]),
                     html.Div(className='form-group', children=[
-                        html.Label('Target Source Coordinates'),
+                        html.Label('Source (name or coordinates)'),
                         *ge.tooltip(idname='popover-target',
                                  message="Right Ascension and Declination of the source " \
                                          "J2000 coordinates are assumed. Both, 00:00:00 00:00:00 and " \
@@ -399,8 +399,8 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                         dcc.Input(id='source', value=None, type='text',
                                   className='form-control', placeholder="hh:mm:ss dd:mm:ss",
                                   persistence=True),
-                        html.Small(id='error_source', style={'color': 'red'},
-                                   className='form-text text-muted'),
+                        html.Small(id='error_source', style={'color': '#999999'},
+                                   className='form-text'),
                     ]),
                     html.Div(className='form-group', children=[
                         html.Label(id='onsourcetime-label',
@@ -482,7 +482,7 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                                "summary of the planned observation (like when the source "
                                "is visible, expected rms noise level, etc.) in the different "
                                "tabs."]),
-                        html.P(["Note that only antennas that can observe at the selected band"
+                        html.P(["Note that only antennas that can observe at the selected band "
                                 "will be clickable."])
                     ], style={'margin-top': '2rem', 'margin-bottom': '2rem'}),
                     html.Div(className='col-9 form-group row align-items-end', children=[
@@ -689,20 +689,27 @@ def check_obstime(starttime, starthour, endtime, endhour):
     return '', ''
 
 
-@app.callback(Output('error_source', 'children'),
+@app.callback([Output('error_source', 'children'),
+        Output('error_source', 'style')],
         [Input('source', 'value')])
 def get_source(source_coord):
     """Verifies that the introduced source coordinates have a right format.
     If they are correct, it does nothing. If they are incorrect, it shows an error label.
     """
-    if source_coord != 'hh:mm:ss dd:mm:ss' and source_coord != None:
+    if source_coord != 'hh:mm:ss dd:mm:ss' and source_coord != None and source_coord != '':
         try:
             dummy_target = observation.Source(convert_colon_coord(source_coord), 'Source')
-            return ''
+            return '', dash.no_update
         except ValueError as e:
-            return "Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs' format"
+            try:
+                dummy_target = coord.get_icrs_coordinates(source_coord)
+                #TODO: This is actually not an error! (can I change the color?)
+                return dummy_target.to_string('hmsdms'), {'color': '#999999'}
+            except coord.name_resolve.NameResolveError as e:
+                return "Unrecognized name. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'", {'color': '#a01d26'}
+                return "Unrecognized name. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'", {'color': '#6c757d'}
     else:
-        return dash.no_update
+        return '', dash.no_update
 
 
 
@@ -753,7 +760,10 @@ def compute_observation(n_clicks, band, starttime, starthour, endtime, endhour, 
     try:
         target_source = observation.Source(convert_colon_coord(source), 'Source')
     except ValueError as e:
-        return alert_message(["Incorrect format for source coordinates.", html.Br(),
+        try:
+            target_source = observation.Source(coord.get_icrs_coordinates(source), source)
+        except coord.name_resolve.NameResolveError as e:
+            return alert_message(["Incorrect format for source coordinates.", html.Br(),
                 f"{'Empty value' if source=='' else source} found but 'hh:mm:ss dd:mm:ss' expected."]), \
                "First, set correctly an observation in the previous tab.", \
                dash.no_update, dash.no_update, dash.no_update, dash.no_update

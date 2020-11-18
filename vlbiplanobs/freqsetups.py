@@ -16,9 +16,9 @@ bands = {'92cm': 'P band (92 cm or 0.33 GHz)', '49cm': 'P band (49 cm or 0.6 GHz
          '18cm': 'L band (18 cm or 1.7 GHz)', '13cm': 'S band (13 cm or 2.3 GHz)',
          '6cm': 'C band (6cm or 5 GHz)', '5cm': 'M band (5 cm or 6 GHz)',
          '3.6cm': 'X band (3.6 cm or 8.3 GHz)', '2cm': 'U band (2 cm or 15 GHz)',
-         '1.3cm': 'K band (1.3 cm or 23 GHz)', '0.9cm': 'Ka band (0.9 cm or 33 GHz)',
+         '1.3cm': 'K band (1.3 cm or 23 GHz)', #'0.9cm': 'Ka band (0.9 cm or 33 GHz)',
          '0.7cm': 'Q band (0.7 cm or 43 GHz)', '0.3cm': 'W band (0.3 cm or 100 GHz)',
-         '0.1cm': '0.1 cm or 300 GHz'}
+         '0.1cm': 'Band 3 (0.1 cm or 300 GHz)'}
 
 # from 4 Mbps to 32 Gbps
 data_rates = {2**i: f"{2**i} Mbps" if 2**i<1e3 else f"{2**i/1000:.0f} Gbps" for i in range(2, 16)}

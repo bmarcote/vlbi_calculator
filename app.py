@@ -253,8 +253,8 @@ app.layout = html.Div([
     html.Div([html.Br()]),
     html.Div(id='main-window', children=[
         html.Div(className='row justify-content-center',
-            children=html.Div(className='col-sm-7 justify-content-center',
-                    children=[html.Div(className='col-sm-7',
+            children=html.Div(className='col-sm-6 justify-content-center',
+                    children=[html.Div(className='justify-content-center',
                             children=[html.P(["This tool allows you to plan observations with the ",
                                 html.A(href="https://www.evlbi.org", children="European VLBI Network"),
                                 " (EVN) and other Very Long Baseline Interferometry (VLBI) networks. "
@@ -262,33 +262,61 @@ app.layout = html.Div([
                                 "of a given source (e.g. when it is visible in the sky "
                                 "for the different antennas), and estimating the outcome of the observation "
                                 "(e.g. reached resolution or sensitivity)."]),
+
                             html.P(["First, ", html.B("pick the band (wavelength or frequency)"),
                                 " at which you want to observe. "
                                 "Note that you will still be able to change your selection afterwards "
                                 "in case you want to compare different bands."])
                         ], style={'text:align': 'justify !important'}),
                         html.Br(),
-                        dbc.Row([dbc.Card(dbc.CardBody([
-                            html.H5(f"{fs.bands[a_band].split('(')[0].strip()}", className="card-title"),
-                        #     html.P([html.Span("Wavelength:", className='card-subtitle'),
-                        #         f"{fs.bands[a_band].split('(')[1].split('or')[0].strip()}.",
-                        #         html.Br(),
-                        #         html.Span("Frequency:", className='card-subtitle'),
-                        #         f"{fs.bands[a_band].split('(')[1].split('or')[1].replace(')', '').strip()}.",
-                        #         html.Br(),
-                        #         f"Can be observed with the {arrays_with_band(default_arrays, a_band)}."
-                        #     ], className="card-text"),
-                        ]), className="w-50", style={'margin-right': '2rem', 'margin-bottom': '2rem'})
-                        for a_band in fs.bands])
+                        html.Div(className='justify-content-center', children=[html.Div(
+                            dcc.Slider(id='pickband', min=0, max=len(fs.bands), value=tuple(fs.bands).index('18cm'), step='-1',
+                                   marks={i: fq for i,fq in enumerate(fs.bands)},
+                                   persistence=True, # tooltip={'always_visible': True, 'placement': 'top'},
+                                   updatemode='drag', included=False)), #html.Br(), html.Br(),
+                            html.Div(id='pickband-label', className='row justify-content-center', children=''),
+                            html.Div(className='row justify-content-center',
+                                     children=html.Button('Continue', id='pickband-button',
+                                        className='btn btn-primary btn-lg'))
                         ])
+                    ])
                 )])
         ])
 
 
+@app.callback(Output('pickband-label', 'children'),
+              [Input('pickband', 'value')])
+def update_pickband_tooltip(a_wavelength):
+    a_band = tuple(fs.bands)[a_wavelength]
+    return [html.Div(dbc.Card(dbc.CardBody([
+                    html.H5([html.Img(height='30rem', src=app.get_asset_url("waves.svg"),
+                                      alt='Band: ', className='d-inline-block'),
+                             html.Span(f"{fs.bands[a_band].split('(')[0].strip()}",
+                                       style={'float': 'right'})
+                             ], className="card-title"),
+                    html.P([html.Span("Wavelength: ", style={'color': '#888888'}),
+                        f"{fs.bands[a_band].split('(')[1].split('or')[0].strip()}.",
+                        html.Br(),
+                        html.Span("Frequency: ", style={'color': '#888888'}),
+                        f"{fs.bands[a_band].split('(')[1].split('or')[1].replace(')', '').strip()}.",
+                        html.Br(),
+                        html.Span(f"Can be observed with the {arrays_with_band(default_arrays, a_band)}.",
+                            style={'color': '#888888'})
+                    ], className="card-text"),
+                ]), className="col-sm-3 justify-content-center",
+                style={'margin-top': '2rem', 'margin-bottom': '2rem'}), className='justify-content-center'
+            )
+            ]
+
 
 @app.callback(Output('main-window', 'children'),
-              [Input('first-dialog', 'value')])
-def update_onsourcetime_label(onsourcetime):
+              [Input('pickband-button', 'n_clicks')],
+              [State('pickband', 'value')])
+def update_onsourcetime_label(n_clicks, a_wavelength):
+    if n_clicks is None:
+        return dash.no_update
+
+    a_band = tuple(fs.bands)[a_wavelength]
     return [
     # First row containing all buttons/options, list of telescopes, and button with text output
     dcc.ConfirmDialog(id='global-error', message=''),
@@ -445,26 +473,27 @@ def update_onsourcetime_label(onsourcetime):
                 html.Div(className='col-9', children=[
                     html.Div(id='first-advise', className='col-sm-9', children=[
                         html.P(["This is the ", html.B("EVN Observation Planner"),
-                               ". First select the "
+                               ". Once you have selected the "
                                "band (frequency/wavelength) at which you want to observe, "
-                               "then customize your observation setup (left options and "
-                               "select wished antennas), and finally "
+                               "you can customize your observation setup (left options and "
+                               "select required antennas). Finally, "
                                "run ", html.B("'compute observation'"),
                                ". You will get a detailed "
                                "summary of the planned observation (like when the source "
                                "is visible, expected rms noise level, etc.) in the different "
                                "tabs."]),
+                        html.P(["Note that only antennas that can observe at the selected band"
+                                "will be clickable."])
                     ], style={'margin-top': '2rem', 'margin-bottom': '2rem'}),
                     html.Div(className='col-9 form-group row align-items-end', children=[
                         html.Div(className='col-md-6', children=[
-                            html.Label('First Step: Select your observing Band',
+                            html.Label('Your observing Band',
                                         style={'color': '#a01d26'}),
                             *ge.tooltip(idname='popover-band',
-                                    message="First select at which frequency/wavelength "
-                                            "you want to observe. This will update the "
+                                    message="This will update the "
                                             "antenna list showing the ones that can observe "
                                             "at that given frequency."),
-                            dcc.Dropdown(id='band', persistence=True, value=None,
+                            dcc.Dropdown(id='band', persistence=True, value=a_band,
                                  options=[{'label': fs.bands[b], 'value': b} for b \
                                 # in fs.bands], value='18cm'),
                                 in fs.bands], placeholder='Select observing band...')
@@ -568,8 +597,13 @@ def update_onsourcetime_label(onsourcetime):
                 html.Div(className='col-md-8 justify-content-center', children=[
                     # dcc.Markdown(children="""To be implemented.
                     #     The uv coverage and expected dirty images will go here.""")
-                    html.Div(className='col-md-8 justify-content-center',
-                             children=[dcc.Graph(id='fig-uvplane')])
+                    html.Br(),
+                    html.Div([
+                        html.Br(),
+                        html.H4("Resulting (u,v) coverage"),
+                        html.Br()
+                    ]),
+                    html.Div(children=[dcc.Graph(id='fig-uvplane')], className='tex2jax_ignore')
                 ])])
             ]),
             dcc.Tab(label='Documentation', className='custom-tab',
@@ -863,7 +897,7 @@ def get_fig_uvplane(obs):
                          'marker': {'symbol': '.', 'size': 2},
                          'name': bl_name, 'hovertext': bl_name, 'hoverinfo': 'name', 'hovertemplate': ''})
     return {'data': data_fig,
-            'layout': {'title': 'uv coverage', 'showlegend': False,
+            'layout': {'title': '', 'showlegend': False,
                        'hovermode': 'closest',
                        'width': 700, 'height': 700,
                        'xaxis': {'title': 'u (lambda)', 'showgrid': False, 'zeroline': False,

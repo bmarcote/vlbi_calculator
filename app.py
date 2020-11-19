@@ -441,7 +441,7 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                                  message="Number of subbands the total observed bandwidth "
                                          "will be split during correlation."),
                         dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
-                                     options=[{'label': f"{sb} subbands", 'value': sb} \
+                                     options=[{'label': fs.subbands[sb], 'value': sb} \
                                      for sb in fs.subbands], value=8, persistence=True),
                     ]),
                     html.Div(className='form-group', children=[
@@ -450,7 +450,7 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                                  message="How many channels per subband will be produced "
                                          "during correlation."),
                             dcc.Dropdown(id='channels', placeholder="Select no. channels...",
-                                         options=[{'label': f"{ch} channels per subband",
+                                         options=[{'label': fs.channels[ch],
                                                    'value': ch} \
                                          for ch in fs.channels], value=32, persistence=True),
                     ]),
@@ -697,7 +697,11 @@ def get_source(source_coord):
     """Verifies that the introduced source coordinates have a right format.
     If they are correct, it does nothing. If they are incorrect, it shows an error label.
     """
+
     if source_coord != 'hh:mm:ss dd:mm:ss' and source_coord != None and source_coord != '':
+        if len(source_coord) > 30:
+            # Otherwise the source name check gets too slow
+            return "Name too long.", {'color': '#a01d26'}
         try:
             dummy_target = observation.Source(convert_colon_coord(source_coord), 'Source')
             return '', dash.no_update
@@ -762,10 +766,10 @@ def compute_observation(n_clicks, band, starttime, starthour, endtime, endhour, 
         try:
             target_source = observation.Source(coord.get_icrs_coordinates(source), source)
         except coord.name_resolve.NameResolveError as e:
-            return alert_message(["Incorrect format for source coordinates.", html.Br(),
-                f"{'Empty value' if source=='' else source} found but 'hh:mm:ss dd:mm:ss' expected."]), \
-               "First, set correctly an observation in the previous tab.", \
-               dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return alert_message(["Wrong source name or coordinates.", html.Br(),
+                    "Either the source name hasn't been found or the coordinates format is incorrect."]), \
+                    "First, set correctly an observation in the previous tab.", \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
     try:
         time0 = Time(dt.strptime(f"{starttime} {starthour}", '%Y-%m-%d %H:%M'),
                      format='datetime', scale='utc')

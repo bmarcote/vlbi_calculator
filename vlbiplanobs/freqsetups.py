@@ -22,8 +22,8 @@ bands = {'92cm': 'P band (92 cm or 0.33 GHz)', '49cm': 'P band (49 cm or 0.6 GHz
 
 # from 4 Mbps to 32 Gbps
 data_rates = {2**i: f"{2**i} Mbps" if 2**i<1e3 else f"{2**i/1000:.0f} Gbps" for i in range(2, 16)}
-subbands = (2**i for i in range(5, 0, -1)) # from 1 to 16
-channels = (2**i for i in range(14, 4, -1)) # from 16 to 8192.
+subbands = {2**i: f"{2**i} subbands" for i in range(5, 0, -1)} # from 1 to 16
+channels = {2**i: f"{2**i} channels per subband" for i in range(14, 4, -1)}# from 16 to 8192.
 polarizations = {4: '4 (Full polarization)', 2: '2 (dual polarization)',
                  1: '1 (single polarization)'}
 inttimes = {16: '16 s', 8: '8 s', 4: '4 s', 2: '2 s', 1: '1 s', 0.5: '0.5 s',

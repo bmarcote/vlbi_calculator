@@ -330,12 +330,16 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                 html.Div(className='col-sm-3', style={'max-width': '350px','float': 'left',
                                                       'padding': '2%'}, children=[
                     html.Div(className='form-group', children=[
-                        html.Label('Select default VLBI Network(s)'),
-                        *ge.tooltip(idname='popover-network', message="Automatically selects "
-                                    "the default antennas for the selected VLBI network(s)."),
-                        dcc.Dropdown(id='array', options=[{'label': n, 'value': n} \
-                                for n in default_arrays if n != 'e-EVN'], value=[],
-                                multi=True),
+                        html.Label('Your observing Band'),
+                        *ge.tooltip(idname='popover-band',
+                                message="This will update the "
+                                        "antenna list showing the ones that can observe "
+                                        "at that given frequency."),
+                        dcc.Dropdown(id='band', persistence=True, value=a_band,
+                             options=[{'label': fs.bands[b], 'value': b} for b \
+                            # in fs.bands], value='18cm'),
+                            in fs.bands], placeholder='Select observing band...')
+
                     ]),
                     html.Div(className='input-group-prepend', children=[
                         dbc.Checklist(id='e-EVN', className='checkbox', persistence=True,
@@ -487,16 +491,13 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                     ], style={'margin-top': '2rem', 'margin-bottom': '2rem'}),
                     html.Div(className='col-9 form-group row align-items-end', children=[
                         html.Div(className='col-md-6', children=[
-                            html.Label('Your observing Band',
-                                        style={'color': '#a01d26'}),
-                            *ge.tooltip(idname='popover-band',
-                                    message="This will update the "
-                                            "antenna list showing the ones that can observe "
-                                            "at that given frequency."),
-                            dcc.Dropdown(id='band', persistence=True, value=a_band,
-                                 options=[{'label': fs.bands[b], 'value': b} for b \
-                                # in fs.bands], value='18cm'),
-                                in fs.bands], placeholder='Select observing band...')
+                            html.Label('Select default VLBI Network(s)',
+                                    style={'color': '#a01d26'}),
+                            *ge.tooltip(idname='popover-network', message="Automatically selects "
+                                        "the default antennas for the selected VLBI network(s)."),
+                            dcc.Dropdown(id='array', options=[{'label': n, 'value': n} \
+                                    for n in default_arrays if n != 'e-EVN'], value=[],
+                                    multi=True),
                         ]),
                         html.Div(className='col-sm-3', children=[
                             html.Button('Compute Observation', id='antenna-selection-button',

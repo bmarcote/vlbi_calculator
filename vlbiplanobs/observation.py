@@ -23,17 +23,30 @@ class SourceNotVisible(Exception):
 class Source(FixedTarget):
     """Defines a target source located at some coordinates and with a given name.
     """
-    def __init__(self, coordinates: str, name: str = None):
+    def __init__(self, coordinates: str = None, name: str = None):
         """Initializes a Source object.
 
         Inputs
-        - coordinates : str
+        - coordinates : str [OPTIONAL]
             Coordinates of the target source in a str format recognized by
             astropy.coordinates.SkyCoord (e.g. XXhXXmXXs XXdXXmXXs).
             J2000 coordinates are assumed.
+            If not provided, name must be a source name recognized by astroquery.
         - name : str [OPTIONAL]
             Name associated to the source. By default is None.
+
+        If both provided, the given coordinates will be used for the given source.
+
+        It may raise:
+        - NameResolveError: if the name is not recognized (and no coordinates are provided)
+        - ValueError: if the coordinates have an unrecognized format.
+        - AssertionError: if none, coordinates nor name, are provided.
         """
+        assert (name is not None) or (coordinates is not None), \
+               "At least one 'coordiantes' or 'name' must be provided"
+        if (name is not None) and (coordinates is None):
+            coordinates = coord.get_icrs_coordinates(name)
+
         super().__init__(coord.SkyCoord(coordinates), name)
 
 
@@ -141,7 +154,8 @@ class Observation(object):
 
     @target.setter
     def target(self, new_target: Source):
-        assert isinstance(new_target, Source) or new_target is None
+        assert isinstance(new_target, Source) or new_target is None, \
+                "The new target must be a observation.Source instance, or None."
         self._target = new_target
         # Resets all parameters than depend on the source coordinates
         self._uv_baseline = None

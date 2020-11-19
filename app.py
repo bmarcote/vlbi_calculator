@@ -703,11 +703,9 @@ def get_source(source_coord):
         except ValueError as e:
             try:
                 dummy_target = coord.get_icrs_coordinates(source_coord)
-                #TODO: This is actually not an error! (can I change the color?)
                 return dummy_target.to_string('hmsdms'), {'color': '#999999'}
             except coord.name_resolve.NameResolveError as e:
                 return "Unrecognized name. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'", {'color': '#a01d26'}
-                return "Unrecognized name. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'", {'color': '#6c757d'}
     else:
         return '', dash.no_update
 

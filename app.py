@@ -103,7 +103,8 @@ external_stylesheets = []
 external_scripts = ["https://kit.fontawesome.com/69c65a0ab5.js"]
 
 
-app = dash.Dash(__name__, external_scripts=external_scripts, assets_folder=current_directory + '/assets/')
+app = dash.Dash(__name__, title='EVN Observation Planner', external_scripts=external_scripts,
+                assets_folder=current_directory + '/assets/')
 server = app.server
 
 

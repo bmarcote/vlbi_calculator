@@ -578,8 +578,8 @@ position = -1281152.8362, 5640864.3586, 2682653.4434
 min_elevation = 10.0
 real_time = no
 SEFD_13 = 350.0
-SEFD_6 = 17.0
-SEFD_5 = 17.0
+SEFD_6 = 290.0
+SEFD_5 = 290.0
 SEFD_3.6 = 480.0
 
 

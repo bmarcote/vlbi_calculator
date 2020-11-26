@@ -258,14 +258,14 @@ app.layout = html.Div([
         html.Div(className='row justify-content-center',
             children=html.Div(className='col-sm-6 justify-content-center',
                     children=[html.Div(className='justify-content-center',
-                            children=[html.P(["Welcome to the EVN Observation Planner!", html.Br(),
-                                              "This tool allows you to plan observations with the ",
+                            children=[html.H3("Welcome!"),
+                                      html.P(["The EVN Observation Planner allows you to plan observations with the ",
                                 html.A(href="https://www.evlbi.org", children="European VLBI Network"),
                                 " (EVN) and other Very Long Baseline Interferometry (VLBI) networks. "
                                 "The EVN Observation Planner helps you to determine when your source "
                                 "can be observed by the different antennas, and provides the expected "
                                 "outcome of these observations, like the expected sensitivity or resolution."]),
-                            html.H3("Pick the observing band first"),
+                            html.H3("Select the observing band first"),
                             html.P(["Then you can continue to configure the rest of the observation. "
                                 "Note that, in any case, you will still be able to change your selection "
                                 "afterwards in case you want to compare different bands."])

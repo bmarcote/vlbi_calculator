@@ -105,6 +105,8 @@ external_scripts = ["https://kit.fontawesome.com/69c65a0ab5.js"]
 
 app = dash.Dash(__name__, title='EVN Observation Planner', external_scripts=external_scripts,
                 assets_folder=current_directory + '/assets/')
+
+app.config.suppress_callback_exceptions = True  # Avoids error messages for id's that haven't been loaded yet
 server = app.server
 
 
@@ -271,7 +273,8 @@ app.layout = html.Div([
                         ], style={'text:align': 'justify !important'}),
                         html.Br(),
                         html.Div(className='justify-content-center', children=[html.Div(
-                            dcc.Slider(id='pickband', min=0, max=len(fs.bands), value=tuple(fs.bands).index('18cm'), step='-1',
+                            dcc.Slider(id='pickband', min=0, max=len(fs.bands)-1,
+                                   value=tuple(fs.bands).index('18cm'), step=-1,
                                    marks={i: fq for i,fq in enumerate(fs.bands)},
                                    persistence=True, # tooltip={'always_visible': True, 'placement': 'top'},
                                    updatemode='drag', included=False)), #html.Br(), html.Br(),
@@ -290,7 +293,8 @@ app.layout = html.Div([
 def update_pickband_tooltip(a_wavelength):
     a_band = tuple(fs.bands)[a_wavelength]
     return [html.Div(dbc.Card(dbc.CardBody([
-                    html.H5([html.Img(height='30rem', src=app.get_asset_url("waves.svg"),
+                    html.H5([html.Img(height='30rem',
+                                      src=app.get_asset_url(f"waves-{a_band.replace('.',  '_')}.svg"),
                                       alt='Band: ', className='d-inline-block'),
                              html.Span(f"{fs.bands[a_band].split('(')[0].strip()}",
                                        style={'float': 'right'})

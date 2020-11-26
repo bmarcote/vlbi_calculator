@@ -81,10 +81,9 @@ def antenna_card(app, station):
                      html.Span(station.diameter, style={'float': 'right'}),
                     ], className='card-subtitle'),
             # html.P(f"&#127462; Participates in {station.all_networks}.\n"
-            dcc.Markdown(f"Listed for the {s(station.all_networks)}.\n" if \
-                          station.all_networks != '' else '', className='card-text'),
-            dcc.Markdown("Can observe at "
-                         f"{', '.join([i.replace('cm', '') for i in station.bands])} cm.",
+            dcc.Markdown([f"Listed for the {s(station.all_networks)}.\n" if \
+                          station.all_networks != '' else '', "Can observe at "
+                         f"{', '.join([i.replace('cm', '') for i in station.bands])} cm."],
                          className='card-text')
             ])
         ], className='card-antenna')
@@ -249,14 +248,14 @@ def summary_card_fov(app, obs):
     smearing_ratio = smearing_ratio if smearing_ratio <= 1.0 else 1/smearing_ratio
 
     temp_msg = [html.Div(className='row', style={'height': '1rem'}),
-            html.Div(className='row justify-content-center',
+            html.Div(className='row justify-content-center align-self-center',
                     children=[ellipse(bmaj="5rem", bmin="5rem", pa="0deg"),
                       ellipse(bmaj=f"2rem", bmin=f"2rem", pa="0deg", color="#F0959B",
-                              z_index=3, position='absolute', margin_top='7%'),
+                              z_index=3, position='absolute', className='align-self-center'),
                       ellipse(bmaj=f"{2*smearing_ratio}rem",
                               bmin=f"{2*smearing_ratio}rem",
                               pa="0deg", color="white", z_index=4, position='absolute',
-                              margin_top=f'{8+2*bw_smearing/tm_smearing}%')])]
+                              className='align-self-center')])]
     temp_msg += [f"The Field of View would be limited by time smearing to {optimal_units(tm_smearing, [u.arcmin, u.arcsec]):.3n} and by frequency smearing to {optimal_units(bw_smearing, [u.arcmin, u.arcsec]):.3n} (considering a 10% loss)."]
     temp_msg += [f"Considering the shortest baseline in the array, "
     "you will filter out emission on angular scales larger than "
@@ -290,7 +289,7 @@ def summary_card_rms(app, obs):
 # Some small graphical elements
 
 
-def ellipse(bmaj, bmin, pa, color='#a01d26', z_index=1, position='relative', margin_top=''):
+def ellipse(bmaj, bmin, pa, color='#a01d26', z_index=1, position='relative', margin_top='', className=''):
     """Returns a html.Div element that draws an ellipse with a semimajor axis bmaj,
     semiminor axis bmin, and position angle (as defined in radio astronomy) pa.
     bmaj,bmin, pa must be strings recognized by HTML/CSS.
@@ -298,7 +297,7 @@ def ellipse(bmaj, bmin, pa, color='#a01d26', z_index=1, position='relative', mar
     return html.Div(children=[], style={'width': bmaj, 'height': bmin,
                     'border-radius': '50%', 'background': color, 'position': position,
                     'transform': f"rotate({pa})", 'z-index': z_index,
-                    'vertical-align': 'middle', 'margin-top': margin_top})
+                    'vertical-align': 'middle', 'margin-top': margin_top}, className=className)
 
 
 def baseline_img(app, is_long=True):

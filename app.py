@@ -92,7 +92,7 @@ for a_array in default_arrays:
     for a_station in default_arrays[a_array]:
         assert a_station in all_antennas.codenames
 
-doc_files = {'About this tool': 'doc-contact.md',
+doc_files = {'About the EVN Observation Planner': 'doc-contact.md',
              'About the antennas': 'doc-antennas.md',
              'Technical background': 'doc-estimations.md'}
 
@@ -198,9 +198,9 @@ def update_sensitivity(obs):
     cards = []
     # The time card
     cards += ge.summary_card_times(app, obs)
+    cards += ge.summary_card_frequency(app, obs)
     cards += ge.summary_card_antennas(app, obs)
     cards += ge.summary_card_beam(app, obs)
-    cards += ge.summary_card_frequency(app, obs)
     cards += ge.summary_card_rms(app, obs)
     cards += ge.summary_card_fov(app, obs)
     return [html.Div(className='card-deck col-12 justify-content-center', children=cards)]
@@ -258,16 +258,16 @@ app.layout = html.Div([
         html.Div(className='row justify-content-center',
             children=html.Div(className='col-sm-6 justify-content-center',
                     children=[html.Div(className='justify-content-center',
-                            children=[html.P(["This tool allows you to plan observations with the ",
+                            children=[html.P(["Welcome to the EVN Observation Planner!", html.Br(),
+                                              "This tool allows you to plan observations with the ",
                                 html.A(href="https://www.evlbi.org", children="European VLBI Network"),
                                 " (EVN) and other Very Long Baseline Interferometry (VLBI) networks. "
-                                "This tool allows you to determine when you can schedule the observation "
-                                "of a given source (e.g. when it is visible in the sky "
-                                "for the different antennas), and estimating the outcome of the observation "
-                                "(e.g. reached resolution or sensitivity)."]),
+                                "The EVN Observation Planner helps you to determine when your source "
+                                "can be observed by the different antennas, and provides the expected "
+                                "outcome of these observation, like the expected sensitivity or resolution."]),
 
-                            html.P(["First, ", html.B("pick the band (wavelength or frequency)"),
-                                " at which you want to observe. "
+                            html.P([html.B("Pick the observing band first"),
+                                " to be able to continue. "
                                 "Note that you will still be able to change your selection afterwards "
                                 "in case you want to compare different bands."])
                         ], style={'text:align': 'justify !important'}),
@@ -401,9 +401,10 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                     html.Div(className='form-group', children=[
                         html.Label('Source (name or coordinates)'),
                         *ge.tooltip(idname='popover-target',
-                                 message="Right Ascension and Declination of the source " \
-                                         "J2000 coordinates are assumed. Both, 00:00:00 00:00:00 and " \
-                                         "00h00m00s 00d00m00s syntaxes are allowed."),
+                                 message="Source name or coordinates. " \
+                                         "You may see an error if the given name is not properly resolved. "
+                                         "J2000 coordinates are assumed in both forms: 00:00:00 00:00:00 or " \
+                                         "00h00m00s 00d00m00s."),
                         # dcc.Input(id='source', value='12:29:06.7 +02:03:08.6', type='text',
                         dcc.Input(id='source', value=None, type='text',
                                   className='form-control', placeholder="hh:mm:ss dd:mm:ss",
@@ -443,8 +444,8 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                     html.Div(className='form-group', children=[
                         html.Label('Number of subbands'),
                         *ge.tooltip(idname='popover-subbands',
-                                 message="Number of subbands the total observed bandwidth "
-                                         "will be split during correlation."),
+                                 message="Number of subbands to split the total observed bandwidth "
+                                         " during correlation (IFs in AIPS)."),
                         dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
                                      options=[{'label': fs.subbands[sb], 'value': sb} \
                                      for sb in fs.subbands], value=8, persistence=True),
@@ -481,15 +482,17 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                 ]),
                 html.Div(className='col-9', children=[
                     html.Div(id='first-advise', className='col-sm-9', children=[
-                        html.P(["This is the ", html.B("EVN Observation Planner"),
-                               ". Once you have selected the "
-                               "band (frequency/wavelength) at which you want to observe, "
-                               "you can customize your observation setup (left options and "
-                               "select required antennas). Finally, "
-                               "run ", html.B("'compute observation'"),
-                               ". You will get a detailed "
-                               "summary of the planned observation (like when the source "
-                               "is visible, expected rms noise level, etc.) in the different "
+                        html.P(["Here you can set up your observation.", html.Br(),
+                               "Please select which network (or networks) you want to use in your "
+                               "observations, or select a customized array of antennas. "
+                               "On the left you can set the basic information from your observations: "
+                               "times of the observations and target source to observe. ", html.Br(),
+                               "Optionally, you can customize the configuration and correlation parameters "
+                               "under 'advance setup'. Otherwise, default values based on your selection "
+                               "will be used.", html.Br(),
+                               "Once you are ready, press the big red ", html.B("'compute observation'"),
+                               " button. You will get a detailed "
+                               "summary of the planned observation and expected outcomes in the different "
                                "tabs."]),
                         html.P(["Note that only antennas that can observe at the selected band "
                                 "will be clickable."])
@@ -499,10 +502,10 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                             html.Label('Select default VLBI Network(s)',
                                     style={'color': '#a01d26'}),
                             *ge.tooltip(idname='popover-network', message="Automatically selects "
-                                        "the default antennas for the selected VLBI network(s)."),
+                                        "the default participating antennas for the selected VLBI network(s)."),
                             dcc.Dropdown(id='array', options=[{'label': n, 'value': n} \
                                     for n in default_arrays if n != 'e-EVN'], value=[],
-                                    multi=True),
+                                    persistence=True, multi=True),
                         ]),
                         html.Div(className='col-sm-3', children=[
                             html.Button('Compute Observation', id='antenna-selection-button',
@@ -587,7 +590,7 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                         html.P("""The following plot shows when the source may be observed
                         for the different antennas, assuming a minimum elevation of 10 degrees
                         for most antennas (except e.g. Arecibo). Note that some antennas may
-                        have additional constraints por some particular azimuth or elevation
+                        have additional constraints for particular azimuth or elevation
                         angles that are not considered here.
                         """)
                     ]),

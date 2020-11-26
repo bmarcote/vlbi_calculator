@@ -761,15 +761,15 @@ class Observation(object):
         """Returns the time range (starttime-to-endtime) of the observation in a smart way.
         If the observation lasts for less than one day it omits the end date:
                 20 January 1971 10:00-20:00 UTC
-                GST: 05:00-15:00
+                GST range: 05:00-15:00
 
         If the observation ends the day after, then it returns:
                 20 January 1971 10:00-20:00 UTC (+1d)
-                GST: 05:00-15:00
+                GST range: 05:00-15:00
 
         If the observation is longer, then it returns
                 20 January 1971 10:00 to  24 January 1971 20:00 UTC
-                GST: 05:00-15:00
+                GST range: 05:00-15:00
 
         Input:
             - date_format : str [OPTIONAL]
@@ -784,16 +784,16 @@ class Observation(object):
                                                   (self.gstimes[-1].hour*60) // 60,
                                                   (self.gstimes[0].hour*60) % 60)
         if self.times[0].datetime.date() == self.times[-1].datetime.date():
-            return "{}\n{}-{} UTC\nGST: {}".format(self.times[0].datetime.strftime(date_format),
+            return "{} {}-{} UTC\nGST range: {}".format(self.times[0].datetime.strftime(date_format),
                                         self.times[0].datetime.strftime('%H:%M'),
                                         self.times[-1].datetime.strftime('%H:%M'), gsttext)
         elif (self.times[-1] - self.times[0]) < 24*u.h:
-            return "{}\n{}-{} UTC (+1d)\nGST: {}".format(
+            return "{} {}-{} UTC (+1d)\nGST range: {}".format(
                                         self.times[0].datetime.strftime(date_format),
                                         self.times[0].datetime.strftime('%H:%M'),
                                         self.times[-1].datetime.strftime('%H:%M'), gsttext)
         else:
-            return "{} {} to {} {} UTC\nGST: {}".format(
+            return "{} {} to {} {} UTC\nGST range: {}".format(
                                         self.times[0].datetime.strftime(date_format),
                                         self.times[0].datetime.strftime('%H:%M'),
                                         self.times[-1].datetime.strftime(date_format),

@@ -3754,6 +3754,12 @@ img[alt=equation2] {
     margin-bottom: 0px;
 }
 
+.card.card-antenna .card-text {
+    margin-bottom: 0.5rem;
+    position: absolute;
+    bottom: 0.5rem;
+}
+
 .popover-link {
     color: #a01d26;
 }

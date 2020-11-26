@@ -3819,6 +3819,25 @@ img[alt=equation2] {
     margin-top: 1rem;
 }
 
+.rc-slider-handle {
+	border: 2px solid #a01d26; 
+}
+
+.rc-slider-handle:hover {
+	border-color: #a01d26; 
+}
+
+.rc-slider-handle:focus {
+	border-color: #a01d26; 
+}
+
+.rc-slider-dot-active {
+	border-color: #f0959b;
+}
+
+.rc-slider-track {
+	background-color: #f0959b;
+}
 
 /* .accordion button:after { */
 /*   content: '\02795'; /* Unicode character for "plus" sign (+) */ */

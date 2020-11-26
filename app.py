@@ -264,7 +264,7 @@ app.layout = html.Div([
                                 " (EVN) and other Very Long Baseline Interferometry (VLBI) networks. "
                                 "The EVN Observation Planner helps you to determine when your source "
                                 "can be observed by the different antennas, and provides the expected "
-                                "outcome of these observation, like the expected sensitivity or resolution."]),
+                                "outcome of these observations, like the expected sensitivity or resolution."]),
 
                             html.P([html.B("Pick the observing band first"),
                                 " to be able to continue. "

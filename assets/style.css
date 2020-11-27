@@ -3831,6 +3831,10 @@ img[alt=equation2] {
 	border-color: #a01d26; 
 }
 
+.rc-slider-handle:active {
+    box-shadow: 0 0 5px #f0959b;
+}
+
 .rc-slider-dot-active {
 	border-color: #f0959b;
 }

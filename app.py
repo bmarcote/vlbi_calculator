@@ -598,7 +598,7 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                     ],className='tex2jax_ignore')
                 ])])
             ]),
-            dcc.Tab(label='Coverage', className='custom-tab',
+            dcc.Tab(label='UV Coverage', className='custom-tab',
                     selected_className='custom-tab--selected', children=[
                 #  Images
                 html.Div(className='row justify-content-center', children=[

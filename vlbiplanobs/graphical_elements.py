@@ -258,7 +258,7 @@ def summary_card_fov(app, obs):
                               className='align-self-center')])]
     temp_msg += [f"The Field of View would be limited by time smearing to {optimal_units(tm_smearing, [u.arcmin, u.arcsec]):.3n} and by frequency smearing to {optimal_units(bw_smearing, [u.arcmin, u.arcsec]):.3n} (considering a 10% loss)."]
     temp_msg += [f"Considering the shortest baseline in the array, "
-    "you will filter out emission on angular scales larger than "
+    "you will resolve out emission on angular scales larger than "
     f"{optimal_units(largest_ang_scales, [u.arcmin, u.arcsec, u.mas]):.3n}."]
     return create_sensitivity_card('FoV limitations', temp_msg)
 

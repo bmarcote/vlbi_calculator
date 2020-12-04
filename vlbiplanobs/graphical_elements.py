@@ -214,6 +214,7 @@ def summary_card_times(app, obs):
 def summary_card_frequency(app, obs):
     pol_dict = {1: 'single', 2: 'dual', 4: 'full'}
     bw = optimal_units(obs.bandwidth, [u.GHz, u.MHz, u.kHz])
+    vel = optimal_units((2.9979e5*u.km/u.s)*(obs.bandwidth/(2*obs.frequency)).decompose(), [u.km/u.s, u.m/u.s])
     bwwl = optimal_units((30*u.cm/(obs.bandwidth.to(u.GHz).value)), [u.m, u.cm, u.mm])
     temp_msg = [html.Div(className='row justify-content-center',
                 children=[html.Div(className='bandpass', style={'height': '4rem',
@@ -226,10 +227,18 @@ def summary_card_frequency(app, obs):
                                 html.Td(f"{optimal_units(obs.frequency, [u.GHz, u.MHz]):.4n}",
                                         style={'text-align': 'center'}),
                                 html.Td(f"+{bw/2:.3n}", style={'text-align': 'right'})
+                            ]),
+                            html.Tr([
+                                html.Td(f"+{vel:.5n}", style={'text-align': 'left'}),
+                                html.Td("0", style={'text-align': 'center'}),
+                                html.Td(f"-{vel:.5n}", style={'text-align': 'right'})
                             ])]
                 )])]
     temp_msg += [f"The central frequency is {optimal_units(obs.frequency, [u.GHz, u.MHz]):.3n} ({optimal_units(obs.wavelength, [u.m, u.cm, u.mm]):.2n})."]
-    temp_msg += [f"The total bandwidth of {optimal_units(obs.bandwidth, [u.GHz, u.MHz, u.kHz]):.3n} will be divided into {obs.subbands} subbands of {optimal_units(obs.bandwidth/obs.subbands, [u.GHz, u.MHz, u.kHz]):.3n} each, with {obs.channels} channels ({optimal_units(obs.bandwidth/(obs.subbands*obs.channels), [u.GHz, u.MHz, u.kHz, u.Hz]):.3n} wide)."]
+    if obs.subbands > 1:
+        temp_msg += [f"The total bandwidth of {optimal_units(obs.bandwidth, [u.GHz, u.MHz, u.kHz]):.3n} will be divided into {obs.subbands} subbands of {optimal_units(obs.bandwidth/obs.subbands, [u.GHz, u.MHz, u.kHz]):.3n} each, with {obs.channels} channels ({optimal_units(obs.bandwidth/(obs.subbands*obs.channels), [u.GHz, u.MHz, u.kHz, u.Hz]):.3n}, or {optimal_units(2*vel/(obs.subbands*obs.channels), [u.km/u.s, u.m/u.s]):.3n}, wide)."]
+    else:
+        temp_msg += [f"The total bandwidth of {optimal_units(obs.bandwidth, [u.GHz, u.MHz, u.kHz]):.3n} will be recorded in {obs.subbands} subband, with {obs.channels} channels ({optimal_units(obs.bandwidth/(obs.subbands*obs.channels), [u.GHz, u.MHz, u.kHz, u.Hz]):.3n}, or {optimal_units(2*vel/(obs.subbands*obs.channels), [u.km/u.s, u.m/u.s]):.3n}, wide)."]
     temp_msg += [f"Recording {pol_dict[obs.polarizations]} circular polarization."]
     return create_sensitivity_card('Frequency Setup', temp_msg)
 

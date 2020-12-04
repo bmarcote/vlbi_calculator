@@ -757,7 +757,7 @@ class Observation(object):
     #         i += uvdata[bl_name].shape[0]
 
 
-    def print_obs_times(self, date_format='%d %B %Y'):
+    def print_obs_times(self, date_format='%d %b %Y'):
         """Returns the time range (starttime-to-endtime) of the observation in a smart way.
         If the observation lasts for less than one day it omits the end date:
                 20 January 1971 10:00-20:00 UTC

@@ -735,10 +735,11 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source,
                dash.no_update, dash.no_update
 
     # All options must be completed
-    if (band is None) or (starttime is None) or (starthour is None) or (duration is None) or \
-                 (source is None) or (datarate is None) or \
-                 (subbands is None) or (channels is None) or (pols is None) or (inttime is None):
-        return alert_message(["Complete all fields and options before computing the observation"]), \
+    if None in (band, starttime, starthour, duration, source, datarate, subbands, channels, pols, inttime) \
+            or source == "":
+        missing = [label for label,atr in zip(('observing band', 'target source', 'start observing date', 'start observing time', 'duration of the observation', 'data rate', 'number of subbands', 'number of channels', 'number of polarizations', 'integration time'), (band, source, starttime, starthour, duration, datarate, subbands, channels, pols, inttime)) if (atr is None) or (atr == "")]
+        return alert_message(["Complete all fields and options before computing the observation.\n" +\
+                              f"Currently it is missing: {', '.join(missing)}."]), \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if ants.count(True) == 0:

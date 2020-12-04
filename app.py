@@ -128,10 +128,10 @@ def get_doc_text():
 
             if a_topic == 'About the antennas':
                 temp += [ge.create_accordion_card(a_topic,
-                   [dcc.Markdown(parsed_text), ge.antenna_cards(app, all_antennas)], id=str(i))]
+                   [dcc.Markdown(parsed_text), ge.antenna_cards(app, all_antennas)], id=str(i), is_open=False)]
             else:
                 temp += [ge.create_accordion_card(a_topic, dcc.Markdown(parsed_text),
-                         id=str(i))]
+                         id=str(i), is_open=False)]
 
     return html.Div(temp, className='col-12 accordion')
 
@@ -328,9 +328,10 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
     html.Div(className='container-fluid', children=[
         html.Div(className='row justify-content-center', children=[
              html.Div(className='col-sm-3', style={'max-width': '350px','float': 'left',
-                                                  'padding': '2%'}, children=[
+                                   'min-width': '17rem'}, children=[
                 html.Div(className='form-group', children=[
                     html.Div('', style={'height': '70px'}),
+                    html.Div(id='div-antenna-selection-button2', children=[]),
                     html.Label('Your observing Band'),
                     *ge.tooltip(idname='popover-band',
                             message="This will update the "
@@ -462,8 +463,9 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                                  for it in fs.inttimes], value=2, persistence=True),
                 ])
             ]),
-            dcc.Tabs(parent_className='custom-tabs col', className='custom-tabs-container', children=[
-                dcc.Tab(label='Observation Setup', className='custom-tab',
+            dcc.Tabs(parent_className='custom-tabs col', className='custom-tabs-container', id='tabs',
+                value='tab-setup', children=[
+                dcc.Tab(label='Observation Setup', className='custom-tab', value='tab-setup',
                         selected_className='custom-tab--selected', children=[
                     # Elements in first column ()
                     html.Div(className='row justify-content-center', children=[
@@ -494,7 +496,7 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                                         for n in default_arrays if n != 'e-EVN'], value=[],
                                         persistence=True, multi=True),
                             ]),
-                            html.Div(className='col-sm-3', children=[
+                            html.Div(id='div-antenna-selection-button', className='col-sm-3', children=[
                                 html.Button('Compute Observation', id='antenna-selection-button',
                                             className='btn btn-primary btn-lg'),
                             ])
@@ -532,7 +534,7 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                     ])
                 ]),
 
-                dcc.Tab(label='Summary', className='custom-tab',
+                dcc.Tab(label='Summary', className='custom-tab', value='tab-summary',
                         selected_className='custom-tab--selected', children=[
                     html.Div(className='row justify-content-center', children=[
                         html.Div(className='col-10 justify-content-center',
@@ -547,7 +549,7 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                                 ])
                     ])
                 ]),
-                dcc.Tab(label='Elevations', className='custom-tab',
+                dcc.Tab(label='Elevations', className='custom-tab', value='tab-elevation',
                         selected_className='custom-tab--selected', children=[
                     html.Div(className='row justify-content-center', children=[
                     html.Div(className='col-md-8 justify-content-center', children=[
@@ -586,7 +588,7 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                         ],className='tex2jax_ignore')
                     ])])
                 ]),
-                dcc.Tab(label='UV Coverage', className='custom-tab',
+                dcc.Tab(label='UV Coverage', className='custom-tab', value='tab-uv',
                         selected_className='custom-tab--selected', children=[
                     #  Images
                     html.Div(className='row justify-content-center', children=[
@@ -602,7 +604,7 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                         html.Div(children=[dcc.Graph(id='fig-uvplane')], className='tex2jax_ignore')
                     ])])
                 ]),
-                dcc.Tab(label='Documentation', className='custom-tab',
+                dcc.Tab(label='Documentation', className='custom-tab', value='tab-doc',
                         selected_className='custom-tab--selected', children=[
                     #  Documentation
                     html.Div(className='row justify-content-center', children=[
@@ -618,6 +620,20 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
 
 
 
+@app.callback([Output('div-antenna-selection-button', 'children'),
+               Output('div-antenna-selection-button2', 'children')],
+              [Input('tabs', 'value')])
+def move_compute_button(selected_tab):
+    """Depending on which tab is selected, it will show the button to compute the observation
+    in one place or another, so it is always visible and clickable.
+    """
+    if selected_tab == 'tab-setup':
+        return html.Button('Compute Observation', id='antenna-selection-button',
+                            className='btn btn-primary btn-lg'), html.Div('', style={'height': '2.3rem'})
+    else:
+        return html.Div('', style={'height': '2.3rem'}), html.Button('Compute again',
+                id='antenna-selection-button', className='btn btn-primary btn-lg',
+                style={'width': '100%', 'margin-bottom': '10px'}),
 
 
 @app.callback(Output('onsourcetime-label', 'children'),

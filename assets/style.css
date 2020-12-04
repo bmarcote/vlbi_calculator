@@ -867,7 +867,7 @@ pre code {
 input[type=time] {
     display: block;
     width: 100%;
-    height: calc(1.5em + .75rem + 2px);
+    height: calc(1.5em + .75rem + 2px) !important;
     padding: 0;
     font-size: 1rem;
     font-weight: 400;
@@ -912,6 +912,10 @@ input[type=time] {
     color: #495057;
     background-color: transparent;
     background-clip: padding-box;
+}
+
+.Select-control {
+    height: calc(1.5em + .75rem + 2px);
 }
 
 @media (prefers-reduced-motion: reduce) {

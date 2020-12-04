@@ -178,7 +178,7 @@ def summary_card_beam(app, obs):
     temp_msg += [html.Br(), html.P([f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.3n} x {synthbeam['bmin'].to(synthbeam_units):.3n}", html.Sup("2"), \
             f", PA = {synthbeam['pa']:.3n}."])]
     temp_msg += [html.P("Note that the synthesized beam can significantly change depending "
-                        "on the weighting used during imaging.")]
+                        "on the weighting used during imaging (null weighting assumed here).")]
     return create_sensitivity_card('Resolution', temp_msg)
 
 def summary_card_times(app, obs):
@@ -285,9 +285,8 @@ def summary_card_rms(app, obs):
                 html.Div(className='row justify-content-center',
                 children=html.Img(src=app.get_asset_url("waves.svg"), width='100%',
                                   height='75rem', style={'display': 'inline'}))]
-    temp_msg += [html.P(f"Considering the sensitivities of the antennas, "
-                        f"the estimated thermal noise is {rms:.3n}/beam.")]
-    temp_msg += [html.P(f"This would imply a rms of {rms_channel:.3n}/beam per spectral "
+    temp_msg += [html.P(f"The expected rms thermal noise for your target is {rms:.3n}/beam when no weighting is applied during imaging. Note that ~20% higher values may be expected for RFI-contaminated bands.")]
+    temp_msg += [html.P(f"The achieved sensitivity implies a rms of {rms_channel:.3n}/beam per spectral "
                         f"channel, or approx. {rms_time:.3n}/beam per time integration "
                         f"({optimal_units(obs.inttime, [u.s,u.ms,u.us]):.3n}).")]
     return create_sensitivity_card('Sensitivity', temp_msg)

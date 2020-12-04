@@ -326,300 +326,289 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
     dcc.ConfirmDialog(id='global-error', message=''),
     # Elements in second column (checkboxes with all stations)
     html.Div(className='container-fluid', children=[
-        dcc.Tabs(parent_className='custom-tabs', className='custom-tabs-container', children=[
-            dcc.Tab(label='Observation Setup', className='custom-tab',
-                    selected_className='custom-tab--selected', children=[
-                # Elements in first column ()
-                html.Div(className='row justify-content-center', children=[
-                html.Div(className='col-sm-3', style={'max-width': '350px','float': 'left',
-                                                      'padding': '2%'}, children=[
-                    html.Div(className='form-group', children=[
-                        html.Label('Your observing Band'),
-                        *ge.tooltip(idname='popover-band',
-                                message="This will update the "
-                                        "antenna list showing the ones that can observe "
-                                        "at that given frequency."),
-                        dcc.Dropdown(id='band', persistence=True, value=a_band,
-                             options=[{'label': fs.bands[b], 'value': b} for b \
-                            # in fs.bands], value='18cm'),
-                            in fs.bands], placeholder='Select observing band...')
+        html.Div(className='row justify-content-center', children=[
+             html.Div(className='col-sm-3', style={'max-width': '350px','float': 'left',
+                                                  'padding': '2%'}, children=[
+                html.Div(className='form-group', children=[
+                    html.Div('', style={'height': '70px'}),
+                    html.Label('Your observing Band'),
+                    *ge.tooltip(idname='popover-band',
+                            message="This will update the "
+                                    "antenna list showing the ones that can observe "
+                                    "at that given frequency."),
+                    dcc.Dropdown(id='band', persistence=True, value=a_band,
+                         options=[{'label': fs.bands[b], 'value': b} for b \
+                        # in fs.bands], value='18cm'),
+                        in fs.bands], placeholder='Select observing band...')
 
-                    ]),
-                    html.Div(className='input-group-prepend', children=[
-                        dbc.Checklist(id='e-EVN', className='checkbox', persistence=True,
-                                      options=[{'label': ' e-EVN (real-time) mode',
-                                                'value': 'e-EVN'}], value=[]),
-                        *ge.tooltip(idname='popover-eevn',
-                            message="Only available for the EVN: real-time correlation mode.")
-                    ]),
-                    html.Br(),
-                    html.Div(className='form-group', children=[
-                        html.Label('Start of observation (UTC)'),
-                        *ge.tooltip(idname='popover-startime', message="Select the date and "
-                                    "time of the start of the observation (Universal, UTC, "
-                                    "time). You will also see the day of the year (DOY) in "
-                                    "brackets once the date is selected."),
-                        dcc.DatePickerSingle(id='starttime', date=None, min_date_allowed=dt(1900, 1, 1),
-                                             max_date_allowed=dt(2100, 1, 1),
-                                             display_format='DD-MM-YYYY (DDD)',
-                                             placeholder='Start date',
-                                             first_day_of_week=1,
-                                             initial_visible_month=dt.today(),
-                                             persistence=True,
-                                             className='form-picker'),
-                        dcc.Dropdown(id='starthour', placeholder="Start time", value=None,
-                                     options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
-                                               'value': f"{hm//60:02n}:{hm % 60:02n}"} \
-                                              for hm in range(0, 24*60, 15)],
-                                     persistence=True, className='form-hour'),
-                        html.Small(id='error_starttime', style={'color': 'red'},
-                                   className='form-text text-muted')
-                    ]),
-                    html.Div(className='form-group', children=[
-                        html.Label('End of observation (UTC)'),
-                        *ge.tooltip(idname='popover-endtime', message="Select the date and "
-                                    "time of the end of the observation (Universal, UTC, "
-                                    "time). You will also see the day of the year (DOY) in "
-                                    "brackets once the date is selected."),
-                        dcc.DatePickerSingle(id='endtime', date=None, min_date_allowed=dt(1900, 1, 1),
-                                             max_date_allowed=dt(2100, 1, 1),
-                                             display_format='DD-MM-YYYY (DDD)',
-                                             placeholder='End date',
-                                             first_day_of_week=1,
-                                             initial_visible_month=dt.today(),
-                                             persistence=True,
-                                             className='form-picker'),
-                        dcc.Dropdown(id='endhour', placeholder="End time", value=None,
-                                     options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
-                                               'value': f"{hm//60:02n}:{hm % 60:02n}"} \
-                                              for hm in range(0, 24*60, 15)],
-                                     persistence=True, className='form-hour'),
-                        html.Small(id='error_endtime', style={'color': 'red'},
-                                   className='form-text text-muted')
-                    ]),
-                    html.Div(className='form-group', children=[
-                        html.Label('Source (name or coordinates)'),
-                        *ge.tooltip(idname='popover-target',
-                                 message="Source name or coordinates. " \
-                                         "You may see an error if the given name is not properly resolved. "
-                                         "J2000 coordinates are assumed in both forms: 00:00:00 00:00:00 or " \
-                                         "00h00m00s 00d00m00s."),
-                        # dcc.Input(id='source', value='12:29:06.7 +02:03:08.6', type='text',
-                        dcc.Input(id='source', value=None, type='text',
-                                  className='form-control', placeholder="hh:mm:ss dd:mm:ss",
-                                  persistence=True),
-                        html.Small(id='error_source', style={'color': '#999999'},
-                                   className='form-text'),
-                    ]),
-                    html.Div(className='form-group', children=[
-                        html.Label(id='onsourcetime-label',
-                                   children='% of on-target time'),
-                        *ge.tooltip(idname='popover-ontarget',
-                                 message="Assumes that you will only spend this amount of the total " \
-                                         "observing time on the given target source. It affects the " \
-                                         "expected sensitivity."),
-                        dcc.Slider(id='onsourcetime', min=20, max=100, step=5, value=75,
-                                   marks= {i: str(i) for i in range(20, 101, 10)},
-                                   persistence=True),
-                    ]),
-                    html.H4("Advanced setup"),
-                    html.Div(className='form-group', children=[
-                        html.Label('Datarate per station'),
-                        *ge.tooltip(idname='popover-datarate',
-                                 message=["Expected datarate for each station, assuming all " \
-                                          "of them run at the same rate.",
-                                     html.Ul([
-                                        html.Li("The EVN can run typically at up to 2 Gbps (1 Gbps at L band), " \
-                                                "although a few antennas may observe at lower datarates."),
-                                        html.Li("The VLBA can now observe up to 4 Gbps."),
-                                        html.Li("The LBA typically runs at 512 Mbps but can reach up to 1 Gbps."),
-                                        html.Li("Check the documentation from other networks to be " \
-                                                "sure about their capabilities.")])]),
-                        dcc.Dropdown(id='datarate',
-                                     placeholder="Select the data rate...",
-                                     options=[{'label': fs.data_rates[dr], 'value': dr} \
-                                     for dr in fs.data_rates], value=2048, persistence=True),
-                    ]),
-                    html.Div(className='form-group', children=[
-                        html.Label('Number of subbands'),
-                        *ge.tooltip(idname='popover-subbands',
-                                 message="Number of subbands to split the total observed bandwidth "
-                                         " during correlation (IFs in AIPS)."),
-                        dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
-                                     options=[{'label': fs.subbands[sb], 'value': sb} \
-                                     for sb in fs.subbands], value=8, persistence=True),
-                    ]),
-                    html.Div(className='form-group', children=[
-                        html.Label('Number of spectral channels'),
-                        *ge.tooltip(idname='popover-channels',
-                                 message="How many channels per subband will be produced "
-                                         "during correlation."),
-                            dcc.Dropdown(id='channels', placeholder="Select no. channels...",
-                                         options=[{'label': fs.channels[ch],
-                                                   'value': ch} \
-                                         for ch in fs.channels], value=32, persistence=True),
-                    ]),
-                    html.Div(className='form-group', children=[
-                        html.Label('Number of polarizations'),
-                        *ge.tooltip(idname='popover-pols',
-                            message="Number of polarizations to correlate. Note that VLBI uses circular " \
-                                    "polarizations. Full polarization implies the four stokes: RR, LL, RL, LR; " \
-                                    "while dual polarization implies RR and LL only."),
-                        dcc.Dropdown(id='pols', placeholder="Select polarizations...",
-                                     options=[{'label': fs.polarizations[p], 'value': p} \
-                                     for p in fs.polarizations], value=4, persistence=True),
-                    ]),
-                    html.Div(className='form-group', children=[
-                        html.Label('Integration time (s)'),
-                        *ge.tooltip(idname='popover-inttime',
-                            message="Integration time to compute each visibility. Note that for continuum " \
-                                    "observations values of 1-2 seconds are typical."),
-                        dcc.Dropdown(id='inttime', placeholder="Select integration time...",
-                                     options=[{'label': fs.inttimes[it], 'value': it} \
-                                     for it in fs.inttimes], value=2, persistence=True),
-                    ])
                 ]),
-                html.Div(className='col-9', children=[
-                    html.Div(id='first-advise', className='col-sm-9', children=[
-                        html.P(["Here you can set up your observation.", html.Br(),
-                               "Please select which network (or networks) you want to use in your "
-                               "observations, or select a customized array of antennas. "
-                               "On the left you can set the basic information from your observations: "
-                               "times of the observations and target source to observe. ", html.Br(),
-                               "Optionally, you can customize the configuration and correlation parameters "
-                               "under 'advance setup'. Otherwise, default values based on your selection "
-                               "will be used.", html.Br(),
-                               "Once you are ready, press the big red ", html.B("'compute observation'"),
-                               " button. You will get a detailed "
-                               "summary of the planned observation and expected outcomes in the different "
-                               "tabs."]),
-                        html.P(["Note that only antennas that can observe at the selected band "
-                                "will be clickable."])
-                    ], style={'margin-top': '2rem', 'margin-bottom': '2rem'}),
-                    html.Div(className='col-9 form-group row align-items-end', children=[
-                        html.Div(className='col-md-6', children=[
-                            html.Label('Select default VLBI Network(s)',
-                                    style={'color': '#a01d26'}),
-                            *ge.tooltip(idname='popover-network', message="Automatically selects "
-                                        "the default participating antennas for the selected VLBI network(s)."),
-                            dcc.Dropdown(id='array', options=[{'label': n, 'value': n} \
-                                    for n in default_arrays if n != 'e-EVN'], value=[],
-                                    persistence=True, multi=True),
+                html.Div(className='input-group-prepend', children=[
+                    dbc.Checklist(id='e-EVN', className='checkbox', persistence=True,
+                                  options=[{'label': ' e-EVN (real-time) mode',
+                                            'value': 'e-EVN'}], value=[]),
+                    *ge.tooltip(idname='popover-eevn',
+                        message="Only available for the EVN: real-time correlation mode.")
+                ]),
+                html.Br(),
+                html.Div(className='form-group', children=[
+                    html.Label('Source (name or coordinates)'),
+                    *ge.tooltip(idname='popover-target',
+                             message="Source name or coordinates. " \
+                                     "You may see an error if the given name is not properly resolved. "
+                                     "J2000 coordinates are assumed in both forms: 00:00:00 00:00:00 or " \
+                                     "00h00m00s 00d00m00s."),
+                    # dcc.Input(id='source', value='12:29:06.7 +02:03:08.6', type='text',
+                    dcc.Input(id='source', value=None, type='text',
+                              className='form-control', placeholder="hh:mm:ss dd:mm:ss",
+                              persistence=True),
+                    html.Small(id='error_source', style={'color': '#999999'},
+                               className='form-text'),
+                ]),
+                html.Div(className='form-group', children=[
+                    html.Label('Start of observation (UTC)'),
+                    *ge.tooltip(idname='popover-startime', message="Select the date and "
+                                "time of the start of the observation (Universal, UTC, "
+                                "time). You will also see the day of the year (DOY) in "
+                                "brackets once the date is selected."),
+                    dcc.DatePickerSingle(id='starttime', date=None, min_date_allowed=dt(1900, 1, 1),
+                                         max_date_allowed=dt(2100, 1, 1),
+                                         display_format='DD-MM-YYYY (DDD)',
+                                         placeholder='Start date',
+                                         first_day_of_week=1,
+                                         initial_visible_month=dt.today(),
+                                         persistence=True,
+                                         className='form-picker'),
+                    dcc.Dropdown(id='starthour', placeholder="Start time", value=None,
+                                 options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
+                                           'value': f"{hm//60:02n}:{hm % 60:02n}"} \
+                                          for hm in range(0, 24*60, 15)],
+                                 persistence=True, className='form-hour'),
+                    html.Small(id='error_starttime', style={'color': 'red'},
+                               className='form-text text-muted')
+                ]),
+                html.Div(className='form-group', children=[
+                    html.Label('Duration of the observation (hours)'),
+                    *ge.tooltip(idname='popover-duration', message="Select the total duration of the "
+                                "observation (provided in hours)."),
+                    dcc.Input(id='duration', value=None, type='number', className='form-control',
+                               placeholder="In hours", persistence=True, inputMode='numeric'),
+                    html.Small(id='error_duration', style={'color': 'red'}, className='form-text text-muted')
+                ]),
+                html.Div(className='form-group', children=[
+                    html.Label(id='onsourcetime-label',
+                               children='% of on-target time'),
+                    *ge.tooltip(idname='popover-ontarget',
+                             message="Assumes that you will only spend this amount of the total " \
+                                     "observing time on the given target source. It affects the " \
+                                     "expected sensitivity."),
+                    dcc.Slider(id='onsourcetime', min=20, max=100, step=5, value=70,
+                               marks= {i: str(i) for i in range(20, 101, 10)},
+                               persistence=True),
+                ]),
+                html.H4("Advanced setup"),
+                html.Div(className='form-group', children=[
+                    html.Label('Datarate per station'),
+                    *ge.tooltip(idname='popover-datarate',
+                             message=["Expected datarate for each station, assuming all " \
+                                      "of them run at the same rate.",
+                                 html.Ul([
+                                    html.Li("The EVN can run typically at up to 2 Gbps (1 Gbps at L band), " \
+                                            "although a few antennas may observe at lower datarates."),
+                                    html.Li("The VLBA can now observe up to 4 Gbps."),
+                                    html.Li("The LBA typically runs at 512 Mbps but can reach up to 1 Gbps."),
+                                    html.Li("Check the documentation from other networks to be " \
+                                            "sure about their capabilities.")])]),
+                    dcc.Dropdown(id='datarate',
+                                 placeholder="Select the data rate...",
+                                 options=[{'label': fs.data_rates[dr], 'value': dr} \
+                                 for dr in fs.data_rates], value=2048, persistence=True),
+                ]),
+                html.Div(className='form-group', children=[
+                    html.Label('Number of subbands'),
+                    *ge.tooltip(idname='popover-subbands',
+                             message="Number of subbands to split the total observed bandwidth "
+                                     " during correlation (IFs in AIPS)."),
+                    dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
+                                 options=[{'label': fs.subbands[sb], 'value': sb} \
+                                 for sb in fs.subbands], value=8, persistence=True),
+                ]),
+                html.Div(className='form-group', children=[
+                    html.Label('Number of spectral channels'),
+                    *ge.tooltip(idname='popover-channels',
+                             message="How many channels per subband will be produced "
+                                     "during correlation."),
+                        dcc.Dropdown(id='channels', placeholder="Select no. channels...",
+                                     options=[{'label': fs.channels[ch],
+                                               'value': ch} \
+                                     for ch in fs.channels], value=32, persistence=True),
+                ]),
+                html.Div(className='form-group', children=[
+                    html.Label('Number of polarizations'),
+                    *ge.tooltip(idname='popover-pols',
+                        message="Number of polarizations to correlate. Note that VLBI uses circular " \
+                                "polarizations. Full polarization implies the four stokes: RR, LL, RL, LR; " \
+                                "while dual polarization implies RR and LL only."),
+                    dcc.Dropdown(id='pols', placeholder="Select polarizations...",
+                                 options=[{'label': fs.polarizations[p], 'value': p} \
+                                 for p in fs.polarizations], value=4, persistence=True),
+                ]),
+                html.Div(className='form-group', children=[
+                    html.Label('Integration time (s)'),
+                    *ge.tooltip(idname='popover-inttime',
+                        message="Integration time to compute each visibility. Note that for continuum " \
+                                "observations values of 1-2 seconds are typical."),
+                    dcc.Dropdown(id='inttime', placeholder="Select integration time...",
+                                 options=[{'label': fs.inttimes[it], 'value': it} \
+                                 for it in fs.inttimes], value=2, persistence=True),
+                ])
+            ]),
+            dcc.Tabs(parent_className='custom-tabs col', className='custom-tabs-container', children=[
+                dcc.Tab(label='Observation Setup', className='custom-tab',
+                        selected_className='custom-tab--selected', children=[
+                    # Elements in first column ()
+                    html.Div(className='row justify-content-center', children=[
+                    html.Div(className='col-9', children=[
+                        html.Div(id='first-advise', className='col-sm-9', children=[
+                            html.P(["Here you can set up your observation.", html.Br(),
+                                   "Please select which network (or networks) you want to use in your "
+                                   "observations, or select a customized array of antennas. "
+                                   "On the left you can set the basic information from your observations: "
+                                   "times of the observations and target source to observe. ", html.Br(),
+                                   "Optionally, you can customize the configuration and correlation parameters "
+                                   "under 'advance setup'. Otherwise, default values based on your selection "
+                                   "will be used.", html.Br(),
+                                   "Once you are ready, press the big red ", html.B("'compute observation'"),
+                                   " button. You will get a detailed "
+                                   "summary of the planned observation and expected outcomes in the different "
+                                   "tabs."]),
+                            html.P(["Note that only antennas that can observe at the selected band "
+                                    "will be clickable."])
+                        ], style={'margin-top': '2rem', 'margin-bottom': '2rem'}),
+                        html.Div(className='col-9 form-group row align-items-end', children=[
+                            html.Div(className='col-md-6', children=[
+                                html.Label('Select default VLBI Network(s)',
+                                        style={'color': '#a01d26'}),
+                                *ge.tooltip(idname='popover-network', message="Automatically selects "
+                                            "the default participating antennas for the selected VLBI network(s)."),
+                                dcc.Dropdown(id='array', options=[{'label': n, 'value': n} \
+                                        for n in default_arrays if n != 'e-EVN'], value=[],
+                                        persistence=True, multi=True),
+                            ]),
+                            html.Div(className='col-sm-3', children=[
+                                html.Button('Compute Observation', id='antenna-selection-button',
+                                            className='btn btn-primary btn-lg'),
+                            ])
                         ]),
-                        html.Div(className='col-sm-3', children=[
-                            html.Button('Compute Observation', id='antenna-selection-button',
-                                        className='btn btn-primary btn-lg'),
+                        html.Div(className='col-9 text-center justify-content-center', children=[
+                            dcc.Loading(id="loading", children=[html.Div(id="loading-output")],
+                                        type="dot")
+                        ]),
+                        html.Div([dbc.Tooltip(ge.antenna_card(app, s), placement='right',
+                            hide_arrow=True, target=f"_input_{s.codename}",
+                            innerClassName='tooltip-card-inner') for s in all_antennas
+                        ]),
+                        html.Div(id='antennas-div', className='container', children=[
+                            html.Div(className='antcheck', children=[html.Br(), html.Br(),
+                                html.Label(html.H4(f"{sorted_networks[an_array]}"),
+                                           style={'width': '100%'}),
+                                html.Br(),
+                                html.Div(className='antcheck', children=[
+                                    dbc.FormGroup([
+                                        Checkbox(id=f"check_{s.codename}", persistence=True,
+                                                 className='custom-control-input',
+                                                 disabled=not s.has_band(selected_band)),
+                                        dbc.Label(s.name, html_for=f"check_{s.codename}",
+                                                  id=f"_input_{s.codename}",
+                                                 className='custom-control-label form-check-label')
+                                    ], check=True, inline=True, className="form-check-input "
+                                    "custom-checkbox custom-control custom-control-inline")
+                                    for s in all_antennas if s.network == an_array
+                                ])
+                            ]) for an_array in sorted_networks
                         ])
                     ]),
-                    html.Div(className='col-9 text-center justify-content-center', children=[
-                        dcc.Loading(id="loading", children=[html.Div(id="loading-output")],
-                                    type="dot")
-                    ]),
-                    html.Div([dbc.Tooltip(ge.antenna_card(app, s), placement='right',
-                        hide_arrow=True, target=f"_input_{s.codename}",
-                        innerClassName='tooltip-card-inner') for s in all_antennas
-                    ]),
-                    html.Div(id='antennas-div', className='container', children=[
-                        html.Div(className='antcheck', children=[html.Br(), html.Br(),
-                            html.Label(html.H4(f"{sorted_networks[an_array]}"),
-                                       style={'width': '100%'}),
-                            html.Br(),
-                            html.Div(className='antcheck', children=[
-                                dbc.FormGroup([
-                                    Checkbox(id=f"check_{s.codename}", persistence=True,
-                                             className='custom-control-input',
-                                             disabled=not s.has_band(selected_band)),
-                                    dbc.Label(s.name, html_for=f"check_{s.codename}",
-                                              id=f"_input_{s.codename}",
-                                             className='custom-control-label form-check-label')
-                                ], check=True, inline=True, className="form-check-input "
-                                "custom-checkbox custom-control custom-control-inline")
-                                for s in all_antennas if s.network == an_array
-                            ])
-                        ]) for an_array in sorted_networks
+                    # html.Div(className='col-sm-2', style={'float': 'left'}, children=[
+                    # ])
                     ])
                 ]),
-                # html.Div(className='col-sm-2', style={'float': 'left'}, children=[
-                # ])
-                ])
-            ]),
 
-            dcc.Tab(label='Summary', className='custom-tab',
-                    selected_className='custom-tab--selected', children=[
-                html.Div(className='row justify-content-center', children=[
-                    html.Div(className='col-10 justify-content-center',
-                             id='sensitivity-output',
-                             children=[html.Div(className='col-md-6', children=[
-                                html.Br(), html.Br(), html.H2("Set the observation first"),
-                                html.P("Here you will see a summary of your observation, "
-                                       "with information about all participating stations, longest and "
-                                       "shortest baseline, expected size of the data once is correlated, "
-                                       "reached resolution and sensitivity, and the limitations in your "
-                                       "field of view due to time and frequency smearing.")])
-                            ])
-                ])
-            ]),
-            dcc.Tab(label='Elevations', className='custom-tab',
-                    selected_className='custom-tab--selected', children=[
-                html.Div(className='row justify-content-center', children=[
-                html.Div(className='col-md-8 justify-content-center', children=[
-                    # Elevation VS time
-                    html.Br(),
-                    html.Div([
+                dcc.Tab(label='Summary', className='custom-tab',
+                        selected_className='custom-tab--selected', children=[
+                    html.Div(className='row justify-content-center', children=[
+                        html.Div(className='col-10 justify-content-center',
+                                 id='sensitivity-output',
+                                 children=[html.Div(className='col-md-6', children=[
+                                    html.Br(), html.Br(), html.H2("Set the observation first"),
+                                    html.P("Here you will see a summary of your observation, "
+                                           "with information about all participating stations, longest and "
+                                           "shortest baseline, expected size of the data once is correlated, "
+                                           "reached resolution and sensitivity, and the limitations in your "
+                                           "field of view due to time and frequency smearing.")])
+                                ])
+                    ])
+                ]),
+                dcc.Tab(label='Elevations', className='custom-tab',
+                        selected_className='custom-tab--selected', children=[
+                    html.Div(className='row justify-content-center', children=[
+                    html.Div(className='col-md-8 justify-content-center', children=[
+                        # Elevation VS time
                         html.Br(),
-                        html.H4("When is your source visible?"),
+                        html.Div([
+                            html.Br(),
+                            html.H4("When is your source visible?"),
+                            html.Br(),
+                            dbc.Alert([html.H4("Info on plots", className='alert-heading'),
+                                       html.P("A single click on one station in the legend will "
+                                               "hide/show it. Double-click will hide/show "
+                                               "all other antennas. You can also save the plot "
+                                               "as png."),
+                                      ], color='info', dismissable=True),
+                            html.Br(),
+                            html.P("The following plot shows the source elevation for the "
+                            "different antennas during the proposed observation. The horizontal "
+                            "solid and dashed lines represent the elevation of 20 and 10 degrees, "
+                            "respectively.")
+                        ]),
+                        html.Div([
+                            dcc.Graph(id='fig-elev-time')
+                        ],className='tex2jax_ignore'),
                         html.Br(),
-                        dbc.Alert([html.H4("Info on plots", className='alert-heading'),
-                                   html.P("A single click on one station in the legend will "
-                                           "hide/show it. Double-click will hide/show "
-                                           "all other antennas. You can also save the plot "
-                                           "as png."),
-                                  ], color='info', dismissable=True),
+                        html.Div([
+                            html.P("""The following plot shows when the source may be observed
+                            for the different antennas, assuming a minimum elevation of 10 degrees
+                            for most antennas (except e.g. Arecibo). Note that some antennas may
+                            have additional constraints for particular azimuth or elevation
+                            angles that are not considered here.
+                            """)
+                        ]),
+                        html.Div([
+                            dcc.Graph(id='fig-ant-time')
+                        ],className='tex2jax_ignore')
+                    ])])
+                ]),
+                dcc.Tab(label='UV Coverage', className='custom-tab',
+                        selected_className='custom-tab--selected', children=[
+                    #  Images
+                    html.Div(className='row justify-content-center', children=[
+                    html.Div(className='col-md-8 justify-content-center', children=[
+                        # dcc.Markdown(children="""To be implemented.
+                        #     The uv coverage and expected dirty images will go here.""")
                         html.Br(),
-                        html.P("The following plot shows the source elevation for the "
-                        "different antennas during the proposed observation. The horizontal "
-                        "solid and dashed lines represent the elevation of 20 and 10 degrees, "
-                        "respectively.")
-                    ]),
-                    html.Div([
-                        dcc.Graph(id='fig-elev-time')
-                    ],className='tex2jax_ignore'),
-                    html.Br(),
-                    html.Div([
-                        html.P("""The following plot shows when the source may be observed
-                        for the different antennas, assuming a minimum elevation of 10 degrees
-                        for most antennas (except e.g. Arecibo). Note that some antennas may
-                        have additional constraints for particular azimuth or elevation
-                        angles that are not considered here.
-                        """)
-                    ]),
-                    html.Div([
-                        dcc.Graph(id='fig-ant-time')
-                    ],className='tex2jax_ignore')
-                ])])
-            ]),
-            dcc.Tab(label='UV Coverage', className='custom-tab',
-                    selected_className='custom-tab--selected', children=[
-                #  Images
-                html.Div(className='row justify-content-center', children=[
-                html.Div(className='col-md-8 justify-content-center', children=[
-                    # dcc.Markdown(children="""To be implemented.
-                    #     The uv coverage and expected dirty images will go here.""")
-                    html.Br(),
-                    html.Div([
-                        html.Br(),
-                        html.H4("Resulting (u,v) coverage"),
-                        html.Br()
-                    ]),
-                    html.Div(children=[dcc.Graph(id='fig-uvplane')], className='tex2jax_ignore')
-                ])])
-            ]),
-            dcc.Tab(label='Documentation', className='custom-tab',
-                    selected_className='custom-tab--selected', children=[
-                #  Documentation
-                html.Div(className='row justify-content-center', children=[
-                    html.Div([html.Br(), html.Br()]),
-                    html.Div(className='col-md-8', children=get_doc_text())
+                        html.Div([
+                            html.Br(),
+                            html.H4("Resulting (u,v) coverage"),
+                            html.Br()
+                        ]),
+                        html.Div(children=[dcc.Graph(id='fig-uvplane')], className='tex2jax_ignore')
+                    ])])
+                ]),
+                dcc.Tab(label='Documentation', className='custom-tab',
+                        selected_className='custom-tab--selected', children=[
+                    #  Documentation
+                    html.Div(className='row justify-content-center', children=[
+                        html.Div([html.Br(), html.Br()]),
+                        html.Div(className='col-md-8', children=get_doc_text())
+                    ])
                 ])
             ])
         ]),
@@ -669,32 +658,28 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
 
 
 @app.callback([Output('error_starttime', 'children'),
-               Output('error_endtime', 'children')],
+               Output('error_duration', 'children')],
               [Input('starttime', 'date'), Input('starthour', 'value'),
-               Input('endtime', 'date'), Input('endhour', 'value')])
-def check_obstime(starttime, starthour, endtime, endhour):
+               Input('duration', 'value')])
+def check_obstime(starttime, starthour, duration):
     """Verify the introduced times/dates for correct values.
     Once the user has introduced all values for the start and end of the observation,
     it guarantees that they have the correct shape:
-        - the end of the observation is afte the start of the observation.
+        - the duration of the observation is > 0 hours.
         - The total observing length is less than five days (value chosen for computational reasons).
     """
-    times = [None, None]
-    if None not in (starttime, starthour):
-        times[0] = Time(dt.strptime(f"{starttime} {starthour}", '%Y-%m-%d %H:%M'))
+    if duration is None:
+        return "", ""
 
-    if None not in (endtime, endhour):
-        times[1] = Time(dt.strptime(f"{endtime} {endhour}", '%Y-%m-%d %H:%M'))
+    if (not isinstance(duration, float)) and (not isinstance(duration, int)):
+        return "", "Must be a number"
 
-    if None in times:
-        return '', ''
+    if duration <= 0.0:
+        return "", "The duration must be a positive number"
+    elif duration > 4*24:
+        return "", "Please, put an observation shorter than 4 days"
 
-    if (times[1] - times[0]) > 5*u.d:
-        return ["Please, put an observation shorter than 5 d"]*2
-    elif (times[0] - times[1]) >= 0*u.d:
-        return ["Start time must be earlier than end time"]*2
-
-    return '', ''
+    return "", ""
 
 
 @app.callback([Output('error_source', 'children'),
@@ -732,8 +717,7 @@ def get_source(source_coord):
               [State('band', 'value'),
                State('starttime', 'date'),
                State('starthour', 'value'),
-               State('endtime', 'date'),
-               State('endhour', 'value'),
+               State('duration', 'value'),
                State('source', 'value'),
                State('onsourcetime', 'value'),
                State('datarate', 'value'),
@@ -742,7 +726,7 @@ def get_source(source_coord):
                State('pols', 'value'),
                State('inttime', 'value')] + \
                [State(f"check_{s.codename}", 'checked') for s in all_antennas])
-def compute_observation(n_clicks, band, starttime, starthour, endtime, endhour, source,
+def compute_observation(n_clicks, band, starttime, starthour, duration, source,
                         onsourcetime, datarate, subbands, channels, pols, inttime, *ants):
     """Computes all products to be shown concerning the set observation.
     """
@@ -751,8 +735,8 @@ def compute_observation(n_clicks, band, starttime, starthour, endtime, endhour, 
                dash.no_update, dash.no_update
 
     # All options must be completed
-    if (band is None) or (starttime is None) or (starthour is None) or (endtime is None) or \
-                 (endhour is None) or (source is None) or (datarate is None) or \
+    if (band is None) or (starttime is None) or (starthour is None) or (duration is None) or \
+                 (source is None) or (datarate is None) or \
                  (subbands is None) or (channels is None) or (pols is None) or (inttime is None):
         return alert_message(["Complete all fields and options before computing the observation"]), \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
@@ -785,25 +769,17 @@ def compute_observation(n_clicks, band, starttime, starthour, endtime, endhour, 
                "First, set correctly an observation in the previous tab.", \
                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    try:
-        time1 = Time(dt.strptime(f"{endtime} {endhour}", '%Y-%m-%d %H:%M'),
-                     format='datetime', scale='utc')
-    except ValueError as e:
-        return alert_message("Incorrect format for endtime."), \
+    if duration <= 0.0:
+        return alert_message("The duration of the observation must be a positive number of hours"), \
                "First, set correctly an observation in the previous tab.", \
                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    if time0 >= time1:
-        return alert_message("The start time must be earlier than the end time"), \
+    if duration > 4*24.0:
+        return alert_message("Please, set an observation that lasts for less than 4 days."), \
                "First, set correctly an observation in the previous tab.", \
                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    if (time1 - time0) > 5*u.d:
-        return alert_message("Please, set an observation that last for less than 5 days."), \
-               "First, set correctly an observation in the previous tab.", \
-               dash.no_update, dash.no_update, dash.no_update, dash.no_update
-
-    obs_times = time0 + np.linspace(0, (time1-time0).to(u.min).value, 50)*u.min
+    obs_times = time0 + np.linspace(0, duration*60, 50)*u.min
     try:
         obs = observation.Observation(target=target_source, times=obs_times, band=band,
                       datarate=datarate, subbands=subbands, channels=channels,

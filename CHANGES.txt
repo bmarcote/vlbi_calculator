@@ -1,6 +1,16 @@
+v2.0.3  2020-12-XX -- Bug fix: The option of only one subband is back.
+                   -- Minor wording updates.
+                   -- Velocity information added to the summary (vel. resolution in full bandwidth and per channel).
+v2.0.2  2020-11-30 -- Updated the SEFD from Kunming as it was previously wrong.
+                   -- Minor tweaks in the graphical (Dash) interface for a better interaction with the user.
+                   -- Now sliders also match the color style of the rest of the page.
+v2.0.1  2020-11-19 -- Bug fix: Subbands and channels tuple were getting lost when restarting the server sometimes.
+                   -- Added character limit of 30 in the source name through the server to avoid slowness of the system.
+                   -- (in the Dash GUI) Network selection position has been swapped with the band selection menu.
+                   -- (in the command-line): source name can also be input now to obtain the source coordinates.
 v2.0    2020-11-18 -- Target source can now be processed by providing source name.
                    -- New first-window to select the band. Avoids confusion among users.
-				   -- README updated with new location of the online server.
+                   -- README updated with new location of the online server.
 v1.0.1  2020-10-26 -- Source coordinates from server processed seamlessly with extra empty spaces between RA and DEC.
                    -- Improved documentation in functions.
                    -- Improved stability of the code with additional checks and explicit type hints.

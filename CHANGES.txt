@@ -8,14 +8,7 @@ v2.0.3  2020-12-XX -- Bug fix: The option of only one subband is back.
                       start time (date and time) and duration of the observation to simplify user input.
                    -- Dash GUI changes: (finally!) fixed the slight offset in height between the start date and start time.
                    -- Fixed example in README  that had one comma missing and one extra bracket.
-                   --
-                   --
-                   --
-                   --
-                   --
-                   --
-                   --
-                   --
+                   -- New Feature: now you can obtain the times at which the target source is observable (instead of just providing them).
 v2.0.2  2020-11-30 -- Updated the SEFD from Kunming as it was previously wrong.
                    -- Minor tweaks in the graphical (Dash) interface for a better interaction with the user.
                    -- Now sliders also match the color style of the rest of the page.

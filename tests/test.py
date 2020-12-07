@@ -31,7 +31,7 @@ obs.channels = 32
 obs.polarizations = 2
 obs.inttime = 2
 
-all_stations = stations.Stations.get_stations_from_configfile(f"data/stations_catalog.inp")
+all_stations = stations.Stations.get_stations_from_configfile()
 
 def get_selected_antennas(list_of_selected_antennas):
     """Given a list of antenna codenames, it returns a Stations object containing

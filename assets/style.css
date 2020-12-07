@@ -3709,6 +3709,14 @@ img[alt=equation2] {
 }
 
 
+.card-no-left-border {
+	border-left: 0px;
+    border: 1px solid #CCCCCC !important;
+}
+
+.tab-for-card > .active {
+    border: 1px solid #CCCCCC !important;
+}
 
 .card.card-antenna {
     background-color: white !important;

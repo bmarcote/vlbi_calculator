@@ -133,7 +133,7 @@ def summary_card_antennas(app, obs):
             ant_text += [html.Span(", ")]
 
         temp_msg += [html.P(className='text-danger', children=["Note that ", *ant_text[:-1],
-                                                    " cannot observe the source."])]
+                            " cannot observe the source during the planned observation."])]
 
     longest_bl = obs.longest_baseline()
     ant_l1, ant_l2 = longest_bl[0].split('-')

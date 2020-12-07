@@ -91,8 +91,8 @@ stations18cm = my_stations.stations_with_band('18cm')
 
 # Finally, you can set the observation
 obs = observation.Observation(target=source,
-    times=observation.Time('1967-04-17 10:00') + np.arange(0, 600, 15)*u.min),  # list of times covering the observation.
-    band='18cm'  # must be a string with the format XXcm.
+    times=observation.Time('1967-04-17 10:00') + np.arange(0, 600, 15)*u.min,  # list of times covering the observation.
+    band='18cm',  # must be a string with the format XXcm.
     datarate=1024, # Mbps
     subbands=8, # no. subbands (or IFs).
     channels=64, # no. of channels per subband

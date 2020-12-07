@@ -1,6 +1,21 @@
 v2.0.3  2020-12-XX -- Bug fix: The option of only one subband is back.
                    -- Minor wording updates.
                    -- Velocity information added to the summary (vel. resolution in full bandwidth and per channel).
+                   -- Kunming added as a possible e-EVN station.
+                   -- Dash GUI changes: the setup options are now always visible and the observation can be recomputed
+                      when the user is in a different tab.
+                   -- Dash GUI changes: Instead of asking for start and end times of the observation, now it asks for
+                      start time (date and time) and duration of the observation to simplify user input.
+                   -- Dash GUI changes: (finally!) fixed the slight offset in height between the start date and start time.
+                   -- Fixed example in README  that had one comma missing and one extra bracket.
+                   --
+                   --
+                   --
+                   --
+                   --
+                   --
+                   --
+                   --
 v2.0.2  2020-11-30 -- Updated the SEFD from Kunming as it was previously wrong.
                    -- Minor tweaks in the graphical (Dash) interface for a better interaction with the user.
                    -- Now sliders also match the color style of the rest of the page.

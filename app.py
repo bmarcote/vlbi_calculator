@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+    #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 """EVN Observation Planner.
 
@@ -331,6 +331,8 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                                    'min-width': '17rem'}, children=[
                 html.Div(className='form-group', children=[
                     html.Div('', style={'height': '70px'}),
+                    dcc.Loading(id="loading2", children=[html.Div(id="loading-output2")],
+                                type="dot"),
                     html.Div(id='div-antenna-selection-button2', children=[]),
                     html.Label('Your observing Band'),
                     *ge.tooltip(idname='popover-band',
@@ -365,35 +367,55 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                     html.Small(id='error_source', style={'color': '#999999'},
                                className='form-text'),
                 ]),
-                html.Div(className='form-group', children=[
-                    html.Label('Start of observation (UTC)'),
-                    *ge.tooltip(idname='popover-startime', message="Select the date and "
-                                "time of the start of the observation (Universal, UTC, "
-                                "time). You will also see the day of the year (DOY) in "
-                                "brackets once the date is selected."),
-                    dcc.DatePickerSingle(id='starttime', date=None, min_date_allowed=dt(1900, 1, 1),
-                                         max_date_allowed=dt(2100, 1, 1),
-                                         display_format='DD-MM-YYYY (DDD)',
-                                         placeholder='Start date',
-                                         first_day_of_week=1,
-                                         initial_visible_month=dt.today(),
-                                         persistence=True,
-                                         className='form-picker'),
-                    dcc.Dropdown(id='starthour', placeholder="Start time", value=None,
-                                 options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
-                                           'value': f"{hm//60:02n}:{hm % 60:02n}"} \
-                                          for hm in range(0, 24*60, 15)],
-                                 persistence=True, className='form-hour'),
-                    html.Small(id='error_starttime', style={'color': 'red'},
-                               className='form-text text-muted')
-                ]),
-                html.Div(className='form-group', children=[
-                    html.Label('Duration of the observation (hours)'),
-                    *ge.tooltip(idname='popover-duration', message="Select the total duration of the "
-                                "observation (provided in hours)."),
-                    dcc.Input(id='duration', value=None, type='number', className='form-control',
-                               placeholder="In hours", persistence=True, inputMode='numeric'),
-                    html.Small(id='error_duration', style={'color': 'red'}, className='form-text text-muted')
+                dbc.Tabs(children=[
+                    dbc.Tab(label='Pick Epoch', id='tab-pick-epoch', tabClassName='tab-for-card', children=[
+                        html.Div(className='form-group', children=[
+                            dbc.Card(className='card-no-left-border', children=dbc.CardBody([
+                            html.Label('Start of observation (UTC)'),
+                            *ge.tooltip(idname='popover-startime', message="Select the date and "
+                                        "time of the start of the observation (Universal, UTC, "
+                                        "time). You will also see the day of the year (DOY) in "
+                                        "brackets once the date is selected."),
+                            dcc.DatePickerSingle(id='starttime', date=None, min_date_allowed=dt(1900, 1, 1),
+                                                 max_date_allowed=dt(2100, 1, 1),
+                                                 display_format='DD-MM-YYYY (DDD)',
+                                                 placeholder='Start date',
+                                                 first_day_of_week=1,
+                                                 initial_visible_month=dt.today(),
+                                                 persistence=True,
+                                                 className='form-picker'),
+                            dcc.Dropdown(id='starthour', placeholder="Start time", value=None,
+                                         options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
+                                                   'value': f"{hm//60:02n}:{hm % 60:02n}"} \
+                                                  for hm in range(0, 24*60, 15)],
+                                         persistence=True, className='form-hour'),
+                            html.Small(id='error_starttime', style={'color': 'red'},
+                                       className='form-text text-muted'),
+                            html.Div(className='form-group', children=[
+                                html.Label('Duration of the observation (hours)'),
+                                *ge.tooltip(idname='popover-duration', message="Select the total duration of the "
+                                            "observation (provided in hours)."),
+                                dcc.Input(id='duration', value=None, type='number', className='form-control',
+                                           placeholder="In hours", persistence=True, inputMode='numeric'),
+                                html.Small(id='error_duration', style={'color': 'red'}, className='form-text text-muted')
+                            ])]))
+                        ]),
+                    ]),
+                    dbc.Tab(label='Guest Times', id='tab-guest-times', tabClassName='tab-for-card', children=[
+                        html.Div(className='form-group', children=[
+                            dbc.Card(className='card-no-left-border', children=dbc.CardBody([
+                                html.P("Choose this option if you just want to find out when your source "
+                                       "will be visible. It will pick the time range when more than 3 antennas "
+                                       "can observe."),
+                                dbc.Checklist(id='guest-times', className='checkbox', persistence=True,
+                                      options=[{'label': " I don't have preferred times",
+                                            'value': 'guest-times'}], value=[]),
+                                html.Small("Note that this option may not provide the wished results if "
+                                           "different networks far apart (e.g. LBA + EVN) are selected.",
+                                           style={'color': '#999999'})
+                                ])
+                        )])
+                    ])
                 ]),
                 html.Div(className='form-group', children=[
                     html.Label(id='onsourcetime-label',
@@ -474,7 +496,7 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                             html.P(["Here you can set up your observation.", html.Br(),
                                    "Please select which network (or networks) you want to use in your "
                                    "observations, or select a customized array of antennas. "
-                                   "On the left you can set the basic information from your observations: "
+                                   "On the left panel you can set the basic information from your observations: "
                                    "times of the observations and target source to observe. ", html.Br(),
                                    "Optionally, you can customize the configuration and correlation parameters "
                                    "under 'advance setup'. Otherwise, default values based on your selection "
@@ -620,6 +642,21 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
 
 
 
+@app.callback([Output('tab-pick-epoch', 'label'),
+               Output('tab-guest-times', 'label')],
+              [Input('guest-times', 'value')])
+def update_tab_time_labels(guest_time):
+    """Updates the labels in the tabs where the user can either pick a specific observing
+    time or let the app to guest the correct times.
+    It will add a green tick or red cross to the option that is currently selected.
+    """
+    if guest_time:
+        return "Pick Epoch ", "Guest Times ✔️"
+    else:
+        return "Pick Epoch ✔️", "Guest Times ❌"
+
+
+
 @app.callback([Output('div-antenna-selection-button', 'children'),
                Output('div-antenna-selection-button2', 'children')],
               [Input('tabs', 'value')])
@@ -627,13 +664,13 @@ def move_compute_button(selected_tab):
     """Depending on which tab is selected, it will show the button to compute the observation
     in one place or another, so it is always visible and clickable.
     """
-    if selected_tab == 'tab-setup':
+    if selected_tab == 'tab-setup' or selected_tab == 'tab-doc':
         return html.Button('Compute Observation', id='antenna-selection-button',
                             className='btn btn-primary btn-lg'), html.Div('', style={'height': '2.3rem'})
     else:
         return html.Div('', style={'height': '2.3rem'}), html.Button('Compute again',
                 id='antenna-selection-button', className='btn btn-primary btn-lg',
-                style={'width': '100%', 'margin-bottom': '10px'}),
+                style={'width': '100%', 'margin-bottom': '1rem'}),
 
 
 @app.callback(Output('onsourcetime-label', 'children'),
@@ -725,6 +762,7 @@ def get_source(source_coord):
 
 
 @app.callback([Output('loading-output', 'children'),
+               Output('loading-output2', 'children'),
                Output('sensitivity-output', 'children'),
                Output('fig-elev-time', 'figure'),
                Output('fig-ant-time', 'figure'),
@@ -740,32 +778,58 @@ def get_source(source_coord):
                State('subbands', 'value'),
                State('channels', 'value'),
                State('pols', 'value'),
-               State('inttime', 'value')] + \
+               State('inttime', 'value'),
+               State('guest-times', 'value'),
+               State('tabs', 'value')] + \
                [State(f"check_{s.codename}", 'checked') for s in all_antennas])
-def compute_observation(n_clicks, band, starttime, starthour, duration, source,
-                        onsourcetime, datarate, subbands, channels, pols, inttime, *ants):
+
+
+
+def compute_observation(n_clicks, band, starttime, starthour, duration, source, onsourcetime,
+                        datarate, subbands, channels, pols, inttime, guest_time, selected_tab, *ants):
     """Computes all products to be shown concerning the set observation.
     """
+    # To decide where to put the output message
+    out_center = selected_tab == 'tab-setup' or selected_tab == 'tab-doc'
     if n_clicks is None:
-        return '', dash.no_update, dash.no_update, dash.no_update, \
+        return '', '', dash.no_update, dash.no_update, dash.no_update, \
                dash.no_update, dash.no_update
 
-    # All options must be completed
-    if None in (band, starttime, starthour, duration, source, datarate, subbands, channels, pols, inttime) \
-            or source == "":
-        missing = [label for label,atr in zip(('observing band', 'target source', 'start observing date', 'start observing time', 'duration of the observation', 'data rate', 'number of subbands', 'number of channels', 'number of polarizations', 'integration time'), (band, source, starttime, starthour, duration, datarate, subbands, channels, pols, inttime)) if (atr is None) or (atr == "")]
-        return alert_message(["Complete all fields and options before computing the observation.\n" +\
-                              f"Currently it is missing: {', '.join(missing)}."]), \
+    if not guest_time:
+        # All options must be completed
+        if None in (band, starttime, starthour, duration, source, datarate, subbands, channels, pols, inttime) \
+                or source == "":
+            missing = [label for label,atr in zip(('observing band', 'target source', 'start observing date',
+                        'start observing time', 'duration of the observation', 'data rate', 'number of subbands',
+                        'number of channels', 'number of polarizations', 'integration time'), (band, source,
+                        starttime, starthour, duration, datarate, subbands, channels, pols, inttime)) \
+                        if (atr is None) or (atr == "")]
+            temp = [alert_message(["Complete all fields and options before computing the observation.\n" + \
+                                  f"Currently it is missing: {', '.join(missing)}."]), '']
+            return *[temp if out_center else temp[::-1]][0], \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    else:
+        # All options but the ones related to the observing epoch must be completed
+        if None in (band, source, datarate, subbands, channels, pols, inttime) or source == "":
+            missing = [label for label,atr in zip(('observing band', 'target source', 'data rate',
+                        'number of subbands', 'number of channels', 'number of polarizations',
+                        'integration time'), (band, source, starttime, starthour, duration, datarate, subbands,
+                        channels, pols, inttime)) if (atr is None) or (atr == "")]
+            temp = [alert_message(["Complete all fields and options before computing the observation.\n" + \
+                                  f"Currently it is missing: {', '.join(missing)}."]), '']
+            return *[temp if out_center else temp[::-1]][0], \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if ants.count(True) == 0:
-        return alert_message(["You need to select the antennas you wish to observe your source. " \
-                              "Either manually or by selected a default VLBI network at your top left."]), \
+        temp = [alert_message(["You need to select the antennas you wish to observe your source. " \
+                "Either manually or by selected a default VLBI network at your top left."]), '']
+        return *[temp if out_center else temp[::-1]][0], \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
     # A single antenna computation is not supported
     if ants.count(True) == 1:
-        return alert_message(["Single-antenna computations are not suported. " \
-                              "Please choose at least two antennas"]), \
+        temp = [alert_message(["Single-antenna computations are not suported. " \
+                              "Please choose at least two antennas"]), dash.no_update]
+        return *[temp if out_center else temp[::-1]][0], \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     try:
@@ -774,29 +838,57 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source,
         try:
             target_source = observation.Source(coord.get_icrs_coordinates(source), source)
         except coord.name_resolve.NameResolveError as e:
-            return alert_message(["Wrong source name or coordinates.", html.Br(),
+            temp = [alert_message(["Wrong source name or coordinates.", html.Br(),
                     "Either the source name hasn't been found or the coordinates format is incorrect."]), \
-                    "First, set correctly an observation in the previous tab.", \
-                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
-    try:
-        time0 = Time(dt.strptime(f"{starttime} {starthour}", '%Y-%m-%d %H:%M'),
-                     format='datetime', scale='utc')
-    except ValueError as e:
-        return alert_message("Incorrect format for starttime."), \
-               "First, set correctly an observation in the previous tab.", \
-               dash.no_update, dash.no_update, dash.no_update, dash.no_update
+                    "First, set correctly an observation in the previous tab.", '']
+            return *[temp if out_center else temp[::-1]][0], \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    if guest_time:
+        try:
+            if starttime is not None:
+                utc_times, _ = observation.Observation.guest_times_for_source(target_source,
+                                stations.Stations('Observation', itertools.compress(all_antennas, ants)),
+                                Time(dt.strptime(f"{starttime} 00:00", "%Y-%m-%d %H:%M"), format='datetime',
+                                     scale='utc'))
+            else:
+                utc_times, _ = observation.Observation.guest_times_for_source(target_source,
+                                stations.Stations('Observation', itertools.compress(all_antennas, ants)))
+        except observation.SourceNotVisible:
+            temp = [alert_message([
+                        html.P(["Your source cannot be observed within the arranged observation.",
+                        html.Br(),
+                        "There are no antennas that can simultaneously observe your source "
+                        "during the given observing time."]),
+                        html.P("Modify the observing time or change the selected antennas"
+                               " to observe this source.")], title="Warning!"), '']
+            return *[temp if out_center else temp[::-1]][0], \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    if duration <= 0.0:
-        return alert_message("The duration of the observation must be a positive number of hours"), \
-               "First, set correctly an observation in the previous tab.", \
-               dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        obs_times = utc_times[0] + np.linspace(0, (utc_times[1]-utc_times[0]).to(u.min).value, 50)*u.min
+    else:
+        try:
+            time0 = Time(dt.strptime(f"{starttime} {starthour}", '%Y-%m-%d %H:%M'),
+                         format='datetime', scale='utc')
+        except ValueError as e:
+            temp = [alert_message("Incorrect format for starttime."), \
+                   "First, set correctly an observation in the previous tab.", '']
+            return *[temp if out_center else temp[::-1]][0], \
+                   dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    if duration > 4*24.0:
-        return alert_message("Please, set an observation that lasts for less than 4 days."), \
-               "First, set correctly an observation in the previous tab.", \
-               dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        if duration <= 0.0:
+            temp = [alert_message("The duration of the observation must be a positive number of hours"), \
+                   "First, set correctly an observation in the previous tab.", '']
+            return *[temp if out_center else temp[::-1]][0], \
+                   dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    obs_times = time0 + np.linspace(0, duration*60, 50)*u.min
+        if duration > 4*24.0:
+            temp = [alert_message("Please, set an observation that lasts for less than 4 days."), \
+                   "First, set correctly an observation in the previous tab.", '']
+            return *[temp if out_center else temp[::-1]][0], \
+                   dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+        obs_times = time0 + np.linspace(0, duration*60, 50)*u.min
+
     try:
         obs = observation.Observation(target=target_source, times=obs_times, band=band,
                       datarate=datarate, subbands=subbands, channels=channels,
@@ -805,20 +897,26 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source,
                                                  itertools.compress(all_antennas, ants)))
         sensitivity_results = update_sensitivity(obs)
     except observation.SourceNotVisible:
-        return alert_message([
+        temp = [alert_message([
                     html.P(["Your source cannot be observed within the arranged observation.",
                     html.Br(),
                     "There are no antennas that can simultaneously observe your source "
                     "during the given observing time."]),
                     html.P("Modify the observing time or change the selected antennas"
-                           " to observe this source.")], title="Warning!"), \
+                           " to observe this source.")], title="Warning!"), '']
+        return *[temp if out_center else temp[::-1]][0], \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    # TODO: parallelize all these functions
-    return [html.Br(),
-            dbc.Alert("You can check now the results in the different tabs", color='info', \
-                      dismissable=True)], sensitivity_results, \
-           get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), dash.no_update
+    # TODO: parallelize all these fig functions
+    if out_center:
+        return [html.Br(), dbc.Alert("You can check now the results in the different tabs", color='info', \
+                      dismissable=True),
+            *alert_message("Note that you have selected the 'guest time' option. "
+                          "The inserted times and durations are ignored.")], '', \
+           sensitivity_results, get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), dash.no_update
+    else:
+        return '', dbc.Alert("Results have been updated.", color='info', dismissable=True), \
+           sensitivity_results, get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), dash.no_update
 
 
 
@@ -856,6 +954,8 @@ def get_fig_ant_elev(obs):
                                  'ticks': 'inside', 'showline': True, 'mirror': "all",
                                  'showgrid': False, 'hovermode': 'closest'},
                                  'zeroline': True, 'zerolinecolor': 'k'}}
+
+
 
 
 
@@ -921,6 +1021,7 @@ def get_fig_uvplane(obs):
                                  'color': 'black', 'zeroline': False}}}
 
 
+
 def get_fig_dirty_map(obs):
     pass
 
@@ -930,6 +1031,6 @@ def get_fig_dirty_map(obs):
 if __name__ == '__main__':
     # app.run_server(host='0.0.0.0', debug=True)
     # app.run_server(debug=True)
-    app.run_server(host='0.0.0.0', debug=True)
+    app.run_server(host='0.0.0.0')
 
 

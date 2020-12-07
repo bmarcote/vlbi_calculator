@@ -1,4 +1,5 @@
 import numpy as np
+import datetime as dt
 from astropy import units as u
 from astropy import coordinates as coord
 from astropy.time import Time, TimeDelta
@@ -486,6 +487,99 @@ class Observation(object):
         for a_station in self.stations:
             iv[a_station.codename] = a_station.is_visible(self.times, self.target)
         return iv
+
+
+    @staticmethod
+    def guest_times_for_source(target: Source, stations: Stations, date: Time = None, min_stations : int = 3) \
+                                                                                                    -> tuple:
+        """Use this function to discover when your target source can be observed by the given network
+        of stations. It will return the start and end time of the possible observation (both in UTC and GST).
+        Note that while this gives you specific dates, the main interest would likely be obtaining the
+        actual GST range, which can be retrieved by running  '.sidereal_time('mean', 'greenwich')'
+        on each returned time.
+
+        Inputs
+        - target : Source
+            The target source to be observed.
+        - stations : Stations
+            The array of stations that will potentially observe the target source.
+        - date : astropy.time.Time [OPTIONAL]
+            In case you have a specific date which you want to use to compute the possible start time
+            for the observation (i.e. the start time will be determined within the given date).
+            If not provided, today will be used.
+        - min_stations : int
+            Minimum number of stations required to considered the time as useful in the observation.
+
+        Returns
+            - (t0, t1)  : tuple with two astropy.time.Time objects.
+                The start and end (UTC) time of the period of time when the source is visible by enough stations.
+            - (gst0, gst1) : tuple with two astropy.time.Time objects.
+                The start and end (GST) time of the same period of time.
+
+        Exceptions
+        - It may raise the exception SourceNotVisible if the target source is not visible by
+          enough stations.
+        """
+        if date is None:
+            dtdate = dt.datetime.today()
+        else:
+            dtdate = date.datetime
+
+        t0 = Time(dt.datetime(dtdate.year, dtdate.month, dtdate.day, 0, 0), format='datetime', scale='utc')
+        obstimes = t0 + np.arange(0, 24*60, 10)*u.min
+
+        mm = np.zeros((len(stations), len(obstimes)))
+        for s,a_station in enumerate(stations):
+            mm[s, a_station.is_visible(obstimes, target)] = 1
+
+        n_onsource = mm.sum(0)
+        # go through it storing the starting or ending times when more than min_stations can observe the source
+
+        vis_ranges = []
+        for i in range(1, len(obstimes)):
+            # Only record the positions where the source goes from being visible to not, or from no to yes.
+            if (n_onsource[i] >= 3 and n_onsource[i-1] < 3) or (n_onsource[i] < 3 and n_onsource[i-1] >= 3):
+                vis_ranges.append(i)
+
+        # Recovers the interval where most of the antennas are available to be reported
+        # Another option was to take the longest interval with >= antennas. But this one may be useless
+        # under some specific conditions
+        n_max = [None, None, -1]  # t0, t1, n_ants
+        indexes = 0 if n_onsource[0] >= 3 else 1
+
+        # Special case: first element
+        if indexes == 0:
+            n_max = [-1, 0, np.max([n_onsource[vis_ranges[-1]:].max(), n_onsource[:vis_ranges[0]].max()])]
+
+        for i in range(1-indexes, len(vis_ranges)-1, 2):
+            print(vis_ranges)
+            print(n_onsource)
+            if n_onsource[vis_ranges[i-1+indexes]:vis_ranges[i+indexes]+1].max() > n_max[2]:
+                n_max = [i-1+indexes, i+indexes, n_onsource[vis_ranges[i-1+indexes]:vis_ranges[i+indexes]+1].max()]
+            elif (n_onsource[vis_ranges[i-1+indexes]:vis_ranges[i+indexes]+1].max() == n_max[2]) and \
+                    (vis_ranges[i+indexes]-vis_ranges[i-1+indexes] > n_max[1]-n_max[0]):
+                n_max = [i-1+indexes, i+indexes, n_onsource[vis_ranges[i-1+indexes]:vis_ranges[i+indexes]+1].max()]
+
+        if None in (n_max[0], n_max[1]):
+            # Either the source is visible all the time or never
+            if n_onsource[0] >= 3:
+                best_utc = obstimes[0], obstimes[-1]
+                best_gtc = best_utc[0].sidereal_time('mean', 'greenwich'), \
+                           best_utc[1].sidereal_time('mean', 'greenwich')
+            else:
+                raise SourceNotVisible
+        else:
+            if n_max[0] == -1:
+                best_utc = obstimes[vis_ranges[n_max[0]]], obstimes[vis_ranges[n_max[1]]] + 1*u.day
+            else:
+                best_utc = obstimes[vis_ranges[n_max[0]]], obstimes[vis_ranges[n_max[1]]]
+
+            best_gtc = best_utc[0].sidereal_time('mean', 'greenwich'), \
+                       best_utc[1].sidereal_time('mean', 'greenwich')
+
+        return best_utc, best_gtc
+
+
 
 
     def longest_baseline(self) -> tuple:

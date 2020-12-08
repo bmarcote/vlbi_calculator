@@ -166,7 +166,7 @@ SEFD_YY = ZZ   # Multiple inputs providing the estimated System Equivalent Flux 
 
 We are more than glad to integrate any additional station that can be relevant to the purposes of this program.
 
-If you have any suggestion, please open an issue in the GitHub repository, or [mailto:marcote@jive.eu](contact the author).
+If you have any suggestion, please open an issue in the GitHub repository, or [contact the author](mailto:marcote@jive.eu).
 
 
 

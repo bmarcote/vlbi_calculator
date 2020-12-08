@@ -782,9 +782,6 @@ def get_source(source_coord):
                State('guest-times', 'value'),
                State('tabs', 'value')] + \
                [State(f"check_{s.codename}", 'checked') for s in all_antennas])
-
-
-
 def compute_observation(n_clicks, band, starttime, starthour, duration, source, onsourcetime,
                         datarate, subbands, channels, pols, inttime, guest_time, selected_tab, *ants):
     """Computes all products to be shown concerning the set observation.
@@ -909,10 +906,14 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
 
     # TODO: parallelize all these fig functions
     if out_center:
-        return [html.Br(), dbc.Alert("You can check now the results in the different tabs", color='info', \
+        if guest_time:
+            return [html.Br(), dbc.Alert("You can check now the results in the different tabs", color='info', \
                       dismissable=True),
-            *alert_message("Note that you have selected the 'guest time' option. "
-                          "The inserted times and durations are ignored.")], '', \
+                *alert_message("Note that you have selected the 'guest time' option. "
+                              "The inserted times and durations are ignored.")], '', \
+        else:
+            return [html.Br(), dbc.Alert("You can check now the results in the different tabs", color='info', \
+                      dismissable=True)], '', \
            sensitivity_results, get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), dash.no_update
     else:
         return '', dbc.Alert("Results have been updated.", color='info', dismissable=True), \

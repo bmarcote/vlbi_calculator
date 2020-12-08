@@ -911,6 +911,7 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                       dismissable=True),
                 *alert_message("Note that you have selected the 'guest time' option. "
                               "The inserted times and durations are ignored.")], '', \
+           sensitivity_results, get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), dash.no_update
         else:
             return [html.Br(), dbc.Alert("You can check now the results in the different tabs", color='info', \
                       dismissable=True)], '', \

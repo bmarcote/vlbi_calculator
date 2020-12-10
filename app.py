@@ -281,7 +281,7 @@ app.layout = html.Div([
                             html.Div(className='row justify-content-center',
                                      children=html.Button('Continue', id='pickband-button',
                                         className='btn btn-primary btn-lg'))
-                        ])
+                        ], style={'min-width': '33rem'})
                     ])
                 )])
         ])

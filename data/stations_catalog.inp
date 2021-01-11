@@ -419,7 +419,6 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
-SEFD_0.3 = 2500.0
 
 
 [Hartebeesthoek]
@@ -1164,7 +1163,6 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
-SEFD_0.3 = 2500.0
 
 
 [Svetloe]

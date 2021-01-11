@@ -93,7 +93,7 @@ SEFD_3.6 = 1255.0
 
 station = Arecibo Telescope
 code = Ar
-network = Other
+network = Decom
 possible_networks = EVN, HSA
 country = Puerto Rico
 diameter = 305 m
@@ -1364,6 +1364,30 @@ SEFD_13 = 840.0
 SEFD_6 = 1680.0
 SEFD_5 = 1600.0
 SEFD_3.6 = 1680.0
+
+
+[WSRT]
+
+station = Westerbork Synthesis Radio Telescope
+code = Wb14
+network = Decom
+possible_networks = EVN
+country = The Netherlands
+diameter = 14 x 25 m
+#img =
+#link =
+position = 3828767.2647, 442446.1739, 5064921.57
+min_elevation = 10.0
+real_time = yes
+SEFD_92 = 561.0
+SEFD_30 = 449.0
+SEFD_21 = 112.0
+SEFD_18 = 150.0
+SEFD_13 = 224.5
+SEFD_6 = 449.0
+SEFD_5 = 427.6
+SEFD_3.6 = 449.0
+
 
 
 [Wettzell]

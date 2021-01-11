@@ -66,7 +66,8 @@ sorted_networks = {'EVN': 'EVN: European VLBI Network', 'eMERLIN': 'eMERLIN (out
                    'VLBA': 'VLBA: Very Long Baseline Array',
                    'LBA': 'LBA: Australian Long Baseline Array',
                    'KVN': 'KVN: Korean VLBI Network',
-                   'Other': 'Other antennas'}
+                   'Other': 'Other antennas',
+                   'Decom': 'Decommissioned antennas'}
 default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6', 'Tr',
                           'Ys', 'Wb', 'Bd', 'Sv', 'Zc', 'Ir'],
           'e-EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'On', 'T6', 'Tr', 'Ys', 'Wb',
@@ -78,7 +79,7 @@ default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
           'Global VLBI': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
                           'Tr', 'Ys', 'Wb', 'Bd', 'Sv', 'Zc', 'Ir', 'Br', 'Fd', 'Hn',
                           'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
-          'HSA': ['Br', 'Fd', 'Hn', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc', 'Ef', 'Ar',
+          'HSA': ['Br', 'Fd', 'Hn', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc', 'Ef', #'Ar',
                   'Gb', 'Y27'],
           'GMVA': ['Ef', 'Mh', 'On', 'Ys', 'Pv', 'Br', 'Fd', 'Kp', 'La', 'Mk', 'Nl',
                    'Ov', 'Pt'],
@@ -237,28 +238,14 @@ def arrays_with_band(arrays, a_band):
         return ', '.join(tmp[:-1]) + ' and ' + tmp[-1]
 
 
-
-
-#####################  This is the webpage layout
-app.layout = html.Div([
-    html.Div(id='banner', className='navbar-brand d-flex p-3 shadow-sm', children=[
-        html.A(className='d-inline-block mr-md-auto', href="https://www.evlbi.org", children=[
-            html.Img(height='70px', src=app.get_asset_url("logo_evn.png"),
-                     alt='European VLBI Network (EVN)',
-                     className="d-inline-block align-top"),
-        ]),
-        html.H2('EVN Observation Planner', className='d-inline-block align-middle mx-auto'),
-        html.A(className='d-inline-block ml-auto pull-right', href="https://www.jive.eu", children=[
-            html.Img(src=app.get_asset_url("logo_jive.png"), height='70px',
-                     alt='Joinst Institute for VLBI ERIC (JIVE)')
-        ])
-    ]),
-    html.Div([html.Br()]),
-    html.Div(id='main-window', children=[
+def main_window_pick_band():
+    """Initial window with the introduction to the EVN Observation Planner and the band selection.
+    """
+    return [
         html.Div(className='row justify-content-center',
             children=html.Div(className='col-sm-6 justify-content-center',
                     children=[html.Div(className='justify-content-center',
-                            children=[html.H3("Welcome!"),
+                            children=[#html.H3("Welcome!"),
                                       html.P(["The EVN Observation Planner allows you to plan observations with the ",
                                 html.A(href="https://www.evlbi.org", children="European VLBI Network"),
                                 " (EVN) and other Very Long Baseline Interferometry (VLBI) networks. "
@@ -280,11 +267,75 @@ app.layout = html.Div([
                             html.Div(id='pickband-label', className='row justify-content-center', children=''),
                             html.Div(className='row justify-content-center',
                                      children=html.Button('Continue', id='pickband-button',
-                                        className='btn btn-primary btn-lg'))
+                                        className='btn btn-primary btn-lg')),
+                            html.Div(className='row justify-content-right col-1', children=[
+                                html.Button('Skip', id='skip-button', className='btn btn-gray')
+                            ])
                         ], style={'min-width': '33rem'})
                     ])
-                )])
+                )]
+
+
+def main_window_pick_time():
+    """Initial (second) window with the introduction to the EVN Observation Planner and
+    the option to pick a specific observing time or let the tool to find them.
+    """
+    return [
+        html.Div(className='row justify-content-center',
+            children=html.Div(className='col-sm-6 justify-content-center',
+                    children=[html.Div(className='justify-content-center',
+                            children=[#html.H3("Welcome!"),
+                                      html.P(["The EVN Observation Planner allows you to plan observations with the ",
+                                html.A(href="https://www.evlbi.org", children="European VLBI Network"),
+                                " (EVN) and other Very Long Baseline Interferometry (VLBI) networks. "
+                                "The EVN Observation Planner helps you to determine when your source "
+                                "can be observed by the different antennas, and provides the expected "
+                                "outcome of these observations, like the expected sensitivity or resolution."]),
+                            html.H3("When to observe?"),
+                            html.P(["You can pick a specific observing time or let the EVN Observation Planner "
+                                "to find when your source can be observed by the antennas you will select. "
+                                "Note that, in any case, you will still be able to change your selection "
+                                "afterwards in case you want to compare different bands."])
+                        ], style={'text:align': 'justify !important'}),
+                        html.Br(),
+                        html.Div(className='justify-content-center', children=[html.Div(
+                            dcc.Slider(id='pickband', min=0, max=len(fs.bands)-1,
+                                   value=tuple(fs.bands).index('18cm'), step=-1,
+                                   marks={i: fq for i,fq in enumerate(fs.bands)},
+                                   persistence=True, # tooltip={'always_visible': True, 'placement': 'top'},
+                                   updatemode='drag', included=False)), #html.Br(), html.Br(),
+                            html.Div(id='pickband-label', className='row justify-content-center', children=''),
+                            html.Div(className='row justify-content-center',
+                                     children=html.Button('Continue', id='pickband-button',
+                                        className='btn btn-primary btn-lg')),
+                            html.Div(className='row justify-content-right col-1', children=[
+                                html.Button('Skip', id='skip-button', className='btn btn-gray')
+                            ])
+                        ], style={'min-width': '33rem'})
+                    ])
+                )]
+
+
+
+
+#####################  This is the webpage layout
+app.layout = html.Div([
+    html.Div(id='banner', className='navbar-brand d-flex p-3 shadow-sm', children=[
+        html.A(className='d-inline-block mr-md-auto', href="https://www.evlbi.org", children=[
+            html.Img(height='70px', src=app.get_asset_url("logo_evn.png"),
+                     alt='European VLBI Network (EVN)',
+                     className="d-inline-block align-top"),
+        ]),
+        html.H2('EVN Observation Planner', className='d-inline-block align-middle mx-auto'),
+        html.A(className='d-inline-block ml-auto pull-right', href="https://www.jive.eu", children=[
+            html.Img(src=app.get_asset_url("logo_jive.png"), height='70px',
+                     alt='Joinst Institute for VLBI ERIC (JIVE)')
         ])
+    ]),
+    html.Div([html.Br()]),
+    html.Div(id='main-window', children=main_window_pick_band())])
+
+
 
 
 @app.callback(Output('pickband-label', 'children'),
@@ -314,13 +365,23 @@ def update_pickband_tooltip(a_wavelength):
 
 
 @app.callback(Output('main-window', 'children'),
-              [Input('pickband-button', 'n_clicks')],
+              [Input('skip-button', 'n_clicks'), Input('pickband-button', 'n_clicks')],
               [State('pickband', 'value')])
-def update_onsourcetime_label(n_clicks, a_wavelength):
-    if n_clicks is None:
+def skip_intro_choices(skip_clicks, pickband_clicks, a_wavelength):
+    if (skip_clicks is None) and (pickband_clicks is None):
         return dash.no_update
+    elif skip_clicks is not None:
+        return main_page(None)
+    elif pickband_clicks is not None:
+        return main_page(a_wavelength)
 
-    a_band = tuple(fs.bands)[a_wavelength]
+
+
+
+
+
+def main_page(a_wavelength):
+    a_band = tuple(fs.bands)[a_wavelength] if a_wavelength is not None else None
     return [
     # First row containing all buttons/options, list of telescopes, and button with text output
     dcc.ConfirmDialog(id='global-error', message=''),
@@ -549,7 +610,8 @@ def update_onsourcetime_label(n_clicks, a_wavelength):
                                     for s in all_antennas if s.network == an_array
                                 ])
                             ]) for an_array in sorted_networks
-                        ])
+                        ]),
+                        html.Div(style={'height': '15rem'})
                     ]),
                     # html.Div(className='col-sm-2', style={'float': 'left'}, children=[
                     # ])
@@ -1033,6 +1095,6 @@ def get_fig_dirty_map(obs):
 if __name__ == '__main__':
     # app.run_server(host='0.0.0.0', debug=True)
     # app.run_server(debug=True)
-    app.run_server(host='0.0.0.0')
+    app.run_server(host='0.0.0.0', debug=True)
 
 

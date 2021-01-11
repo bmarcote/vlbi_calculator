@@ -3433,6 +3433,19 @@ input[type=checkbox]:disabled:after {
     padding: 0;
 }
 
+.btn-gray {
+	color: #888888;
+	background-color: none;
+	border-color: none;
+}
+
+.btn-gray:hover {
+	color: #222222;
+	background-color: none;
+	border-color: none;
+}
+
+
 .btn-primary:hover {
     color: #fff;
     background-color: #a01d26;

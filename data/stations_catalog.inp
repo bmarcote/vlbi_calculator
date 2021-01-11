@@ -3,7 +3,7 @@
 station = Atacama Large Millimeter Array
 code = ALMA
 network = Other
-possible_networks = EHT
+possible_networks = EHT, GMVA
 country = Chile
 diameter = 50 x 12 m
 #img =
@@ -11,7 +11,7 @@ diameter = 50 x 12 m
 position = 2225061.164, -5440057.37, -2481681.151
 min_elevation = 10.0
 real_time = no
-SEFD_0.3 = 75
+SEFD_0.3 = 68
 SEFD_0.1 = 85
 
 
@@ -138,7 +138,7 @@ SEFD_1.3 = 710
 station = Brewster
 code = Br
 network = VLBA
-possible_networks = VLBA
+possible_networks = VLBA, GMVA
 country = U.S.A.
 diameter = 25 m
 #img =
@@ -157,6 +157,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
+SEFD_0.3 = 2500.0
 
 
 [Cambridge]
@@ -263,7 +264,7 @@ SEFD_21 = 6000.0
 station = Effelsberg
 code = Ef
 network = EVN
-possible_networks = EVN, HSA
+possible_networks = EVN, HSA, GMVA
 country = Germany
 diameter = 100 m
 #img =
@@ -282,6 +283,7 @@ SEFD_5 = 25.0
 SEFD_3.6 = 20.0
 SEFD_1.3 = 70
 SEFD_0.7 = 200.0
+SEFD_0.3 = 1000.0
 
 
 [FAST]
@@ -308,7 +310,7 @@ SEFD_18 = 1.95
 station = Fort Davis
 code = Fd
 network = VLBA
-possible_networks = VLBA
+possible_networks = VLBA, GMVA
 country = U.S.A.
 diameter = 25 m
 #img =
@@ -327,6 +329,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
+SEFD_0.3 = 2500.0
 
 
 [GMRT]
@@ -353,7 +356,7 @@ SEFD_21 = 47.0
 station = Green Bank
 code = Gb
 network = VLBA
-possible_networks = HSA
+possible_networks = HSA, GMVA
 country = U.S.A.
 diameter = 100 m
 #img =
@@ -373,6 +376,23 @@ SEFD_3.6 = 15.0
 SEFD_2 = 15.0
 SEFD_1.3 = 20
 SEFD_0.7 = 30.0
+SEFD_0.3 = 137.0
+
+
+[Greenland]
+
+station = Greenland Telescope
+code = GLT
+network = Other
+possible_networks = GMVA
+country = Greenland
+diameter = 12 m
+#img =
+#link =
+position = 1501130.9818, -1190492.8908, 6066548.7399
+min_elevation = 10.0
+real_time = no
+SEFD_0.3 = 6000.0
 
 
 [Hancock]
@@ -380,7 +400,7 @@ SEFD_0.7 = 30.0
 station = Hancock
 code = Hn
 network = VLBA
-possible_networks = VLBA
+possible_networks = VLBA, GMVA
 country = U.S.A.
 diameter = 25 m
 #img =
@@ -399,6 +419,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
+SEFD_0.3 = 2500.0
 
 
 [Hartebeesthoek]
@@ -523,7 +544,7 @@ SEFD_5 = 4000.0
 station = Kitt Peak
 code = Kp
 network = VLBA
-possible_networks = VLBA
+possible_networks = VLBA, GMVA
 country = U.S.A.
 diameter = 25 m
 #img =
@@ -542,6 +563,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
+SEFD_0.3 = 2500.0
 
 
 [Knockin]
@@ -604,7 +626,7 @@ SEFD_6 = 1200.0
 station = Large Millimeter Telescope
 code = LMT
 network = Other
-possible_networks = EHT
+possible_networks = EHT, GMVA
 country = Mexico
 diameter = 50 m
 #img =
@@ -612,7 +634,7 @@ diameter = 50 m
 position = -768715.632, -5988507.072, 2063354.852
 min_elevation = 10.0
 real_time = no
-SEFD_0.3 = 1714
+SEFD_0.3 = 615
 SEFD_0.1 = 3536
 
 
@@ -621,7 +643,7 @@ SEFD_0.1 = 3536
 station = Los Alamos
 code = La
 network = VLBA
-possible_networks = VLBA
+possible_networks = VLBA, GMVA
 country = U.S.A.
 diameter = 25 m
 #img =
@@ -640,6 +662,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
+SEFD_0.3 = 2500.0
 
 
 [Lovell]
@@ -684,7 +707,7 @@ SEFD_3.6 = 1000.0
 station = Mauna Kea
 code = Mk
 network = VLBA
-possible_networks = VLBA
+possible_networks = VLBA, GMVA
 country = U.S.A.
 diameter = 25 m
 #img =
@@ -703,6 +726,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
+SEFD_0.3 = 2500.0
 
 
 [Medicina]
@@ -732,7 +756,7 @@ SEFD_1.3 = 700
 station = Metsahovi
 code = Mh
 network = EVN
-possible_networks = EVN
+possible_networks = EVN, GMVA
 country = Finland
 diameter = 14 m
 #img =
@@ -744,6 +768,7 @@ SEFD_13 = 4500.0
 SEFD_3.6 = 3200.0
 SEFD_1.3 = 2608
 SEFD_0.7 = 4500.0
+SEFD_0.3 = 30000.0
 
 
 [Mopra]
@@ -774,7 +799,7 @@ SEFD_0.7 = 675.0
 station = North Liberty
 code = Nl
 network = VLBA
-possible_networks = VLBA
+possible_networks = VLBA, GMVA
 country = U.S.A.
 diameter = 25 m
 #img =
@@ -793,6 +818,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
+SEFD_0.3 = 2500.0
 
 
 [Noto]
@@ -823,7 +849,7 @@ SEFD_0.7 = 900.0
 station = Owens Valley Radio Observatory
 code = Ov
 network = VLBA
-possible_networks = VLBA
+possible_networks = VLBA, GMVA
 country = U.S.A.
 diameter = 25 m
 #img =
@@ -842,6 +868,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
+SEFD_0.3 = 2500.0
 
 
 [Onsala]
@@ -849,7 +876,7 @@ SEFD_0.7 = 640.0
 station = Onsala
 code = On
 network = EVN
-possible_networks = EVN
+possible_networks = EVN, GMVA
 country = Sweden
 diameter = 25/20 m
 #img =
@@ -866,14 +893,15 @@ SEFD_5 = 850.0
 SEFD_3.6 = 785.0
 SEFD_1.3 = 1200
 SEFD_0.7 = 1310.0
+SEFD_0.3 = 3877.0
 
 
-[P. de Bure]
+[NOEMA]
 
-station = Plateau de Bure Interferometer
+station = NOEMA (Plateau de Bure Interferometer)
 code = PdB
 network = Other
-possible_networks = EHT
+possible_networks = EHT, GMVA
 country = France
 diameter = 10 x 15 m
 #img =
@@ -881,7 +909,7 @@ diameter = 10 x 15 m
 position = 4524000.43, 468042.14, 4460309.76
 min_elevation = 10.0
 real_time = no
-SEFD_0.3 = 450
+SEFD_0.3 = 260
 SEFD_0.1 = 4299
 
 
@@ -933,7 +961,7 @@ SEFD_1.3 = 720
 station = Pico Veleta
 code = Pv
 network = Other
-possible_networks = EHT
+possible_networks = EHT, GMVA
 country = Spain
 diameter = 30 m
 #img =
@@ -941,7 +969,7 @@ diameter = 30 m
 position = 5088967.9, 301681.6, 3825015.8
 min_elevation = 10.0
 real_time = no
-SEFD_0.3 = 640
+SEFD_0.3 = 654
 SEFD_0.1 = 1160
 
 
@@ -950,7 +978,7 @@ SEFD_0.1 = 1160
 station = Pie Town
 code = Pt
 network = VLBA
-possible_networks = VLBA
+possible_networks = VLBA, GMVA
 country = U.S.A.
 diameter = 25 m
 #img =
@@ -969,6 +997,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
+SEFD_0.3 = 2500.0
 
 
 [Robledo 34]
@@ -1116,7 +1145,7 @@ SEFD_0.1 = 7497
 station = St. Croix
 code = Sc
 network = VLBA
-possible_networks = VLBA
+possible_networks = VLBA, GMVA
 country = U.S.A.
 diameter = 25 m
 #img =
@@ -1135,6 +1164,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
+SEFD_0.3 = 2500.0
 
 
 [Svetloe]
@@ -1163,7 +1193,7 @@ SEFD_1.3 = 710
 station = Tamna
 code = Kt
 network = KVN
-possible_networks = KVN
+possible_networks = KVN, GMVA
 country = South Korea
 diameter = 21 m
 #img =
@@ -1173,6 +1203,7 @@ min_elevation = 10.0
 real_time = no
 SEFD_1.3 = 1288
 SEFD_0.7 = 1919.0
+SEFD_0.3 = 3226.0
 
 
 [Tianma]
@@ -1243,7 +1274,7 @@ SEFD_1.3 = 500
 station = Ulsan
 code = Ku
 network = KVN
-possible_networks = KVN
+possible_networks = KVN, GMVA
 country = South Korea
 diameter = 21 m
 #img =
@@ -1253,6 +1284,7 @@ min_elevation = 10.0
 real_time = no
 SEFD_1.3 = 1288
 SEFD_0.7 = 1919.0
+SEFD_0.3 = 3226.0
 
 
 [Urumqi]
@@ -1429,7 +1461,7 @@ SEFD_5 = 3500.0
 station = Yebes
 code = Ys
 network = EVN
-possible_networks = EVN
+possible_networks = EVN, GMVA
 country = Spain
 diameter = 40 m
 #img =
@@ -1443,6 +1475,7 @@ SEFD_5 = 160.0
 SEFD_3.6 = 200.0
 SEFD_1.3 = 200
 SEFD_0.7 = 480.0
+SEFD_0.3 = 2000.0
 
 
 [Yonsei]
@@ -1450,7 +1483,7 @@ SEFD_0.7 = 480.0
 station = Yonsei
 code = Ky
 network = KVN
-possible_networks = KVN
+possible_networks = KVN, GMVA
 country = South Korea
 diameter = 21 m
 #img =
@@ -1460,6 +1493,7 @@ min_elevation = 10.0
 real_time = no
 SEFD_1.3 = 1288
 SEFD_0.7 = 1919.0
+SEFD_0.3 = 3226.0
 
 
 [Zelenchukskaya]

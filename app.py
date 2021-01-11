@@ -81,8 +81,8 @@ default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
                           'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
           'HSA': ['Br', 'Fd', 'Hn', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc', 'Ef', #'Ar',
                   'Gb', 'Y27'],
-          'GMVA': ['Ef', 'Mh', 'On', 'Ys', 'Pv', 'Br', 'Fd', 'Kp', 'La', 'Mk', 'Nl',
-                   'Ov', 'Pt'],
+          'GMVA': ['Ef', 'Mh', 'On', 'Ys', 'Pv', 'PdB', 'Br', 'Fd', 'Hn', 'Kp', 'La', 'Mk', 'Nl',
+                   'Ov', 'Pt', 'Sc', 'Ky', 'Kt', 'Ku', 'LMT', 'GLT', 'Gb'],
           'EHT': ['ALMA', 'Pv', 'LMT', 'PdB', 'SMA', 'JCMT', 'APEX', 'SMT', 'SPT']}
 default_datarates = {'EVN': 2048, 'e-EVN': 2048, 'eMERLIN': 4096, 'LBA': 1024, 'VLBA': 4096, 'KVN': 4096,
                      'Global VLBI': 2048, 'HSA': 2048, 'GMVA': 4096, 'EHT': 2**15}

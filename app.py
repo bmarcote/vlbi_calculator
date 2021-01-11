@@ -268,9 +268,9 @@ def main_window_pick_band():
                             html.Div(className='row justify-content-center',
                                      children=html.Button('Continue', id='pickband-button',
                                         className='btn btn-primary btn-lg')),
-                            html.Div(className='row justify-content-right col-1', children=[
-                                html.Button('Skip', id='skip-button', className='btn btn-gray')
-                            ])
+                            # html.Div(className='row justify-content-right col-1', children=[
+                            #     html.Button('Skip', id='skip-button', className='btn btn-gray justify-content-right')
+                            # ])
                         ], style={'min-width': '33rem'})
                     ])
                 )]
@@ -308,9 +308,9 @@ def main_window_pick_time():
                             html.Div(className='row justify-content-center',
                                      children=html.Button('Continue', id='pickband-button',
                                         className='btn btn-primary btn-lg')),
-                            html.Div(className='row justify-content-right col-1', children=[
-                                html.Button('Skip', id='skip-button', className='btn btn-gray')
-                            ])
+                            # html.Div(className='row justify-content-right col-1', children=[
+                            #     html.Button('Skip', id='skip-button', className='btn btn-gray')
+                            # ])
                         ], style={'min-width': '33rem'})
                     ])
                 )]
@@ -365,13 +365,16 @@ def update_pickband_tooltip(a_wavelength):
 
 
 @app.callback(Output('main-window', 'children'),
-              [Input('skip-button', 'n_clicks'), Input('pickband-button', 'n_clicks')],
+              [#Input('skip-button', 'n_clicks'),
+              Input('pickband-button', 'n_clicks')],
               [State('pickband', 'value')])
-def skip_intro_choices(skip_clicks, pickband_clicks, a_wavelength):
-    if (skip_clicks is None) and (pickband_clicks is None):
+def skip_intro_choices(pickband_clicks, a_wavelength):
+# def skip_intro_choices(skip_clicks, pickband_clicks, a_wavelength):
+    # if (skip_clicks is None) and (pickband_clicks is None):
+    if pickband_clicks is None:
         return dash.no_update
-    elif skip_clicks is not None:
-        return main_page(None)
+    # elif skip_clicks is not None:
+    #     return main_page(None)
     elif pickband_clicks is not None:
         return main_page(a_wavelength)
 

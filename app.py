@@ -210,6 +210,7 @@ def update_sensitivity(obs):
 def arrays_with_band(arrays, a_band):
     """Returns the given arrays that can observe the given band with at least two antennas.
     It excludes e-EVN if it is included in arrays.
+    Note that hardcoded is the detection of GMVA and EHT (only available at a given frequency).
 
     Inputs
     - arrays : dict
@@ -226,7 +227,17 @@ def arrays_with_band(arrays, a_band):
     for an_array in arrays:
         if an_array != 'e-EVN':
             if np.sum([all_antennas[a_station].has_band(a_band) for a_station in arrays[an_array]]) > 1:
-                tmp.append(an_array)
+                if an_array == 'GMVA':
+                    if a_band == '0.3cm':
+                        tmp.append(an_array)
+                elif an_array == 'EHT':
+                    if (a_band == '0.1cm') or (a_band == '0.3cm'):
+                        tmp.append(an_array)
+                elif (an_array == 'EVN') or (an_array == 'Global VLBI'):
+                    if float(a_band.replace('cm', '')) > 0.5:
+                        tmp.append(an_array)
+                else:
+                    tmp.append(an_array)
 
     if len(tmp) == 0:
         return 'none'
@@ -268,9 +279,9 @@ def main_window_pick_band():
                             html.Div(className='row justify-content-center',
                                      children=html.Button('Continue', id='pickband-button',
                                         className='btn btn-primary btn-lg')),
-                            # html.Div(className='row justify-content-right col-1', children=[
-                            #     html.Button('Skip', id='skip-button', className='btn btn-gray justify-content-right')
-                            # ])
+                            html.Div(className='row justify-content-right col-1', children=[
+                                html.Button('Skip', id='skip-button', className='btn btn-gray justify-content-right')
+                            ])
                         ], style={'min-width': '33rem'})
                     ])
                 )]
@@ -308,9 +319,9 @@ def main_window_pick_time():
                             html.Div(className='row justify-content-center',
                                      children=html.Button('Continue', id='pickband-button',
                                         className='btn btn-primary btn-lg')),
-                            # html.Div(className='row justify-content-right col-1', children=[
-                            #     html.Button('Skip', id='skip-button', className='btn btn-gray')
-                            # ])
+                            html.Div(className='row justify-content-right col-1', children=[
+                                html.Button('Skip', id='skip-button', className='btn btn-gray')
+                            ])
                         ], style={'min-width': '33rem'})
                     ])
                 )]
@@ -365,16 +376,14 @@ def update_pickband_tooltip(a_wavelength):
 
 
 @app.callback(Output('main-window', 'children'),
-              [#Input('skip-button', 'n_clicks'),
+              [Input('skip-button', 'n_clicks'),
               Input('pickband-button', 'n_clicks')],
               [State('pickband', 'value')])
-def skip_intro_choices(pickband_clicks, a_wavelength):
-# def skip_intro_choices(skip_clicks, pickband_clicks, a_wavelength):
-    # if (skip_clicks is None) and (pickband_clicks is None):
-    if pickband_clicks is None:
+def skip_intro_choices(skip_clicks, pickband_clicks, a_wavelength):
+    if (skip_clicks is None) and (pickband_clicks is None):
         return dash.no_update
-    # elif skip_clicks is not None:
-    #     return main_page(None)
+    elif skip_clicks is not None:
+        return main_page(None)
     elif pickband_clicks is not None:
         return main_page(a_wavelength)
 

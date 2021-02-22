@@ -1,4 +1,5 @@
 import numpy as np
+from datetime import datetime as dt
 from astropy import units as u
 import dash
 from dash.dependencies import Input, Output, State
@@ -7,6 +8,7 @@ import dash_html_components as html
 import dash_bootstrap_components as dbc
 import plotly.express as px
 
+from vlbiplanobs import freqsetups as fs
 
 def tooltip(message, idname, trigger='?', placement='right',trigger_is_sup=True,  **kwargs):
     """Defines a tooltip (popover) that will be shown in the rendered page.
@@ -379,5 +381,194 @@ def optimal_units(value, units):
     return value.to(units[-1])
 
 
+
+#################################################################################
+# Cards from the initial window where user keeps selecting options
+
+
+def initial_window_start(app):
+    """Very first window where the user can choose between going to the main window
+    directly to manually selecting everything or going through the "wizard" guided mode.
+    """
+    return [
+            html.Div(children=[
+                html.Div(html.Button(id='button-initial-wizard', className='btn btn-gray',
+                    title='Helps you to configure your observation in a step-by-step process.',
+                    children=dbc.Card(dbc.CardBody([
+                        html.H5("Guided mode", className='card-title'),
+                        html.Img(height='80rem', src=app.get_asset_url('icon-newbie.png'),
+                                 className='card-text m-3'),
+                        html.Br(),
+                        html.P("Guided setup of your observation.", className='card-text px-0')
+                    ]), className='text-center shadow-0')
+                ), className='col-sm-6 text-center mx-0 px-0'),
+                html.Div(html.Button(id='button-initial-expert', className='btn btn-gray',
+                    title='Go to the main window containing all options to configure.',
+                    children=[dbc.Card(dbc.CardBody([
+                        html.H5("Manual mode", className='card-title'),
+                        html.Img(height='80rem', src=app.get_asset_url('icon-expert.png'),
+                                 className='card-text m-3'),
+                        html.Br(),
+                        html.P("Manual setup of your observation.", className='card-text px-0')
+                    ]), className='text-center shadow-0')]
+                ), className='col-sm-6 text-center mx-0 px-0')
+            ], className='row')
+        ]
+
+
+
+def initial_window_pick_band():
+    """Initial window with the introduction to the EVN Observation Planner and the band selection.
+    """
+    return [html.Div(className='row', children=[
+                html.H3("Select the observing band"),
+                html.P(["At which frequency or wavelength do you want to conduct your observation? "
+                    "Note that, in any case, you will still be able to change your selection "
+                    "afterwards in case you want to change to or compare different bands."])
+            ], style={'text:align': 'justify !important'}),
+            html.Br(),
+            html.Div(className='justify-content-center', children=[html.Div(
+                dcc.Slider(id='initial-band', min=0, max=len(fs.bands)-1,
+                       value=tuple(fs.bands).index('18cm'), step=-1,
+                       marks={i: fq for i,fq in enumerate(fs.bands)},
+                       persistence=True, # tooltip={'always_visible': True, 'placement': 'top'},
+                       updatemode='drag', included=False)), html.Br(), #html.Br(),
+                html.Div(id='initial-pickband-label', className='row justify-content-center', children='Hello'),
+                html.Br(),
+                html.Div(className='row text-center',
+                         children=html.Button('Continue', id='button-pickband',
+                            className='btn btn-primary btn-lg'))
+            ], style={'min-width': '33rem'}),
+        ]
+
+
+def initial_window_pick_network(vlbi_networks):
+    """Initial window to introduce the default VLBI network(s) to be used.
+    It will only allow the ones that can observe at the given wavelength.
+    """
+    return [html.Div(className='row', children=[
+            html.H3('Select the VLBI Network(s)'),
+            html.P(["Which network(s) will be use to observe your source? "
+                "This will select the default antennas in the array(s). Note that later "
+                "you will be able to add/remove antennas as wished."])
+            ]),
+            html.Br(),
+            html.Div(className='justify-content-center', children=[
+                dcc.Dropdown(id='initial-array', options=[{'label': vlbi_networks[n], 'value': n} \
+                        for n in vlbi_networks], value=[], persistence=True, multi=True)
+            ]),
+            # TODO:  add images of the different networks to explain it.
+            # html.Br(),
+            # html.Div(className='row', children=[
+            #     html.Div(),
+            # ]),
+            html.Br(),
+            html.Div(className='row justify-content-center',
+                     children=html.Button('Continue', id='button-picknetwork',
+                                className='btn btn-primary btn-lg')),
+        ]
+
+
+def initial_window_pick_time():
+    """Initial (second) window with the introduction to the EVN Observation Planner and
+    the option to pick a specific observing time or let the tool to find them.
+    """
+    return [
+        html.Div(className='row justify-content-center', children=[
+            html.H3('Select the observing epoch'),
+            html.P(["Enter the epoch when the observation will be conducted, or let the tool to find "
+                "the most appropriate times for a given source/network."]),
+            html.Br(),
+            html.Div(className='row justify-content-center', children=[dbc.FormGroup([
+                dbc.RadioItems(options=[{"label": "I don't have a preferred epoch", "value": False},
+                                        {"label": "I know the observing epoch", "value": True}],
+                               value=False, id="initial-timeselection", inline=True),
+                ], className='col-5', inline=True), #),
+            html.Div(className='col-7', children=[
+                html.Div(id='initial-timeselection-div-guess', className='row justify-content-center',
+                    children=[
+                        html.Small("Choose this option if you just want to find out when your source will "
+                            "be visible. It will pick the time range when more than 3 antennas can observe "
+                            "simultaneously."),
+                        html.Small("Note that this option may not provide the best (expected) results in the "
+                            "case of combining different networks that are far apart (e.g. LBA together with "
+                            "the EVN).")
+                ]),
+                html.Div(id='initial-timeselection-div-epoch', children=[
+                    html.Label('Start of observation (UTC)'),
+                    *tooltip(idname='popover-startime', message="Select the date and "
+                                "time of the start of the observation (Universal, UTC, "
+                                "time). You will also see the day of the year (DOY) in "
+                                "brackets once the date is selected."),
+                    html.Br(),
+                    dcc.DatePickerSingle(id='starttime', date=None, min_date_allowed=dt(1900, 1, 1),
+                                         max_date_allowed=dt(2100, 1, 1),
+                                         display_format='DD-MM-YYYY (DDD)',
+                                         placeholder='Start date',
+                                         first_day_of_week=1,
+                                         initial_visible_month=dt.today(),
+                                         persistence=True,
+                                         className='form-picker'),
+                    dcc.Dropdown(id='starthour', placeholder="Start time (UTC)", value=None,
+                                 options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
+                                           'value': f"{hm//60:02n}:{hm % 60:02n}"} \
+                                          for hm in range(0, 24*60, 15)],
+                                 persistence=True, className='form-hour'),
+                    html.Small(id='error_starttime', style={'color': 'red'},
+                               className='form-text text-muted'),
+                    html.Label('Duration of the observation (in hours)'),
+                    html.Div(className='form-group', children=[
+                        dcc.Input(id='duration', value=None, type='number', className='form-control',
+                                   placeholder="Duration in hours", persistence=True, inputMode='numeric'),
+                        html.Small(id='error_duration', style={'color': 'red'},
+                                   className='form-text text-muted')
+                    ])
+                ])
+            ]),
+        ]),
+        html.Span(style={'height': '2rem'}),
+        html.Div(className='row justify-content-center',
+             children=html.Button('Continue', id='button-picktimes',
+                        className='btn btn-primary btn-lg')),
+    ])
+    ]
+
+
+
+def initial_window_pick_mode(app):
+    """Initial window to select the observing mode: spectral line or continuum observation.
+    """
+    return [html.Div(className='row justify-content-center', children=[
+                html.H3("What type of observation do you want?"),
+                html.P(["This information will only be considered to pick up the default observing "
+                    "setup that is more appropriate for you (in terms of bandwidth, number of spectral "
+                    "channels, etc). You will still be able to tune these parameters afterwards."])
+            ], style={'text:align': 'justify !important'}),
+            html.Br(),
+            html.Div(children=[
+                html.Div(html.Button(id='button-mode-continuum', className='btn btn-gray',
+                    title='Helps you to configure your observation in a step-by-step process.',
+                    children=dbc.Card(dbc.CardBody([
+                        html.H5("Continuum mode", className='card-title'),
+                        html.Img(height='80rem', src=app.get_asset_url('icon-newbie.png'),
+                                 className='card-text m-3'),
+                        html.Br(),
+                        html.P("Provides the maximum sensitivity.", className='card-text px-0'),
+                        html.P("Uses the maximum bandwidth available.", className='card-text px-0')
+                    ]), className='text-center shadow-0')
+                ), className='col-6 text-center mx-0 px-0'),
+                html.Div(html.Button(id='button-mode-line', className='btn btn-gray',
+                    title='Go to the main window containing all options to configure.',
+                    children=[dbc.Card(dbc.CardBody([
+                        html.H5("Spectral line mode", className='card-title'),
+                        html.Img(height='80rem', src=app.get_asset_url('icon-expert.png'),
+                                 className='card-text m-3'),
+                        html.Br(),
+                        html.P("Provides a much higher frequency resolution.", className='card-text px-0'),
+                        html.P("In general uses a reduced bandwidth.", className='card-text px-0')
+                    ]), className='text-center shadow-0')]
+                ), className='col-6 text-center mx-0 px-0')
+            ], className='row')
+        ]
 
 

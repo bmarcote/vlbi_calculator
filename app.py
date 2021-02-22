@@ -71,7 +71,7 @@ sorted_networks = {'EVN': 'EVN: European VLBI Network', 'eMERLIN': 'eMERLIN (out
 default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6', 'Tr',
                           'Ys', 'Wb', 'Bd', 'Sv', 'Zc', 'Ir'],
           'e-EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'On', 'T6', 'Tr', 'Ys', 'Wb',
-                    'Bd', 'Sv', 'Zc', 'Ir', 'Sr', 'Ur'],
+                    'Bd', 'Sv', 'Zc', 'Ir', 'Sr'],
           'eMERLIN': ['Cm', 'Kn', 'Pi', 'Da', 'De', 'Jb2'],
           'LBA': ['ATCA', 'Pa', 'Mo', 'Ho', 'Cd', 'Td', 'Ww'],
           'VLBA': ['Br', 'Fd', 'Hn', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
@@ -84,6 +84,18 @@ default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
           'GMVA': ['Ef', 'Mh', 'On', 'Ys', 'Pv', 'PdB', 'Br', 'Fd', 'Kp', 'La', 'Mk', 'Nl',
                    'Ov', 'Pt', 'Gb'],
           'EHT': ['ALMA', 'Pv', 'LMT', 'PdB', 'SMA', 'JCMT', 'APEX', 'SMT', 'SPT']}
+
+vlbi_networks_names = {'EVN': 'EVN: European VLBI Network',
+                       'eMERLIN': 'e-MERLIN',
+                       'LBA': 'LBA: Australian Long Baseline Array',
+                       'VLBA': 'VLBA: Very Long Baseline Array',
+                       'KVN': 'KVN: Korean VLBI Network',
+                       # 'Global VLBI': 'Global VLBI (VLBA+EVN)',
+                       'HSA': 'HSA: High Sensitivity Array',
+                       'GMVA': 'GMVA: Global mm-VLBI Array',
+                       'EHT': 'EHT: Event Horizon Telescope'}
+
+#TODO: this will be included per station (but maybe it needs to remain):
 default_datarates = {'EVN': 2048, 'e-EVN': 2048, 'eMERLIN': 4096, 'LBA': 1024, 'VLBA': 4096, 'KVN': 4096,
                      'Global VLBI': 2048, 'HSA': 2048, 'GMVA': 4096, 'EHT': 2**15}
 
@@ -105,7 +117,7 @@ external_scripts = ["https://kit.fontawesome.com/69c65a0ab5.js"]
 
 
 app = dash.Dash(__name__, title='EVN Observation Planner', external_scripts=external_scripts,
-                assets_folder=current_directory + '/assets/')
+                assets_folder=current_directory+'/assets/')
 
 app.config.suppress_callback_exceptions = True  # Avoids error messages for id's that haven't been loaded yet
 server = app.server
@@ -208,7 +220,7 @@ def update_sensitivity(obs):
 
 
 def arrays_with_band(arrays, a_band):
-    """Returns the given arrays that can observe the given band with at least two antennas.
+    """Returns the arrays that can observe the given band with at least two antennas.
     It excludes e-EVN if it is included in arrays.
     Note that hardcoded is the detection of GMVA and EHT (only available at a given frequency).
 
@@ -249,7 +261,79 @@ def arrays_with_band(arrays, a_band):
         return ', '.join(tmp[:-1]) + ' and ' + tmp[-1]
 
 
-def main_window_pick_band():
+
+@app.callback(Output('initial-pickband-label', 'children'),
+              [Input('initial-band', 'value')])
+def update_pickband_tooltip(a_wavelength):
+    a_band = tuple(fs.bands)[a_wavelength]
+    return [dbc.Card(dbc.CardBody([
+                    html.H5([html.Img(height='30rem',
+                                      src=app.get_asset_url(f"waves-{a_band.replace('.',  '_')}.svg"),
+                                      alt='Band: ', className='d-inline-block'),
+                             html.Span(f"{fs.bands[a_band].split('(')[0].strip()}",
+                                       style={'float': 'right'})
+                             ], className="card-title"),
+                    html.P([html.Span("Wavelength: ", style={'color': '#888888'}),
+                        f"{fs.bands[a_band].split('(')[1].split('or')[0].strip()}.",
+                        html.Br(),
+                        html.Span("Frequency: ", style={'color': '#888888'}),
+                        f"{fs.bands[a_band].split('(')[1].split('or')[1].replace(')', '').strip()}.",
+                        html.Br(),
+                        html.Span(html.Small(f"Can be observed with the {arrays_with_band(default_arrays, a_band)}."),
+                            style={'color': '#888888'})
+                    ], className="card-text"),
+                ]), className="col-sm-3 my-2 shadow-1-strong border border-primary")
+            ]
+
+
+@app.callback([Output('initial-timeselection-div-guess', 'hidden'),
+              Output('initial-timeselection-div-epoch', 'hidden')],
+              [Input('initial-timeselection', 'value')])
+def type_time_selection(time_selection_selected):
+    """Modifies the hidden message related to the two options about how to pick the observing time.
+    """
+    return [time_selection_selected, not time_selection_selected]
+
+
+@app.callback(Output('main-window', 'children'),
+              [Input('button-initial-wizard', 'n_clicks'),
+               Input('button-initial-expert', 'n_clicks'),
+               Input('button-pickband', 'n_clicks'),
+               Input('button-picknetwork', 'n_clicks'),
+               Input('button-picktimes', 'n_clicks'),
+               Input('button-mode-continuum', 'n_clicks'),
+               Input('button-mode-line', 'n_clicks')],
+              [State('initial-band', 'value'),
+               State('initial-array', 'value'),
+               State('initial-timeselection', 'value'), # True if date are provided, False if guessing
+               State('starttime', 'date'),
+               State('starthour', 'value'),
+               State('duration', 'value')
+               ])
+def skip_intro_choices(clicks_wizard, clicks_expert, clicks_pickband, clicks_picknetwork, clicks_picktimes,
+                       clicks_continuum, clicks_line,
+                       a_wavelength, a_array, time_selection, starttime, starthour, obs_duration):
+    if clicks_expert is not None:
+        return main_page(None)
+    elif clicks_wizard is not None:
+        return initial_page('band')
+    elif clicks_pickband is not None:
+        return initial_page('network')
+    elif clicks_picknetwork is not None:
+        return initial_page('time')
+    elif clicks_picktimes is not None:
+        #TODO: if dates are provided, all date/time/dur must be provided
+        return initial_page('mode')
+    elif clicks_continuum is not None:
+        return compute_observation(n_clicks, band, starttime, starthour, duration, source, onsourcetime,
+                        datarate, subbands, channels, pols, inttime, guest_time, selected_tab, *ants)
+    elif clicks_line is not None:
+        return dash.no_update
+    else:
+        return dash.no_update
+
+
+def initial_page(choice_card):
     """Initial window with the introduction to the EVN Observation Planner and the band selection.
     """
     return [
@@ -263,132 +347,22 @@ def main_window_pick_band():
                                 "The EVN Observation Planner helps you to determine when your source "
                                 "can be observed by the different antennas, and provides the expected "
                                 "outcome of these observations, like the expected sensitivity or resolution."]),
-                            html.H3("Select the observing band first"),
-                            html.P(["Then you can continue to configure the rest of the observation. "
-                                "Note that, in any case, you will still be able to change your selection "
-                                "afterwards in case you want to compare different bands."])
-                        ], style={'text:align': 'justify !important'}),
-                        html.Br(),
-                        html.Div(className='justify-content-center', children=[html.Div(
-                            dcc.Slider(id='pickband', min=0, max=len(fs.bands)-1,
-                                   value=tuple(fs.bands).index('18cm'), step=-1,
-                                   marks={i: fq for i,fq in enumerate(fs.bands)},
-                                   persistence=True, # tooltip={'always_visible': True, 'placement': 'top'},
-                                   updatemode='drag', included=False)), #html.Br(), html.Br(),
-                            html.Div(id='pickband-label', className='row justify-content-center', children=''),
-                            html.Div(className='row justify-content-center',
-                                     children=html.Button('Continue', id='pickband-button',
-                                        className='btn btn-primary btn-lg')),
-                            html.Div(className='row justify-content-right col-1', children=[
-                                html.Button('Skip', id='skip-button', className='btn btn-gray justify-content-right')
-                            ])
-                        ], style={'min-width': '33rem'})
-                    ])
-                )]
-
-
-def main_window_pick_time():
-    """Initial (second) window with the introduction to the EVN Observation Planner and
-    the option to pick a specific observing time or let the tool to find them.
-    """
-    return [
-        html.Div(className='row justify-content-center',
-            children=html.Div(className='col-sm-6 justify-content-center',
-                    children=[html.Div(className='justify-content-center',
-                            children=[#html.H3("Welcome!"),
-                                      html.P(["The EVN Observation Planner allows you to plan observations with the ",
-                                html.A(href="https://www.evlbi.org", children="European VLBI Network"),
-                                " (EVN) and other Very Long Baseline Interferometry (VLBI) networks. "
-                                "The EVN Observation Planner helps you to determine when your source "
-                                "can be observed by the different antennas, and provides the expected "
-                                "outcome of these observations, like the expected sensitivity or resolution."]),
-                            html.H3("When to observe?"),
-                            html.P(["You can pick a specific observing time or let the EVN Observation Planner "
-                                "to find when your source can be observed by the antennas you will select. "
-                                "Note that, in any case, you will still be able to change your selection "
-                                "afterwards in case you want to compare different bands."])
-                        ], style={'text:align': 'justify !important'}),
-                        html.Br(),
-                        html.Div(className='justify-content-center', children=[html.Div(
-                            dcc.Slider(id='pickband', min=0, max=len(fs.bands)-1,
-                                   value=tuple(fs.bands).index('18cm'), step=-1,
-                                   marks={i: fq for i,fq in enumerate(fs.bands)},
-                                   persistence=True, # tooltip={'always_visible': True, 'placement': 'top'},
-                                   updatemode='drag', included=False)), #html.Br(), html.Br(),
-                            html.Div(id='pickband-label', className='row justify-content-center', children=''),
-                            html.Div(className='row justify-content-center',
-                                     children=html.Button('Continue', id='pickband-button',
-                                        className='btn btn-primary btn-lg')),
-                            html.Div(className='row justify-content-right col-1', children=[
-                                html.Button('Skip', id='skip-button', className='btn btn-gray')
-                            ])
-                        ], style={'min-width': '33rem'})
-                    ])
-                )]
-
-
-
-
-#####################  This is the webpage layout
-app.layout = html.Div([
-    html.Div(id='banner', className='navbar-brand d-flex p-3 shadow-sm', children=[
-        html.A(className='d-inline-block mr-md-auto', href="https://www.evlbi.org", children=[
-            html.Img(height='70px', src=app.get_asset_url("logo_evn.png"),
-                     alt='European VLBI Network (EVN)',
-                     className="d-inline-block align-top"),
-        ]),
-        html.H2('EVN Observation Planner', className='d-inline-block align-middle mx-auto'),
-        html.A(className='d-inline-block ml-auto pull-right', href="https://www.jive.eu", children=[
-            html.Img(src=app.get_asset_url("logo_jive.png"), height='70px',
-                     alt='Joinst Institute for VLBI ERIC (JIVE)')
-        ])
-    ]),
-    html.Div([html.Br()]),
-    html.Div(id='main-window', children=main_window_pick_band())])
-
-
-
-
-@app.callback(Output('pickband-label', 'children'),
-              [Input('pickband', 'value')])
-def update_pickband_tooltip(a_wavelength):
-    a_band = tuple(fs.bands)[a_wavelength]
-    return [html.Div(dbc.Card(dbc.CardBody([
-                    html.H5([html.Img(height='30rem',
-                                      src=app.get_asset_url(f"waves-{a_band.replace('.',  '_')}.svg"),
-                                      alt='Band: ', className='d-inline-block'),
-                             html.Span(f"{fs.bands[a_band].split('(')[0].strip()}",
-                                       style={'float': 'right'})
-                             ], className="card-title"),
-                    html.P([html.Span("Wavelength: ", style={'color': '#888888'}),
-                        f"{fs.bands[a_band].split('(')[1].split('or')[0].strip()}.",
-                        html.Br(),
-                        html.Span("Frequency: ", style={'color': '#888888'}),
-                        f"{fs.bands[a_band].split('(')[1].split('or')[1].replace(')', '').strip()}.",
-                        html.Br(),
-                        html.Span(f"Can be observed with the {arrays_with_band(default_arrays, a_band)}.",
-                            style={'color': '#888888'})
-                    ], className="card-text"),
-                ]), className="col-sm-3 justify-content-center",
-                style={'margin-top': '2rem', 'margin-bottom': '2rem'}), className='justify-content-center'
-            )
-            ]
-
-
-@app.callback(Output('main-window', 'children'),
-              [Input('skip-button', 'n_clicks'),
-              Input('pickband-button', 'n_clicks')],
-              [State('pickband', 'value')])
-def skip_intro_choices(skip_clicks, pickband_clicks, a_wavelength):
-    if (skip_clicks is None) and (pickband_clicks is None):
-        return dash.no_update
-    elif skip_clicks is not None:
-        return main_page(None)
-    elif pickband_clicks is not None:
-        return main_page(a_wavelength)
-
-
-
+                            html.Br(),
+                            *[
+                                html.Div(hidden=False if choice_card == 'choice' else True,
+                                         children=ge.initial_window_start(app)),
+                                html.Div(hidden=False if choice_card == 'band' else True,
+                                         children=ge.initial_window_pick_band()),
+                                html.Div(hidden=False if choice_card == 'network' else True,
+                                         children=ge.initial_window_pick_network(vlbi_networks_names)),
+                                html.Div(hidden=False if choice_card == 'time' else True,
+                                         children=ge.initial_window_pick_time()),
+                                html.Div(hidden=False if choice_card == 'mode' else True,
+                                         children=ge.initial_window_pick_mode(app)),
+                            ],
+                        ], style={'text:align': 'justify !important'})
+                ])
+            )] #, *main_page(None, True)]
 
 
 
@@ -474,7 +448,7 @@ def main_page(a_wavelength):
                             ])]))
                         ]),
                     ]),
-                    dbc.Tab(label='Guest Times', id='tab-guest-times', tabClassName='tab-for-card', children=[
+                    dbc.Tab(label='Guess Times', id='tab-guess-times', tabClassName='tab-for-card', children=[
                         html.Div(className='form-group', children=[
                             dbc.Card(className='card-no-left-border', children=dbc.CardBody([
                                 html.P("Choose this option if you just want to find out when your source "
@@ -717,7 +691,7 @@ def main_page(a_wavelength):
 
 
 @app.callback([Output('tab-pick-epoch', 'label'),
-               Output('tab-guest-times', 'label')],
+               Output('tab-guess-times', 'label')],
               [Input('guest-times', 'value')])
 def update_tab_time_labels(guest_time):
     """Updates the labels in the tabs where the user can either pick a specific observing
@@ -763,6 +737,7 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
     """Given a selected band and selected default networks, it selects the associated
     antennas from the antenna list.
     """
+    print(selected_band, selected_networks, is_eEVN)
     selected_antennas = []
     if is_eEVN:
         selected_antennas = [ant for ant in default_arrays['e-EVN'] \
@@ -1100,6 +1075,25 @@ def get_fig_uvplane(obs):
 
 def get_fig_dirty_map(obs):
     pass
+
+
+#####################  This is the webpage layout
+app.layout = html.Div([
+    html.Div(id='banner', className='navbar-brand d-flex p-3 shadow-sm', children=[
+        html.A(className='d-inline-block mr-md-auto', href="https://www.evlbi.org", children=[
+            html.Img(height='70px', src=app.get_asset_url("logo_evn.png"),
+                     alt='European VLBI Network (EVN)',
+                     className="d-inline-block align-top"),
+        ]),
+        html.H2('EVN Observation Planner', className='d-inline-block align-middle mx-auto'),
+        html.A(className='d-inline-block ml-auto pull-right', href="https://www.jive.eu", children=[
+            html.Img(src=app.get_asset_url("logo_jive.png"), height='70px',
+                     alt='Joinst Institute for VLBI ERIC (JIVE)')
+        ])
+    ]),
+    html.Div([html.Br()]),
+    html.Div(id='main-window', children=initial_page('choice'))])
+
 
 
 

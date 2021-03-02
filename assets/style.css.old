@@ -3743,6 +3743,7 @@ img[alt=equation2] {
     /* border: none; */
     /* outline: none; */
     /* border: 1px solid #CCCCCC; */
+    text-align: left;
     margin: 8px;
 }
 
@@ -3762,6 +3763,7 @@ img[alt=equation2] {
 
 .card.card-antenna .card-title2 {
     font-size: 0.9rem;
+    text-align: left;
 }
 
 .card.card-antenna .card-subtitle {

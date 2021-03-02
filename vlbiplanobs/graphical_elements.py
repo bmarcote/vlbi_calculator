@@ -57,7 +57,7 @@ def create_sensitivity_card(title, message):
         ps = [html.P(className='card-text', children=message)]
 
     # return [html.Div(className='card', style={'min-width': '15rem', 'max-width': '25rem'}, children=[
-    return [html.Div(className='card m-3', children=[
+    return [html.Div(className='card-summary m-3', children=[
             html.Div(className='card-body', children=[
                 html.H5(className='card-title', children=title)] + ps)])
         ]
@@ -208,8 +208,8 @@ def summary_card_times(app, obs):
     temp_msg += [[*img_fits, html.Br(),
         f"With a time integration of {optimal_units(obs.inttime, [u.s,u.ms,u.us]):.2n} the "
         f"expected FITS file size is "
-        f"{optimal_units(obs.datasize(), [u.TB, u.GB, u.MB, u.kB]):.3n} "
-        f"(divided in {n_files} 2-GB files)."]]
+        f"{optimal_units(obs.datasize(), [u.TB, u.GB, u.MB, u.kB]):.3n}. "]]
+        # f"(divided in {n_files} 2-GB files)."]]
     return create_sensitivity_card('Observing Time', temp_msg)
 
 
@@ -569,6 +569,28 @@ def initial_window_pick_mode(app):
                     ]), className='text-center shadow-0')]
                 ), className='col-6 text-center mx-0 px-0')
             ], className='row')
+        ]
+
+
+def initial_window_final():
+    return [
+        html.Div(className='row justify-content-center', children=[
+            html.H3('You are know ready'),
+            html.P(["Press compute to produce the summary for your observation. "
+                "You would then see different tabs with the information. "
+                "You will also be able to change the setup and re-compute it."]),
+            html.Br(),
+        ]),
+        html.Span(style={'height': '2rem'}),
+        html.Div(className='row justify-content-center',
+             children=html.Button('Compute', id='antenna-selection-button',
+                        className='btn btn-primary btn-lg')),
+        html.Div(className='col-9 text-center justify-content-center', children=[
+            dcc.Loading(id="loading", children=[html.Div(id="loading-output")],
+                        type="dot"),
+            dcc.Loading(id="loading2", children=[html.Div(id="loading-output2")],
+                        type="dot")
+        ])
         ]
 
 

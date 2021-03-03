@@ -286,36 +286,75 @@ def update_pickband_tooltip(a_wavelength):
             ]
 
 
-@app.callback([Output('initial-timeselection-div-guess', 'hidden'),
-              Output('initial-timeselection-div-epoch', 'hidden')],
-              [Input('initial-timeselection', 'value')])
+# @app.callback([Output('initial-timeselection-div-guess', 'hidden'),
+#               Output('initial-timeselection-div-epoch', 'hidden')],
+#               [Input('initial-timeselection', 'value')])
+# def type_initial_time_selection(time_selection_selected):
+#     """Modifies the hidden message related to the two options about how to pick the observing time.
+#     """
+#     print('checked')
+#     return [time_selection_selected, not time_selection_selected]
+
+
+@app.callback([Output('timeselection-div-guess', 'hidden'),
+              Output('timeselection-div-epoch', 'hidden')],
+              [Input('timeselection', 'value')])
 def type_time_selection(time_selection_selected):
     """Modifies the hidden message related to the two options about how to pick the observing time.
     """
+    print('checked2')
     return [time_selection_selected, not time_selection_selected]
 
 
+
+
+@app.callback([Output('band', 'value'),
+               Output('array', 'value'),
+               Output('e-EVN', 'value'),
+               Output('timeselection', 'value'),
+               Output('starttime', 'date'),
+               Output('starthour', 'value'),
+               Output('duration', 'value'),
+               Output('source', 'value')],
+              [Input('initial-band', 'value'),
+               Input('initial-array', 'value'),
+               Input('initial-e-EVN', 'value'),
+               Input('initial-timeselection', 'value'),
+               Input('initial-starttime', 'date'),
+               Input('initial-starthour', 'value'),
+               Input('initial-duration', 'value'),
+               Input('initial-source', 'value'),
+               ]
+        )
+def sync_values_from_wizard_to_main(*args):
+    return args
+
+
+
 @app.callback(Output('main-window2', 'children'),
-              [Input('button-initial-wizard', 'n_clicks'),
-               Input('button-initial-expert', 'n_clicks'),
-               Input('button-pickband', 'n_clicks'),
+              [Input('button-pickband', 'n_clicks'),
                Input('button-picknetwork', 'n_clicks'),
                Input('button-picktimes', 'n_clicks'),
                Input('button-mode-continuum', 'n_clicks'),
                Input('button-mode-line', 'n_clicks')],
-              [State('band', 'value'),
-               State('array', 'value'),
-               State('e-EVN', 'value'),
-               State('initial-timeselection', 'value'), # True if date are provided, False if guessing
-               State('starttime', 'date'),
-               State('starthour', 'value'),
-               State('duration', 'value')
-               ])
-def intro_choices(clicks_wizard, clicks_expert, clicks_pickband, clicks_picknetwork, clicks_picktimes,
-                       clicks_continuum, clicks_line,
+              [State('initial-band', 'value'),
+               State('initial-array', 'value'),
+               State('initial-e-EVN', 'value'),
+               State('initial-timeselection', 'value'),
+               State('initial-starttime', 'date'),
+               State('initial-starthour', 'value'),
+               State('initial-duration', 'value'),
+               State('initial-source', 'value'),
+               State('datarate', 'value'),
+               State('subbands', 'value'),
+               State('channels', 'value'),
+               State('pols', 'value'),
+               State('inttime', 'value'),
+               State('initial-timeselection', 'value')])
+def intro_choices(clicks_pickband, clicks_picknetwork, clicks_picktimes, clicks_continuum, clicks_line,
                        a_wavelength, a_array, is_eEVN, time_selection, starttime, starthour, obs_duration):
     if clicks_expert is not None:
-        return html.Div(id='main-window2', children=main_page(results_visible=False))
+        return main_page(results_visible=False, show_compute_button=True)
     elif clicks_wizard is not None:
         return initial_page('band')
     elif clicks_pickband is not None:
@@ -382,7 +421,46 @@ def intro_choices(clicks_wizard, clicks_expert, clicks_pickband, clicks_picknetw
         return dash.no_update
 
 
-def initial_page(choice_card):
+
+def initial_page():
+    """Initial window with the two options to select: guided or manual setup of the observation.
+    """
+    return [
+         html.Div(className='row justify-content-center', id='main-window2',
+            children=html.Div(className='col-sm-6 justify-content-center',
+                children=[html.Div(className='justify-content-center',
+                    children=[#html.H3("Welcome!"),
+                        html.P(["The EVN Observation Planner allows you to plan observations with the ",
+                        html.A(href="https://www.evlbi.org", children="European VLBI Network"),
+                        " (EVN) and other Very Long Baseline Interferometry (VLBI) networks. "
+                        "The EVN Observation Planner helps you to determine when your source "
+                        "can be observed by the different antennas, and provides the expected "
+                        "outcome of these observations, like the expected sensitivity or resolution."]),
+                        html.Br(),
+                        html.Div(ge.initial_window_start(app))
+                    ])
+                ])
+        )]
+
+
+@app.callback(Output('full-window', 'children'),
+              [Input('button-initial-wizard', 'n_clicks'),
+               Input('button-initial-expert', 'n_clicks')])
+def choice_for_setup(do_wizard, do_expert):
+    if (do_expert is not None) or (do_wizard is not None):
+        return [
+            html.Div(id='main-window', hidden=do_expert is None,
+                     children=main_page(show_compute_button=do_expert is not None)),
+            html.Div(id='main-window2', hidden=do_expert is not None,
+                     children=[dbc.Checklist(id='is_line', options=[{'label': 'line obs', 'value': False}],
+                               value=[])] if do_expert is not None else choice_page('band'))
+            ]
+    else:
+        return dash.no_update
+
+
+
+def choice_page(choice_card):
     """Initial window with the introduction to the EVN Observation Planner and the band selection.
     """
     return [
@@ -398,42 +476,22 @@ def initial_page(choice_card):
                             "outcome of these observations, like the expected sensitivity or resolution."]),
                             html.Br(),
                             *[
-                                html.Div(hidden=False if choice_card == 'choice' else True,
-                                         children=ge.initial_window_start(app)),
+                                # html.Div(hidden=False if choice_card == 'choice' else True,
+                                #          children=ge.initial_window_start(app)),
                                 html.Div(hidden=False if choice_card == 'band' else True,
                                          children=ge.initial_window_pick_band()),
                                 html.Div(hidden=False if choice_card == 'network' else True,
-                                         children=ge.initial_window_pick_network(vlbi_networks_names,
-                                             sorted_networks, all_antennas)),
+                                         children=ge.initial_window_pick_network(vlbi_networks_names)),
                                 html.Div(hidden=False if choice_card == 'time' else True,
                                          children=ge.initial_window_pick_time()),
                                 html.Div(hidden=False if choice_card == 'mode' else True,
                                          children=ge.initial_window_pick_mode(app)),
                                 html.Div(hidden=False if choice_card == 'final' else True,
                                          children=ge.initial_window_final()),
-                                html.Div(hidden=True) if choice_card == 'final' else html.Div(hidden=True,
-                                    children=[
-                                        dcc.Dropdown(id='datarate',
-                                                     placeholder="Select the data rate...",
-                                                     options=[{'label': fs.data_rates[dr], 'value': dr} \
-                                                     for dr in fs.data_rates], value=256, persistence=True),
-                                        dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
-                                                     options=[{'label': fs.subbands[sb], 'value': sb} \
-                                                     for sb in fs.subbands], value=1, persistence=True),
-                                        dcc.Dropdown(id='channels', placeholder="Select no. channels...",
-                                                     options=[{'label': fs.channels[ch], 'value': ch} \
-                                                     for ch in fs.channels], value=2048, persistence=True),
-                                        dcc.Dropdown(id='pols', placeholder="Select polarizations...",
-                                                     options=[{'label': fs.polarizations[p], 'value': p} \
-                                                     for p in fs.polarizations], value=4, persistence=True),
-                                        dcc.Dropdown(id='inttime', placeholder="Select integration time...",
-                                                     options=[{'label': fs.inttimes[it], 'value': it} \
-                                                     for it in fs.inttimes], value=2, persistence=True)
-                                    ])
                             ],
                         ], style={'text:align': 'justify !important'})
                 ])
-            )] #, *main_page(None, True)]
+            )]
 
 
 
@@ -441,8 +499,7 @@ def initial_page(choice_card):
 def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
               fig_ant_output=None, fig_uv_output=None, show_compute_button=True):
     return [# First row containing all buttons/options, list of telescopes, and button with text output
-            #TODO: to remove when implementing nebwie approachXXXXXXXXXXXXXXXXX
-            html.Div(id='main-window2'),
+    html.Div(id='main-window2', hidden=True),
     dcc.ConfirmDialog(id='global-error', message=''),
     # Elements in second column (checkboxes with all stations)
     html.Div(className='container-fluid', children=[
@@ -504,18 +561,18 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                     dbc.FormGroup([
                         dbc.RadioItems(options=[{"label": "I don't have a preferred epoch", "value": False},
                                                 {"label": "I know the observing epoch", "value": True}],
-                                       value=False, id="initial-timeselection", inline=True, persistence=True),
+                                       value=False, id="timeselection", inline=True, persistence=True),
                     ], inline=True),
                     html.Div(children=[
-                        html.Div(id='initial-timeselection-div-guess', className='row justify-content-center',
-                            children=[
+                        html.Div(id='timeselection-div-guess', className='row justify-content-center',
+                            hidden=False, children=[
                                 html.Small("Choose the first option to find out when your source "
                                            "may be visible (by >3 telescopes).", style={'color': '#999999'}),
                                 html.Small("Note that this option may not provide the best (expected) "
                                            "results in case of combining different networks very far apart "
                                            "(e.g. LBA and EVN).", style={'color': '#999999'})
                         ]),
-                        html.Div(id='initial-timeselection-div-epoch', children=[
+                        html.Div(id='timeselection-div-epoch', hidden=True, children=[
                             html.Label('Start of observation (UTC)'),
                             *ge.tooltip(idname='popover-startime', message="Select the date and "
                                         "time of the start of the observation (Universal, UTC, "
@@ -785,7 +842,7 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
 @app.callback(Output('onsourcetime-label', 'children'),
               [Input('onsourcetime', 'value'),
                Input('duration', 'value'),
-               Input('initial-timeselection', 'value')])
+               Input('timeselection', 'value')])
 def update_onsourcetime_label(onsourcetime, total_duration, defined_epoch):
     """Keeps the on-source time label updated with the value selected by the user.
     """
@@ -819,8 +876,11 @@ def update_bandwidth_label(datarate, npols):
 @app.callback([Output(f"check_{s.codename}", 'checked') for s in all_antennas] + \
               [Output(f"check_{s.codename}", 'disabled') for s in all_antennas] + \
               [Output('datarate', 'value')],
-              [Input('band', 'value'), Input('array', 'value'), Input('e-EVN', 'value')])
-def select_antennas(selected_band, selected_networks, is_eEVN):
+              [Input('band', 'value'),
+               Input('array', 'value'),
+               Input('e-EVN', 'value'),
+               Input('is_line', 'value')])
+def select_antennas(selected_band, selected_networks, is_eEVN, is_line):
     """Given a selected band and selected default networks, it selects the associated
     antennas from the antenna list.
     """
@@ -846,6 +906,31 @@ def select_antennas(selected_band, selected_networks, is_eEVN):
 
 
 
+@app.callback([Output('initial-error_starttime', 'children'),
+               Output('initial-error_duration', 'children')],
+              [Input('initial-starttime', 'date'), Input('starthour', 'value'),
+               Input('initial-duration', 'value')])
+def check_initial_obstime(starttime, starthour, duration):
+    """Verify the introduced times/dates for correct values.
+    Once the user has introduced all values for the start and end of the observation,
+    it guarantees that they have the correct shape:
+        - the duration of the observation is > 0 hours.
+        - The total observing length is less than five days (value chosen for computational reasons).
+    """
+    if duration is None:
+        return "", ""
+
+    if (not isinstance(duration, float)) and (not isinstance(duration, int)):
+        return "", "Must be a number"
+
+    if duration <= 0.0:
+        return "", "The duration must be a positive number"
+    elif duration > 4*24:
+        return "", "Please, put an observation shorter than 4 days"
+
+    return "", ""
+
+
 @app.callback([Output('error_starttime', 'children'),
                Output('error_duration', 'children')],
               [Input('starttime', 'date'), Input('starthour', 'value'),
@@ -869,6 +954,31 @@ def check_obstime(starttime, starthour, duration):
         return "", "Please, put an observation shorter than 4 days"
 
     return "", ""
+
+
+@app.callback([Output('initial-error_source', 'children'),
+        Output('initial-error_source', 'style')],
+        [Input('initial-source', 'value')])
+def get_initial_source(source_coord):
+    """Verifies that the introduced source coordinates have a right format.
+    If they are correct, it does nothing. If they are incorrect, it shows an error label.
+    """
+
+    if source_coord != 'hh:mm:ss dd:mm:ss' and source_coord != None and source_coord != '':
+        if len(source_coord) > 30:
+            # Otherwise the source name check gets too slow
+            return "Name too long.", {'color': '#a01d26'}
+        try:
+            dummy_target = observation.Source(convert_colon_coord(source_coord), 'Source')
+            return '', dash.no_update
+        except ValueError as e:
+            try:
+                dummy_target = coord.get_icrs_coordinates(source_coord)
+                return dummy_target.to_string('hmsdms'), {'color': '#999999'}
+            except coord.name_resolve.NameResolveError as e:
+                return "Unrecognized name. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'", {'color': '#a01d26'}
+    else:
+        return '', dash.no_update
 
 
 @app.callback([Output('error_source', 'children'),
@@ -922,7 +1032,7 @@ def get_source(source_coord):
                State('channels', 'value'),
                State('pols', 'value'),
                State('inttime', 'value'),
-               State('initial-timeselection', 'value'),
+               State('timeselection', 'value'),
                State('tabs', 'value')] + \
                [State(f"check_{s.codename}", 'checked') for s in all_antennas])
 def compute_observation(n_clicks, band, starttime, starthour, duration, source, onsourcetime,
@@ -979,14 +1089,8 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
             return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
     if not epoch_selected:
         try:
-            if starttime is not None:
-                utc_times, _ = observation.Observation.guest_times_for_source(target_source,
-                                stations.Stations('Observation', itertools.compress(all_antennas, ants)),
-                                Time(dt.strptime(f"{starttime} 00:00", "%Y-%m-%d %H:%M"), format='datetime',
-                                     scale='utc'))
-            else:
-                utc_times, _ = observation.Observation.guest_times_for_source(target_source,
-                                stations.Stations('Observation', itertools.compress(all_antennas, ants)))
+            utc_times, _ = observation.Observation.guest_times_for_source(target_source,
+                            stations.Stations('Observation', itertools.compress(all_antennas, ants)))
         except observation.SourceNotVisible:
             temp = [alert_message([
                         html.P(["Your source cannot be observed within the arranged observation.",
@@ -1166,8 +1270,8 @@ app.layout = html.Div([
         ])
     ]),
     html.Div([html.Br(), html.Br()]),
-    html.Div(id='main-window', children=main_page(False))])
-    # html.Div(id='main-window', children=initial_page('choice'))])
+    html.Div(id='full-window', children=html.Div(id='main-window', children=main_page(False)))])
+    # html.Div(id='full-window', children=initial_page())])
 
 
 

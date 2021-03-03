@@ -429,7 +429,7 @@ def initial_window_pick_band():
             ], style={'text:align': 'justify !important'}),
             html.Br(),
             html.Div(className='justify-content-center', children=[html.Div(
-                dcc.Slider(id='band', min=0, max=len(fs.bands)-1,
+                dcc.Slider(id='initial-band', min=0, max=len(fs.bands)-1,
                        value=tuple(fs.bands).index('18cm'), step=-1,
                        marks={i: fq for i,fq in enumerate(fs.bands)},
                        persistence=True, # tooltip={'always_visible': True, 'placement': 'top'},
@@ -443,7 +443,7 @@ def initial_window_pick_band():
         ]
 
 
-def initial_window_pick_network(vlbi_networks, sorted_networks, all_antennas, selected_band):
+def initial_window_pick_network(vlbi_networks):
     """Initial window to introduce the default VLBI network(s) to be used.
     It will only allow the ones that can observe at the given wavelength.
     """
@@ -455,7 +455,7 @@ def initial_window_pick_network(vlbi_networks, sorted_networks, all_antennas, se
             ]),
             html.Br(),
             html.Div(className='justify-content-center', children=[
-                dcc.Dropdown(id='array', options=[{'label': vlbi_networks[n], 'value': n} \
+                dcc.Dropdown(id='initial-array', options=[{'label': vlbi_networks[n], 'value': n} \
                         for n in vlbi_networks], value=[], persistence=True, multi=True)
             ]),
             html.Br(),
@@ -467,7 +467,7 @@ def initial_window_pick_network(vlbi_networks, sorted_networks, all_antennas, se
                             "not all telescopes are capable for this and the bandwidth "
                             "may be limited. Observations during the e-EVN epochs.")
                 ]),
-                dbc.Checklist(id='e-EVN', className='checkbox', persistence=True,
+                dbc.Checklist(id='initial-e-EVN', className='checkbox', persistence=True,
                               options=[{'label': ' e-EVN mode',
                                         'value': 'e-EVN'}], value=[]),
             ]),
@@ -476,25 +476,6 @@ def initial_window_pick_network(vlbi_networks, sorted_networks, all_antennas, se
             # html.Div(className='row', children=[
             #     html.Div(),
             # ]),
-            html.Div(id='antennas-div', hidden=True, className='container', children=[
-                html.Div(className='antcheck', children=[html.Br(), html.Br(),
-                    html.Label(html.H4(f"{sorted_networks[an_array]}"),
-                               style={'width': '100%'}),
-                    html.Br(),
-                    html.Div(className='antcheck', children=[
-                        dbc.FormGroup([
-                            Checkbox(id=f"check_{s.codename}", persistence=True,
-                                     className='custom-control-input',
-                                     disabled=not s.has_band(selected_band)),
-                            dbc.Label(s.name, html_for=f"check_{s.codename}",
-                                      id=f"_input_{s.codename}",
-                                     className='custom-control-label')
-                        ], check=True, inline=True,
-                        className="custom-checkbox custom-control custom-control-inline")
-                        for s in all_antennas if s.network == an_array
-                    ])
-                ]) for an_array in sorted_networks
-            ]),
             html.Br(),
             html.Div(className='row justify-content-center',
                      children=html.Button('Continue', id='button-picknetwork',
@@ -534,7 +515,7 @@ def initial_window_pick_time():
                                 "time). You will also see the day of the year (DOY) in "
                                 "brackets once the date is selected."),
                     html.Br(),
-                    dcc.DatePickerSingle(id='starttime', date=None, min_date_allowed=dt(1900, 1, 1),
+                    dcc.DatePickerSingle(id='initial-starttime', date=None, min_date_allowed=dt(1900, 1, 1),
                                          max_date_allowed=dt(2100, 1, 1),
                                          display_format='DD-MM-YYYY (DDD)',
                                          placeholder='Start date',
@@ -542,18 +523,18 @@ def initial_window_pick_time():
                                          initial_visible_month=dt.today(),
                                          persistence=True,
                                          className='form-picker'),
-                    dcc.Dropdown(id='starthour', placeholder="Start time (UTC)", value=None,
+                    dcc.Dropdown(id='initial-starthour', placeholder="Start time (UTC)", value=None,
                                  options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
                                            'value': f"{hm//60:02n}:{hm % 60:02n}"} \
                                           for hm in range(0, 24*60, 15)],
                                  persistence=True, className='form-hour'),
-                    html.Small(id='error_starttime', style={'color': 'red'},
+                    html.Small(id='initial-error_starttime', style={'color': 'red'},
                                className='form-text text-muted'),
                     html.Label('Duration of the observation (in hours)'),
                     html.Div(className='form-group', children=[
-                        dcc.Input(id='duration', value=None, type='number', className='form-control',
+                        dcc.Input(id='initial-duration', value=None, type='number', className='form-control',
                                    placeholder="Duration in hours", persistence=True, inputMode='numeric'),
-                        html.Small(id='error_duration', style={'color': 'red'},
+                        html.Small(id='initial-error_duration', style={'color': 'red'},
                                    className='form-text text-muted')
                     ])
                 ])
@@ -566,16 +547,13 @@ def initial_window_pick_time():
                     "00h00m00s 00d00m00s."]),
             html.Br(),
             html.Div(className='form-group', children=[
-                dcc.Input(id='source', value=None, type='text',
+                dcc.Input(id='initial-source', value=None, type='text',
                           className='form-control', placeholder="hh:mm:ss dd:mm:ss",
                           persistence=True),
-                html.Small(id='error_source', style={'color': '#999999'},
+                html.Small(id='initial-error_source', style={'color': '#999999'},
                            className='form-text'),
             ])
         ]),
-        html.Div(hidden=True, children=[dcc.Slider(id='onsourcetime', min=20, max=100, step=5, value=70,
-                                                   marks={i: str(i) for i in range(20, 101, 10)},
-                                                   persistence=True)]),
         html.Span(style={'height': '2rem'}),
         html.Div(className='row justify-content-center',
              children=html.Button('Continue', id='button-picktimes',
@@ -641,8 +619,6 @@ def initial_window_final():
         html.Div(className='col-9 text-center justify-content-center', children=[
             dcc.Loading(id="loading", children=[html.Div(id="loading-output")],
                         type="dot"),
-            dcc.Loading(id="loading2", children=[html.Div(id="loading-output2")],
-                        type="dot")
         ]),
         dcc.ConfirmDialog(id='global-error', message='')
         ])]

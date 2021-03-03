@@ -295,7 +295,7 @@ def type_time_selection(time_selection_selected):
     return [time_selection_selected, not time_selection_selected]
 
 
-@app.callback(Output('main-window', 'children'),
+@app.callback(Output('main-window2', 'children'),
               [Input('button-initial-wizard', 'n_clicks'),
                Input('button-initial-expert', 'n_clicks'),
                Input('button-pickband', 'n_clicks'),
@@ -303,18 +303,19 @@ def type_time_selection(time_selection_selected):
                Input('button-picktimes', 'n_clicks'),
                Input('button-mode-continuum', 'n_clicks'),
                Input('button-mode-line', 'n_clicks')],
-              [State('initial-band', 'value'),
-               State('initial-array', 'value'),
+              [State('band', 'value'),
+               State('array', 'value'),
+               State('e-EVN', 'value'),
                State('initial-timeselection', 'value'), # True if date are provided, False if guessing
                State('starttime', 'date'),
                State('starthour', 'value'),
                State('duration', 'value')
                ])
-def skip_intro_choices(clicks_wizard, clicks_expert, clicks_pickband, clicks_picknetwork, clicks_picktimes,
+def intro_choices(clicks_wizard, clicks_expert, clicks_pickband, clicks_picknetwork, clicks_picktimes,
                        clicks_continuum, clicks_line,
-                       a_wavelength, a_array, time_selection, starttime, starthour, obs_duration):
+                       a_wavelength, a_array, is_eEVN, time_selection, starttime, starthour, obs_duration):
     if clicks_expert is not None:
-        return main_page()
+        return html.Div(id='main-window2', children=main_page(results_visible=False))
     elif clicks_wizard is not None:
         return initial_page('band')
     elif clicks_pickband is not None:
@@ -325,9 +326,58 @@ def skip_intro_choices(clicks_wizard, clicks_expert, clicks_pickband, clicks_pic
         #TODO: if dates are provided, all date/time/dur must be provided
         return initial_page('mode')
     elif clicks_continuum is not None:
-        return initial_page('final')
+        if is_eEVN:
+            datarate = default_datarates['e-EVN'] if selected_band not in ('18cm', '21cm') else 1024
+        else:
+            datarate = -1
+            for an_array in a_array:
+                selected_antennas += [ant for ant in default_arrays[an_array] \
+                                        if all_antennas[ant].has_band(a_wavelength)]
+                datarate = max(datarate, default_datarates[an_array] if not ((an_array == 'EVN') and \
+                                                        (selected_band in ('18cm', '21cm'))) else 1024)
+
+        return initial_page('final') + [
+            # Hidden values related to the observing setup
+            html.Div(hidden=True, children=[
+                dcc.Dropdown(id='datarate',
+                             placeholder="Select the data rate...",
+                             options=[{'label': fs.data_rates[dr], 'value': dr} \
+                             for dr in fs.data_rates], value=datarate, persistence=True),
+                dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
+                             options=[{'label': fs.subbands[sb], 'value': sb} \
+                             for sb in fs.subbands], value=8, persistence=True),
+                dcc.Dropdown(id='channels', placeholder="Select no. channels...",
+                             options=[{'label': fs.channels[ch], 'value': ch} \
+                             for ch in fs.channels], value=32, persistence=True),
+                dcc.Dropdown(id='pols', placeholder="Select polarizations...",
+                             options=[{'label': fs.polarizations[p], 'value': p} \
+                             for p in fs.polarizations], value=4, persistence=True),
+                dcc.Dropdown(id='inttime', placeholder="Select integration time...",
+                             options=[{'label': fs.inttimes[it], 'value': it} \
+                             for it in fs.inttimes], value=2, persistence=True)
+            ])
+            ]
     elif clicks_line is not None:
-        return initial_page('final')
+        return initial_page('final') + [
+            html.Div(hidden=True, children=[
+                dcc.Dropdown(id='datarate',
+                             placeholder="Select the data rate...",
+                             options=[{'label': fs.data_rates[dr], 'value': dr} \
+                             for dr in fs.data_rates], value=256, persistence=True),
+                dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
+                             options=[{'label': fs.subbands[sb], 'value': sb} \
+                             for sb in fs.subbands], value=1, persistence=True),
+                dcc.Dropdown(id='channels', placeholder="Select no. channels...",
+                             options=[{'label': fs.channels[ch], 'value': ch} \
+                             for ch in fs.channels], value=2048, persistence=True),
+                dcc.Dropdown(id='pols', placeholder="Select polarizations...",
+                             options=[{'label': fs.polarizations[p], 'value': p} \
+                             for p in fs.polarizations], value=4, persistence=True),
+                dcc.Dropdown(id='inttime', placeholder="Select integration time...",
+                             options=[{'label': fs.inttimes[it], 'value': it} \
+                             for it in fs.inttimes], value=2, persistence=True)
+            ])
+            ]
     else:
         return dash.no_update
 
@@ -336,7 +386,7 @@ def initial_page(choice_card):
     """Initial window with the introduction to the EVN Observation Planner and the band selection.
     """
     return [
-        html.Div(className='row justify-content-center',
+        html.Div(className='row justify-content-center', id='main-window2',
             children=html.Div(className='col-sm-6 justify-content-center',
                 children=[html.Div(className='justify-content-center',
                         children=[#html.H3("Welcome!"),
@@ -353,13 +403,33 @@ def initial_page(choice_card):
                                 html.Div(hidden=False if choice_card == 'band' else True,
                                          children=ge.initial_window_pick_band()),
                                 html.Div(hidden=False if choice_card == 'network' else True,
-                                         children=ge.initial_window_pick_network(vlbi_networks_names)),
+                                         children=ge.initial_window_pick_network(vlbi_networks_names,
+                                             sorted_networks, all_antennas)),
                                 html.Div(hidden=False if choice_card == 'time' else True,
                                          children=ge.initial_window_pick_time()),
                                 html.Div(hidden=False if choice_card == 'mode' else True,
                                          children=ge.initial_window_pick_mode(app)),
                                 html.Div(hidden=False if choice_card == 'final' else True,
                                          children=ge.initial_window_final()),
+                                html.Div(hidden=True) if choice_card == 'final' else html.Div(hidden=True,
+                                    children=[
+                                        dcc.Dropdown(id='datarate',
+                                                     placeholder="Select the data rate...",
+                                                     options=[{'label': fs.data_rates[dr], 'value': dr} \
+                                                     for dr in fs.data_rates], value=256, persistence=True),
+                                        dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
+                                                     options=[{'label': fs.subbands[sb], 'value': sb} \
+                                                     for sb in fs.subbands], value=1, persistence=True),
+                                        dcc.Dropdown(id='channels', placeholder="Select no. channels...",
+                                                     options=[{'label': fs.channels[ch], 'value': ch} \
+                                                     for ch in fs.channels], value=2048, persistence=True),
+                                        dcc.Dropdown(id='pols', placeholder="Select polarizations...",
+                                                     options=[{'label': fs.polarizations[p], 'value': p} \
+                                                     for p in fs.polarizations], value=4, persistence=True),
+                                        dcc.Dropdown(id='inttime', placeholder="Select integration time...",
+                                                     options=[{'label': fs.inttimes[it], 'value': it} \
+                                                     for it in fs.inttimes], value=2, persistence=True)
+                                    ])
                             ],
                         ], style={'text:align': 'justify !important'})
                 ])
@@ -367,32 +437,12 @@ def initial_page(choice_card):
 
 
 
-def final_guess_window():
-    return [
-        html.Div(),
-        html.Div(className='row justify-content-center', children=[
-            html.H3('You are know ready'),
-            html.P(["Press compute to produce the summary for your observation. "
-                "You would then see different tabs with the information. "
-                "You will also be able to change the setup and re-compute it."]),
-            html.Br(),
-        ]),
-        html.Span(style={'height': '2rem'}),
-        html.Div(className='row justify-content-center',
-             children=html.Button('Compute', id='antenna-selection-button',
-                        className='btn btn-primary btn-lg')),
-        html.Div(className='col-9 text-center justify-content-center', children=[
-            dcc.Loading(id="loading", children=[html.Div(id="loading-output")],
-                        type="dot"),
-            dcc.Loading(id="loading2", children=[html.Div(id="loading-output2")],
-                        type="dot")
-        ])
-        ]
 
-
-
-def main_page(results_visible=False):
+def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
+              fig_ant_output=None, fig_uv_output=None):
     return [# First row containing all buttons/options, list of telescopes, and button with text output
+            #TODO: to remove when implementing nebwie approachXXXXXXXXXXXXXXXXX
+            html.Div(id='main-window2'),
     dcc.ConfirmDialog(id='global-error', message=''),
     # Elements in second column (checkboxes with all stations)
     html.Div(className='container-fluid', children=[
@@ -579,9 +629,9 @@ def main_page(results_visible=False):
             ]),
             dcc.Tabs(parent_className='custom-tabs col', className='custom-tabs-container', id='tabs',
                 value='tab-setup', children=[
-                dcc.Tab(label='Observation Setup', className='custom-tab', value='tab-setup',
+                dcc.Tab(label='Antenna Selection', className='custom-tab', value='tab-setup',
                         selected_className='custom-tab--selected', children=[
-                    # Elements in first column ()
+                    # Elements in first column
                     html.Div(className='row justify-content-center', children=[
                     html.Div(className='col-9', children=[
                         html.Div(id='first-advise', className='col-sm-9', children=[
@@ -630,7 +680,8 @@ def main_page(results_visible=False):
                                         dbc.Label(s.name, html_for=f"check_{s.codename}",
                                                   id=f"_input_{s.codename}",
                                                  className='custom-control-label')
-                                    ], check=True, inline=True, className="custom-checkbox custom-control custom-control-inline")
+                                    ], check=True, inline=True,
+                                    className="custom-checkbox custom-control custom-control-inline")
                                     for s in all_antennas if s.network == an_array
                                 ])
                             ]) for an_array in sorted_networks
@@ -642,23 +693,25 @@ def main_page(results_visible=False):
                     ])
                 ]),
 
-                dcc.Tab(label='Summary', className='custom-tab', value='tab-summary',
-                        selected_className='custom-tab--selected', children=[
+                dcc.Tab(label='Summary', className='custom-tab', value='tab-summary', id='tab-summary',
+                        selected_className='custom-tab--selected', disabled=not results_visible, children=[
                     html.Div(className='row justify-content-center', children=[
                         html.Div(className='col-10 justify-content-center',
                                  id='sensitivity-output',
-                                 children=[html.Div(className='col-md-6', children=[
-                                    html.Br(), html.Br(), html.H2("Set the observation first"),
-                                    html.P("Here you will see a summary of your observation, "
-                                           "with information about all participating stations, longest and "
-                                           "shortest baseline, expected size of the data once is correlated, "
-                                           "reached resolution and sensitivity, and the limitations in your "
-                                           "field of view due to time and frequency smearing.")])
-                                ])
+                                 children=summary_output)
+                                #  children=[html.Div(className='col-md-6', children=[
+                                #     html.Br(), html.Br(), html.H2("Set the observation first"),
+                                #     html.P("Here you will see a summary of your observation, "
+                                #            "with information about all participating stations, longest and "
+                                #            "shortest baseline, expected size of the data once is correlated, "
+                                #            "reached resolution and sensitivity, and the limitations in your "
+                                #            "field of view due to time and frequency smearing.")])
+                                # ])
                     ])
                 ]),
-                dcc.Tab(label='Elevations', className='custom-tab', value='tab-elevation',
-                        selected_className='custom-tab--selected', children=[
+                dcc.Tab(label='Elevations', className='custom-tab', value='tab-elevation', id='tab-elevation',
+                        selected_className='custom-tab--selected',
+                        disabled=not results_visible, children=[
                     html.Div(className='row justify-content-center', children=[
                     html.Div(className='col-md-8 justify-content-center', children=[
                         # Elevation VS time
@@ -680,7 +733,7 @@ def main_page(results_visible=False):
                             "respectively.")
                         ]),
                         html.Div([
-                            dcc.Graph(id='fig-elev-time')
+                            dcc.Graph(id='fig-elev-time', children=fig_elev_output)
                         ],className='tex2jax_ignore'),
                         html.Br(),
                         html.Div([
@@ -692,12 +745,12 @@ def main_page(results_visible=False):
                             """)
                         ]),
                         html.Div([
-                            dcc.Graph(id='fig-ant-time')
+                            dcc.Graph(id='fig-ant-time', children=fig_ant_output)
                         ],className='tex2jax_ignore')
                     ])])
                 ]),
-                dcc.Tab(label='UV Coverage', className='custom-tab', value='tab-uv',
-                        selected_className='custom-tab--selected', children=[
+                dcc.Tab(label='UV Coverage', className='custom-tab', value='tab-uv', id='tab-uv',
+                        selected_className='custom-tab--selected', disabled=fig_uv_output is None, children=[
                     #  Images
                     html.Div(className='row justify-content-center', children=[
                     html.Div(className='col-md-8 justify-content-center', children=[
@@ -709,7 +762,8 @@ def main_page(results_visible=False):
                             html.H4("Resulting (u,v) coverage"),
                             html.Br()
                         ]),
-                        html.Div(children=[dcc.Graph(id='fig-uvplane')], className='tex2jax_ignore')
+                        html.Div(children=[dcc.Graph(id='fig-uvplane', children=fig_uv_output)],
+                                 className='tex2jax_ignore')
                     ])])
                 ]),
                 dcc.Tab(label='Documentation', className='custom-tab', value='tab-doc',
@@ -757,6 +811,8 @@ def update_bandwidth_label(datarate, npols):
                 html.Br(), html.Br()]
 
     return ''
+
+
 
 
 
@@ -843,10 +899,17 @@ def get_source(source_coord):
 
 @app.callback([Output('loading-output', 'children'),
                Output('loading-output2', 'children'),
+               Output('main-window', 'hidden'),
+               Output('main-window2', 'hidden'),
                Output('sensitivity-output', 'children'),
                Output('fig-elev-time', 'figure'),
                Output('fig-ant-time', 'figure'),
-               Output('fig-uvplane', 'figure'), Output('global-error', 'message')],
+               Output('fig-uvplane', 'figure'),
+               Output('global-error', 'message'),
+               Output('tabs', 'value'),
+               Output('tab-summary', 'disabled'),
+               Output('tab-elevation', 'disabled'),
+               Output('tab-uv', 'disabled')],
               [Input('antenna-selection-button', 'n_clicks')],
               [State('band', 'value'),
                State('starttime', 'date'),
@@ -869,8 +932,7 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
     # To decide where to put the output message
     out_center = selected_tab == 'tab-setup' or selected_tab == 'tab-doc'
     if n_clicks is None:
-        return '', '', dash.no_update, dash.no_update, dash.no_update, \
-               dash.no_update, dash.no_update
+        return '', '', dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if epoch_selected:
         # All options must be completed
@@ -883,8 +945,7 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                         if (atr is None) or (atr == "")]
             temp = [alert_message(["Complete all fields and options before computing the observation.\n" + \
                                   f"Currently it is missing: {', '.join(missing)}."]), '']
-            return *[temp if out_center else temp[::-1]][0], \
-                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
     else:
         # All options but the ones related to the observing epoch must be completed
         if None in (band, source, datarate, subbands, channels, pols, inttime) or source == "":
@@ -894,20 +955,17 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                         channels, pols, inttime)) if (atr is None) or (atr == "")]
             temp = [alert_message(["Complete all fields and options before computing the observation.\n" + \
                                   f"Currently it is missing: {', '.join(missing)}."]), '']
-            return *[temp if out_center else temp[::-1]][0], \
-                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if ants.count(True) == 0:
         temp = [alert_message(["You need to select the antennas you wish to observe your source. " \
                 "Either manually or by selected a default VLBI network at your top left."]), '']
-        return *[temp if out_center else temp[::-1]][0], \
-                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
     # A single antenna computation is not supported
     if ants.count(True) == 1:
         temp = [alert_message(["Single-antenna computations are not suported. " \
                               "Please choose at least two antennas"]), dash.no_update]
-        return *[temp if out_center else temp[::-1]][0], \
-                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     try:
         target_source = observation.Source(convert_colon_coord(source), 'Source')
@@ -918,8 +976,7 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
             temp = [alert_message(["Wrong source name or coordinates.", html.Br(),
                     "Either the source name hasn't been found or the coordinates format is incorrect."]), \
                     "First, set correctly an observation in the previous tab.", '']
-            return *[temp if out_center else temp[::-1]][0], \
-                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
     if not epoch_selected:
         try:
             if starttime is not None:
@@ -938,8 +995,7 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                         "during the given observing time."]),
                         html.P("Modify the observing time or change the selected antennas"
                                " to observe this source.")], title="Warning!"), '']
-            return *[temp if out_center else temp[::-1]][0], \
-                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
         obs_times = utc_times[0] + np.linspace(0, (utc_times[1]-utc_times[0]).to(u.min).value, 50)*u.min
     else:
@@ -949,20 +1005,17 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
         except ValueError as e:
             temp = [alert_message("Incorrect format for starttime."), \
                    "First, set correctly an observation in the previous tab.", '']
-            return *[temp if out_center else temp[::-1]][0], \
-                   dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
         if duration <= 0.0:
             temp = [alert_message("The duration of the observation must be a positive number of hours"), \
                    "First, set correctly an observation in the previous tab.", '']
-            return *[temp if out_center else temp[::-1]][0], \
-                   dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
         if duration > 4*24.0:
             temp = [alert_message("Please, set an observation that lasts for less than 4 days."), \
                    "First, set correctly an observation in the previous tab.", '']
-            return *[temp if out_center else temp[::-1]][0], \
-                   dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
         obs_times = time0 + np.linspace(0, duration*60, 50)*u.min
 
@@ -981,24 +1034,17 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                     "during the given observing time."]),
                     html.P("Modify the observing time or change the selected antennas"
                            " to observe this source.")], title="Warning!"), '']
-        return *[temp if out_center else temp[::-1]][0], \
-                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     # TODO: parallelize all these fig functions
     if out_center:
-        if not epoch_selected:
-            return [html.Br(), dbc.Alert("You can check now the results in the different tabs", color='info', \
-                      dismissable=True),
-                *alert_message("Note that you have selected the 'guest time' option. "
-                              "The inserted times and durations are ignored.")], '', \
-           sensitivity_results, get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), dash.no_update
-        else:
-            return [html.Br(), dbc.Alert("You can check now the results in the different tabs", color='info', \
-                      dismissable=True)], '', \
-           sensitivity_results, get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), dash.no_update
+        return '', '', False, True, \
+       sensitivity_results, get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), dash.no_update, \
+       'tab-summary', False, False, False
     else:
-        return '', dbc.Alert("Results have been updated.", color='info', dismissable=True), \
-           sensitivity_results, get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), dash.no_update
+        return '', dbc.Alert("Results have been updated.", color='info', dismissable=True), False, True,\
+           sensitivity_results, get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), dash.no_update,\
+           dash.no_update, False, False, False
 
 
 
@@ -1039,8 +1085,6 @@ def get_fig_ant_elev(obs):
 
 
 
-
-
 def get_fig_ant_up(obs):
     data_fig = []
     data_dict = obs.is_visible()
@@ -1073,7 +1117,6 @@ def get_fig_ant_up(obs):
                                  'showticklabels': False, 'zeroline': False,
                                  'showgrid': False, 'hovermode': 'closest',
                                  'startline': False}}}
-
 
 
 
@@ -1122,8 +1165,9 @@ app.layout = html.Div([
                      alt='Joinst Institute for VLBI ERIC (JIVE)')
         ])
     ]),
-    html.Div([html.Br()]),
-    html.Div(id='main-window', children=initial_page('choice'))])
+    html.Div([html.Br(), html.Br()]),
+    html.Div(id='main-window', children=main_page(False))])
+    # html.Div(id='main-window', children=initial_page('choice'))])
 
 
 

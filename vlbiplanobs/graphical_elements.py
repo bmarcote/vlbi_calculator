@@ -8,6 +8,7 @@ import dash_html_components as html
 import dash_bootstrap_components as dbc
 import plotly.express as px
 
+from vlbiplanobs.Checkbox import Checkbox
 from vlbiplanobs import freqsetups as fs
 
 def tooltip(message, idname, trigger='?', placement='right',trigger_is_sup=True,  **kwargs):
@@ -428,7 +429,7 @@ def initial_window_pick_band():
             ], style={'text:align': 'justify !important'}),
             html.Br(),
             html.Div(className='justify-content-center', children=[html.Div(
-                dcc.Slider(id='initial-band', min=0, max=len(fs.bands)-1,
+                dcc.Slider(id='band', min=0, max=len(fs.bands)-1,
                        value=tuple(fs.bands).index('18cm'), step=-1,
                        marks={i: fq for i,fq in enumerate(fs.bands)},
                        persistence=True, # tooltip={'always_visible': True, 'placement': 'top'},
@@ -442,7 +443,7 @@ def initial_window_pick_band():
         ]
 
 
-def initial_window_pick_network(vlbi_networks):
+def initial_window_pick_network(vlbi_networks, sorted_networks, all_antennas, selected_band):
     """Initial window to introduce the default VLBI network(s) to be used.
     It will only allow the ones that can observe at the given wavelength.
     """
@@ -454,14 +455,46 @@ def initial_window_pick_network(vlbi_networks):
             ]),
             html.Br(),
             html.Div(className='justify-content-center', children=[
-                dcc.Dropdown(id='initial-array', options=[{'label': vlbi_networks[n], 'value': n} \
+                dcc.Dropdown(id='array', options=[{'label': vlbi_networks[n], 'value': n} \
                         for n in vlbi_networks], value=[], persistence=True, multi=True)
+            ]),
+            html.Br(),
+            html.Div(className='form-group', children=[
+                html.H6(['Real-time correlation?',
+                    *tooltip(idname='popover-eevn',
+                    message="Only available for the EVN: real-time correlation mode."
+                            "The data are transferred and correlated in real-time, but "
+                            "not all telescopes are capable for this and the bandwidth "
+                            "may be limited. Observations during the e-EVN epochs.")
+                ]),
+                dbc.Checklist(id='e-EVN', className='checkbox', persistence=True,
+                              options=[{'label': ' e-EVN mode',
+                                        'value': 'e-EVN'}], value=[]),
             ]),
             # TODO:  add images of the different networks to explain it.
             # html.Br(),
             # html.Div(className='row', children=[
             #     html.Div(),
             # ]),
+            html.Div(id='antennas-div', hidden=True, className='container', children=[
+                html.Div(className='antcheck', children=[html.Br(), html.Br(),
+                    html.Label(html.H4(f"{sorted_networks[an_array]}"),
+                               style={'width': '100%'}),
+                    html.Br(),
+                    html.Div(className='antcheck', children=[
+                        dbc.FormGroup([
+                            Checkbox(id=f"check_{s.codename}", persistence=True,
+                                     className='custom-control-input',
+                                     disabled=not s.has_band(selected_band)),
+                            dbc.Label(s.name, html_for=f"check_{s.codename}",
+                                      id=f"_input_{s.codename}",
+                                     className='custom-control-label')
+                        ], check=True, inline=True,
+                        className="custom-checkbox custom-control custom-control-inline")
+                        for s in all_antennas if s.network == an_array
+                    ])
+                ]) for an_array in sorted_networks
+            ]),
             html.Br(),
             html.Div(className='row justify-content-center',
                      children=html.Button('Continue', id='button-picknetwork',
@@ -526,6 +559,23 @@ def initial_window_pick_time():
                 ])
             ]),
         ]),
+        html.Div(className='row justify-content-center', children=[
+            html.H3('Introduce you target source'),
+            html.P(["Enter the coordinates or (Simbad-recognized) name of the source you want to observe. "
+                    "J2000 coordinates are assumed in both recognized forms: 00:00:00 00:00:00 or "
+                    "00h00m00s 00d00m00s."]),
+            html.Br(),
+            html.Div(className='form-group', children=[
+                dcc.Input(id='source', value=None, type='text',
+                          className='form-control', placeholder="hh:mm:ss dd:mm:ss",
+                          persistence=True),
+                html.Small(id='error_source', style={'color': '#999999'},
+                           className='form-text'),
+            ])
+        ]),
+        html.Div(hidden=True, children=[dcc.Slider(id='onsourcetime', min=20, max=100, step=5, value=70,
+                                                   marks={i: str(i) for i in range(20, 101, 10)},
+                                                   persistence=True)]),
         html.Span(style={'height': '2rem'}),
         html.Div(className='row justify-content-center',
              children=html.Button('Continue', id='button-picktimes',
@@ -573,7 +623,10 @@ def initial_window_pick_mode(app):
 
 
 def initial_window_final():
-    return [
+    """The observing mode will be either 'cont' or 'line'.
+    """
+    return [html.Div(id='main-window2', children=[
+        dcc.Tabs(id='tabs', value=''),
         html.Div(className='row justify-content-center', children=[
             html.H3('You are know ready'),
             html.P(["Press compute to produce the summary for your observation. "
@@ -590,7 +643,8 @@ def initial_window_final():
                         type="dot"),
             dcc.Loading(id="loading2", children=[html.Div(id="loading-output2")],
                         type="dot")
-        ])
-        ]
+        ]),
+        dcc.ConfirmDialog(id='global-error', message='')
+        ])]
 
 

@@ -439,7 +439,7 @@ def initial_page(choice_card):
 
 
 def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
-              fig_ant_output=None, fig_uv_output=None):
+              fig_ant_output=None, fig_uv_output=None, show_compute_button=True):
     return [# First row containing all buttons/options, list of telescopes, and button with text output
             #TODO: to remove when implementing nebwie approachXXXXXXXXXXXXXXXXX
             html.Div(id='main-window2'),
@@ -454,8 +454,8 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                     dcc.Loading(id="loading2", children=[html.Div(id="loading-output2")],
                                 type="dot"),
                     html.Button('Compute observation', id='antenna-selection-button',
-                                className='btn btn-primary btn-lg',
-                                style={'width': '100%', 'margin-bottom': '1rem'}),
+                        className='btn btn-primary btn-lg',
+                        style={'width': '100%', 'margin-bottom': '1rem'}) if show_compute_button else html.Br(),
                 ]),
                 html.Br(),
                 html.Div(className='form-group', children=[

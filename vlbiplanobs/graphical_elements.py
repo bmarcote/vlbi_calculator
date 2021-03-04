@@ -449,9 +449,9 @@ def initial_window_pick_network(vlbi_networks):
     """
     return [html.Div(className='row', children=[
             html.H3('Select the VLBI Network(s)'),
-            html.P(["Which network(s) will be use to observe your source? "
-                "This will select the default antennas in the array(s). Note that later "
-                "you will be able to add/remove antennas as wished."])
+            html.P(["Which network(s) will be used to observe your source? ", html.Br(),
+                "This will select the default antennas from each network. Note that later "
+                "you will be able to add or remove antennas as wished."])
             ]),
             html.Br(),
             html.Div(className='justify-content-center', children=[
@@ -462,7 +462,7 @@ def initial_window_pick_network(vlbi_networks):
             html.Div(className='form-group', children=[
                 html.H6(['Real-time correlation?',
                     *tooltip(idname='popover-eevn',
-                    message="Only available for the EVN: real-time correlation mode."
+                    message="Only available for the EVN (+eMERLIN): real-time correlation mode."
                             "The data are transferred and correlated in real-time, but "
                             "not all telescopes are capable for this and the bandwidth "
                             "may be limited. Observations during the e-EVN epochs.")
@@ -496,7 +496,7 @@ def initial_window_pick_time():
             html.Div(className='row justify-content-center', children=[dbc.FormGroup([
                 dbc.RadioItems(options=[{"label": "I don't have a preferred epoch", "value": False},
                                         {"label": "I know the observing epoch", "value": True}],
-                               value=False, id="initial-timeselection", inline=True),
+                               value=False, id="initial-timeselection", inline=True, persistence=True),
                 ], className='col-5', inline=True), #),
             html.Div(className='col-7', children=[
                 html.Div(id='initial-timeselection-div-guess', className='row justify-content-center',
@@ -534,15 +534,17 @@ def initial_window_pick_time():
                     html.Div(className='form-group', children=[
                         dcc.Input(id='initial-duration', value=None, type='number', className='form-control',
                                    placeholder="Duration in hours", persistence=True, inputMode='numeric'),
-                        html.Small(id='initial-error_duration', style={'color': 'red'},
-                                   className='form-text text-muted')
+                        html.Small(id='initial-error_duration',
+                                   className='form-text text-danger')
                     ])
                 ])
             ]),
         ]),
+        html.Span(style={'height': '5rem'}),
         html.Div(className='row justify-content-center', children=[
             html.H3('Introduce you target source'),
-            html.P(["Enter the coordinates or (Simbad-recognized) name of the source you want to observe. "
+            html.P(["Enter the coordinates or (Simbad-recognized) name of the source you want to observe. ",
+                    html.Br(),
                     "J2000 coordinates are assumed in both recognized forms: 00:00:00 00:00:00 or "
                     "00h00m00s 00d00m00s."]),
             html.Br(),
@@ -550,8 +552,7 @@ def initial_window_pick_time():
                 dcc.Input(id='initial-source', value=None, type='text',
                           className='form-control', placeholder="hh:mm:ss dd:mm:ss",
                           persistence=True),
-                html.Small(id='initial-error_source', style={'color': '#999999'},
-                           className='form-text'),
+                html.Small(id='initial-error_source', className='form-text text-muted'),
             ])
         ]),
         html.Span(style={'height': '2rem'}),
@@ -596,15 +597,17 @@ def initial_window_pick_mode(app):
                         html.P("In general uses a reduced bandwidth.", className='card-text px-0')
                     ]), className='text-center shadow-0')]
                 ), className='col-6 text-center mx-0 px-0')
-            ], className='row')
+            ], className='row'),
+            html.Div(hidden=True, children=[dbc.Checklist(id='is_line',
+                options=[{'label': 'line obs', 'value': False}], value=[])])
         ]
 
 
 def initial_window_final():
     """The observing mode will be either 'cont' or 'line'.
     """
-    return [html.Div(id='main-window2', children=[
-        dcc.Tabs(id='tabs', value=''),
+    return [html.Div(children=[
+        # dcc.Tabs(id='tabs', value=''),
         html.Div(className='row justify-content-center', children=[
             html.H3('You are know ready'),
             html.P(["Press compute to produce the summary for your observation. "
@@ -620,7 +623,8 @@ def initial_window_final():
             dcc.Loading(id="loading", children=[html.Div(id="loading-output")],
                         type="dot"),
         ]),
-        dcc.ConfirmDialog(id='global-error', message='')
+        html.Div(className='row justify-content-center',
+            children=dcc.ConfirmDialog(id='global-error', message=''))
         ])]
 
 

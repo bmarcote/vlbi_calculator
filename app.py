@@ -296,42 +296,92 @@ def update_pickband_tooltip(a_wavelength):
 #     return [time_selection_selected, not time_selection_selected]
 
 
+@app.callback([Output('initial-timeselection-div-guess', 'hidden'),
+              Output('initial-timeselection-div-epoch', 'hidden')],
+              [Input('initial-timeselection', 'value')])
+def type_initial_time_selection(time_selection_selected):
+    """Modifies the hidden message related to the two options about how to pick the observing time.
+    """
+    return [time_selection_selected, not time_selection_selected]
+
+
+
 @app.callback([Output('timeselection-div-guess', 'hidden'),
               Output('timeselection-div-epoch', 'hidden')],
               [Input('timeselection', 'value')])
 def type_time_selection(time_selection_selected):
     """Modifies the hidden message related to the two options about how to pick the observing time.
     """
-    print('checked2')
     return [time_selection_selected, not time_selection_selected]
 
 
 
 
-@app.callback([Output('band', 'value'),
-               Output('array', 'value'),
-               Output('e-EVN', 'value'),
-               Output('timeselection', 'value'),
-               Output('starttime', 'date'),
-               Output('starthour', 'value'),
-               Output('duration', 'value'),
-               Output('source', 'value')],
-              [Input('initial-band', 'value'),
-               Input('initial-array', 'value'),
-               Input('initial-e-EVN', 'value'),
-               Input('initial-timeselection', 'value'),
-               Input('initial-starttime', 'date'),
-               Input('initial-starthour', 'value'),
-               Input('initial-duration', 'value'),
-               Input('initial-source', 'value'),
-               ]
-        )
-def sync_values_from_wizard_to_main(*args):
-    return args
+@app.callback(Output('band', 'value'),
+              Input('initial-band', 'value'), prevent_initial_call=True)
+def band_from_initial(initial_value):
+    return tuple(fs.bands)[initial_value] if initial_value is not None else dash.no_update
+
+@app.callback(Output('array', 'value'),
+              Input('initial-array', 'value'), prevent_initial_call=True)
+def array_from_initial(initial_value):
+    return initial_value if initial_value is not None else dash.no_update
+
+
+@app.callback(Output('e-EVN', 'value'),
+              Input('initial-e-EVN', 'value'), prevent_initial_call=True)
+def e_EVN_from_initial(initial_value):
+    return initial_value if initial_value is not None else dash.no_update
+
+
+@app.callback(Output('timeselection', 'value'),
+              Input('initial-timeselection', 'value'), prevent_initial_call=True)
+def timeselection_from_initial(initial_value):
+    return initial_value if initial_value is not None else dash.no_update
+
+
+@app.callback(Output('starttime', 'date'),
+              Input('initial-starttime', 'date'), prevent_initial_call=True)
+def starttime_from_initial(initial_value):
+    return initial_value if initial_value is not None else dash.no_update
+
+
+@app.callback(Output('starthour', 'value'),
+              Input('initial-starthour', 'value'), prevent_initial_call=True)
+def starthour_from_initial(initial_value):
+    return initial_value if initial_value is not None else dash.no_update
+
+
+@app.callback(Output('duration', 'value'),
+              Input('initial-duration', 'value'), prevent_initial_call=True)
+def duration_from_initial(initial_value):
+    return initial_value if initial_value is not None else dash.no_update
+
+
+@app.callback(Output('source', 'value'),
+              Input('initial-source', 'value'), prevent_initial_call=True)
+def source_from_initial(initial_value):
+    return initial_value if initial_value is not None else dash.no_update
+
+
+@app.callback([Output('subbands', 'value'),
+               Output('channels', 'value'),
+               Output('pols', 'value'),
+               Output('inttime', 'value')],
+              Input('is_line', 'value'), prevent_initial_call=True)
+def line_cont_setup(is_line_exp):
+    if is_line_exp is None:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+    if is_line_exp:
+        return 1, 4096, 4, 2
+    else:
+        return 8, 32, 4, 2
 
 
 
 @app.callback(Output('main-window2', 'children'),
+              Output('is_line', 'value'),
               [Input('button-pickband', 'n_clicks'),
                Input('button-picknetwork', 'n_clicks'),
                Input('button-picktimes', 'n_clicks'),
@@ -343,82 +393,29 @@ def sync_values_from_wizard_to_main(*args):
                State('initial-timeselection', 'value'),
                State('initial-starttime', 'date'),
                State('initial-starthour', 'value'),
-               State('initial-duration', 'value'),
-               State('initial-source', 'value'),
-               State('datarate', 'value'),
-               State('subbands', 'value'),
-               State('channels', 'value'),
-               State('pols', 'value'),
-               State('inttime', 'value'),
-               State('initial-timeselection', 'value')])
+               State('initial-duration', 'value'),])
+               # State('initial-source', 'value'),
+               # State('datarate', 'value'),
+               # State('subbands', 'value'),
+               # State('channels', 'value'),
+               # State('pols', 'value'),
+               # State('inttime', 'value'),
+               # State('initial-timeselection', 'value')])
 def intro_choices(clicks_pickband, clicks_picknetwork, clicks_picktimes, clicks_continuum, clicks_line,
                        a_wavelength, a_array, is_eEVN, time_selection, starttime, starthour, obs_duration):
-    if clicks_expert is not None:
-        return main_page(results_visible=False, show_compute_button=True)
-    elif clicks_wizard is not None:
-        return initial_page('band')
-    elif clicks_pickband is not None:
-        return initial_page('network')
+    if clicks_pickband is not None:
+        return choice_page('network'), dash.no_update
     elif clicks_picknetwork is not None:
-        return initial_page('time')
+        return choice_page('time'), dash.no_update
     elif clicks_picktimes is not None:
         #TODO: if dates are provided, all date/time/dur must be provided
-        return initial_page('mode')
+        return choice_page('mode'), dash.no_update
     elif clicks_continuum is not None:
-        if is_eEVN:
-            datarate = default_datarates['e-EVN'] if selected_band not in ('18cm', '21cm') else 1024
-        else:
-            datarate = -1
-            for an_array in a_array:
-                selected_antennas += [ant for ant in default_arrays[an_array] \
-                                        if all_antennas[ant].has_band(a_wavelength)]
-                datarate = max(datarate, default_datarates[an_array] if not ((an_array == 'EVN') and \
-                                                        (selected_band in ('18cm', '21cm'))) else 1024)
-
-        return initial_page('final') + [
-            # Hidden values related to the observing setup
-            html.Div(hidden=True, children=[
-                dcc.Dropdown(id='datarate',
-                             placeholder="Select the data rate...",
-                             options=[{'label': fs.data_rates[dr], 'value': dr} \
-                             for dr in fs.data_rates], value=datarate, persistence=True),
-                dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
-                             options=[{'label': fs.subbands[sb], 'value': sb} \
-                             for sb in fs.subbands], value=8, persistence=True),
-                dcc.Dropdown(id='channels', placeholder="Select no. channels...",
-                             options=[{'label': fs.channels[ch], 'value': ch} \
-                             for ch in fs.channels], value=32, persistence=True),
-                dcc.Dropdown(id='pols', placeholder="Select polarizations...",
-                             options=[{'label': fs.polarizations[p], 'value': p} \
-                             for p in fs.polarizations], value=4, persistence=True),
-                dcc.Dropdown(id='inttime', placeholder="Select integration time...",
-                             options=[{'label': fs.inttimes[it], 'value': it} \
-                             for it in fs.inttimes], value=2, persistence=True)
-            ])
-            ]
+        return choice_page('final'), False
     elif clicks_line is not None:
-        return initial_page('final') + [
-            html.Div(hidden=True, children=[
-                dcc.Dropdown(id='datarate',
-                             placeholder="Select the data rate...",
-                             options=[{'label': fs.data_rates[dr], 'value': dr} \
-                             for dr in fs.data_rates], value=256, persistence=True),
-                dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
-                             options=[{'label': fs.subbands[sb], 'value': sb} \
-                             for sb in fs.subbands], value=1, persistence=True),
-                dcc.Dropdown(id='channels', placeholder="Select no. channels...",
-                             options=[{'label': fs.channels[ch], 'value': ch} \
-                             for ch in fs.channels], value=2048, persistence=True),
-                dcc.Dropdown(id='pols', placeholder="Select polarizations...",
-                             options=[{'label': fs.polarizations[p], 'value': p} \
-                             for p in fs.polarizations], value=4, persistence=True),
-                dcc.Dropdown(id='inttime', placeholder="Select integration time...",
-                             options=[{'label': fs.inttimes[it], 'value': it} \
-                             for it in fs.inttimes], value=2, persistence=True)
-            ])
-            ]
+        return choice_page('final'), True
     else:
-        return dash.no_update
+        return dash.no_update, dash.no_update
 
 
 
@@ -499,7 +496,6 @@ def choice_page(choice_card):
 def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
               fig_ant_output=None, fig_uv_output=None, show_compute_button=True):
     return [# First row containing all buttons/options, list of telescopes, and button with text output
-    html.Div(id='main-window2', hidden=True),
     dcc.ConfirmDialog(id='global-error', message=''),
     # Elements in second column (checkboxes with all stations)
     html.Div(className='container-fluid', children=[
@@ -847,7 +843,6 @@ def update_onsourcetime_label(onsourcetime, total_duration, defined_epoch):
     """Keeps the on-source time label updated with the value selected by the user.
     """
     if (total_duration is not None) and defined_epoch:
-        print(total_duration)
         return f"{onsourcetime}% of the total time  ({ge.optimal_units(total_duration*u.h*onsourcetime/100, [u.h, u.min, u.s]):.03n})."
 
     return f"{onsourcetime}% of the total observation."
@@ -884,7 +879,6 @@ def select_antennas(selected_band, selected_networks, is_eEVN, is_line):
     """Given a selected band and selected default networks, it selects the associated
     antennas from the antenna list.
     """
-    print(selected_band, selected_networks, is_eEVN)
     selected_antennas = []
     if is_eEVN:
         selected_antennas = [ant for ant in default_arrays['e-EVN'] \
@@ -892,7 +886,7 @@ def select_antennas(selected_band, selected_networks, is_eEVN, is_line):
         datarate = default_datarates['e-EVN'] if selected_band not in ('18cm', '21cm') else 1024
         return [True if s.codename in selected_antennas else False for s in all_antennas] + \
                [False if (s.has_band(selected_band) and s.real_time) else True \
-                for s in all_antennas] + [datarate]
+                for s in all_antennas] + [datarate if not is_line else 256]
     else:
         datarate = -1
         for an_array in selected_networks:
@@ -902,7 +896,8 @@ def select_antennas(selected_band, selected_networks, is_eEVN, is_line):
                                                     (selected_band in ('18cm', '21cm'))) else 1024)
 
         return [True if s.codename in selected_antennas else False for s in all_antennas] + \
-               [False if s.has_band(selected_band) else True for s in all_antennas] + [datarate]
+               [False if s.has_band(selected_band) else True for s in all_antennas] + \
+               [datarate if not is_line else 256]
 
 
 
@@ -957,7 +952,7 @@ def check_obstime(starttime, starthour, duration):
 
 
 @app.callback([Output('initial-error_source', 'children'),
-        Output('initial-error_source', 'style')],
+        Output('initial-error_source', 'className')],
         [Input('initial-source', 'value')])
 def get_initial_source(source_coord):
     """Verifies that the introduced source coordinates have a right format.
@@ -967,22 +962,23 @@ def get_initial_source(source_coord):
     if source_coord != 'hh:mm:ss dd:mm:ss' and source_coord != None and source_coord != '':
         if len(source_coord) > 30:
             # Otherwise the source name check gets too slow
-            return "Name too long.", {'color': '#a01d26'}
+            return "Name too long.", 'form-text text-danger'
         try:
             dummy_target = observation.Source(convert_colon_coord(source_coord), 'Source')
             return '', dash.no_update
         except ValueError as e:
             try:
                 dummy_target = coord.get_icrs_coordinates(source_coord)
-                return dummy_target.to_string('hmsdms'), {'color': '#999999'}
+                return dummy_target.to_string('hmsdms'), 'form-text text-muted'
             except coord.name_resolve.NameResolveError as e:
-                return "Unrecognized name. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'", {'color': '#a01d26'}
+                return "Unrecognized name. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'", \
+                       'form-text text-danger'
     else:
         return '', dash.no_update
 
 
 @app.callback([Output('error_source', 'children'),
-        Output('error_source', 'style')],
+        Output('error_source', 'className')],
         [Input('source', 'value')])
 def get_source(source_coord):
     """Verifies that the introduced source coordinates have a right format.
@@ -992,16 +988,17 @@ def get_source(source_coord):
     if source_coord != 'hh:mm:ss dd:mm:ss' and source_coord != None and source_coord != '':
         if len(source_coord) > 30:
             # Otherwise the source name check gets too slow
-            return "Name too long.", {'color': '#a01d26'}
+            return "Name too long.", 'form-text text-danger'
         try:
             dummy_target = observation.Source(convert_colon_coord(source_coord), 'Source')
             return '', dash.no_update
         except ValueError as e:
             try:
                 dummy_target = coord.get_icrs_coordinates(source_coord)
-                return dummy_target.to_string('hmsdms'), {'color': '#999999'}
+                return dummy_target.to_string('hmsdms'), 'form-text text-muted'
             except coord.name_resolve.NameResolveError as e:
-                return "Unrecognized name. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'", {'color': '#a01d26'}
+                return "Unrecognized name. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'", \
+                       'form-text text-danger'
     else:
         return '', dash.no_update
 
@@ -1270,8 +1267,8 @@ app.layout = html.Div([
         ])
     ]),
     html.Div([html.Br(), html.Br()]),
-    html.Div(id='full-window', children=html.Div(id='main-window', children=main_page(False)))])
-    # html.Div(id='full-window', children=initial_page())])
+    # html.Div(id='full-window', children=html.Div(id='main-window', children=main_page(False)))])
+    html.Div(id='full-window', children=initial_page())])
 
 
 

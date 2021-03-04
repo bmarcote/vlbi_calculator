@@ -184,6 +184,7 @@ def summary_card_beam(app, obs):
                         "on the weighting used during imaging (null weighting assumed here).")]
     return create_sensitivity_card('Resolution', temp_msg)
 
+
 def summary_card_times(app, obs):
     """Creates a summary card showing the observing times, and the resulting data size.
     """
@@ -434,7 +435,7 @@ def initial_window_pick_band():
                        marks={i: fq for i,fq in enumerate(fs.bands)},
                        persistence=True, # tooltip={'always_visible': True, 'placement': 'top'},
                        updatemode='drag', included=False)), html.Br(), #html.Br(),
-                html.Div(id='initial-pickband-label', className='row justify-content-center', children='Hello'),
+                html.Div(id='initial-pickband-label', className='row justify-content-center', children=''),
                 html.Br(),
                 html.Div(className='row text-center',
                          children=html.Button('Continue', id='button-pickband',

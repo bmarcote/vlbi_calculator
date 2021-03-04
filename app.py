@@ -282,7 +282,7 @@ def update_pickband_tooltip(a_wavelength):
                         html.Span(html.Small(f"Can be observed with the {arrays_with_band(default_arrays, a_band)}."),
                             style={'color': '#888888'})
                     ], className="card-text"),
-                ]), className="col-sm-3 my-2 shadow-1-strong border border-primary")
+                ]), className="col-sm-3 my-2 shadow-1-strong")
             ]
 
 
@@ -446,11 +446,12 @@ def initial_page():
 def choice_for_setup(do_wizard, do_expert):
     if (do_expert is not None) or (do_wizard is not None):
         return [
-            html.Div(id='main-window', hidden=do_expert is None,
-                     children=main_page(show_compute_button=do_expert is not None)),
+            # order inverted to improve loading times
             html.Div(id='main-window2', hidden=do_expert is not None,
                      children=[dbc.Checklist(id='is_line', options=[{'label': 'line obs', 'value': False}],
-                               value=[])] if do_expert is not None else choice_page('band'))
+                               value=[])] if do_expert is not None else choice_page('band')),
+            html.Div(id='main-window', hidden=do_expert is None,
+                     children=main_page(show_compute_button=do_expert is not None))
             ]
     else:
         return dash.no_update
@@ -699,7 +700,7 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                                    "summary of the planned observation and expected outcome in the different "
                                    "tabs."]),
                             html.P(html.Em(["Note that only antennas that can observe at the selected band "
-                                    "will be clickable."]))
+                                    "will be clickable."], className='form-text text-warning'))
                         ], style={'margin-top': '2rem', 'margin-bottom': '2rem'}),
                         html.Div(className='col-9 form-group row align-items-end', children=[
                             html.Div(className='col-md-6', children=[

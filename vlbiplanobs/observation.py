@@ -548,17 +548,20 @@ class Observation(object):
         indexes = 0 if n_onsource[0] >= 3 else 1
 
         # Special case: first element
-        if indexes == 0:
-            n_max = [-1, 0, np.max([n_onsource[vis_ranges[-1]:].max(), n_onsource[:vis_ranges[0]].max()])]
+        try:
+            if indexes == 0:
+                n_max = [-1, 0, np.max([n_onsource[vis_ranges[-1]:].max(), n_onsource[:vis_ranges[0]].max()])]
 
-        for i in range(1-indexes, len(vis_ranges)-1, 2):
-            print(vis_ranges)
-            print(n_onsource)
-            if n_onsource[vis_ranges[i-1+indexes]:vis_ranges[i+indexes]+1].max() > n_max[2]:
-                n_max = [i-1+indexes, i+indexes, n_onsource[vis_ranges[i-1+indexes]:vis_ranges[i+indexes]+1].max()]
-            elif (n_onsource[vis_ranges[i-1+indexes]:vis_ranges[i+indexes]+1].max() == n_max[2]) and \
-                    (vis_ranges[i+indexes]-vis_ranges[i-1+indexes] > n_max[1]-n_max[0]):
-                n_max = [i-1+indexes, i+indexes, n_onsource[vis_ranges[i-1+indexes]:vis_ranges[i+indexes]+1].max()]
+            for i in range(1-indexes, len(vis_ranges)-1, 2):
+                if n_onsource[vis_ranges[i-1+indexes]:vis_ranges[i+indexes]+1].max() > n_max[2]:
+                    n_max = [i-1+indexes, i+indexes, \
+                             n_onsource[vis_ranges[i-1+indexes]:vis_ranges[i+indexes]+1].max()]
+                elif (n_onsource[vis_ranges[i-1+indexes]:vis_ranges[i+indexes]+1].max() == n_max[2]) and \
+                        (vis_ranges[i+indexes]-vis_ranges[i-1+indexes] > n_max[1]-n_max[0]):
+                    n_max = [i-1+indexes, i+indexes, \
+                             n_onsource[vis_ranges[i-1+indexes]:vis_ranges[i+indexes]+1].max()]
+        except IndexError: # because vis_ranges is an empty list. Got it in the following
+            pass
 
         if None in (n_max[0], n_max[1]):
             # Either the source is visible all the time or never
@@ -851,14 +854,16 @@ class Observation(object):
     #         i += uvdata[bl_name].shape[0]
 
 
-    def print_obs_times(self, date_format='%d %b %Y'):
+    def print_obs_times(self, date_format='%d %B %Y'):
         """Returns the time range (starttime-to-endtime) of the observation in a smart way.
         If the observation lasts for less than one day it omits the end date:
-                20 January 1971 10:00-20:00 UTC
+                20 January 1971
+                10:00-20:00 UTC
                 GST range: 05:00-15:00
 
         If the observation ends the day after, then it returns:
-                20 January 1971 10:00-20:00 UTC (+1d)
+                20 January 1971
+                10:00-20:00 UTC (+1d)
                 GST range: 05:00-15:00
 
         If the observation is longer, then it returns
@@ -878,11 +883,11 @@ class Observation(object):
                                                   (self.gstimes[-1].hour*60) // 60,
                                                   (self.gstimes[0].hour*60) % 60)
         if self.times[0].datetime.date() == self.times[-1].datetime.date():
-            return "{} {}-{} UTC\nGST range: {}".format(self.times[0].datetime.strftime(date_format),
+            return "{}\n{}-{} UTC\nGST range: {}".format(self.times[0].datetime.strftime(date_format),
                                         self.times[0].datetime.strftime('%H:%M'),
                                         self.times[-1].datetime.strftime('%H:%M'), gsttext)
         elif (self.times[-1] - self.times[0]) < 24*u.h:
-            return "{} {}-{} UTC (+1d)\nGST range: {}".format(
+            return "{}\n{}-{} UTC (+1d)\nGST range: {}".format(
                                         self.times[0].datetime.strftime(date_format),
                                         self.times[0].datetime.strftime('%H:%M'),
                                         self.times[-1].datetime.strftime('%H:%M'), gsttext)

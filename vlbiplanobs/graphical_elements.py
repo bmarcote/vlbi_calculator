@@ -57,11 +57,17 @@ def create_sensitivity_card(title, message):
     else:
         ps = [html.P(className='card-text', children=message)]
 
-    # return [html.Div(className='card', style={'min-width': '15rem', 'max-width': '25rem'}, children=[
-    return [html.Div(className='card-summary m-3', children=[
-            html.Div(className='card-body', children=[
-                html.H5(className='card-title', children=title)] + ps)])
-        ]
+    # return [html.Div(dbc.Card(
+    return [dbc.Card(
+            dbc.CardBody([
+                html.H5(className='card-title', children=title),
+                *ps
+                ]), className='card-summary shadow-1-strong')
+            ]
+    # return [html.Div(className='card-summary m-3', children=[
+    #         html.Div(className='card-body', children=[
+    #             html.H5(className='card-title', children=title)] + ps)])
+    #     ]
 
 
 
@@ -97,6 +103,29 @@ def antenna_cards(app, stations):
     cards = dbc.Row([antenna_card(app, s) for s in stations],
             className='row justify-content-center')
     return cards
+
+
+def network_card(app, network_acr, network_name, body, network_img=None):
+    """Generates a card showing the basic information from a network.
+    """
+    card = dbc.Card([
+        dbc.CardImg(src=app.get_asset_url(network_img if network_img is not None else \
+                                          f"network-{network_acr.lower()}.png"),
+                    top=True, className='card-img'),
+        dbc.CardBody([
+            html.H4(network_acr, className='card-title'),
+            html.H6(network_name, className='card-title2'),
+            *[dbc.Checklist(id='initial-e-EVN', className='checkbox', persistence=True,
+                    options=[{'label': 'e-EVN (real time) mode', 'value': False}]) \
+              if network_acr == 'EVN' else html.Span()],
+            ]),
+        dbc.CardFooter(
+            dbc.Checklist(id=f'network-{network_acr.lower()}', className='checkbox', persistence=True,
+                          options=[{'label': ' Select network',
+                                    'value': True}], value=[]))
+        ], className="card-network col-sm-3 m-4 shadow-1-strong")
+    return card
+
 
 
 
@@ -287,7 +316,7 @@ def summary_card_rms(app, obs):
                                 [u.MJy, u.kJy, u.Jy, u.mJy, u.uJy])
     temp_msg = [html.Div(className='row', style={'height': '0.7rem'}),
                 html.Div(className='row justify-content-center',
-                children=html.Img(src=app.get_asset_url("waves.svg"), width='100%',
+                children=html.Img(src=app.get_asset_url("waves.png"), width='100%',
                                   height='75rem', style={'display': 'inline'}))]
     temp_msg += [html.P(f"The expected rms thermal noise for your target is {rms:.3n}/beam when no weighting is applied during imaging. Note that ~20% higher values may be expected for RFI-contaminated bands.")]
     temp_msg += [html.P(f"The achieved sensitivity implies a rms of {rms_channel:.3n}/beam per spectral "
@@ -393,28 +422,28 @@ def initial_window_start(app):
     directly to manually selecting everything or going through the "wizard" guided mode.
     """
     return [
-            html.Div(children=[
-                html.Div(html.Button(id='button-initial-wizard', className='btn btn-gray',
+            html.Div(className='row card-deck justify-content-center text-center', children=[
+                html.Button(id='button-initial-wizard', className='card-button btn btn-gray m-4',
                     title='Helps you to configure your observation in a step-by-step process.',
                     children=dbc.Card(dbc.CardBody([
                         html.H5("Guided mode", className='card-title'),
                         html.Img(height='80rem', src=app.get_asset_url('icon-newbie.png'),
                                  className='card-text m-3'),
                         html.Br(),
-                        html.P("Guided setup of your observation.", className='card-text px-0')
+                        html.P("Guided setup of your observation", className='card-text px-0')
                     ]), className='text-center shadow-0')
-                ), className='col-sm-6 text-center mx-0 px-0'),
-                html.Div(html.Button(id='button-initial-expert', className='btn btn-gray',
+                ),
+                html.Button(id='button-initial-expert', className='card-button btn btn-gray m-4',
                     title='Go to the main window containing all options to configure.',
                     children=[dbc.Card(dbc.CardBody([
                         html.H5("Manual mode", className='card-title'),
                         html.Img(height='80rem', src=app.get_asset_url('icon-expert.png'),
                                  className='card-text m-3'),
                         html.Br(),
-                        html.P("Manual setup of your observation.", className='card-text px-0')
+                        html.P("Manual setup of your observation", className='card-text px-0')
                     ]), className='text-center shadow-0')]
-                ), className='col-sm-6 text-center mx-0 px-0')
-            ], className='row')
+                )
+            ])
         ]
 
 
@@ -444,7 +473,7 @@ def initial_window_pick_band():
         ]
 
 
-def initial_window_pick_network(vlbi_networks):
+def initial_window_pick_network(app, vlbi_networks):
     """Initial window to introduce the default VLBI network(s) to be used.
     It will only allow the ones that can observe at the given wavelength.
     """
@@ -455,32 +484,20 @@ def initial_window_pick_network(vlbi_networks):
                 "you will be able to add or remove antennas as wished."])
             ]),
             html.Br(),
-            html.Div(className='justify-content-center', children=[
-                dcc.Dropdown(id='initial-array', options=[{'label': vlbi_networks[n], 'value': n} \
-                        for n in vlbi_networks], value=[], persistence=True, multi=True)
+            html.Div(className='row justify-content-center', children=[
+                network_card(app, a_network, vlbi_networks[a_network], "") \
+                for a_network in vlbi_networks
             ]),
-            html.Br(),
-            html.Div(className='form-group', children=[
-                html.H6(['Real-time correlation?',
-                    *tooltip(idname='popover-eevn',
-                    message="Only available for the EVN (+eMERLIN): real-time correlation mode."
-                            "The data are transferred and correlated in real-time, but "
-                            "not all telescopes are capable for this and the bandwidth "
-                            "may be limited. Observations during the e-EVN epochs.")
-                ]),
-                dbc.Checklist(id='initial-e-EVN', className='checkbox', persistence=True,
-                              options=[{'label': ' e-EVN mode',
-                                        'value': 'e-EVN'}], value=[]),
-            ]),
-            # TODO:  add images of the different networks to explain it.
-            # html.Br(),
-            # html.Div(className='row', children=[
-            #     html.Div(),
-            # ]),
             html.Br(),
             html.Div(className='row justify-content-center',
                      children=html.Button('Continue', id='button-picknetwork',
                                 className='btn btn-primary btn-lg')),
+            # html.Div(hidden=True, children=[
+            #     dcc.Dropdown(id='initial-array', options=[{'label': n, 'value': n} \
+            #                  for n in vlbi_networks if n != 'e-EVN'], value=[],
+            #                  persistence=True, multi=True)
+            # ]),
+            html.Div(style={'height': '20rem'})
         ]
 
 
@@ -497,7 +514,7 @@ def initial_window_pick_time():
             html.Div(className='row justify-content-center', children=[dbc.FormGroup([
                 dbc.RadioItems(options=[{"label": "I don't have a preferred epoch", "value": False},
                                         {"label": "I know the observing epoch", "value": True}],
-                               value=False, id="initial-timeselection", inline=True, persistence=True),
+                               value=True, id="initial-timeselection", inline=True, persistence=True),
                 ], className='col-5', inline=True), #),
             html.Div(className='col-7', children=[
                 html.Div(id='initial-timeselection-div-guess', className='row justify-content-center',
@@ -575,30 +592,30 @@ def initial_window_pick_mode(app):
                     "channels, etc). You will still be able to tune these parameters afterwards."])
             ], style={'text:align': 'justify !important'}),
             html.Br(),
-            html.Div(children=[
-                html.Div(html.Button(id='button-mode-continuum', className='btn btn-gray',
+            html.Div(className='row card-deck justify-content-center text-center', children=[
+                html.Button(id='button-mode-continuum', className='card-button btn btn-gray m-4',
                     title='Helps you to configure your observation in a step-by-step process.',
                     children=dbc.Card(dbc.CardBody([
                         html.H5("Continuum mode", className='card-title'),
-                        html.Img(height='80rem', src=app.get_asset_url('icon-newbie.png'),
+                        html.Img(height='80rem', src=app.get_asset_url('waves.png'),
                                  className='card-text m-3'),
                         html.Br(),
-                        html.P("Provides the maximum sensitivity.", className='card-text px-0'),
-                        html.P("Uses the maximum bandwidth available.", className='card-text px-0')
+                        html.P("Provides the maximum sensitivity", className='card-text px-0'),
+                        html.P("Uses the maximum bandwidth available", className='card-text px-0')
                     ]), className='text-center shadow-0')
-                ), className='col-6 text-center mx-0 px-0'),
-                html.Div(html.Button(id='button-mode-line', className='btn btn-gray',
+                ),
+                html.Button(id='button-mode-line', className='card-button btn btn-gray m-4',
                     title='Go to the main window containing all options to configure.',
                     children=[dbc.Card(dbc.CardBody([
                         html.H5("Spectral line mode", className='card-title'),
-                        html.Img(height='80rem', src=app.get_asset_url('icon-expert.png'),
+                        html.Img(height='80rem', src=app.get_asset_url('waves-line.png'),
                                  className='card-text m-3'),
                         html.Br(),
-                        html.P("Provides a much higher frequency resolution.", className='card-text px-0'),
-                        html.P("In general uses a reduced bandwidth.", className='card-text px-0')
+                        html.P("Provides higher frequency resolution", className='card-text px-0'),
+                        html.P("In general uses a reduced bandwidth", className='card-text px-0')
                     ]), className='text-center shadow-0')]
-                ), className='col-6 text-center mx-0 px-0')
-            ], className='row'),
+                )
+            ]),
             html.Div(hidden=True, children=[dbc.Checklist(id='is_line',
                 options=[{'label': 'line obs', 'value': False}], value=[])])
         ]
@@ -610,13 +627,13 @@ def initial_window_final():
     return [html.Div(children=[
         # dcc.Tabs(id='tabs', value=''),
         html.Div(className='row justify-content-center', children=[
-            html.H3('You are know ready'),
+            html.H3('You are now ready'),
             html.P(["Press compute to produce the summary for your observation. "
                 "You would then see different tabs with the information. "
                 "You will also be able to change the setup and re-compute it."]),
             html.Br(),
         ]),
-        html.Span(style={'height': '2rem'}),
+        html.Span(style={'height': '5rem'}),
         html.Div(className='row justify-content-center',
              children=html.Button('Compute', id='antenna-selection-button',
                         className='btn btn-primary btn-lg')),

@@ -85,15 +85,15 @@ default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
                    'Ov', 'Pt', 'Gb'],
           'EHT': ['ALMA', 'Pv', 'LMT', 'PdB', 'SMA', 'JCMT', 'APEX', 'SMT', 'SPT']}
 
-vlbi_networks_names = {'EVN': 'EVN: European VLBI Network',
-                       'eMERLIN': 'e-MERLIN',
-                       'LBA': 'LBA: Australian Long Baseline Array',
-                       'VLBA': 'VLBA: Very Long Baseline Array',
-                       'KVN': 'KVN: Korean VLBI Network',
+vlbi_networks_names = {'EVN': 'European VLBI Network',
+                       'eMERLIN': 'eMERLIN',
+                       'LBA': 'Australian Long Baseline Array',
+                       'VLBA': 'Very Long Baseline Array',
+                       'KVN': 'Korean VLBI Network',
                        # 'Global VLBI': 'Global VLBI (VLBA+EVN)',
-                       'HSA': 'HSA: High Sensitivity Array',
-                       'GMVA': 'GMVA: Global mm-VLBI Array',
-                       'EHT': 'EHT: Event Horizon Telescope'}
+                       'HSA': 'High Sensitivity Array',
+                       'GMVA': 'Global mm-VLBI Array',
+                       'EHT': 'Event Horizon Telescope'}
 
 #TODO: this will be included per station (but maybe it needs to remain):
 default_datarates = {'EVN': 2048, 'e-EVN': 2048, 'eMERLIN': 4096, 'LBA': 1024, 'VLBA': 4096, 'KVN': 4096,
@@ -146,7 +146,7 @@ def get_doc_text():
                 temp += [ge.create_accordion_card(a_topic, dcc.Markdown(parsed_text),
                          id=str(i), is_open=False)]
 
-    return html.Div(temp, className='col-12 accordion')
+    return html.Div(temp, className='col-12 accordion shadow-1-strong')
 
 
 @app.callback([Output(f"collapse-{i}", "is_open") for i in range(len(doc_files))],
@@ -216,7 +216,8 @@ def update_sensitivity(obs):
     cards += ge.summary_card_beam(app, obs)
     cards += ge.summary_card_rms(app, obs)
     cards += ge.summary_card_fov(app, obs)
-    return [html.Div(className='card-deck col-12 justify-content-center', children=cards)]
+    return [html.Div(className='card-deck col-12 justify-content-center',
+                     children=cards)]
 
 
 def arrays_with_band(arrays, a_band):
@@ -268,7 +269,7 @@ def update_pickband_tooltip(a_wavelength):
     a_band = tuple(fs.bands)[a_wavelength]
     return [dbc.Card(dbc.CardBody([
                     html.H5([html.Img(height='30rem',
-                                      src=app.get_asset_url(f"waves-{a_band.replace('.',  '_')}.svg"),
+                                      src=app.get_asset_url(f"waves-{a_band.replace('.',  '_')}.png"),
                                       alt='Band: ', className='d-inline-block'),
                              html.Span(f"{fs.bands[a_band].split('(')[0].strip()}",
                                        style={'float': 'right'})
@@ -316,16 +317,17 @@ def type_time_selection(time_selection_selected):
 
 
 
-
 @app.callback(Output('band', 'value'),
               Input('initial-band', 'value'), prevent_initial_call=True)
 def band_from_initial(initial_value):
     return tuple(fs.bands)[initial_value] if initial_value is not None else dash.no_update
 
+
 @app.callback(Output('array', 'value'),
-              Input('initial-array', 'value'), prevent_initial_call=True)
-def array_from_initial(initial_value):
-    return initial_value if initial_value is not None else dash.no_update
+              [Input(f'network-{network.lower()}', 'value') for network in vlbi_networks_names],
+              prevent_initial_call=True)
+def array_from_initial(*selected_networks):
+    return [network for (network,selected) in zip(vlbi_networks_names, selected_networks) if selected]
 
 
 @app.callback(Output('e-EVN', 'value'),
@@ -386,23 +388,8 @@ def line_cont_setup(is_line_exp):
                Input('button-picknetwork', 'n_clicks'),
                Input('button-picktimes', 'n_clicks'),
                Input('button-mode-continuum', 'n_clicks'),
-               Input('button-mode-line', 'n_clicks')],
-              [State('initial-band', 'value'),
-               State('initial-array', 'value'),
-               State('initial-e-EVN', 'value'),
-               State('initial-timeselection', 'value'),
-               State('initial-starttime', 'date'),
-               State('initial-starthour', 'value'),
-               State('initial-duration', 'value'),])
-               # State('initial-source', 'value'),
-               # State('datarate', 'value'),
-               # State('subbands', 'value'),
-               # State('channels', 'value'),
-               # State('pols', 'value'),
-               # State('inttime', 'value'),
-               # State('initial-timeselection', 'value')])
-def intro_choices(clicks_pickband, clicks_picknetwork, clicks_picktimes, clicks_continuum, clicks_line,
-                       a_wavelength, a_array, is_eEVN, time_selection, starttime, starthour, obs_duration):
+               Input('button-mode-line', 'n_clicks')])
+def intro_choices(clicks_pickband, clicks_picknetwork, clicks_picktimes, clicks_continuum, clicks_line):
     if clicks_pickband is not None:
         return choice_page('network'), dash.no_update
     elif clicks_picknetwork is not None:
@@ -479,7 +466,7 @@ def choice_page(choice_card):
                                 html.Div(hidden=False if choice_card == 'band' else True,
                                          children=ge.initial_window_pick_band()),
                                 html.Div(hidden=False if choice_card == 'network' else True,
-                                         children=ge.initial_window_pick_network(vlbi_networks_names)),
+                                         children=ge.initial_window_pick_network(app, vlbi_networks_names)),
                                 html.Div(hidden=False if choice_card == 'time' else True,
                                          children=ge.initial_window_pick_time()),
                                 html.Div(hidden=False if choice_card == 'mode' else True,
@@ -549,8 +536,8 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                     dcc.Input(id='source', value=None, type='text',
                               className='form-control', placeholder="hh:mm:ss dd:mm:ss",
                               persistence=True),
-                    html.Small(id='error_source', style={'color': '#999999'},
-                               className='form-text'),
+                    html.Small(id='error_source',
+                               className='form-text text-muted'),
                 ]),
                 html.Br(),
                 html.Div(className='form-group', children=[
@@ -558,7 +545,7 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                     dbc.FormGroup([
                         dbc.RadioItems(options=[{"label": "I don't have a preferred epoch", "value": False},
                                                 {"label": "I know the observing epoch", "value": True}],
-                                       value=False, id="timeselection", inline=True, persistence=True),
+                                       value=True, id="timeselection", inline=True, persistence=True),
                     ], inline=True),
                     html.Div(children=[
                         html.Div(id='timeselection-div-guess', className='row justify-content-center',
@@ -595,8 +582,7 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                             html.Div(className='form-group', children=[
                                 dcc.Input(id='duration', value=None, type='number', className='form-control',
                                            placeholder="Duration in hours", persistence=True, inputMode='numeric'),
-                                html.Small(id='error_duration', style={'color': 'red'},
-                                           className='form-text text-muted')
+                                html.Small(id='error_duration', className='form-text text-danger')
                             ])
                         ])
                     ]),

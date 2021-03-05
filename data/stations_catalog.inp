@@ -750,6 +750,44 @@ SEFD_3.6 = 320.0
 SEFD_1.3 = 700
 
 
+[MeerKAT 1]
+
+station = MeerKAT (single dish)
+code = Me1
+network = Other
+possible_networks =
+country = South Africa
+diameter = 1 x 13.5 m
+#img =
+#link =
+position = 5109360.13332123, 2006852.58604291, -3238948.12747888
+min_elevation = 10.0
+real_time = no
+SEFD_49 = 600.0
+SEFD_30 = 390.0
+SEFD_21 = 395.0
+SEFD_18 = 400.0
+
+
+[MeerKAT]
+
+station = MeerKAT (phased-up array)
+code = Me
+network = Other
+possible_networks =
+country = South Africa
+diameter = 64 x 13.5 m
+#img =
+#link =
+position = 5109360.13332123, 2006852.58604291, -3238948.12747888
+min_elevation = 10.0
+real_time = no
+SEFD_49 = 10.0
+SEFD_30 = 6.5
+SEFD_21 = 6.5
+SEFD_18 = 6.7
+
+
 [Metsahovi]
 
 station = Metsahovi

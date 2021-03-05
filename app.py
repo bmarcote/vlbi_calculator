@@ -802,11 +802,11 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                             html.Br(),
                             html.H4("When is your source visible?"),
                             html.Br(),
-                            dbc.Alert([html.H4("Info on plots", className='alert-heading'),
-                                       html.P("A single click on one station in the legend will "
-                                               "hide/show it. Double-click will hide/show "
+                            dbc.Alert([html.H4("Interactive plots", className='alert-heading'),
+                                       html.P(["A single click on one station in the legend will "
+                                               "hide/show it.", html.Br(), "Double-click will hide/show "
                                                "all other antennas. You can also save the plot "
-                                               "as png."),
+                                               "as png."]),
                                       ], color='info', dismissable=True),
                             html.Br(),
                             html.P("The following plot shows the source elevation for the "
@@ -918,11 +918,16 @@ def select_antennas(selected_band, selected_networks, is_eEVN, is_line):
                 for s in all_antennas] + [datarate if not is_line else 256]
     else:
         datarate = -1
+        if 'EVN' in selected_networks:
+            datarate = default_datarates['EVN'] if selected_band not in ('18cm', '21cm') else 1024
+        else:
+            for an_array in selected_networks:
+                datarate = max(datarate, default_datarates[an_array] if not ((an_array == 'EVN') and \
+                                                        (selected_band in ('18cm', '21cm'))) else 1024)
+
         for an_array in selected_networks:
             selected_antennas += [ant for ant in default_arrays[an_array] \
                                     if all_antennas[ant].has_band(selected_band)]
-            datarate = max(datarate, default_datarates[an_array] if not ((an_array == 'EVN') and \
-                                                    (selected_band in ('18cm', '21cm'))) else 1024)
 
         return [True if s.codename in selected_antennas else False for s in all_antennas] + \
                [False if s.has_band(selected_band) else True for s in all_antennas] + \

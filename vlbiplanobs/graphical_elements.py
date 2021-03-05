@@ -633,7 +633,7 @@ def initial_window_final():
                 "You will also be able to change the setup and re-compute it."]),
             html.Br(),
         ]),
-        html.Div(style={'height': '7rem'}),
+        html.Div(style={'height': '4rem'}),
         html.Div(className='row justify-content-center',
              children=html.Button('Compute', id='antenna-selection-button',
                         className='btn btn-primary btn-lg')),

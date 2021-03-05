@@ -1091,7 +1091,8 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
     # To decide where to put the output message
     out_center = selected_tab == 'tab-setup' or selected_tab == 'tab-doc'
     if n_clicks is None:
-        return '', '', dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return '', '', dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+          dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if epoch_selected:
         # All options must be completed
@@ -1104,7 +1105,9 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                         if (atr is None) or (atr == "")]
             temp = [alert_message(["Complete all fields and options before computing the observation.\n" + \
                                   f"Currently it is missing: {', '.join(missing)}."]), '']
-            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update
     else:
         # All options but the ones related to the observing epoch must be completed
         if None in (band, source, datarate, subbands, channels, pols, inttime) or source == "":
@@ -1114,17 +1117,23 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                         channels, pols, inttime)) if (atr is None) or (atr == "")]
             temp = [alert_message(["Complete all fields and options before computing the observation.\n" + \
                                   f"Currently it is missing: {', '.join(missing)}."]), '']
-            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update
 
     if ants.count(True) == 0:
         temp = [alert_message(["You need to select the antennas you wish to observe your source. " \
                 "Either manually or by selected a default VLBI network at your top left."]), '']
-        return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                dash.no_update, dash.no_update, dash.no_update
     # A single antenna computation is not supported
     if ants.count(True) == 1:
         temp = [alert_message(["Single-antenna computations are not suported. " \
                               "Please choose at least two antennas"]), dash.no_update]
-        return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                dash.no_update, dash.no_update, dash.no_update
 
     try:
         target_source = observation.Source(convert_colon_coord(source), 'Source')
@@ -1135,7 +1144,9 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
             temp = [alert_message(["Wrong source name or coordinates.", html.Br(),
                     "Either the source name hasn't been found or the coordinates format is incorrect."]), \
                     "First, set correctly an observation in the previous tab.", '']
-            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update
     if not epoch_selected:
         try:
             utc_times, _ = observation.Observation.guest_times_for_source(target_source,
@@ -1148,7 +1159,9 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                         "during the given observing time."]),
                         html.P("Modify the observing time or change the selected antennas"
                                " to observe this source.")], title="Warning!"), '']
-            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update
 
         obs_times = utc_times[0] + np.linspace(0, (utc_times[1]-utc_times[0]).to(u.min).value, 50)*u.min
     else:
@@ -1158,17 +1171,23 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
         except ValueError as e:
             temp = [alert_message("Incorrect format for starttime."), \
                    "First, set correctly an observation in the previous tab.", '']
-            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update
 
         if duration <= 0.0:
             temp = [alert_message("The duration of the observation must be a positive number of hours"), \
                    "First, set correctly an observation in the previous tab.", '']
-            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update
 
         if duration > 4*24.0:
             temp = [alert_message("Please, set an observation that lasts for less than 4 days."), \
                    "First, set correctly an observation in the previous tab.", '']
-            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update
 
         obs_times = time0 + np.linspace(0, duration*60, 50)*u.min
 
@@ -1187,7 +1206,9 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                     "during the given observing time."]),
                     html.P("Modify the observing time or change the selected antennas"
                            " to observe this source.")], title="Warning!"), '']
-        return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                dash.no_update, dash.no_update, dash.no_update
 
     # TODO: parallelize all these fig functions
     if out_center:

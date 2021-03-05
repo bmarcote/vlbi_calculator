@@ -381,6 +381,47 @@ def line_cont_setup(is_line_exp):
         return 8, 32, 4, 2
 
 
+@app.callback(Output('button-picknetwork', 'disabled'),
+        [Input(f'network-{network.lower()}', 'value') for network in vlbi_networks_names])
+def continue_from_networks(*networks):
+    """Verifies that the user has selected at least one VLBI network during the wizard screen
+    """
+    for n in networks:
+        if True in n:
+            return False
+
+    return True
+    # len([True for n in networks if True in n]) > 0 % Slower
+
+
+@app.callback(Output('button-picktimes', 'disabled'),
+        [Input('initial-timeselection', 'value'),
+         Input('initial-starttime', 'date'),
+         Input('initial-starthour', 'value'),
+         Input('initial-duration', 'value'),
+         Input('initial-source', 'value')])
+def continue_from_times(time_selection, time_date, time_hour, time_duration, source):
+    """Verifies that the user has selected and introduced the required data before continue.
+    """
+    if source is None:
+        return True
+
+    if not verify_recognized_source(source):
+        return True
+
+    if time_selection:
+        if (time_date is not None) and (time_hour is not None) and (time_duration is not None):
+            try:
+                dummy = float(time_duration)
+                return dummy <= 0
+            except:
+                return True
+        else:
+            return True
+
+    return False
+
+
 
 @app.callback(Output('main-window2', 'children'),
               Output('is_line', 'value'),
@@ -962,6 +1003,30 @@ def get_initial_source(source_coord):
                        'form-text text-danger'
     else:
         return '', dash.no_update
+
+
+def verify_recognized_source(a_source):
+    """Equivalent to the previous function, but returns a bool for when a source name/coordinates
+    have been introduced correctly or not.
+    """
+    if a_source is None:
+        return False
+
+    if len(a_source) > 30:
+        return False
+
+    try:
+        dummy_target = observation.Source(convert_colon_coord(a_source), 'Source')
+        return True
+    except ValueError as e:
+        try:
+            dummy_target = coord.get_icrs_coordinates(a_source)
+            return True
+        except coord.name_resolve.NameResolveError as e:
+            return False
+
+    return False
+
 
 
 @app.callback([Output('error_source', 'children'),

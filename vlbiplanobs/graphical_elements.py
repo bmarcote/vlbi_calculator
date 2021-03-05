@@ -491,7 +491,7 @@ def initial_window_pick_network(app, vlbi_networks):
             html.Br(),
             html.Div(className='row justify-content-center',
                      children=html.Button('Continue', id='button-picknetwork',
-                                className='btn btn-primary btn-lg')),
+                                disabled=True, className='btn btn-primary btn-lg')),
             # html.Div(hidden=True, children=[
             #     dcc.Dropdown(id='initial-array', options=[{'label': n, 'value': n} \
             #                  for n in vlbi_networks if n != 'e-EVN'], value=[],
@@ -633,7 +633,7 @@ def initial_window_final():
                 "You will also be able to change the setup and re-compute it."]),
             html.Br(),
         ]),
-        html.Span(style={'height': '5rem'}),
+        html.Div(style={'height': '7rem'}),
         html.Div(className='row justify-content-center',
              children=html.Button('Compute', id='antenna-selection-button',
                         className='btn btn-primary btn-lg')),

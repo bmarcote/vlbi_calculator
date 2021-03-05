@@ -548,7 +548,7 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                                     "antenna list showing the ones that can observe "
                                     "at that given frequency.")
                     ]),
-                    dcc.Dropdown(id='band', persistence=True, value=None,
+                    dcc.Dropdown(id='band', persistence=True, value='18cm',
                          options=[{'label': fs.bands[b], 'value': b} for b \
                         # in fs.bands], value='18cm'),
                         in fs.bands], placeholder='Select observing band...'),

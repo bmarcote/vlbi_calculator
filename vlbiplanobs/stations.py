@@ -599,70 +599,47 @@ class Stations(object):
 
 
     @staticmethod
-    def get_network_names_from_configfile(filename: str) -> dict:
+    def get_network_names_from_configfile(filename: str = None) -> dict:
         """Reads a config file containing the different VLBI networks defined as a config parser file.
-        Returns a dictionary with the nickname of the VLBI network as keys,
+        Returns a dictionary with the nickname of the VLBI network as keys, and the information as
+        keys in a second-order dict.
+
         Inputs
         - filename : str
             Path to the text file containing the information from all stations.
             If not provided, it reads the default station catalog file located in
-                            data/stations_catalog.inp
+                            data/network_catalog.inp
             Any other file should contain the same format (standard Python input config files),
-            with the following fields per station (whose name would be provided as the name of
+            with the following fields per network (whose name would be provided as the name of
             section).
-            - station - full name of the station.
-            - code : codename assigned to the station. It must be unique (typically two letters).
-            - network - main network to which it belongs to.
-            - possible_networks - all networks the station can participate in (including 'network')
-            - country - country where the station is located.
-            - diameter - free format string with the diameter of the station
-                        (optional more information in case of interferometers).
-            - position = x, y, z (in meters). Geocentric position of the station.
-            - min_elevation (in degrees) - minimum elevation the station can observe.
-            - real_time = yes/no - if the station can participate in real-time observations (e.g. e-EVN).
-            - SEFD_**  - SEFD (in Jy units) of the station at the **cm band. If a given band is not present,
-                        it is assumed that the station cannot observe it.
-                        For example SEFD_21 = 500 means that the SEFD at 21cm is 500 Jy.
-            - Any other attribute is accepted, but ignored in this code. That would easily allow future
-              extensions of the code.
-        - codenames : list
-            If you only want to select a subset of all stations available in the input file,
-            here you can pass a list with the codenames of the stations that should be imported.
-        - name : str
-            Name to assign to the network of stations that will be created.
+            - name - full name of the network.
+            - default_antennas - comma-separated list with the codename of the antennas involved in the network.
+            - max_datarate - integer number with the maximum datarate allowed in the network.
+            - observing_bands - comma-separated list with the bands that can be observed (following
+              the definition done in vlbiplanobs/freqsetups.py; e.g. 21cm, 18cm, etc).
 
         Returns
-        - network : Stations
-            Returns a Stations object containing the selected stations.
+        - networks : dict
+            Returns a dictionary containing the differnet networks.
         """
         config = configparser.ConfigParser()
         if filename is None:
-            with resources.path("data", "stations_catalog.inp") as stations_catalog_path:
-                config.read(stations_catalog_path)
+            with resources.path("data", "network_catalog.inp") as networks_catalog_path:
+                config.read(networks_catalog_path)
         else:
             # With this approach it raises a FileNotFound exception.
             # Otherwise config will run smoothly and provide an empty list.
             config.read(open(filename, 'r'))
 
-        networks = Stations(name, [])
-        for stationname in config.sections():
-            if (codenames is None) or (config[stationname]['code'] in codenames):
-                temp = [float(i.strip()) for i in config[stationname]['position'].split(',')]
-                a_loc = coord.EarthLocation(temp[0]*u.m, temp[1]*u.m, temp[2]*u.m)
-                # Getting the SEFD values for the bands
-                min_elev = float(config[stationname]['min_elevation'])*u.deg
-                does_real_time = True if config[stationname]['real_time']=='yes' else False
-                sefds = {}
-                for akey in config[stationname].keys():
-                    if 'SEFD_' in akey.upper():
-                        sefds[f"{akey.upper().replace('SEFD_', '').strip()}cm"] = \
-                                            float(config[stationname][akey])
-
-                new_station = SelectedStation(stationname, config[stationname]['code'],
-                        config[stationname]['network'], a_loc, sefds, min_elev,
-                        config[stationname]['station'], config[stationname]['possible_networks'],
-                        config[stationname]['country'], config[stationname]['diameter'], does_real_time)
-                networks.add(new_station)
+        networks = dict()
+        for networkname in config.sections():
+            networks[networkname] = dict()
+            networks[networkname]['name'] = config[networkname]['name']
+            networks[networkname]['default_antennas'] = [a.strip() for a in \
+                                                 config[networkname]['default_antennas'].split(',')]
+            networks[networkname]['max_datarate'] = int(config[networkname]['max_datarate'])
+            networks[networkname]['observing_bands'] = [b.strip() for b in \
+                                            config[networkname]['observing_bands'].split(',')]
 
         return networks
 

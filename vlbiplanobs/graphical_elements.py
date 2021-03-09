@@ -110,7 +110,7 @@ def network_card(app, network_acr, network_name, body, network_img=None):
     """
     card = dbc.Card([
         dbc.CardImg(src=app.get_asset_url(network_img if network_img is not None else \
-                                          f"network-{network_acr.lower()}.png"),
+                                          f"network-{network_acr.lower().replace(' ', '_')}.png"),
                     top=True, className='card-img'),
         dbc.CardBody([
             html.H4(network_acr, className='card-title'),
@@ -485,8 +485,8 @@ def initial_window_pick_network(app, vlbi_networks):
             ]),
             html.Br(),
             html.Div(className='row justify-content-center', children=[
-                network_card(app, a_network, vlbi_networks[a_network], "") \
-                for a_network in vlbi_networks
+                network_card(app, a_network, vlbi_networks[a_network]['name'], "") \
+                for a_network in vlbi_networks if a_network != 'e-EVN'
             ]),
             html.Br(),
             html.Div(className='row justify-content-center',

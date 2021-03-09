@@ -61,6 +61,8 @@ from vlbiplanobs.Checkbox import Checkbox
 
 
 all_antennas = stations.Stations.get_stations_from_configfile()
+default_arrays = stations.Stations.get_network_names_from_configfile()
+
 
 sorted_networks = {'EVN': 'EVN: European VLBI Network', 'eMERLIN': 'eMERLIN (out-stations)',
                    'VLBA': 'VLBA: Very Long Baseline Array',
@@ -68,48 +70,47 @@ sorted_networks = {'EVN': 'EVN: European VLBI Network', 'eMERLIN': 'eMERLIN (out
                    'KVN': 'KVN: Korean VLBI Network',
                    'Other': 'Other antennas',
                    'Decom': 'Decommissioned antennas'}
-default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6', 'Tr',
-                          'Ys', 'Wb', 'Bd', 'Sv', 'Zc', 'Ir'],
-          'e-EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'On', 'T6', 'Tr', 'Ys', 'Wb',
-                    'Bd', 'Sv', 'Zc', 'Ir', 'Sr'],
-          'eMERLIN': ['Cm', 'Kn', 'Pi', 'Da', 'De', 'Jb2'],
-          'LBA': ['ATCA', 'Pa', 'Mo', 'Ho', 'Cd', 'Td', 'Ww'],
-          'VLBA': ['Br', 'Fd', 'Hn', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
-          'KVN': ['Ky', 'Ku', 'Kt'],
-          'Global VLBI': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
-                          'Tr', 'Ys', 'Wb', 'Bd', 'Sv', 'Zc', 'Ir', 'Br', 'Fd', 'Hn',
-                          'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
-          'HSA': ['Br', 'Fd', 'Hn', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc', 'Ef', #'Ar',
-                  'Gb', 'Y27'],
-          'GMVA': ['Ef', 'Mh', 'On', 'Ys', 'Pv', 'PdB', 'Br', 'Fd', 'Kp', 'La', 'Mk', 'Nl',
-                   'Ov', 'Pt', 'Gb'],
-          'EHT': ['ALMA', 'Pv', 'LMT', 'PdB', 'SMA', 'JCMT', 'APEX', 'SMT', 'SPT']}
+# default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6', 'Tr',
+#                           'Ys', 'Wb', 'Bd', 'Sv', 'Zc', 'Ir'],
+#           'e-EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'On', 'T6', 'Tr', 'Ys', 'Wb',
+#                     'Bd', 'Sv', 'Zc', 'Ir', 'Sr'],
+#           'eMERLIN': ['Cm', 'Kn', 'Pi', 'Da', 'De', 'Jb2'],
+#           'LBA': ['ATCA', 'Pa', 'Mo', 'Ho', 'Cd', 'Td', 'Ww'],
+#           'VLBA': ['Br', 'Fd', 'Hn', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
+#           'KVN': ['Ky', 'Ku', 'Kt'],
+#           'Global VLBI': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
+#                           'Tr', 'Ys', 'Wb', 'Bd', 'Sv', 'Zc', 'Ir', 'Br', 'Fd', 'Hn',
+#                           'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
+#           'HSA': ['Br', 'Fd', 'Hn', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc', 'Ef', #'Ar',
+#                   'Gb', 'Y27'],
+#           'GMVA': ['Ef', 'Mh', 'On', 'Ys', 'Pv', 'PdB', 'Br', 'Fd', 'Kp', 'La', 'Mk', 'Nl',
+#                    'Ov', 'Pt', 'Gb'],
+#           'EHT': ['ALMA', 'Pv', 'LMT', 'PdB', 'SMA', 'JCMT', 'APEX', 'SMT', 'SPT']}
+#
+# vlbi_networks_names = {'EVN': 'European VLBI Network',
+#                        'eMERLIN': 'eMERLIN',
+#                        'LBA': 'Australian Long Baseline Array',
+#                        'VLBA': 'Very Long Baseline Array',
+#                        'KVN': 'Korean VLBI Network',
+#                        # 'Global VLBI': 'Global VLBI (VLBA+EVN)',
+#                        'HSA': 'High Sensitivity Array',
+#                        'GMVA': 'Global mm-VLBI Array',
+#                        'EHT': 'Event Horizon Telescope'}
 
-vlbi_networks_names = {'EVN': 'European VLBI Network',
-                       'eMERLIN': 'eMERLIN',
-                       'LBA': 'Australian Long Baseline Array',
-                       'VLBA': 'Very Long Baseline Array',
-                       'KVN': 'Korean VLBI Network',
-                       # 'Global VLBI': 'Global VLBI (VLBA+EVN)',
-                       'HSA': 'High Sensitivity Array',
-                       'GMVA': 'Global mm-VLBI Array',
-                       'EHT': 'Event Horizon Telescope'}
-
-#TODO: this will be included per station (but maybe it needs to remain):
-default_datarates = {'EVN': 2048, 'e-EVN': 2048, 'eMERLIN': 4096, 'LBA': 1024, 'VLBA': 4096, 'KVN': 4096,
-                     'Global VLBI': 2048, 'HSA': 2048, 'GMVA': 4096, 'EHT': 2**15}
+# default_datarates = {'EVN': 2048, 'e-EVN': 2048, 'eMERLIN': 4096, 'LBA': 1024, 'VLBA': 4096, 'KVN': 4096,
+#                      'Global VLBI': 2048, 'HSA': 2048, 'GMVA': 4096, 'EHT': 2**15}
 
 
 # Safety check that all these antennas are available in the file
 for a_array in default_arrays:
-    for a_station in default_arrays[a_array]:
+    for a_station in default_arrays[a_array]['default_antennas']:
         assert a_station in all_antennas.codenames
 
 doc_files = {'About the EVN Observation Planner': 'doc-contact.md',
              'About the antennas': 'doc-antennas.md',
              'Technical background': 'doc-estimations.md'}
 
-selected_band = None
+selected_band = '6cm'
 obs = observation.Observation()
 
 external_stylesheets = []
@@ -223,12 +224,11 @@ def update_sensitivity(obs):
 def arrays_with_band(arrays, a_band):
     """Returns the arrays that can observe the given band with at least two antennas.
     It excludes e-EVN if it is included in arrays.
-    Note that hardcoded is the detection of GMVA and EHT (only available at a given frequency).
 
     Inputs
     - arrays : dict
-        The keys are the name of the array and the values must be a list with the codenames
-        of the antennas in the array.
+        The keys are the name of the array and the values must be a dict with the codenames
+        of the antennas in an array inside the value 'default_antennas'.
     - a_band : str
         The band to be observed, following the criteria in fs.bands.
 
@@ -239,18 +239,8 @@ def arrays_with_band(arrays, a_band):
     tmp = []   # the list of arrays that can observe the given band
     for an_array in arrays:
         if an_array != 'e-EVN':
-            if np.sum([all_antennas[a_station].has_band(a_band) for a_station in arrays[an_array]]) > 1:
-                if an_array == 'GMVA':
-                    if a_band == '0.3cm':
-                        tmp.append(an_array)
-                elif an_array == 'EHT':
-                    if (a_band == '0.1cm') or (a_band == '0.3cm'):
-                        tmp.append(an_array)
-                elif (an_array == 'EVN') or (an_array == 'Global VLBI'):
-                    if float(a_band.replace('cm', '')) > 0.5:
-                        tmp.append(an_array)
-                else:
-                    tmp.append(an_array)
+            if a_band in arrays[an_array]['observing_bands']:
+                tmp.append(an_array)
 
     if len(tmp) == 0:
         return 'none'
@@ -324,10 +314,11 @@ def band_from_initial(initial_value):
 
 
 @app.callback(Output('array', 'value'),
-              [Input(f'network-{network.lower()}', 'value') for network in vlbi_networks_names],
+              [Input(f'network-{network.lower()}', 'value') for network in default_arrays if network != 'e-EVN'],
               prevent_initial_call=True)
 def array_from_initial(*selected_networks):
-    return [network for (network,selected) in zip(vlbi_networks_names, selected_networks) if selected]
+    return [network for (network,selected) in \
+            zip([n for n in default_arrays if n != 'e-EVN'], selected_networks) if selected]
 
 
 @app.callback(Output('e-EVN', 'value'),
@@ -381,20 +372,37 @@ def line_cont_setup(is_line_exp):
         return 8, 32, 4, 2
 
 
-@app.callback(Output('button-picknetwork', 'disabled'),
-        [Input(f'network-{network.lower()}', 'value') for network in vlbi_networks_names])
+@app.callback([Output('button-picknetwork', 'disabled'),
+               Output('button-picknetwork', 'children')],
+        [Input(f"network-{network.lower()}", 'value') for network in default_arrays if network != 'e-EVN'])
 def continue_from_networks(*networks):
     """Verifies that the user has selected at least one VLBI network during the wizard screen
     """
     for n in networks:
         if True in n:
-            return False
+            return False, 'Continue'
 
-    return True
+    return True, 'Select network(s) to continue'
     # len([True for n in networks if True in n]) > 0 % Slower
 
 
-@app.callback(Output('button-picktimes', 'disabled'),
+@app.callback([Output('button-pickband', 'disabled'),
+               Output('button-pickband', 'children')],
+              Input('initial-band', 'value'),
+              [State(f"network-{network.lower()}", 'value') for network in default_arrays if network != 'e-EVN'])
+def continue_from_band(selected_band, *networks):
+    """Verifies that the selected band can be observed by the given network.
+    """
+    for n,nname in zip(networks, [network for network in default_arrays if network != 'e-EVN']):
+        if True in n:
+            if tuple(fs.bands.keys())[selected_band] in default_arrays[nname]['observing_bands']:
+                return False, 'Continue'
+
+    return True, 'The selected network cannot observe at this band'
+
+
+@app.callback([Output('button-picktimes', 'disabled'),
+         Output('button-picktimes', 'children')],
         [Input('initial-timeselection', 'value'),
          Input('initial-starttime', 'date'),
          Input('initial-starthour', 'value'),
@@ -403,23 +411,21 @@ def continue_from_networks(*networks):
 def continue_from_times(time_selection, time_date, time_hour, time_duration, source):
     """Verifies that the user has selected and introduced the required data before continue.
     """
-    if source is None:
-        return True
-
-    if not verify_recognized_source(source):
-        return True
+    if (source is None) or (not verify_recognized_source(source)):
+        return True, 'Specify epoch and target before continue'
 
     if time_selection:
         if (time_date is not None) and (time_hour is not None) and (time_duration is not None):
             try:
                 dummy = float(time_duration)
-                return dummy <= 0
+                return (True, 'Specify epoch and target before continue') if (dummy <= 0) or (dummy > 4*24) \
+                        else (False, 'Continue')
             except:
-                return True
+                return True, 'Specify epoch and target before continue'
         else:
-            return True
+            return True, 'Specify epoch and target before continue'
 
-    return False
+    return False, 'Continue'
 
 
 
@@ -431,9 +437,9 @@ def continue_from_times(time_selection, time_date, time_hour, time_duration, sou
                Input('button-mode-continuum', 'n_clicks'),
                Input('button-mode-line', 'n_clicks')])
 def intro_choices(clicks_pickband, clicks_picknetwork, clicks_picktimes, clicks_continuum, clicks_line):
-    if clicks_pickband is not None:
-        return choice_page('network'), dash.no_update
-    elif clicks_picknetwork is not None:
+    if clicks_picknetwork is not None:
+        return choice_page('band'), dash.no_update
+    elif clicks_pickband is not None:
         return choice_page('time'), dash.no_update
     elif clicks_picktimes is not None:
         #TODO: if dates are provided, all date/time/dur must be provided
@@ -477,7 +483,7 @@ def choice_for_setup(do_wizard, do_expert):
             # order inverted to improve loading times
             html.Div(id='main-window2', hidden=do_expert is not None,
                      children=[dbc.Checklist(id='is_line', options=[{'label': 'line obs', 'value': False}],
-                               value=[])] if do_expert is not None else choice_page('band')),
+                               value=[])] if do_expert is not None else choice_page('network')),
             html.Div(id='main-window', hidden=do_expert is None,
                      children=main_page(show_compute_button=do_expert is not None))
             ]
@@ -507,7 +513,7 @@ def choice_page(choice_card):
                                 html.Div(hidden=False if choice_card == 'band' else True,
                                          children=ge.initial_window_pick_band()),
                                 html.Div(hidden=False if choice_card == 'network' else True,
-                                         children=ge.initial_window_pick_network(app, vlbi_networks_names)),
+                                         children=ge.initial_window_pick_network(app, default_arrays)),
                                 html.Div(hidden=False if choice_card == 'time' else True,
                                          children=ge.initial_window_pick_time()),
                                 html.Div(hidden=False if choice_card == 'mode' else True,
@@ -731,13 +737,14 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                                     "will be clickable."], className='form-text text-warning'))
                         ], style={'margin-top': '2rem', 'margin-bottom': '2rem'}),
                         html.Div(className='col-9 form-group row align-items-end', children=[
-                            html.Div(className='col-md-6', children=[
+                            html.Div(className='col-md-12', children=[
                                 html.Label('Select default VLBI Network(s)'),
                                         # style={'color': '#a01d26'}),
                                 *ge.tooltip(idname='popover-network', message="Automatically selects "
                                             "the default participating antennas for the selected VLBI network(s)."),
-                                dcc.Dropdown(id='array', options=[{'label': n, 'value': n} \
-                                        for n in default_arrays if n != 'e-EVN'], value=[],
+                                dcc.Dropdown(id='array', options=[{'label': f"{n}: {default_arrays[n]['name']}" \
+                                        if n != default_arrays[n]['name'] else n,
+                                        'value': n} for n in default_arrays if n != 'e-EVN'], value=[],
                                         persistence=True, multi=True),
                             ]),
                         ]),
@@ -908,30 +915,27 @@ def select_antennas(selected_band, selected_networks, is_eEVN, is_line):
     """Given a selected band and selected default networks, it selects the associated
     antennas from the antenna list.
     """
-    selected_antennas = []
-    if is_eEVN:
-        selected_antennas = [ant for ant in default_arrays['e-EVN'] \
-                             if all_antennas[ant].has_band(selected_band)]
-        datarate = default_datarates['e-EVN'] if selected_band not in ('18cm', '21cm') else 1024
-        return [True if s.codename in selected_antennas else False for s in all_antennas] + \
-               [False if (s.has_band(selected_band) and s.real_time) else True \
-                for s in all_antennas] + [datarate if not is_line else 256]
+    # Getting the data rate
+    if 'EVN' in selected_networks or is_eEVN:
+        datarate = default_arrays['EVN']['max_datarate'] if selected_band not in ('18cm', '21cm') else 1024
     else:
         datarate = -1
-        if 'EVN' in selected_networks:
-            datarate = default_datarates['EVN'] if selected_band not in ('18cm', '21cm') else 1024
-        else:
-            for an_array in selected_networks:
-                datarate = max(datarate, default_datarates[an_array] if not ((an_array == 'EVN') and \
-                                                        (selected_band in ('18cm', '21cm'))) else 1024)
-
         for an_array in selected_networks:
-            selected_antennas += [ant for ant in default_arrays[an_array] \
-                                    if all_antennas[ant].has_band(selected_band)]
+            datarate = max(datarate, default_arrays[an_array]['max_datarate'])
 
-        return [True if s.codename in selected_antennas else False for s in all_antennas] + \
-               [False if s.has_band(selected_band) else True for s in all_antennas] + \
-               [datarate if not is_line else 256]
+    # Getting the selected antennas
+    selected_antennas = []
+    if is_eEVN:
+        selected_antennas = [ant for ant in default_arrays['e-EVN']['default_antennas'] \
+                         if all_antennas[ant].has_band(selected_band)]
+
+    for an_array in selected_networks:
+            selected_antennas += [ant for ant in default_arrays[an_array]['default_antennas'] \
+                if all_antennas[ant].has_band(selected_band) and (an_array != 'EVN' or not is_eEVN)]
+
+    return [True if s.codename in selected_antennas else False for s in all_antennas] + \
+           [False if (s.has_band(selected_band) and (s.real_time or not is_eEVN)) else True \
+            for s in all_antennas] + [datarate if not is_line else 256]
 
 
 

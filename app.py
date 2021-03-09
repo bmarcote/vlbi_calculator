@@ -1269,28 +1269,29 @@ def get_fig_ant_up(obs):
     data_fig = []
     data_dict = obs.is_visible()
     for i,ant in enumerate(data_dict):
-        data_fig.append({'x': obs.times.datetime[data_dict[ant]],
+        data_fig.append({'x': np.unwrap(obs.gstimes.value)[data_dict[ant]],
+                            # obs.times.datetime[data_dict[ant]],
                          'y': np.zeros_like(data_dict[ant][0])-i, 'type': 'scatter',
                          'hovertemplate': "%{x}",
                          'mode': 'markers', 'marker_symbol': "41",
                          'hoverinfo': "skip",
                          'name': obs.stations[ant].name})
 
-    data_fig.append({'x': np.unwrap(obs.gstimes.value), 'y': np.zeros_like(obs.times)-0.5,
+    data_fig.append({'x': obs.times.datetime, 'y': np.zeros_like(obs.times)-0.5,
                      'xaxis': 'x2',
                      'mode': 'lines', 'hoverinfo': 'skip', 'showlegend': False,
                      'line': {'dash': 'dot', 'opacity': 0.0, 'color': 'white'}})
     return {'data': data_fig,
             'layout': {'title': 'Source visible during the observation',
-                       'xaxis': {'title': 'Time (UTC)', 'showgrid': False,
+                       'xaxis': {'title': 'Time (GST)', 'showgrid': False,
                                  'ticks': 'inside', 'showline': True, 'mirror': False,
                                  'hovermode': 'closest', 'color': 'black'},
-                       'xaxis2': {'title': {'text': 'Time (GST)', 'standoff': 0},
+                       'xaxis2': {'title': {'text': 'Time (UTC)', 'standoff': 0},
                                   'showgrid': False, 'overlaying': 'x', #'dtick': 1.0,
-                                  'tickvals': np.arange(np.ceil(obs.gstimes.value[0]),
-                                            np.floor(np.unwrap(obs.gstimes.value)[-1])+1),
-                                  'ticktext': np.arange(np.ceil(obs.gstimes.value[0]),
-                                            np.floor(np.unwrap(obs.gstimes.value)[-1])+1) % 24,
+                                  # 'tickvals': np.arange(np.ceil(obs.gstimes.value[0]),
+                                  #           np.floor(np.unwrap(obs.gstimes.value)[-1])+1),
+                                  # 'ticktext': np.arange(np.ceil(obs.gstimes.value[0]),
+                                  #           np.floor(np.unwrap(obs.gstimes.value)[-1])+1) % 24,
                                   'ticks': 'inside', 'showline': True, 'mirror': False,
                                   'hovermode': 'closest', 'color': 'black', 'side': 'top'},
                        'yaxis': {'ticks': '', 'showline': True, 'mirror': True,
@@ -1298,6 +1299,37 @@ def get_fig_ant_up(obs):
                                  'showgrid': False, 'hovermode': 'closest',
                                  'startline': False}}}
 
+    # data_fig = []
+    # data_dict = obs.is_visible()
+    # for i,ant in enumerate(data_dict):
+    #     data_fig.append({'x': obs.times.datetime[data_dict[ant]],
+    #                      'y': np.zeros_like(data_dict[ant][0])-i, 'type': 'scatter',
+    #                      'hovertemplate': "%{x}",
+    #                      'mode': 'markers', 'marker_symbol': "41",
+    #                      'hoverinfo': "skip",
+    #                      'name': obs.stations[ant].name})
+    #
+    # data_fig.append({'x': np.unwrap(obs.gstimes.value), 'y': np.zeros_like(obs.times)-0.5,
+    #                  'xaxis': 'x2',
+    #                  'mode': 'lines', 'hoverinfo': 'skip', 'showlegend': False,
+    #                  'line': {'dash': 'dot', 'opacity': 0.0, 'color': 'white'}})
+    # return {'data': data_fig,
+    #         'layout': {'title': 'Source visible during the observation',
+    #                    'xaxis': {'title': 'Time (UTC)', 'showgrid': False,
+    #                              'ticks': 'inside', 'showline': True, 'mirror': False,
+    #                              'hovermode': 'closest', 'color': 'black'},
+    #                    'xaxis2': {'title': {'text': 'Time (GST)', 'standoff': 0},
+    #                               'showgrid': False, 'overlaying': 'x', #'dtick': 1.0,
+    #                               'tickvals': np.arange(np.ceil(obs.gstimes.value[0]),
+    #                                         np.floor(np.unwrap(obs.gstimes.value)[-1])+1),
+    #                               'ticktext': np.arange(np.ceil(obs.gstimes.value[0]),
+    #                                         np.floor(np.unwrap(obs.gstimes.value)[-1])+1) % 24,
+    #                               'ticks': 'inside', 'showline': True, 'mirror': False,
+    #                               'hovermode': 'closest', 'color': 'black', 'side': 'top'},
+    #                    'yaxis': {'ticks': '', 'showline': True, 'mirror': True,
+    #                              'showticklabels': False, 'zeroline': False,
+    #                              'showgrid': False, 'hovermode': 'closest',
+    #                              'startline': False}}}
 
 
 def get_fig_uvplane(obs):

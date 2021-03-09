@@ -539,7 +539,7 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                                    'min-width': '17rem'}, children=[
                 html.Div(className='form-group', children=[
                     html.Div('', style={'height': '70px'}),
-                    dcc.Loading(id="loading2", children=[html.Div(id="loading-output2")],
+                    dcc.Loading(id="loading2", children=[html.Div(id="loading-output2"), html.Br()],
                                 type="dot"),
                     html.Button('Compute observation',
                         id='antenna-selection-button',

@@ -637,6 +637,7 @@ def initial_window_final():
         html.Div(className='row justify-content-center',
              children=html.Button('Compute', id='antenna-selection-button',
                         className='btn btn-primary btn-lg')),
+        html.Br(),
         html.Div(className='col-9 text-center justify-content-center', children=[
             dcc.Loading(id="loading", children=[html.Div(id="loading-output")],
                         type="dot"),

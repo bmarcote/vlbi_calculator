@@ -1,0 +1,80 @@
+[EVN]
+
+name = European VLBI Network
+default_antennas = Ef, Hh, Jb2, Mc, Nt, Ur, On, Sr, T6, Tr, Ys, Wb, Bd, Sv, Zc, Ir
+max_datarate = 2048
+observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm
+
+
+[e-EVN]
+
+name = European VLBI Network
+default_antennas = Ef, Hh, Jb2, Mc, Nt, On, Sr, T6, Tr, Ys, Wb, Bd, Sv, Zc, Ir
+max_datarate = 2048
+observing_bands = 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm
+
+
+[eMERLIN]
+
+name = eMERLIN
+default_antennas = Cm, Kn, Pi, Da, De, Jb2
+max_datarate = 4096
+observing_bands = 92cm, 49cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 2cm, 1.3cm, 0.7cm, 0.3cm
+
+
+[VLBA]
+
+name = Very Long Baseline Array
+default_antennas = Br, Fd, Hn, Kp, La, Mk, Nl, Ov, Pt, Sc
+max_datarate = 4096
+observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm, 0.3cm
+
+
+[Global VLBI]
+
+name = Global VLBI (EVN+VLBA)
+default_antennas = Ef, Hh, Jb2, Mc, Nt, Ur, On, Sr, T6, Tr, Ys, Wb, Bd, Sv, Zc, Ir, Br, Fd, Hn, Kp, La, Mk, Nl, Ov, Pt, Sc
+max_datarate = 2048
+observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm
+
+
+[LBA]
+
+name = Australian Long Baseline Array
+default_antennas = ATCA, Pa, Mo, Ho, Cd, Td, Ww
+max_datarate = 1024
+observing_bands = 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm
+
+
+[KVN]
+
+name = Korean VLBI Network
+default_antennas = Ky, Ku, Kt
+max_datarate = 4096
+observing_bands = 1.3cm, 0.7cm, 0.3cm
+
+
+[HSA]
+
+name = High Sensitivity Array
+default_antennas = Br, Fd, Hn, Kp, La, Mk, Nl, Ov, Pt, Sc, Ef, Gb, Y27
+max_datarate = 4096
+observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm, 0.3cm
+
+
+[GMVA]
+
+name = Gobal mm-VLBI Array
+default_antennas = Ef, Mh, On, Ys, Pv, PdB, Br, Fd, Kp, La, Mk, Nl, Ov, Pt, Gb
+max_datarate = 4096
+observing_bands = 0.7cm, 0.3cm
+
+
+[EHT]
+
+name = Event Horizon Telescope
+default_antennas = ALMA, Pv, LMT, PdB, SMA, JCMT, APEX, SMT, SPT
+max_datarate = 32768
+observing_bands = 0.3cm, 0.1cm
+
+

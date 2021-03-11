@@ -298,7 +298,10 @@ def summary_card_fov(app, obs):
                               bmin=f"{2*smearing_ratio}rem",
                               pa="0deg", color="white", z_index=4, position='absolute',
                               className='align-self-center')])]
-    temp_msg += [f"The Field of View would be limited by time smearing to {optimal_units(tm_smearing, [u.arcmin, u.arcsec]):.3n} and by frequency smearing to {optimal_units(bw_smearing, [u.arcmin, u.arcsec]):.3n} (considering a 10% loss)."]
+    temp_msg += [f"The Field of View would be limited by time smearing to "
+                 "{optimal_units(tm_smearing, [u.arcmin, u.arcsec]):.3n} and by frequency smearing to "
+                 "{optimal_units(bw_smearing, [u.arcmin, u.arcsec]):.3n} (considering a 10% loss), "
+                 "if no further time/frequency averaging is performed."]
     temp_msg += [f"Considering the shortest baseline in the array, "
     "you will resolve out emission on angular scales larger than "
     f"{optimal_units(largest_ang_scales, [u.arcmin, u.arcsec, u.mas]):.3n}."]

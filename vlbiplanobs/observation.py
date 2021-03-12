@@ -840,18 +840,33 @@ class Observation(object):
                             'pa': (bl_bmaj_theta*u.rad).to(u.deg)}
         return self._synth_beam
 
-    # def get_dirtymap(self):
-    #     uvdata = self._get_uv()
-    #     # Generates a N 2-D array with all uv data.
-    #     tot_length = 0
-    #     for bl_name in uvdata:
-    #         tot_length += uvdata[bl_name].shape[0]
-    #
-    #     uvvis = np.empty((tot_length, 2))
-    #     i = 0
-    #     for bl_name in uvdata:
-    #         uvvis[i:uvdata[bl_name].shape[0]] = uvdata[bl_name]
-    #         i += uvdata[bl_name].shape[0]
+
+    def get_dirtymap(self, pixsize:int =1024):
+        """Returns the dirty beam produced for the given observation.
+
+        Input:  - pixsize : int
+                Size in pixels of the returned (squared) image. By default 1024.
+
+        Returns:
+            - dirty_image : (pixsize x pixsize) np.array
+                The dirty image in intensity.
+            - laxis : np.array
+                An array representing the values of each pixel in the image in mas for each axis.
+
+        """
+        pixsize = 1024
+        uvimg = np.zeros((pixsize, pixsize))
+
+        # Gridding uv.  Inspired from VNSIM code (https://github.com/ZhenZHAO/VNSIM)
+        uvscaling = pixsize/(0.9*self.longest_baseline()[1].to(u.cm).value)
+        uvdata = self.get_uv_array()
+        for uv in uvdata:
+            uvimg[int(pixsize//2 + round(uv[0]*uvscaling)), int(pixsize//2 +round(uv[1]*uvscaling))] = 1
+
+        dirty_beam = np.real(np.fft.ifftshift(np.fft.ifft2(np.fft.fftshift(uvimg))))
+        imgsize = (uvscaling*u.rad/2).to(u.mas) # angular equivalent size of the resulting image
+        return dirty_beam/np.max(dirty_beam), np.linspace(-imgsize, imgsize, pixsize)
+
 
 
     def print_obs_times(self, date_format='%d %B %Y'):

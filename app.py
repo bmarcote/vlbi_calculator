@@ -28,7 +28,7 @@ from dash.dependencies import Input, Output, State
 import dash_core_components as dcc
 import dash_html_components as html
 import dash_bootstrap_components as dbc
-import plotly.graph_objs as go
+import plotly.express as px
 from astropy.time import Time
 from astropy import coordinates as coord
 from astropy import units as u
@@ -500,7 +500,7 @@ def choice_page(choice_card):
 
 
 def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
-              fig_ant_output=None, fig_uv_output=None, show_compute_button=True):
+              fig_ant_output=None, fig_uv_output=None, fig_dirty_map_output=False, show_compute_button=True):
     return [# First row containing all buttons/options, list of telescopes, and button with text output
     dcc.ConfirmDialog(id='global-error', message=''),
     # Elements in second column (checkboxes with all stations)
@@ -823,6 +823,15 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                             html.Br()
                         ]),
                         html.Div(children=[dcc.Graph(id='fig-uvplane', children=fig_uv_output)],
+                                 className='tex2jax_ignore'),
+                        html.Br(),
+                        html.Div([
+                            html.Br(),
+                            html.H4("Resulting dirty map"),
+                            html.Br()
+                        ]),
+                        html.Div(children=[dcc.Graph(id='fig-dirtymap', figure=fig_dirty_map_output,
+                                            relayoutData={'xaxis': {'autorange': 'reverse'}})],
                                  className='tex2jax_ignore')
                     ])])
                 ]),
@@ -1045,6 +1054,7 @@ def get_source(source_coord):
                Output('fig-elev-time', 'figure'),
                Output('fig-ant-time', 'figure'),
                Output('fig-uvplane', 'figure'),
+               Output('fig-dirtymap', 'figure'),
                Output('global-error', 'message'),
                Output('tabs', 'value'),
                Output('tab-summary', 'disabled'),
@@ -1073,7 +1083,8 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
     out_center = selected_tab == 'tab-setup' or selected_tab == 'tab-doc'
     if n_clicks is None:
         return '', '', dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-          dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+               dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+               dash.no_update, dash.no_update
 
     if epoch_selected:
         # All options must be completed
@@ -1088,7 +1099,7 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                                   f"Currently it is missing: {', '.join(missing)}."]), '']
             return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
     else:
         # All options but the ones related to the observing epoch must be completed
         if None in (band, source, datarate, subbands, channels, pols, inttime) or source == "":
@@ -1100,21 +1111,21 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                                   f"Currently it is missing: {', '.join(missing)}."]), '']
             return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if ants.count(True) == 0:
         temp = [alert_message(["You need to select the antennas you wish to observe your source. " \
                 "Either manually or by selected a default VLBI network at your top left."]), '']
         return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-                dash.no_update, dash.no_update, dash.no_update
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update
     # A single antenna computation is not supported
     if ants.count(True) == 1:
         temp = [alert_message(["Single-antenna computations are not suported. " \
                               "Please choose at least two antennas"]), dash.no_update]
         return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-                dash.no_update, dash.no_update, dash.no_update
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     try:
         target_source = observation.Source(convert_colon_coord(source), 'Source')
@@ -1127,7 +1138,7 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                     "First, set correctly an observation in the previous tab.", '']
             return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
     if not epoch_selected:
         try:
             utc_times, _ = observation.Observation.guest_times_for_source(target_source,
@@ -1142,7 +1153,7 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                                " to observe this source.")], title="Warning!"), '']
             return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
         obs_times = utc_times[0] + np.linspace(0, (utc_times[1]-utc_times[0]).to(u.min).value, 50)*u.min
     else:
@@ -1154,21 +1165,21 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                    "First, set correctly an observation in the previous tab.", '']
             return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
         if duration <= 0.0:
             temp = [alert_message("The duration of the observation must be a positive number of hours"), \
                    "First, set correctly an observation in the previous tab.", '']
             return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
         if duration > 4*24.0:
             temp = [alert_message("Please, set an observation that lasts for less than 4 days."), \
                    "First, set correctly an observation in the previous tab.", '']
             return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
         obs_times = time0 + np.linspace(0, duration*60, 50)*u.min
 
@@ -1189,16 +1200,17 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                            " to observe this source.")], title="Warning!"), '']
         return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-                dash.no_update, dash.no_update, dash.no_update
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     # TODO: parallelize all these fig functions
     if out_center:
-        return '', '', False, True, \
-       sensitivity_results, get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), dash.no_update, \
-       'tab-summary', False, False, False
+        return '', '', False, True, sensitivity_results, get_fig_ant_elev(obs), \
+            get_fig_ant_up(obs), get_fig_uvplane(obs), get_fig_dirty_map(obs), dash.no_update, \
+           'tab-summary', False, False, False
     else:
-        return '', dbc.Alert("Results have been updated.", color='info', dismissable=True), False, True,\
-           sensitivity_results, get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), dash.no_update,\
+        return '', dbc.Alert("Results have been updated.", color='info', dismissable=True), False, True, \
+           sensitivity_results, get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), \
+           get_fig_dirty_map(obs), dash.no_update, \
            dash.no_update, False, False, False
 
 
@@ -1343,7 +1355,14 @@ def get_fig_uvplane(obs):
 
 
 def get_fig_dirty_map(obs):
-    pass
+    dirty_map, laxis = obs.get_dirtymap(pixsize=1024)
+    print(laxis)
+    return px.imshow(img=dirty_map, x=laxis, y=laxis, labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+            aspect='equal')
+            # layout :  xaxis autorange reversed
+
+
+
 
 
 #####################  This is the webpage layout

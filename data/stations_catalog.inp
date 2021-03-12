@@ -89,6 +89,29 @@ SEFD_13 = 850.0
 SEFD_3.6 = 1255.0
 
 
+[Arecibo 12m]
+
+station = Arecibo 12-m Telescope
+code = AO12m
+network = Other
+possible_networks =
+country = Puerto Rico
+diameter = 12 m
+#img =
+#link =
+position = 2390512.490, -5564470.174,  1995124.185
+min_elevation = 10.0
+real_time = yes
+SEFD_92 = 12
+SEFD_30 = 3
+SEFD_21 = 3.5
+SEFD_18 = 3.0
+SEFD_13 = 3.0
+SEFD_6 = 5.0
+SEFD_5 = 5.0
+SEFD_3.6 = 6.0
+
+
 [Arecibo]
 
 station = Arecibo Telescope

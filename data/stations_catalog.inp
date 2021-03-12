@@ -101,15 +101,9 @@ diameter = 12 m
 #link =
 position = 2390512.490, -5564470.174,  1995124.185
 min_elevation = 10.0
-real_time = yes
-SEFD_92 = 12
-SEFD_30 = 3
-SEFD_21 = 3.5
-SEFD_18 = 3.0
-SEFD_13 = 3.0
-SEFD_6 = 5.0
-SEFD_5 = 5.0
-SEFD_3.6 = 6.0
+real_time = no
+SEFD_13 = 5000.0
+SEFD_3.6 = 4000.0
 
 
 [Arecibo]
@@ -1096,14 +1090,32 @@ SEFD_3.6 = 18.0
 SEFD_1.3 = 83
 
 
-[SKA1 MID]
+[SKA1 MID 1]
 
 station = Square Kilometre Array (1-dish MID)
-code = SKA
+code = SKA1
 network = Other
 possible_networks =
 country = South Africa
 diameter = 1 x 12 m
+#img =
+#link =
+position = 5109105.93105892, 2003381.49740976, -3239353.39941561
+min_elevation = 10.0
+real_time = no
+SEFD_21 = 551
+SEFD_18 = 551
+
+
+
+[SKA1 MID]
+
+station = Square Kilometre Array
+code = SKA
+network = Other
+possible_networks =
+country = South Africa
+diameter = 190 x 12 m
 #img =
 #link =
 position = 5109105.93105892, 2003381.49740976, -3239353.39941561

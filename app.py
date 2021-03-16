@@ -29,6 +29,8 @@ import dash_core_components as dcc
 import dash_html_components as html
 import dash_bootstrap_components as dbc
 import plotly.express as px
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 from astropy.time import Time
 from astropy import coordinates as coord
 from astropy import units as u
@@ -827,11 +829,10 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                         html.Br(),
                         html.Div([
                             html.Br(),
-                            html.H4("Resulting dirty map"),
+                            html.H4("Resulting dirty beam"),
                             html.Br()
                         ]),
-                        html.Div(children=[dcc.Graph(id='fig-dirtymap', figure=fig_dirty_map_output,
-                                            relayoutData={'xaxis': {'autorange': 'reverse'}})],
+                        html.Div(children=[dcc.Graph(id='fig-dirtymap', figure=fig_dirty_map_output)],
                                  className='tex2jax_ignore')
                     ])])
                 ]),
@@ -1355,10 +1356,30 @@ def get_fig_uvplane(obs):
 
 
 def get_fig_dirty_map(obs):
-    dirty_map, laxis = obs.get_dirtymap(pixsize=1024)
-    print(laxis)
-    return px.imshow(img=dirty_map, x=laxis, y=laxis, labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+    dirty_map_nat, laxis = obs.get_dirtymap(pixsize=1024, robust='natural')
+    dirty_map_uni, laxis = obs.get_dirtymap(pixsize=1024, robust='uniform')
+    fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
             aspect='equal')
+    fig2 = px.imshow(img=dirty_map_uni, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+            aspect='equal')
+    # for i,f in enumerate([fig1, fig2]):
+    #     f.layout.xaxis.autorange = "reversed"
+    #     f.layout.yaxis.autorange = True
+    #     f['layout']['coloraxis']['showscale'] = False
+
+    # fig1.layout.xaxis.autorange = "reversed"
+    # fig2.layout.xaxis.autorange = "reversed"
+    fig = make_subplots(rows=1, cols=2, subplot_titles=('Natural weighting', 'Uniform weighting'),
+                        shared_xaxes=True, shared_yaxes=True)
+    fig.add_trace(fig1.data[0], row=1, col=1)
+    fig.add_trace(fig2.data[0], row=1, col=2)
+    fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False, xaxis={'autorange': "reversed"},
+                      yaxis={'autorange': True}, xaxis2={'autorange': "reversed"}, autosize=False)
+    fig.update_xaxes(title_text="RA (mas)", constrain="domain")
+    fig.update_yaxes(title_text="Dec (mas)", row=1, col=1, scaleanchor="x", scaleratio=1)
+
+    return fig
+    return fig1
             # layout :  xaxis autorange reversed
 
 

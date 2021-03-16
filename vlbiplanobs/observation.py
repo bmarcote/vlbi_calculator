@@ -841,11 +841,15 @@ class Observation(object):
         return self._synth_beam
 
 
-    def get_dirtymap(self, pixsize:int =1024):
+    def get_dirtymap(self, pixsize:int = 1024, robust: str = "natural"):
         """Returns the dirty beam produced for the given observation.
 
-        Input:  - pixsize : int
+        Input:
+            - pixsize : int
                 Size in pixels of the returned (squared) image. By default 1024.
+            - robust : str
+                The weighting Briggs robust used to compute the dirty map.
+                It must be either 'natural' or 'uniform'.
 
         Returns:
             - dirty_image : (pixsize x pixsize) np.array
@@ -854,18 +858,23 @@ class Observation(object):
                 An array representing the values of each pixel in the image in mas for each axis.
 
         """
+        assert robust in ('natural', 'uniform')
         pixsize = 1024
         uvimg = np.zeros((pixsize, pixsize))
 
         # Gridding uv.  Inspired from VNSIM code (https://github.com/ZhenZHAO/VNSIM)
         uvscaling = pixsize/(0.9*self.longest_baseline()[1].to(u.cm).value)
         uvdata = self.get_uv_array()
-        for uv in uvdata:
-            uvimg[int(pixsize//2 + round(uv[0]*uvscaling)), int(pixsize//2 +round(uv[1]*uvscaling))] = 1
+        if robust == 'natural':
+            for uv in uvdata:
+                uvimg[int(pixsize//2 + round(uv[0]*uvscaling)), int(pixsize//2 +round(uv[1]*uvscaling))] += 1
+        else:
+            for uv in uvdata:
+                uvimg[int(pixsize//2 + round(uv[0]*uvscaling)), int(pixsize//2 +round(uv[1]*uvscaling))] = 1
 
-        dirty_beam = np.real(np.fft.ifftshift(np.fft.ifft2(np.fft.fftshift(uvimg))))
+        dirty_beam = np.real(np.fft.ifftshift(np.fft.ifft2(np.fft.fftshift(uvimg/np.max(uvimg)))))
         imgsize = (uvscaling*u.rad/2).to(u.mas) # angular equivalent size of the resulting image
-        return dirty_beam/np.max(dirty_beam), np.linspace(-imgsize, imgsize, pixsize)
+        return dirty_beam.T/np.max(dirty_beam), np.linspace(-imgsize, imgsize, pixsize)
 
 
 

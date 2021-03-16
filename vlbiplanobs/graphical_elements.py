@@ -205,7 +205,7 @@ def summary_card_beam(app, obs):
                 html.Div(className='row justify-content-center',
               children=[ellipse(bmaj="5rem",
                         bmin=f"{5*synthbeam['bmin'].to(u.mas)/synthbeam['bmaj'].to(u.mas)}rem",
-                        pa=f"{synthbeam['pa'].to(u.deg).value}deg")])]
+                        pa=f"{synthbeam['pa'].to(u.deg).value+90}deg")])]
     # TODO: Check that the rotation is the correct.
     temp_msg += [html.Br(), html.P([f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.3n} x {synthbeam['bmin'].to(synthbeam_units):.3n}", html.Sup("2"), \
             f", PA = {synthbeam['pa']:.3n}."])]
@@ -299,12 +299,12 @@ def summary_card_fov(app, obs):
                               pa="0deg", color="white", z_index=4, position='absolute',
                               className='align-self-center')])]
     temp_msg += [f"The Field of View would be limited by time smearing to "
-                 "{optimal_units(tm_smearing, [u.arcmin, u.arcsec]):.3n} and by frequency smearing to "
-                 "{optimal_units(bw_smearing, [u.arcmin, u.arcsec]):.3n} (considering a 10% loss), "
+                 f"{optimal_units(tm_smearing, [u.arcmin, u.arcsec]):.3n} and by frequency smearing to "
+                 f"{optimal_units(bw_smearing, [u.arcmin, u.arcsec]):.3n} (considering a 10% loss), "
                  "if no further time/frequency averaging is performed."]
     temp_msg += [f"Considering the shortest baseline in the array, "
-    "you will resolve out emission on angular scales larger than "
-    f"{optimal_units(largest_ang_scales, [u.arcmin, u.arcsec, u.mas]):.3n}."]
+                 "you will resolve out emission on angular scales larger than "
+                 f"{optimal_units(largest_ang_scales, [u.arcmin, u.arcsec, u.mas]):.3n}."]
     return create_sensitivity_card('FoV limitations', temp_msg)
 
 

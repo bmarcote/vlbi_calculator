@@ -205,7 +205,7 @@ def summary_card_beam(app, obs):
                 html.Div(className='row justify-content-center',
               children=[ellipse(bmaj="5rem",
                         bmin=f"{5*synthbeam['bmin'].to(u.mas)/synthbeam['bmaj'].to(u.mas)}rem",
-                        pa=f"{synthbeam['pa'].to(u.deg).value+90}deg")])]
+                        pa=f"{-synthbeam['pa'].to(u.deg).value+90}deg")])]
     # TODO: Check that the rotation is the correct.
     temp_msg += [html.Br(), html.P([f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.3n} x {synthbeam['bmin'].to(synthbeam_units):.3n}", html.Sup("2"), \
             f", PA = {synthbeam['pa']:.3n}."])]

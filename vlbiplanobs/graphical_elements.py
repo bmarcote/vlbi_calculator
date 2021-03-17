@@ -521,7 +521,7 @@ def initial_window_pick_time():
     return [
         html.Div(className='row justify-content-center', children=[
             html.H3('Select the observing epoch'),
-            html.P(["Enter the epoch when the observation will be conducted, or let the tool to find "
+            html.P(["Introduce the epoch when the observation will be conducted, or let the tool to find "
                 "the most appropriate times for a given source/network."]),
             html.Br(),
             html.Div(className='row justify-content-center', children=[dbc.FormGroup([
@@ -574,10 +574,11 @@ def initial_window_pick_time():
         html.Span(style={'height': '5rem'}),
         html.Div(className='row justify-content-center', children=[
             html.H3('Introduce your target source'),
-            html.P(["Enter the coordinates or (Simbad-recognized) name of the source you want to observe. ",
+            html.P(["Introduce the name of the source (Simbad-recognized) you want to observe "
+                    "or the J2000 coordinates. ",
                     html.Br(),
-                    "J2000 coordinates are assumed in both recognized forms: 00:00:00 00:00:00 or "
-                    "00h00m00s 00d00m00s."]),
+                    "The two following formats are allowed for the coordinates: '00:00:00 00:00:00' or "
+                    "'00h00m00s 00d00m00s'."]),
             html.Br(),
             html.Div(className='form-group', children=[
                 dcc.Input(id='initial-source', value=None, type='text',
@@ -652,10 +653,11 @@ def initial_window_final():
                         className='btn btn-primary btn-lg')),
         html.Br(),
         html.Div(className='col-9 text-center justify-content-center', children=[
-            dcc.Loading(id="loading", children=[html.Div(id="loading-output")],
+            dcc.Loading(id="loading", children=[html.Div(id="loading-output",
+                        className='text-center justify-content-center')],
                         type="dot"),
         ]),
-        html.Div(className='row justify-content-center',
+        html.Div(className='row text-center justify-content-center',
             children=dcc.ConfirmDialog(id='global-error', message=''))
         ])]
 

@@ -254,7 +254,7 @@ def update_pickband_tooltip(a_wavelength):
                         html.Span(html.Small(f"Can be observed with the {arrays_with_band(default_arrays, a_band)}."),
                             style={'color': '#888888'})
                     ], className="card-text"),
-                ]), className="col-sm-3 my-2 shadow-1-strong")
+                ]), className="col-sm-3 my-2 shadow-1-strong", style={'min-width': '15rem'})
             ]
 
 

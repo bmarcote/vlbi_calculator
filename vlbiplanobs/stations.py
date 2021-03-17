@@ -403,7 +403,7 @@ class Stations(object):
     def codenames(self) -> tuple:
         """Returns a tuple with the `codenames` from all the stations in the network.
         """
-        return self._codenames
+        return tuple(self._codenames)
 
 
     @property

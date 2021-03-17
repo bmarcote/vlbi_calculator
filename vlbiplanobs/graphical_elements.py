@@ -129,6 +129,19 @@ def network_card(app, network_acr, network_name, body, network_img=None):
 
 
 
+def summary_card_worldmap(app, obs):
+    """Generates a world map with the participating stations
+    """
+    ants_up = obs.is_visible()
+    ant_no_obs = []
+    for an_ant in ants_up:
+        if len(ants_up[an_ant][0]) == 0:
+            ant_no_obs.append(an_ant)
+
+    return worldmap_plot([obs.stations[a] for a in obs.stations.codenames \
+                if a not in ant_no_obs])
+
+
 def summary_card_antennas(app, obs):
     """Generates the summary card with the information about which
     antennas can observe the given source, and the longest/shortest baselines.
@@ -152,9 +165,6 @@ def summary_card_antennas(app, obs):
         ant_text[-1] = html.Span(".")
     else:
         ant_text = ["None."]
-    # TODO: This is the worldmap... I think it does not fit here.
-    # temp_msg = [ge.worldmap_plot([obs.stations[a] for a in obs.stations.keys() \
-    #             if a not in ant_no_obs])]
     temp_msg = []
     temp_msg += [[f"{len(ants_up)-len(ant_no_obs)} participating antennas: ", *ant_text]]
     if len(ant_no_obs) > 0:
@@ -206,7 +216,6 @@ def summary_card_beam(app, obs):
               children=[ellipse(bmaj="5rem",
                         bmin=f"{5*synthbeam['bmin'].to(u.mas)/synthbeam['bmaj'].to(u.mas)}rem",
                         pa=f"{-synthbeam['pa'].to(u.deg).value+90}deg")])]
-    # TODO: Check that the rotation is the correct.
     temp_msg += [html.Br(), html.P([f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.3n} x {synthbeam['bmin'].to(synthbeam_units):.3n}", html.Sup("2"), \
             f", PA = {synthbeam['pa']:.3n}."])]
     temp_msg += [html.P("Note that the synthesized beam can significantly change depending "
@@ -375,18 +384,19 @@ def baseline_img(app, is_long=True):
 
 def worldmap_plot(antennas):
     data = {"lat": [], "lon": [], "color": [], "symbol": [], "mode": "markers",
-            "name": [], "hovertext": []}
+            "name": [], "text": [], "hovertemplate": []}
     for ant in antennas:
         data["lat"].append(ant.location.lat.value)
         data["lon"].append(ant.location.lon.value)
         data["color"].append('green')
         data["symbol"].append(0.1)
         data["name"].append(ant.name)
-        data["hovertext"].append(ant.name)
+        data["text"].append(f"{ant.name}<br>({ant.country})<br> {ant.diameter}")
+        data["hovertemplate"].append(f"{ant.name}<br>({ant.country})<br> {ant.diameter}")
 
     fig = px.scatter_geo(data,
-                    lat="lat", lon="lon", color="color", text="hovertext",
-                    hover_name="name")
+                    lat="lat", lon="lon", text="name",
+                    hover_name="text", hover_data=None)
     fig.update_layout(autosize=True, hovermode='closest', showlegend=False,
                       margin={'l': 0, 't': 0, 'b': 0, 'r': 0})
 
@@ -563,7 +573,7 @@ def initial_window_pick_time():
         ]),
         html.Span(style={'height': '5rem'}),
         html.Div(className='row justify-content-center', children=[
-            html.H3('Introduce you target source'),
+            html.H3('Introduce your target source'),
             html.P(["Enter the coordinates or (Simbad-recognized) name of the source you want to observe. ",
                     html.Br(),
                     "J2000 coordinates are assumed in both recognized forms: 00:00:00 00:00:00 or "

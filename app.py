@@ -19,8 +19,11 @@ import os
 from os import path
 from time import sleep
 import itertools
+import functools
 from importlib import resources
+import multiprocessing as mp
 import datetime
+# import time
 from datetime import datetime as dt
 import numpy as np
 import dash
@@ -96,6 +99,8 @@ app = dash.Dash(__name__, title='EVN Observation Planner', external_scripts=exte
 app.config.suppress_callback_exceptions = True  # Avoids error messages for id's that haven't been loaded yet
 server = app.server
 
+def smap(f):
+    return f()
 
 def get_doc_text():
     """Reads the doc files and returns it as a Div object.
@@ -183,7 +188,6 @@ def update_sensitivity(obs):
     with information about the observation.
     """
     cards = []
-    # The time card
     cards += ge.summary_card_times(app, obs)
     cards += ge.summary_card_frequency(app, obs)
     cards += ge.summary_card_antennas(app, obs)
@@ -191,7 +195,11 @@ def update_sensitivity(obs):
     cards += ge.summary_card_rms(app, obs)
     cards += ge.summary_card_fov(app, obs)
     return [html.Div(className='card-deck col-12 justify-content-center',
-                     children=cards)]
+                     children=cards),
+            html.Br(),
+            html.Div(style={'height': '5rem'}),
+            html.Div(className='col-12 justify-content-center',
+                     children=ge.summary_card_worldmap(app, obs))]
 
 
 def arrays_with_band(arrays, a_band):
@@ -415,7 +423,6 @@ def intro_choices(clicks_pickband, clicks_picknetwork, clicks_picktimes, clicks_
     elif clicks_pickband is not None:
         return choice_page('time'), dash.no_update
     elif clicks_picktimes is not None:
-        #TODO: if dates are provided, all date/time/dur must be provided
         return choice_page('mode'), dash.no_update
     elif clicks_continuum is not None:
         return choice_page('final'), False
@@ -1203,15 +1210,19 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    # TODO: parallelize all these fig functions
+    with mp.Pool() as pool:
+        output_figs = pool.map(smap,
+                               [functools.partial(get_fig_ant_elev, obs),
+                                functools.partial(get_fig_ant_up, obs),
+                                functools.partial(get_fig_uvplane, obs),
+                                functools.partial(get_fig_dirty_map, obs)])
+
     if out_center:
-        return '', '', False, True, sensitivity_results, get_fig_ant_elev(obs), \
-            get_fig_ant_up(obs), get_fig_uvplane(obs), get_fig_dirty_map(obs), dash.no_update, \
+        return '', '', False, True, sensitivity_results, *list(output_figs), dash.no_update, \
            'tab-summary', False, False, False
     else:
         return '', dbc.Alert("Results have been updated.", color='info', dismissable=True), False, True, \
-           sensitivity_results, get_fig_ant_elev(obs), get_fig_ant_up(obs), get_fig_uvplane(obs), \
-           get_fig_dirty_map(obs), dash.no_update, \
+           sensitivity_results, *list(output_figs), dash.no_update, \
            dash.no_update, False, False, False
 
 
@@ -1222,7 +1233,7 @@ def get_fig_ant_elev(obs):
     # Some reference lines at low elevations
     for ant in data_dict:
         data_fig.append({'x': obs.times.datetime, 'y': data_dict[ant].value,
-                        'mode': 'lines', 'hovertemplate': "Elev: %{y:.2n}º (%{x})",
+                        'mode': 'lines', 'hovertemplate': "Elev: %{y:.2n}º<br>%{x}",
                         'name': obs.stations[ant].name})
 
     data_fig.append({'x': obs.times.datetime, 'y': np.zeros_like(obs.times)+10,

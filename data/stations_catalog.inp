@@ -31,6 +31,23 @@ real_time = no
 SEFD_0.1 = 4977
 
 
+[ARO12m]
+
+station = ARO 12m Radio Telescope
+code = ARO12m
+network = Other
+possible_networks = EHT
+country = U.S.A.
+diameter = 12 m
+#img =
+#link =
+position = -1995957.628, -5037394.446, 3357047.274
+min_elevation = 10.0
+real_time = no
+SEFD_0.3 = 5000
+SEFD_0.1 = 9400
+
+
 [ASKAP]
 
 station = Australian Square Kilometre Array Pathfinder

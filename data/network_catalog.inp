@@ -73,7 +73,7 @@ observing_bands = 0.7cm, 0.3cm
 [EHT]
 
 name = Event Horizon Telescope
-default_antennas = ALMA, Pv, LMT, PdB, SMA, JCMT, APEX, SMT, SPT
+default_antennas = ALMA, Pv, LMT, PdB, SMA, JCMT, APEX, SMT, SPT, ARO12m
 max_datarate = 32768
 observing_bands = 0.3cm, 0.1cm
 

@@ -1218,7 +1218,7 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                                 functools.partial(get_fig_dirty_map, obs)])
 
     if out_center:
-        return '', '', False, True, sensitivity_results, *list(output_figs), dash.no_update, \
+        return dbc.Alert("Results have been updated.", color='info', dismissable=True), '', False, True, sensitivity_results, *list(output_figs), dash.no_update, \
            'tab-summary', False, False, False
     else:
         return '', dbc.Alert("Results have been updated.", color='info', dismissable=True), False, True, \

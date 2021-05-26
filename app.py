@@ -999,6 +999,8 @@ def get_initial_source(source_coord):
             except coord.name_resolve.NameResolveError as e:
                 return "Unrecognized name. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'", \
                        'form-text text-danger'
+            except ValueError as e:
+                return "Wrong coordinates.", 'form-text text-danger'
     else:
         return '', dash.no_update
 
@@ -1049,6 +1051,8 @@ def get_source(source_coord):
             except coord.name_resolve.NameResolveError as e:
                 return "Unrecognized name. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'", \
                        'form-text text-danger'
+            except ValueError as e:
+                return "Wrong coordinates.", 'form-text text-danger'
     else:
         return '', dash.no_update
 

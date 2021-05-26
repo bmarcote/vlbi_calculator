@@ -867,10 +867,10 @@ class Observation(object):
         uvdata = self.get_uv_array()
         if robust == 'natural':
             for uv in uvdata:
-                uvimg[int(pixsize//2 + round(uv[0]*uvscaling)), int(pixsize//2 +round(uv[1]*uvscaling))] += 1
+                uvimg[int(pixsize//2 + round(uv[0]*uvscaling)), int(pixsize//2 + round(uv[1]*uvscaling))] += 1
         else:
             for uv in uvdata:
-                uvimg[int(pixsize//2 + round(uv[0]*uvscaling)), int(pixsize//2 +round(uv[1]*uvscaling))] = 1
+                uvimg[int(pixsize//2 + round(uv[0]*uvscaling)), int(pixsize//2 + round(uv[1]*uvscaling))] = 1
 
         dirty_beam = np.real(np.fft.ifftshift(np.fft.ifft2(np.fft.fftshift(uvimg/np.max(uvimg)))))
         imgsize = (uvscaling*u.rad/2).to(u.mas) # angular equivalent size of the resulting image

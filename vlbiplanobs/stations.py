@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Licensed under GPLv3+ - see LICENSE
 from __future__ import annotations
+from collections import abc
 import configparser
 from importlib import resources
 import numpy as np
@@ -50,7 +51,7 @@ class Station(object):
         - min_elevation : Quantity [OPTIONAL]
             Minimum elevation that the station can reach to observe a source. If no units (astropy.units)
             provided, degrees are assumed. By default it 20 degrees. It does not support an azimuth-dependent
-            elevation limits.
+            elevation limits. It must be >= 0.
         - fullname : str [OPTIONAL]
             Full name of the station. If not given, same as `name` is assumed.
             It can be used to expand the full name if an abbreviation is typically used for the name.
@@ -66,25 +67,31 @@ class Station(object):
         - real_time : bool [OPTIONAL]
             If the station can participate in real-time observations (e.g. e-EVN), False by default.
         """
+        # Some sanity checks
+        for a_var, a_var_name in zip((name, codename, network, country, diameter), \
+                                     ('name', 'codename', 'network', 'country', 'diameter')):
+            assert isinstance(a_var, str), f"'{a_var_name}' must be a str."
+
+        assert min_elevation >= 0.0, "'min_elevation' must be >= 0."
+        assert isinstance(fullname, str) or fullname is None
+        assert isinstance(all_networks, str) or fullname is None
+        assert type(real_time) is bool, "'real_time' must be a bool."
         self.observer = Observer(name=name.replace('_', ' '), location=location)
         self._codename = codename
         self._network = network
         self._freqs_sefds = freqs_sefds
-        if (type(min_elevation) is float) or (type(min_elevation) is int):
+        assert isinstance(min_elevation, float) or isinstance(min_elevation, int) \
+               or isinstance(min_elevation, u.Quantity), \
+               "'min_elevation' must be either a float, int, or an astropy.units.Quantity object."
+        if isinstance(min_elevation, float) or isinstance(min_elevation, int):
             self._min_elev = min_elevation*u.deg
-        else:
+        else:  # isinstance(min_elevation, u.Quantity):
+            assert min_elevation.unit.is_equivalent(u.deg), \
+                   "'min_elevation' must have angular units (e.g. degrees)"
             self._min_elev = min_elevation
 
-        if fullname is None:
-            self._fullname = name
-        else:
-            self._fullname = fullname
-
-        if all_networks is None:
-            self._all_networks = network
-        else:
-            self._all_networks = all_networks
-
+        self._fullname = name if fullname is None else fullname
+        self._all_networks = network if all_networks is None else all_networks
         self._country = country
         self._diameter = diameter
         self._real_time = real_time
@@ -329,7 +336,7 @@ class SelectedStation(Station):
         - selected : bool [OPTIONAL]
             If the station is selected to participate in a given observation or not. True by default.
         """
-
+        assert isinstance(selected, bool), "'selected' must be a bool"
         self._selected = selected
         super().__init__(name, codename, network, location, freqs_sefds,
                          min_elevation, fullname, all_networks, country, diameter, real_time)
@@ -363,11 +370,17 @@ class Stations(object):
         - stations : list of Station-type elements
             List with all stations belonging to the given network.
         """
+        assert isinstance(name, str), "'name' must be a str."
+        assert isinstance(stations, abc.Iterable), "'stations' must be a list."
         self._name = name
         self._stations = {}
         for a_station in stations:
+            assert isinstance(a_station, Station), \
+                f"There is an element in 'stations' that is not a Station object ({a_station})."
             if a_station.codename not in self._stations.keys():
                 self._stations[a_station.codename] = a_station
+            else:
+                print(f"WARNING: {a_station.codename} is duplicated in the 'stations' list.")
 
         self._codenames = tuple(self._stations.keys())
 

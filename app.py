@@ -1024,6 +1024,8 @@ def verify_recognized_source(a_source):
             return True
         except coord.name_resolve.NameResolveError as e:
             return False
+        except ValueError as e:
+            return False
 
     return False
 

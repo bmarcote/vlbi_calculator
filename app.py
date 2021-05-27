@@ -1153,6 +1153,13 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
             return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        except ValueError as e:
+            temp = [alert_message(["Wrong source name or coordinates.", html.Br(),
+                    "Either the source name hasn't been found or the coordinates format is incorrect."]), \
+                    "First, set correctly an observation in the previous tab.", '']
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
     if not epoch_selected:
         try:
             utc_times, _ = observation.Observation.guest_times_for_source(target_source,
@@ -1215,13 +1222,27 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
         return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    except Exception as e:
+            temp = [alert_message(f"Unknown Error: ({e})."), \
+                   "Please, refresh and try again. Contact 'marcote (at) jive.eu' in case of further issues", '']
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    with mp.Pool() as pool:
-        output_figs = pool.map(smap,
+
+    try:
+        with mp.Pool() as pool:
+            output_figs = pool.map(smap,
                                [functools.partial(get_fig_ant_elev, obs),
                                 functools.partial(get_fig_ant_up, obs),
                                 functools.partial(get_fig_uvplane, obs),
                                 functools.partial(get_fig_dirty_map, obs)])
+    except Exception as e:
+            temp = [alert_message(f"Unknown Error: ({e})."), \
+                   "Please, refresh and try again. Contact 'marcote (at) jive.eu' in case of further issues", '']
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if out_center:
         return dbc.Alert("Results have been updated.", color='info', dismissable=True), '', False, True, sensitivity_results, *list(output_figs), dash.no_update, \

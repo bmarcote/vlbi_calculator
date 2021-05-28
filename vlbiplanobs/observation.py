@@ -155,7 +155,7 @@ class Observation(object):
 
     @target.setter
     def target(self, new_target: Source):
-        assert isinstance(new_target, Source) or new_target is None, \
+        assert isinstance(new_target, Source) or (new_target is None), \
                 "The new target must be a observation.Source instance, or None."
         self._target = new_target
         # Resets all parameters than depend on the source coordinates
@@ -177,7 +177,8 @@ class Observation(object):
 
     @times.setter
     def times(self, new_times):
-        assert isinstance(new_times, Time) and len(new_times) >= 2
+        assert isinstance(new_times, Time) and len(new_times) >= 2, \
+               "'times' must be an astropy.time.Time instance and to have at least two time values (start/end)."
         self._times = new_times
         self._gstimes = self._times.sidereal_time('mean', 'greenwich')
         self._uv_baseline = None
@@ -267,8 +268,14 @@ class Observation(object):
         if new_datarate is None:
             self._datarate = None
         elif isinstance(new_datarate, int):
+            if new_datarate <= 0:
+                raise ValueError(f"datarate must be a positive number (currently {new_datarate})")
+
             self._datarate = new_datarate*u.Mbit/u.s
         elif isinstance(new_datarate, u.Quantity):
+            if new_datarate <= 0:
+                raise ValueError(f"datarate must be a positive number (currently {new_datarate})")
+
             self._datarate = new_datarate.to(u.Mbit/u.s)
         else:
             raise ValueError(f"Unknown type for datarate {new_datarate}" \
@@ -350,8 +357,14 @@ class Observation(object):
         if new_inttime is None:
             self._inttime = None
         elif isinstance(new_inttime, float) or isinstance(new_inttime, int):
+            if new_inttime <= 0:
+                raise ValueError(f"'inttime' must be a positive number (currently {new_inttime})")
+
             self._inttime = new_inttime*u.s
         elif isinstance(new_inttime, u.Quantity):
+            if new_inttime <= 0:
+                raise ValueError(f"'inttime' must be a positive number (currently {new_inttime})")
+
             self._inttime = new_inttime.to(u.s)
         else:
             raise ValueError(f"Unknown type for 'inttime' {new_inttime} (float/int/Quantity(~seconds) expected)")

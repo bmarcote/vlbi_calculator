@@ -1223,11 +1223,24 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update
     except Exception as e:
-            temp = [alert_message(f"Unknown Error: ({e})."), \
-                   "Please, refresh and try again. Contact 'marcote (at) jive.eu' in case of further issues", '']
-            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        # Let's print into the STDOUT the current state for later debugging...
+        print("--- UNEXPECTED ERROR")
+        print("When creating the observation or updating the sensitivity results. Current state:")
+        print(f"- target_source: {target_source}")
+        print(f"- obs_times: {obs_times}")
+        print(f"- band: {band}")
+        print(f"- datarate: {datarate}")
+        print(f"- subbands: {subbands}")
+        print(f"- channels: {channels}")
+        print(f"- polarizations: {pols}")
+        print(f"- inttime: {inttime}")
+        print(f"- onsourcetime: {onsourcetime/100.0}")
+        print(f"- stations: {ants}")
+        temp = [alert_message(f"Unknown Error: ({e})."), \
+               "Please, refresh and try again. Contact 'marcote (at) jive.eu' in case of further issues", '']
+        return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
 
     try:
@@ -1238,11 +1251,24 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                                 functools.partial(get_fig_uvplane, obs),
                                 functools.partial(get_fig_dirty_map, obs)])
     except Exception as e:
-            temp = [alert_message(f"Unknown Error: ({e})."), \
-                   "Please, refresh and try again. Contact 'marcote (at) jive.eu' in case of further issues", '']
-            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        # Let's print into the STDOUT the current state for later debugging...
+        print("--- UNEXPECTED ERROR")
+        print("When creating the plots. Current state for obs {obs}:")
+        print(f"- target_source: {target_source}")
+        print(f"- obs_times: {obs_times}")
+        print(f"- band: {band}")
+        print(f"- datarate: {datarate}")
+        print(f"- subbands: {subbands}")
+        print(f"- channels: {channels}")
+        print(f"- polarizations: {pols}")
+        print(f"- inttime: {inttime}")
+        print(f"- onsourcetime: {onsourcetime/100.0}")
+        print(f"- stations: {ants}")
+        temp = [alert_message(f"Unknown Error: ({e})."), \
+               "Please, refresh and try again. Contact 'marcote (at) jive.eu' in case of further issues", '']
+        return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if out_center:
         return dbc.Alert("Results have been updated.", color='info', dismissable=True), '', False, True, sensitivity_results, *list(output_figs), dash.no_update, \

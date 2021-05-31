@@ -715,7 +715,7 @@ class Observation(object):
                 for k in range(j+1, len(sefds)):
                     temp += (self.times[i+1]-self.times[i]).to(u.s).value/(sefds[j]*sefds[k])
 
-        if temp == 0.0:
+        if np.abs(temp - 0.0) < 1e-5:
             # No sources visible
             raise SourceNotVisible('No single baseline can observe the source.')
 

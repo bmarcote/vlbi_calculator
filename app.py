@@ -1182,22 +1182,19 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
             time0 = Time(dt.strptime(f"{starttime} {starthour}", '%Y-%m-%d %H:%M'),
                          format='datetime', scale='utc')
         except ValueError as e:
-            temp = [alert_message("Incorrect format for starttime."), \
-                   "First, set correctly an observation in the previous tab.", '']
+            temp = [alert_message("Incorrect format for the start time of the observation."), '']
             return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
         if duration <= 0.0:
-            temp = [alert_message("The duration of the observation must be a positive number of hours"), \
-                   "First, set correctly an observation in the previous tab.", '']
+            temp = [alert_message("The duration of the observation must be a positive number of hours."), '']
             return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
         if duration > 4*24.0:
-            temp = [alert_message("Please, set an observation that lasts for less than 4 days."), \
-                   "First, set correctly an observation in the previous tab.", '']
+            temp = [alert_message("Please, set an observation that lasts for less than 4 days."), '']
             return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update

@@ -872,12 +872,12 @@ class Observation(object):
 
         """
         assert robust in ('natural', 'uniform')
-        pixsize = 1024
+        assert isinstance(pixsize, int)
         uvimg = np.zeros((pixsize, pixsize))
 
         # Gridding uv.  Inspired from VNSIM code (https://github.com/ZhenZHAO/VNSIM)
-        uvscaling = pixsize/(0.9*self.longest_baseline()[1].to(u.cm).value)
         uvdata = self.get_uv_array()
+        uvscaling = pixsize/(2*np.max(np.max(uvdata, axis=0)))
         if robust == 'natural':
             for uv in uvdata:
                 uvimg[int(pixsize//2 + round(uv[0]*uvscaling)), int(pixsize//2 + round(uv[1]*uvscaling))] += 1

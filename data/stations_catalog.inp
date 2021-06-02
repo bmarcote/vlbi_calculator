@@ -519,6 +519,40 @@ SEFD_5 = 480.0
 SEFD_3.6 = 1300.0
 
 
+[Iriki]
+
+station = Iriki
+code = Vr
+network = VERA
+possible_networks = VERA, KaVA
+country = Japan
+diameter = 20 m
+position = -3521719.5687, 4132174.7528, 3336994.3255
+min_elevation = 10.0
+real_time = no
+SEFD_6 = 2155
+SEFD_5 = 2155
+SEFD_1.3 = 2110
+SEFD_0.7 = 4335
+
+
+[Ishigaki-jima]
+
+station = Ishigaki-jima
+code = Vs
+network = VERA
+possible_networks = VERA, KaVA
+country = Japan
+diameter = 20 m
+position = -3263995.4716, 4808056.4149, 2619948.5632
+min_elevation = 10.0
+real_time = no
+SEFD_6 = 2155
+SEFD_5 = 2155
+SEFD_1.3 = 2110
+SEFD_0.7 = 4335
+
+
 [JCMT]
 
 station = James Clerk Maxwell Telescope
@@ -843,6 +877,23 @@ SEFD_0.7 = 4500.0
 SEFD_0.3 = 30000.0
 
 
+[Mizusawa]
+
+station = Mizusawa
+code = Vm
+network = VERA
+possible_networks = VERA, KaVA
+country = Japan
+diameter = 20 m
+position = -3857244.2418, 3108783.5264, 4003899.4149
+min_elevation = 10.0
+real_time = no
+SEFD_6 = 2155
+SEFD_5 = 2155
+SEFD_1.3 = 2110
+SEFD_0.7 = 4335
+
+
 [Mopra]
 
 station = Mopra
@@ -914,6 +965,23 @@ SEFD_5 = 1100.0
 SEFD_3.6 = 770.0
 SEFD_1.3 = 800
 SEFD_0.7 = 900.0
+
+
+[Ogasawara]
+
+station = Ogasawara
+code = Vo
+network = VERA
+possible_networks = VERA, KaVA
+country = Japan
+diameter = 20 m
+position = -4491068.8940, 3481544.8295, 2887399.6227
+min_elevation = 10.0
+real_time = no
+SEFD_6 = 2155
+SEFD_5 = 2155
+SEFD_1.3 = 2110
+SEFD_0.7 = 4335
 
 
 [OVRO]
@@ -1282,7 +1350,7 @@ SEFD_1.3 = 710
 station = Tamna
 code = Kt
 network = KVN
-possible_networks = KVN, GMVA
+possible_networks = KVN, KaVA, GMVA
 country = South Korea
 diameter = 21 m
 #img =
@@ -1363,7 +1431,7 @@ SEFD_1.3 = 500
 station = Ulsan
 code = Ku
 network = KVN
-possible_networks = KVN, GMVA
+possible_networks = KVN, KaVA, GMVA
 country = South Korea
 diameter = 21 m
 #img =
@@ -1572,7 +1640,7 @@ SEFD_0.3 = 2000.0
 station = Yonsei
 code = Ky
 network = KVN
-possible_networks = KVN, GMVA
+possible_networks = KVN, KaVA, GMVA
 country = South Korea
 diameter = 21 m
 #img =

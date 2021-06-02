@@ -54,6 +54,22 @@ max_datarate = 4096
 observing_bands = 1.3cm, 0.7cm, 0.3cm
 
 
+[VERA]
+
+name = VLBI Exploration of Radio Astrometry
+default_antennas = Vr, Vs, Vo, Vm
+max_datarate = 1024
+observing_bands = 6cm, 5cm, 1.3cm, 0.7cm
+
+
+[KaVA]
+
+name = KVN and VERA Array
+default_antennas = Vr, Vs, Vo, Vm, Ky, Ku, Kt
+max_datarate = 1024
+observing_bands = 1.3cm, 0.7cm
+
+
 [HSA]
 
 name = High Sensitivity Array

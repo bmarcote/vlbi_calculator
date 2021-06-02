@@ -74,6 +74,7 @@ sorted_networks = {'EVN': 'EVN: European VLBI Network', 'eMERLIN': 'eMERLIN (out
                    'VLBA': 'VLBA: Very Long Baseline Array',
                    'LBA': 'LBA: Australian Long Baseline Array',
                    'KVN': 'KVN: Korean VLBI Network',
+                   'VERA': 'VERA: VLBI Exploration of Radio Astrometry',
                    'Other': 'Other antennas',
                    'Decom': 'Decommissioned antennas'}
 
@@ -1148,15 +1149,13 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
             target_source = observation.Source(coord.get_icrs_coordinates(source), source)
         except coord.name_resolve.NameResolveError as e:
             temp = [alert_message(["Wrong source name or coordinates.", html.Br(),
-                    "Either the source name hasn't been found or the coordinates format is incorrect."]), \
-                    "First, set correctly an observation in the previous tab.", '']
+                    "Either the source name hasn't been found or the coordinates format is incorrect."]), '']
             return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update
         except ValueError as e:
             temp = [alert_message(["Wrong source name or coordinates.", html.Br(),
-                    "Either the source name hasn't been found or the coordinates format is incorrect."]), \
-                    "First, set correctly an observation in the previous tab.", '']
+                    "Either the source name hasn't been found or the coordinates format is incorrect."]), '']
             return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update
@@ -1233,8 +1232,8 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
         print(f"- inttime: {inttime}")
         print(f"- onsourcetime: {onsourcetime/100.0}")
         print(f"- stations: {ants}")
-        temp = [alert_message(f"Unknown Error: ({e})."), \
-               "Please, refresh and try again. Contact 'marcote (at) jive.eu' in case of further issues", '']
+        temp = [alert_message([f"Unknown Error: ({e}).", html.Br(), \
+               "Please, refresh and try again. Contact 'marcote (at) jive.eu' in case of further issues"]), '']
         return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update
@@ -1261,14 +1260,15 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
         print(f"- inttime: {inttime}")
         print(f"- onsourcetime: {onsourcetime/100.0}")
         print(f"- stations: {ants}")
-        temp = [alert_message(f"Unknown Error: ({e})."), \
-               "Please, refresh and try again. Contact 'marcote (at) jive.eu' in case of further issues", '']
+        temp = [alert_message([f"Unknown Error: ({e}).", html.Br(), \
+               "Please, refresh and try again. Contact 'marcote (at) jive.eu' in case of further issues"]), '']
         return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     if out_center:
-        return dbc.Alert("Results have been updated.", color='info', dismissable=True), '', False, True, sensitivity_results, *list(output_figs), dash.no_update, \
+        return dbc.Alert("Results have been updated.", color='info', dismissable=True), '', False, True, \
+           sensitivity_results, *list(output_figs), dash.no_update, \
            'tab-summary', False, False, False
     else:
         return '', dbc.Alert("Results have been updated.", color='info', dismissable=True), False, True, \

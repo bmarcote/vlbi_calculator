@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.ndimage
 import datetime as dt
 from astropy import units as u
 from astropy import coordinates as coord
@@ -854,7 +855,7 @@ class Observation(object):
         return self._synth_beam
 
 
-    def get_dirtymap(self, pixsize:int = 1024, robust: str = "natural"):
+    def get_dirtymap(self, pixsize:int = 1024, robust: str = "natural", oversampling: int = 4):
         """Returns the dirty beam produced for the given observation.
 
         Input:
@@ -863,6 +864,10 @@ class Observation(object):
             - robust : str
                 The weighting Briggs robust used to compute the dirty map.
                 It must be either 'natural' or 'uniform'.
+            - oversampling : int
+                Oversampling factor when plotting the dirty map.
+                Recommended values are between 1 and 10.
+                CURRENTLY THIS PARAMETER IS IGNORED. WILL BE IMPLEMENTED IN A LATER VERSION
 
         Returns:
             - dirty_image : (pixsize x pixsize) np.array
@@ -873,21 +878,54 @@ class Observation(object):
         """
         assert robust in ('natural', 'uniform')
         assert isinstance(pixsize, int)
+        # assert isinstance(oversampling, int) and 20 > oversampling >= 1
+        # Oversampling the dirty beam
         uvimg = np.zeros((pixsize, pixsize))
 
         # Gridding uv.  Inspired from VNSIM code (https://github.com/ZhenZHAO/VNSIM)
-        uvdata = self.get_uv_array()
-        uvscaling = pixsize/(2*np.max(np.max(uvdata, axis=0)))
-        if robust == 'natural':
-            for uv in uvdata:
-                uvimg[int(pixsize//2 + round(uv[0]*uvscaling)), int(pixsize//2 + round(uv[1]*uvscaling))] += 1
-        else:
-            for uv in uvdata:
-                uvimg[int(pixsize//2 + round(uv[0]*uvscaling)), int(pixsize//2 + round(uv[1]*uvscaling))] = 1
+        # uvdata = self.get_uv_array()
+        # uvscaling = pixsize/(2.0*1.025*np.max(np.max(np.abs(uvdata), axis=0)))
+        # uvimg[pixsize//2 + np.trunc(uvdata[:,0]*uvscaling).astype(int), \
+        #       pixsize//2 + np.trunc(uvdata[:,1]*uvscaling).astype(int)] += 1
+        #
+        # # Recovering the requested size for the image
+        # # if oversampling > 1:
+        # #     uvimg = scipy.ndimage.zoom(uvimg, oversampling, order=1)
+        # # uvimg = uvimg[int(pixsize*0.5):int(pixsize*1.5), int(pixsize*0.5):int(pixsize*1.5)]
+        # if robust == 'uniform':
+        #     if np.max(uvimg) > 1:
+        #         uvimg[np.where(uvimg > 0)] = 1
+        #     else:
+        #         print('\n\nWARNING: Uniform dirty map same as natural one.\n\n')
+        #
+        # dirty_beam = np.real(np.fft.ifftshift(np.fft.ifft2(np.fft.fftshift(uvimg/np.max(uvimg)))))
+        # if oversampling > 1:
+        #     dirty_beam = scipy.ndimage.zoom(dirty_beam, oversampling, order=1)
+        # imgsize = (uvscaling*u.rad/(2*oversampling)).to(u.mas) # angular equivalent size of the resulting image
+        # return dirty_beam[int(pixsize*(oversampling-1)/2):int(pixsize*(oversampling+1)/2), \
+        #                   int(pixsize*(oversampling-1)/2):int(pixsize*(oversampling+1)/2)].T/np.max(dirty_beam), \
+        #        np.linspace(-imgsize, imgsize, pixsize)
+        #         # return dirty_beam.T/np.max(dirty_beam), \
+        #
 
+        oversampling = 1
+        # Gridding uv.  Inspired from VNSIM code (https://github.com/ZhenZHAO/VNSIM)
+        uvdata = self.get_uv_array()
+        uvscaling = (oversampling*pixsize)/(2*1.05*np.max(np.max(np.abs(uvdata), axis=0)))
+        if robust == 'natural':
+            uvimg[oversampling*pixsize//2 + np.trunc(uvdata[:,0]*uvscaling).astype(int), \
+                  oversampling*pixsize//2 + np.trunc(uvdata[:,1]*uvscaling).astype(int)] += 1
+        else:
+            uvimg[oversampling*pixsize//2 + np.trunc(uvdata[:,0]*uvscaling).astype(int), \
+                  oversampling*pixsize//2 + np.trunc(uvdata[:,1]*uvscaling).astype(int)] = 1
+
+        # Recovering the requested size for the image
+        # uvimg = uvimg[int(pixsize*0.5):int(pixsize*1.5), int(pixsize*0.5):int(pixsize*1.5)]
         dirty_beam = np.real(np.fft.ifftshift(np.fft.ifft2(np.fft.fftshift(uvimg/np.max(uvimg)))))
         imgsize = (uvscaling*u.rad/2).to(u.mas) # angular equivalent size of the resulting image
-        return dirty_beam.T/np.max(dirty_beam), np.linspace(-imgsize, imgsize, pixsize)
+        return dirty_beam[int(pixsize*(oversampling-1)/2):int(pixsize*(oversampling+1)/2), \
+                          int(pixsize*(oversampling-1)/2):int(pixsize*(oversampling+1)/2)].T/np.max(dirty_beam), \
+               np.linspace(-imgsize, imgsize, pixsize)
 
 
 

@@ -50,7 +50,7 @@ observing_bands = 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 2.5cm, 1.3cm, 0.7cm
 
 name = Korean VLBI Network
 default_antennas = Ky, Ku, Kt
-max_datarate = 4096
+max_datarate = 16384
 observing_bands = 1.3cm, 0.7cm, 0.3cm
 
 
@@ -58,7 +58,7 @@ observing_bands = 1.3cm, 0.7cm, 0.3cm
 
 name = VLBI Exploration of Radio Astrometry
 default_antennas = Vr, Vs, Vo, Vm
-max_datarate = 1024
+max_datarate = 16384
 observing_bands = 6cm, 5cm, 1.3cm, 0.7cm
 
 

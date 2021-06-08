@@ -1142,6 +1142,12 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
+    if datarate <= 0:
+        temp = [alert_message(["You need to select the data rate for the observation. "]), dash.no_update]
+        return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
     try:
         target_source = observation.Source(convert_colon_coord(source), 'Source')
     except ValueError as e:

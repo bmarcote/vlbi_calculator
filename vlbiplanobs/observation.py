@@ -822,7 +822,7 @@ class Observation(object):
         This is just an estimation made by a ellipse fitting to the (u, v) coverage,
         from which we obtain the resolution on the two axes following
         https://science.nrao.edu/facilities/vlba/docs/manuals/oss/ang-res
-            theta_HPBW (mas)  \sim 2063 x lambda(cm)/b_max^km
+            theta_HPBW (mas)  \\sim 2063 x lambda(cm)/b_max^km
 
         Note that different robust weighting maps during imaging would provide slightly
         different synthesized beams. The provided value here does not assumed any weighting

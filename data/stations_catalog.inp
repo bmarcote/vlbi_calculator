@@ -256,7 +256,7 @@ SEFD_21 = 450.0
 SEFD_18 = 450.0
 SEFD_6 = 325.0
 SEFD_5 = 325.0
-SEFD_1.3 = 720
+SEFD_1.3 = 1500
 
 
 [Defford]
@@ -276,7 +276,6 @@ SEFD_21 = 350.0
 SEFD_18 = 350.0
 SEFD_6 = 1000.0
 SEFD_5 = 1600.0
-SEFD_1.3 = 720
 
 
 [Dwingeloo]
@@ -657,7 +656,7 @@ SEFD_21 = 425.0
 SEFD_18 = 400.0
 SEFD_6 = 325.0
 SEFD_5 = 325.0
-SEFD_1.3 = 720
+SEFD_1.3 = 1500
 
 
 [Kunming]
@@ -1101,7 +1100,7 @@ SEFD_21 = 400.0
 SEFD_18 = 450.0
 SEFD_6 = 325.0
 SEFD_5 = 325.0
-SEFD_1.3 = 720
+SEFD_1.3 = 1500
 
 
 [Pico Veleta]

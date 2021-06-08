@@ -429,7 +429,7 @@ class Observation(object):
         """
         if isinstance(new_bitsampling, float) or isinstance(new_bitsampling, int):
             self._bitsampling = new_bitsampling*u.bit
-        elif isinstance(new_inttime, u.Quantity):
+        elif isinstance(new_bitsampling, u.Quantity):
             self._bitsampling = new_bitsampling.to(u.bit)
         else:
             raise ValueError(f"Unknown type for {new_bitsampling} (float/int/Quantity(bit) expected)")

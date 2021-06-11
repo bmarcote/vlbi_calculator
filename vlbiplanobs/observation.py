@@ -694,13 +694,12 @@ class Observation(object):
 
         Note that this function takes into account when each station can observe the source,
         but does not take into account sensitivity drops doe to external factors like e.g.
-        low elevations of the source. The provided thermal noise is also assumed when no
+        low elevations of the source. The provided thermal noise is also assumed when a natural
         weighting is applied to the data when imaging. The thermal noise can thus be a bit
-        lower if a natural robust weighting is used, but slightly higher if an uniform
-        roubst is used.
+        higher if an uniform roubst is used.
         """
         # As the determination is computationally heavy, if no parameters have been updated
-        # the nit returns the stored value from a previous run.
+        # then it returns the stored value from a previous run.
         if self._rms is not None:
             return self._rms
 

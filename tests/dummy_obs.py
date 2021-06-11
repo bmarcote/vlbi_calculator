@@ -45,13 +45,18 @@ def get_selected_antennas(list_of_selected_antennas):
 
 
 
-evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc']
+# evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc']
+evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc', 'Pa', 'Mo', 'Ho', 'Nl', 'Pt', 'Sc', 'Kp', 'Hn']
 obs.stations = get_selected_antennas(evn6)
 
 
 elevs = obs.elevations()
 srcup = obs.is_visible()
-
+beam = obs.synthesized_beam()
+rms = obs.thermal_noise()
+uvdata = obs.get_uv_array()
+dirty_map_natural = obs.get_dirtymap(robust='natural')
+dirty_map_uniform = obs.get_dirtymap(robust='uniform')
 # fig, ax = plt.subplots()
 
 

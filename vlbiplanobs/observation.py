@@ -25,7 +25,7 @@ class SourceNotVisible(Exception):
 class Source(FixedTarget):
     """Defines a target source located at some coordinates and with a given name.
     """
-    def __init__(self, coordinates: str = None, name: str = None):
+    def __init__(self, coordinates: str = None, name: str = None, **kwargs):
         """Initializes a Source object.
 
         Inputs
@@ -36,6 +36,9 @@ class Source(FixedTarget):
             If not provided, name must be a source name recognized by astroquery.
         - name : str [OPTIONAL]
             Name associated to the source. By default is None.
+        - kwargs
+            keyword arguments to be passed to astropy.coordinates.SkyCoord() if needed.
+            For example, unit= parameter.
 
         If both provided, the given coordinates will be used for the given source.
 
@@ -49,7 +52,7 @@ class Source(FixedTarget):
         if (name is not None) and (coordinates is None):
             coordinates = coord.get_icrs_coordinates(name)
 
-        super().__init__(coord.SkyCoord(coordinates), name)
+        super().__init__(coord.SkyCoord(coordinates, **kwargs), name)
 
 
 

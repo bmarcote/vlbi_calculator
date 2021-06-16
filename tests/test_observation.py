@@ -31,11 +31,11 @@ def test_source():
         obs.Source(name='WQQWE')
 
     s1 = obs.Source('10h20m10s 40d30m10s', 'a_name')
-    # s2 = obs.Source('10:20:10 40:30:10', 'a_name', unit=(u.hourangle, u.deg))
+    s2 = obs.Source('10:20:10 40:30:10', 'a_name', unit=(u.hourangle, u.deg))
     s3 = obs.Source(name='Cyg X-1')
     assert s1.name == 'a_name'
-    # assert s2.name == 'a_name'
-    # assert s1.coordinates == s2.coordinates
+    assert s2.name == 'a_name'
+    assert s1.coord == s2.coord
     assert s3.name == 'Cyg X-1'
 
 

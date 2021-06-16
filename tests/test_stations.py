@@ -39,6 +39,19 @@ def test_station_functions():
     sefds = {'18': 100, '6': 40, '0.1': 200}
     a_station = stations.Station('name', 'Nm', 'VLBI',
                      coord.EarthLocation(3839348.973*u.m, 430403.51*u.m, 5057990.099*u.m), sefds, 20)
+    assert isinstance(a_station.name, str)
+    assert isinstance(a_station.fullname, str)
+    assert a_station.fullname == a_station.name
+    assert a_station.network == 'VLBI'
+    assert a_station.all_networks == a_station.network
+    assert isinstance(a_station.country, str)
+    assert isinstance(a_station.diameter, str)
+    assert isinstance(a_station.real_time, bool)
+    assert isinstance(a_station.location, coord.EarthLocation)
+    assert a_station.location == coord.EarthLocation(3839348.973*u.m, 430403.51*u.m, 5057990.099*u.m)
+    assert list(a_station.bands) == ['18', '6', '0.1']
+    assert isinstance(a_station.sefds, dict)
+    assert a_station.sefds == sefds
     assert a_station.has_band('18')
     assert not a_station.has_band('45')
     assert a_station.sefd('18') == 100
@@ -53,6 +66,7 @@ def test_station_functions():
     assert len(a_station.is_visible(times1, src1)[0]) == 0
     assert len(a_station.is_visible(times2, src1)[0]) == 10
     assert len(a_station.elevation(times2, src1)) == len(times1)
+    assert np.equal(a_station.elevation(times2, src1).value, a_station.altaz(times2, src1).alt.value)[0]
 
 
 

@@ -902,7 +902,7 @@ SEFD_0.7 = 4335
 [Mopra]
 
 station = Mopra
-code = Mo
+code = Mp
 network = LBA
 possible_networks = LBA
 country = Australia

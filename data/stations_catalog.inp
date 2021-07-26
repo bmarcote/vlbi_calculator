@@ -478,7 +478,7 @@ SEFD_1.3 = 1800
 
 [Hobart]
 
-station = Hobart26
+station = Hobart (26m)
 code = Ho
 network = LBA
 possible_networks = LBA
@@ -501,7 +501,7 @@ SEFD_1.3 = 1800
 
 [Hobart 12m]
 
-station = Hobart12
+station = Hobart (12m)
 code = Hb
 network = LBA
 possible_networks = LBA
@@ -585,7 +585,6 @@ position = -5464559.08, -2492999.13, 2150638.19
 min_elevation = 10.0
 real_time = no
 SEFD_0.1 = 3842
-
 
 
 [Jodrell Bank]
@@ -1213,7 +1212,6 @@ SEFD_21 = 551
 SEFD_18 = 551
 
 
-
 [SKA1 MID]
 
 station = Square Kilometre Array
@@ -1537,7 +1535,7 @@ SEFD_0.7 = 23.9
 
 [Warkworth12]
 
-station = Warkworth 12
+station = Warkworth (12m)
 code = Ww
 network = LBA
 possible_networks = LBA
@@ -1552,9 +1550,10 @@ real_time = no
 SEFD_13 = 3400.0
 SEFD_3.6 = 3800.0
 
+
 [Warkworth30]
 
-station = Warkworth30
+station = Warkworth (30m)
 code = Wa
 network = LBA
 possible_networks = LBA
@@ -1563,7 +1562,6 @@ diameter = 30 m
 #img =
 #link =
 position = -5115425.818,  477880.248,  -3767042.055
-
 min_elevation = 6.0
 real_time = no
 SEFD_5 = 650
@@ -1614,7 +1612,6 @@ SEFD_13 = 224.5
 SEFD_6 = 449.0
 SEFD_5 = 427.6
 SEFD_3.6 = 449.0
-
 
 
 [Wettzell]

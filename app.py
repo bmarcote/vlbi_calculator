@@ -81,7 +81,8 @@ sorted_networks = {'EVN': 'EVN: European VLBI Network', 'eMERLIN': 'eMERLIN (out
 # Safety check that all these antennas are available in the file
 for a_array in default_arrays:
     for a_station in default_arrays[a_array]['default_antennas']:
-        assert a_station in all_antennas.codenames
+        assert a_station in all_antennas.codenames, \
+               f"{a_station} is not recognized from the station_catalog.inp file"
 
 doc_files = {'About the EVN Observation Planner': 'doc-contact.md',
              'About the antennas': 'doc-antennas.md',

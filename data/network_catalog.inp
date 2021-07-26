@@ -41,7 +41,7 @@ observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.
 [LBA]
 
 name = Australian Long Baseline Array
-default_antennas = ATCA, Pa, Mo, Ho, Cd, Td, Ww
+default_antennas = ATCA, Pa, Mp, Ho, Cd, Td, Ww
 max_datarate = 1024
 observing_bands = 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 2.5cm, 1.3cm, 0.7cm
 

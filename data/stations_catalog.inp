@@ -59,11 +59,10 @@ diameter = 1 x 12 m
 #img =
 #link =
 position = -2556743.707, 5097440.315, -2847749.657
-min_elevation = 10.0
+min_elevation = 15.4
 real_time = no
 SEFD_21 = 6000.0
 SEFD_18 = 6000.0
-SEFD_3.6 = 3500.0
 
 
 [ATCA]
@@ -77,17 +76,17 @@ diameter = 6 x 22 m
 #img =
 #link =
 position = -4751639.85972, 2791700.3567, -3200491.11339
-min_elevation = 10.0
+min_elevation = 12.0
 real_time = no
-SEFD_21 = 68.0
-SEFD_18 = 68.0
-SEFD_13 = 106.0
-SEFD_6 = 70.0
-SEFD_5 = 70.0
-SEFD_3.6 = 86.0
-SEFD_2.5 = 212
+SEFD_21 = 66.0
+SEFD_18 = 66.0
+SEFD_13 = 66.0
+SEFD_6 = 42.0
+SEFD_5 = 47.0
+SEFD_3.6 = 48.0
 SEFD_1.3 = 106
-SEFD_0.7 = 180.0
+SEFD_0.7 = 168.0
+SEFD_0.3 = 1450
 
 
 [Alesund]
@@ -226,7 +225,7 @@ diameter = 30 m
 #img =
 #link =
 position = -3753442.7457, 3912709.753, -3348067.6095
-min_elevation = 10.0
+min_elevation = 5.0
 real_time = no
 SEFD_21 = 1000.0
 SEFD_18 = 1000.0
@@ -235,9 +234,7 @@ SEFD_6 = 450.0
 SEFD_5 = 550.0
 SEFD_3.6 = 600.0
 SEFD_2.5 = 750
-SEFD_1.3 = 750
-SEFD_0.7 = 2500.0
-
+SEFD_1.3 = 2500.0
 
 [Darnhall]
 
@@ -462,7 +459,7 @@ SEFD_0.7 = 640.0
 station = Hartebeesthoek
 code = Hh
 network = EVN
-possible_networks = EVN
+possible_networks = EVN, LBA
 country = South Africa
 diameter = 26 m
 #img =
@@ -481,7 +478,7 @@ SEFD_1.3 = 1800
 
 [Hobart]
 
-station = Hobart
+station = Hobart26
 code = Ho
 network = LBA
 possible_networks = LBA
@@ -490,17 +487,35 @@ diameter = 26 m
 #img =
 #link =
 position = -3950237.359, 2522347.6804, -4311561.879
-min_elevation = 10.0
+min_elevation = 7.0
 real_time = no
 SEFD_21 = 470.0
 SEFD_18 = 470.0
 SEFD_13 = 650.0
 SEFD_6 = 640.0
-SEFD_5 = 640.0
+SEFD_5 = 1240.0
 SEFD_3.6 = 560.0
 SEFD_2.5 = 1200
-SEFD_1.3 = 1200
-SEFD_0.7 = 1800.0
+SEFD_1.3 = 1800
+
+
+[Hobart 12m]
+
+station = Hobart12
+code = Hb
+network = LBA
+possible_networks = LBA
+country = Australia
+diameter = 12 m
+#img =
+#link =
+position = -3950263.34106564, 2522248.84133512, -4311499.87756118
+min_elevation = 10.0
+real_time = no
+SEFD_21 = 3500.0
+SEFD_5 = 4000.0
+SEFD_3.6 = 4800.0
+SEFD_2.5 = 4800.0
 
 
 [Irbene]
@@ -604,9 +619,10 @@ diameter = 12 m
 #img =
 #link =
 position = -4147354.6913, 4581542.3772, -1573303.1565
-min_elevation = 10.0
+min_elevation = 5.0
 real_time = no
-SEFD_21 = 5000.0
+SEFD_13 = 5000.0
+SEFD_6 = 4000.0
 SEFD_5 = 4000.0
 SEFD_3.6 = 4800.0
 SEFD_2.5 = 4800.0
@@ -910,10 +926,10 @@ diameter = 22 m
 #img =
 #link =
 position = -4682769.0585, 2802619.04217, -3291759.33837
-min_elevation = 10.0
+min_elevation = 12.0
 real_time = no
-SEFD_21 = 240.0
-SEFD_18 = 240.0
+SEFD_21 = 340.0
+SEFD_18 = 340.0
 SEFD_13 = 530.0
 SEFD_6 = 350.0
 SEFD_5 = 350.0
@@ -1070,7 +1086,7 @@ diameter = 64 m
 #img =
 #link =
 position = -4554232.4864, 2816758.8662, -3454035.0137
-min_elevation = 10.0
+min_elevation = 30.5
 real_time = no
 SEFD_21 = 40.0
 SEFD_18 = 40.0
@@ -1078,10 +1094,7 @@ SEFD_13 = 30.0
 SEFD_6 = 110.0
 SEFD_5 = 110.0
 SEFD_3.6 = 43.0
-SEFD_2.5 = 370
-SEFD_1.3 = 370
-SEFD_0.7 = 810.0
-
+SEFD_1.3 = 250
 
 [Pickmere]
 
@@ -1404,12 +1417,12 @@ diameter = 70 m
 #img =
 #link =
 position = -4460895.2445, 2682361.5103, -3674747.5813
-min_elevation = 10.0
+min_elevation = 6.0
 real_time = no
 SEFD_18 = 23.0
 SEFD_13 = 16.0
 SEFD_3.6 = 25.0
-SEFD_0.7 = 60.0
+SEFD_1.3 = 60.0
 
 
 [Torun]
@@ -1522,9 +1535,9 @@ SEFD_1.3 = 15
 SEFD_0.7 = 23.9
 
 
-[Warkworth]
+[Warkworth12]
 
-station = Warkworth
+station = Warkworth 12
 code = Ww
 network = LBA
 possible_networks = LBA
@@ -1533,13 +1546,28 @@ diameter = 12 m
 #img =
 #link =
 position = -5115324.4279, 477843.2969, -3767192.8344
-min_elevation = 10.0
+min_elevation = 6.1
 real_time = no
-SEFD_21 = 3400.0
+#SEFD_21 = 3400.0
 SEFD_13 = 3400.0
-SEFD_5 = 3800.0
 SEFD_3.6 = 3800.0
-SEFD_2.5 = 3800.0
+
+[Warkworth30]
+
+station = Warkworth30
+code = Wa
+network = LBA
+possible_networks = LBA
+country = New Zealand
+diameter = 30 m
+#img =
+#link =
+position = -5115425.818,  477880.248,  -3767042.055
+
+min_elevation = 6.0
+real_time = no
+SEFD_5 = 650
+SEFD_3.6 = 1000.0
 
 
 [Westerbork]
@@ -1617,12 +1645,12 @@ diameter = 12 m
 #img =
 #link =
 position = -2388896.189, 5043350.0019, -3078590.8037
-min_elevation = 10.0
+min_elevation = 5.0
 real_time = no
-SEFD_21 = 4000.0
-SEFD_5 = 3500.0
+SEFD_13 = 4000.0
+#SEFD_5 = 3500.0
 SEFD_3.6 = 3800.0
-SEFD_2.5 = 3800.0
+#SEFD_2.5 = 3800.0
 
 
 [Yebes]

@@ -10,7 +10,7 @@ Note that the EVN Observation Planner has been designed as a complementary, but 
 
 ## It runs online!
 
-You can make use of the EVN Observation Planner just by going to [the online tool hosted at JIVE](http://planobs.jive.eu:8050), without installing anything.
+You can make use of the EVN Observation Planner just by going to [the online tool hosted at JIVE](https://planobs.jive.eu), without installing anything.
 
 
 It only requires the minimal information to be able to compute the results of the observation:

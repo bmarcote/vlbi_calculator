@@ -11,6 +11,7 @@ import plotly.express as px
 from vlbiplanobs.Checkbox import Checkbox
 from vlbiplanobs import freqsetups as fs
 
+
 def tooltip(message, idname, trigger='?', placement='right',trigger_is_sup=True,  **kwargs):
     """Defines a tooltip (popover) that will be shown in the rendered page.
     It will place a <sup>`trigger`</sup> in the page within a span tag.
@@ -443,7 +444,7 @@ def initial_window_start(app):
                         html.Img(height='80rem', src=app.get_asset_url('icon-newbie.png'),
                                  className='card-text m-3'),
                         html.Br(),
-                        html.P("Guided setup of your observation", className='card-text px-0')
+                        html.P("Easy step-by-step setup", className='card-text px-0')
                     ]), className='text-center shadow-0')
                 ),
                 html.Button(id='button-initial-expert', className='card-button btn btn-gray m-4',
@@ -453,7 +454,7 @@ def initial_window_start(app):
                         html.Img(height='80rem', src=app.get_asset_url('icon-expert.png'),
                                  className='card-text m-3'),
                         html.Br(),
-                        html.P("Manual setup of your observation", className='card-text px-0')
+                        html.P("Fully manual configuration", className='card-text px-0')
                     ]), className='text-center shadow-0')]
                 )
             ])

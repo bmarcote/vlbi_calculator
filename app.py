@@ -38,19 +38,6 @@ from astropy.time import Time
 from astropy import coordinates as coord
 from astropy import units as u
 
-## THIS WILL NEED TO GO AWAY IN THE NEW VERSION OF ASTROPY, WHICH IS STILL NOT
-## SUPPORTED BY THE CURRENT VERSION OF ASTROPLAN
-# Tweak to not let astroplan crashing...
-# from astropy.utils.data import clear_download_cache
-# from astropy.utils import iers
-# clear_download_cache()  # to be sure it is really working
-#
-# iers.conf.auto_download = False
-# iers.conf.iers_auto_url = None
-# iers.conf.auto_max_age = None
-# iers.conf.remote_timeout = 100.0
-# iers.conf.download_cache_lock_attempts = 10
-
 from astroplan import FixedTarget
 
 current_directory = path.dirname(path.realpath(__file__))

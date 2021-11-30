@@ -228,17 +228,17 @@ def arrays_with_band(arrays, a_band):
 def update_pickband_tooltip(a_wavelength):
     a_band = tuple(fs.bands)[a_wavelength]
     return [dbc.Card(dbc.CardBody([
-                    html.H5([html.Img(height='30rem',
+                    html.Span([html.Img(height='30rem', width='100%',
                                       src=app.get_asset_url(f"waves-{a_band.replace('.',  '_')}.png"),
-                                      alt='Band: ', className='d-inline-block'),
-                             html.Span(f"{fs.bands[a_band].split('(')[0].strip()}",
-                                       style={'float': 'right'})
-                             ], className="card-title"),
+                                      alt='Band: ', className='d-inline-block justify-content-center'),
+                             ], className="card-title justify-content-center", style={'float': 'center'}),
+                    html.Br(),
                     html.P([html.Span("Wavelength: ", style={'color': '#888888'}),
-                        f"{fs.bands[a_band].split('(')[1].split('or')[0].strip()}.",
+                        f"{fs.bands[a_band].split('or')[0].strip()}.",
                         html.Br(),
                         html.Span("Frequency: ", style={'color': '#888888'}),
-                        f"{fs.bands[a_band].split('(')[1].split('or')[1].replace(')', '').strip()}.",
+                        f"{fs.bands[a_band].split('or')[1].replace(')', '').strip()}.",
+                        html.Br(),
                         html.Br(),
                         html.Span(html.Small(f"Can be observed with the {arrays_with_band(default_arrays, a_band)}."),
                             style={'color': '#888888'})
@@ -246,15 +246,6 @@ def update_pickband_tooltip(a_wavelength):
                 ]), className="col-sm-3 my-2 shadow-1-strong", style={'min-width': '15rem'})
             ]
 
-
-# @app.callback([Output('initial-timeselection-div-guess', 'hidden'),
-#               Output('initial-timeselection-div-epoch', 'hidden')],
-#               [Input('initial-timeselection', 'value')])
-# def type_initial_time_selection(time_selection_selected):
-#     """Modifies the hidden message related to the two options about how to pick the observing time.
-#     """
-#     print('checked')
-#     return [time_selection_selected, not time_selection_selected]
 
 
 @app.callback([Output('initial-timeselection-div-guess', 'hidden'),

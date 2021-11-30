@@ -4,7 +4,7 @@ astropy
 Brotli
 click
 dash
-dash-bootstrap-components
+dash-bootstrap-components<1.0
 dash-core-components
 dash-html-components
 dash-renderer

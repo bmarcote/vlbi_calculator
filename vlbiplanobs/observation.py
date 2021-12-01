@@ -700,30 +700,38 @@ class Observation(object):
         low elevations of the source. The provided thermal noise is also assumed when a natural
         weighting is applied to the data when imaging. The thermal noise can thus be a bit
         higher if an uniform roubst is used.
+
+        If the source has not been set, it will assume that all antennas observe all time.
         """
-        # As the determination is computationally heavy, if no parameters have been updated
-        # then it returns the stored value from a previous run.
         if self._rms is not None:
             return self._rms
 
-        main_matrix = np.zeros((len(self.times), len(self.stations)))
-        visible = self.is_visible()
-        for i,stat in enumerate(self.stations):
-            main_matrix[:,i][visible[stat.codename]] = stat.sefd(self.band)
-        # Determines the noise level for each time stamp.
-        temp = 0.0
-        for i,ti in enumerate(main_matrix[:-1]):
-            sefds = ti[np.where(ti > 0.0)]
+        if self.target is None:
+            sefds = [stat.sefd(self.band) for stat in self.stations]
+            dt = (self.times[-1]-self.times[0]).to(u.s).value
+            temp = 0.0
             for j in range(len(sefds)):
                 for k in range(j+1, len(sefds)):
-                    temp += (self.times[i+1]-self.times[i]).to(u.s).value/(sefds[j]*sefds[k])
+                    temp += dt/(sefds[j]*sefds[k])
+        else:
+            main_matrix = np.zeros((len(self.times), len(self.stations)))
+            visible = self.is_visible()
+            for i,stat in enumerate(self.stations):
+                main_matrix[:,i][visible[stat.codename]] = stat.sefd(self.band)
+            # Determines the noise level for each time stamp.
+            temp = 0.0
+            for i,ti in enumerate(main_matrix[:-1]):
+                sefds = ti[np.where(ti > 0.0)]
+                for j in range(len(sefds)):
+                    for k in range(j+1, len(sefds)):
+                        temp += (self.times[i+1]-self.times[i]).to(u.s).value/(sefds[j]*sefds[k])
 
-        if np.abs(temp - 0.0) < 1e-5:
-            # No sources visible
-            raise SourceNotVisible('No single baseline can observe the source.')
+            if np.abs(temp - 0.0) < 1e-5:
+                # No sources visible
+                raise SourceNotVisible('No single baseline can observe the source.')
 
-        temp = 1.0/np.sqrt(temp*self.ontarget_fraction)
-        self._rms = ((1.0/0.7)*temp/np.sqrt(self.datarate.to(u.bit/u.s).value/2))*u.Jy
+            temp = 1.0/np.sqrt(temp*self.ontarget_fraction)
+            self._rms = ((1.0/0.7)*temp/np.sqrt(self.datarate.to(u.bit/u.s).value/2))*u.Jy
         return self._rms
 
 

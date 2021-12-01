@@ -248,24 +248,41 @@ def update_pickband_tooltip(a_wavelength):
 
 
 
-@app.callback([Output('initial-timeselection-div-guess', 'hidden'),
-              Output('initial-timeselection-div-epoch', 'hidden')],
+@app.callback([Output('initial-timeselection-div-source', 'hidden'),
+              Output('initial-timeselection-div-epoch', 'hidden'),
+              Output('initial-timeselection-div-duration', 'hidden')],
               [Input('initial-timeselection', 'value')])
 def type_initial_time_selection(time_selection_selected):
     """Modifies the hidden message related to the two options about how to pick the observing time.
     """
-    return [time_selection_selected, not time_selection_selected]
+    return [time_selection_selected == ge.SourceEpoch.UNSPECIFIED.value,
+            time_selection_selected != ge.SourceEpoch.SOURCE_AND_EPOCH.value,
+            time_selection_selected != ge.SourceEpoch.ONLY_SOURCE.value]
 
 
-
-@app.callback([Output('timeselection-div-guess', 'hidden'),
-              Output('timeselection-div-epoch', 'hidden')],
+@app.callback([Output('timeselection-div-source', 'hidden'),
+              Output('timeselection-div-epoch', 'hidden'),
+              Output('timeselection-div-duration', 'hidden')],
               [Input('timeselection', 'value')])
 def type_time_selection(time_selection_selected):
     """Modifies the hidden message related to the two options about how to pick the observing time.
     """
-    return [time_selection_selected, not time_selection_selected]
+    return [time_selection_selected == ge.SourceEpoch.UNSPECIFIED.value,
+            time_selection_selected != ge.SourceEpoch.SOURCE_AND_EPOCH.value,
+            time_selection_selected == ge.SourceEpoch.ONLY_SOURCE.value]
 
+
+@app.callback(Output('timeselection-div-smalltext', 'children'),
+              Input('timeselection', 'value'))
+def set_smalltext_time_selection(time_selection_selected):
+    """Modifies the explanatory text that is placed next to the radiobuttons when specifying the observing type
+    """
+    if time_selection_selected == ge.SourceEpoch.UNSPECIFIED.value:
+        return "The selected option assumes all telescopes will observe during the full observation."
+    elif time_selection_selected == ge.SourceEpoch.SOURCE_AND_EPOCH.value:
+        return ""
+    elif time_selection_selected == ge.SourceEpoch.ONLY_SOURCE.value:
+        return "The selected option will find out when your source may be visible (by >3 telescopes)."
 
 
 @app.callback(Output('band', 'value'),
@@ -375,7 +392,17 @@ def continue_from_times(time_selection, time_date, time_hour, time_duration, sou
     if (source is None) or (not verify_recognized_source(source)):
         return True, 'Specify epoch and target before continue'
 
-    if time_selection:
+    if time_selection == ge.SourceEpoch.UNSPECIFIED.value:
+        if time_duration is not None:
+            try:
+                dummy = float(time_duration)
+                return (True, 'Specify epoch and target before continue') if (dummy <= 0) or (dummy > 4*24) \
+                        else (False, 'Continue')
+            except:
+                return True, 'Specify epoch and target before continue'
+    elif time_selection == ge.SourceEpoch.ONLY_SOURCE.value:
+        return False, 'Continue'
+    elif time_selection == ge.SourceEpoch.SOURCE_AND_EPOCH.value:
         if (time_date is not None) and (time_hour is not None) and (time_duration is not None):
             try:
                 dummy = float(time_duration)
@@ -385,8 +412,9 @@ def continue_from_times(time_selection, time_date, time_hour, time_duration, sou
                 return True, 'Specify epoch and target before continue'
         else:
             return True, 'Specify epoch and target before continue'
+    else:
+        raise ValueError(f"The parameter 'time_selection' has an unexpected value ({time_selection})")
 
-    return False, 'Continue'
 
 
 
@@ -508,7 +536,7 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                 ]),
                 html.Br(),
                 html.Div(className='form-group', children=[
-                    html.H6(['Your observing Band',
+                    html.H5(['Your observing Band',
                         *ge.tooltip(idname='popover-band',
                             message="This will update the "
                                     "antenna list showing the ones that can observe "
@@ -521,7 +549,7 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                 ]),
                 html.Br(),
                 html.Div(className='form-group', children=[
-                    html.H6(['Real-time correlation?',
+                    html.H5(['Real-time correlation?',
                         *ge.tooltip(idname='popover-eevn',
                         message="Only available for the EVN: real-time correlation mode."
                                 "The data are transferred and correlated in real-time, but "
@@ -534,38 +562,39 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                 ]),
                 html.Br(),
                 html.Div(className='form-group', children=[
-                    html.H6(['Source (name or coordinates)',
-                        *ge.tooltip(idname='popover-target',
-                             message="Source name or coordinates. " \
-                                     "You may see an error if the given name is not properly resolved. "
-                                     "J2000 coordinates are assumed in both forms: 00:00:00 00:00:00 or " \
-                                     "00h00m00s 00d00m00s.")
-                    ]),
-                    dcc.Input(id='source', value=None, type='text',
-                              className='form-control', placeholder="hh:mm:ss dd:mm:ss",
-                              persistence=True),
-                    html.Small(id='error_source',
-                               className='form-text text-muted'),
-                ]),
-                html.Br(),
-                html.Div(className='form-group', children=[
-                    html.H6('Epoch for observation'),
+                    html.H5('Source and Epoch'),
                     dbc.FormGroup([
-                        dbc.RadioItems(options=[{"label": "I don't have a preferred epoch", "value": False},
-                                                {"label": "I know the observing epoch", "value": True}],
-                                       value=True, id="timeselection", inline=True, persistence=True),
+                        dbc.RadioItems(options=[{"label": "Do not specify source nor epoch",
+                                                 "value": ge.SourceEpoch.UNSPECIFIED.value},
+                                                {"label": "Find epoch for given source",
+                                                 "value": ge.SourceEpoch.ONLY_SOURCE.value},
+                                                {"label": "I will define source and epoch",
+                                                 "value": ge.SourceEpoch.SOURCE_AND_EPOCH.value},],
+                                       value=ge.SourceEpoch.SOURCE_AND_EPOCH.value, id="timeselection", inline=True,
+                                       persistence=True),
+                        html.Small("", id='timeselection-div-smalltext', style={'color': '#999999'}),
+                        html.Br(), html.Br(),
                     ], inline=True),
                     html.Div(children=[
-                        html.Div(id='timeselection-div-guess', className='row justify-content-center',
-                            hidden=False, children=[
-                                html.Small("Choose the first option to find out when your source "
-                                           "may be visible (by >3 telescopes).", style={'color': '#999999'}),
-                                html.Small("Note that this option may not provide the best (expected) "
-                                           "results in case of combining different networks very far apart "
-                                           "(e.g. LBA and EVN).", style={'color': '#999999'})
+                        html.Div(id='timeselection-div-source', className='row justify-content-center',
+                            hidden=True, children=[
+                                html.Label(['Source (name or coordinates)',
+                                    *ge.tooltip(idname='popover-target',
+                                         message="Source name or coordinates. " \
+                                             "You may see an error if the given name is not properly resolved. "
+                                             "J2000 coordinates are assumed in both forms: 00:00:00 00:00:00 or " \
+                                             "00h00m00s 00d00m00s.")
+                                ]),
+                                html.Div(className='form-group', children=[
+                                    dcc.Input(id='source', value=None, type='text',
+                                              className='form-control', placeholder="hh:mm:ss dd:mm:ss",
+                                              persistence=True),
+                                    html.Small(id='error_source',
+                                               className='form-text text-muted'),
+                                ])
                         ]),
-                        html.Div(id='timeselection-div-epoch', hidden=True, children=[
-                            html.Label('Start of observation (UTC)'),
+                        html.Div(id='timeselection-div-epoch', hidden=False, children=[
+                            html.Label([html.Br(), 'Start of observation (UTC)']),
                             *ge.tooltip(idname='popover-startime', message="Select the date and "
                                         "time of the start of the observation (Universal, UTC, "
                                         "time). You will also see the day of the year (DOY) in "
@@ -585,14 +614,20 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                                                   for hm in range(0, 24*60, 15)],
                                          persistence=True, className='form-hour'),
                             html.Small(id='error_starttime', style={'color': 'red'},
-                                       className='form-text text-muted'),
-                            html.Label('Duration of the observation (in hours)'),
-                            html.Div(className='form-group', children=[
-                                dcc.Input(id='duration', value=None, type='number', className='form-control',
+                                       className='form-text text-muted')
+                        ]),
+                        html.Div(id='timeselection-div-duration', className='row justify-content-center',
+                            hidden=True, children=[
+                                # html.Small("Note that this option may not provide the best (expected) "
+                                #            "results in case of combining different networks very far apart "
+                                #            "(e.g. LBA and EVN).", style={'color': '#999999'}),
+                                html.Label('Duration of the observation (in hours)'),
+                                html.Div(className='form-group', children=[
+                                    dcc.Input(id='duration', value=None, type='number', className='form-control',
                                            placeholder="Duration in hours", persistence=True, inputMode='numeric'),
-                                html.Small(id='error_duration', className='form-text text-danger')
-                            ])
-                        ])
+                                    html.Small(id='error_duration', className='form-text text-danger')
+                                ])
+                        ]),
                     ]),
                 ]),
                 html.Br(),
@@ -846,7 +881,8 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
 def update_onsourcetime_label(onsourcetime, total_duration, defined_epoch):
     """Keeps the on-source time label updated with the value selected by the user.
     """
-    if (total_duration is not None) and defined_epoch:
+    if (total_duration is not None) and (defined_epoch in \
+                                        (ge.SourceEpoch.UNSPECIFIED.value, ge.SourceEpoch.SOURCE_AND_EPOCH.value)):
         return f"{onsourcetime}% of the total time  ({ge.optimal_units(total_duration*u.h*onsourcetime/100, [u.h, u.min, u.s]):.03n})."
 
     return f"{onsourcetime}% of the total observation."

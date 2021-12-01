@@ -1,5 +1,6 @@
 import numpy as np
 from datetime import datetime as dt
+import enum
 from astropy import units as u
 import dash
 from dash.dependencies import Input, Output, State
@@ -10,6 +11,21 @@ import plotly.express as px
 
 from vlbiplanobs.Checkbox import Checkbox
 from vlbiplanobs import freqsetups as fs
+
+
+
+
+class SourceEpoch(enum.Enum):
+    """Enum-type class with the three possible types of observations to set,
+    in terms of how to specify the source and epoch to observe:
+    -
+    -
+    -
+    """
+    UNSPECIFIED = 0
+    ONLY_SOURCE = 1
+    SOURCE_AND_EPOCH = 2
+
 
 
 def tooltip(message, idname, trigger='?', placement='right',trigger_is_sup=True,  **kwargs):

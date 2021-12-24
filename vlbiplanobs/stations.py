@@ -230,13 +230,16 @@ class Station(object):
             Time to compute the elevation of the source
             (either a single timestamp or an array of times).
         - target : astroplan.FixedTarget
-             Target coordinates to observe.
+             Target coordinates to observe. If None, the target would be assumed to be visible at all times.
 
         Output
         - visible : tuple
             Tuple containing the indexes of obs_times when the target source is visible
             from the station. Therefore obs_times[visible] would return only those times.
         """
+        if target is None:
+            return (np.arange(2),)
+
         elevations = self.elevation(obs_times, target)
         return np.where(elevations >= self.min_elevation)
 

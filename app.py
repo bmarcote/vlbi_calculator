@@ -177,7 +177,8 @@ def update_sensitivity(obs):
     with information about the observation.
     """
     cards = []
-    cards += ge.summary_card_times(app, obs)
+    if obs.target is not None:
+        cards += ge.summary_card_times(app, obs)
     cards += ge.summary_card_frequency(app, obs)
     cards += ge.summary_card_antennas(app, obs)
     cards += ge.summary_card_beam(app, obs)
@@ -232,7 +233,7 @@ def update_pickband_tooltip(a_wavelength):
                                       src=app.get_asset_url(f"waves-{a_band.replace('.',  '_')}.png"),
                                       alt='Band: ', className='d-inline-block justify-content-center'),
                              ], className="card-title justify-content-center", style={'float': 'center'}),
-                    html.Br(),
+                    html.Br(), html.Br(),
                     html.P([html.Span("Wavelength: ", style={'color': '#888888'}),
                         f"{fs.bands[a_band].split('or')[0].strip()}.",
                         html.Br(),
@@ -257,7 +258,7 @@ def type_initial_time_selection(time_selection_selected):
     """
     return [time_selection_selected == ge.SourceEpoch.UNSPECIFIED.value,
             time_selection_selected != ge.SourceEpoch.SOURCE_AND_EPOCH.value,
-            time_selection_selected != ge.SourceEpoch.ONLY_SOURCE.value]
+            time_selection_selected == ge.SourceEpoch.ONLY_SOURCE.value]
 
 
 @app.callback([Output('timeselection-div-source', 'hidden'),
@@ -278,9 +279,10 @@ def set_smalltext_time_selection(time_selection_selected):
     """Modifies the explanatory text that is placed next to the radiobuttons when specifying the observing type
     """
     if time_selection_selected == ge.SourceEpoch.UNSPECIFIED.value:
-        return "The selected option assumes all telescopes will observe during the full observation."
+        return "The selected option assumes all telescopes will observe during the full observation. " \
+               "The resolution (coverage) would assume a source at +/- 45 degrees declination."
     elif time_selection_selected == ge.SourceEpoch.SOURCE_AND_EPOCH.value:
-        return ""
+        return "Both the target source and the observing epoch must be specified."
     elif time_selection_selected == ge.SourceEpoch.ONLY_SOURCE.value:
         return "The selected option will find out when your source may be visible (by >3 telescopes)."
 
@@ -389,20 +391,22 @@ def continue_from_band(selected_band, *networks):
 def continue_from_times(time_selection, time_date, time_hour, time_duration, source):
     """Verifies that the user has selected and introduced the required data before continue.
     """
-    if (source is None) or (not verify_recognized_source(source)):
-        return True, 'Specify epoch and target before continue'
-
     if time_selection == ge.SourceEpoch.UNSPECIFIED.value:
         if time_duration is not None:
             try:
                 dummy = float(time_duration)
-                return (True, 'Specify epoch and target before continue') if (dummy <= 0) or (dummy > 4*24) \
+                return (True, 'Specify the total duration of the observation') if (dummy <= 0) or (dummy > 4*24) \
                         else (False, 'Continue')
             except:
-                return True, 'Specify epoch and target before continue'
+                return True, 'Specify the total duration of the observation'
+        return True, 'Specify the total duration of the observation'
     elif time_selection == ge.SourceEpoch.ONLY_SOURCE.value:
+        if (source is None) or (not verify_recognized_source(source)):
+            return True, 'Specify the target before continue'
         return False, 'Continue'
     elif time_selection == ge.SourceEpoch.SOURCE_AND_EPOCH.value:
+        if (source is None) or (not verify_recognized_source(source)):
+            return True, 'Specify epoch and target before continue'
         if (time_date is not None) and (time_hour is not None) and (time_duration is not None):
             try:
                 dummy = float(time_duration)
@@ -487,29 +491,29 @@ def choice_page(choice_card):
         html.Div(className='row justify-content-center', id='main-window2',
             children=html.Div(className='col-sm-6 justify-content-center',
                 children=[html.Div(className='justify-content-center',
-                        children=[#html.H3("Welcome!"),
-                                  html.P(["The EVN Observation Planner allows you to plan observations with the ",
-                            html.A(href="https://www.evlbi.org", children="European VLBI Network"),
-                            " (EVN) and other Very Long Baseline Interferometry (VLBI) networks. "
-                            "The EVN Observation Planner helps you to determine when your source "
-                            "can be observed by the different antennas, and provides the expected "
-                            "outcome of these observations, like the expected sensitivity or resolution."]),
-                            html.Br(),
-                            *[
-                                # html.Div(hidden=False if choice_card == 'choice' else True,
-                                #          children=ge.initial_window_start(app)),
-                                html.Div(hidden=False if choice_card == 'band' else True,
-                                         children=ge.initial_window_pick_band()),
-                                html.Div(hidden=False if choice_card == 'network' else True,
-                                         children=ge.initial_window_pick_network(app, default_arrays)),
-                                html.Div(hidden=False if choice_card == 'time' else True,
-                                         children=ge.initial_window_pick_time()),
-                                html.Div(hidden=False if choice_card == 'mode' else True,
-                                         children=ge.initial_window_pick_mode(app)),
-                                html.Div(hidden=False if choice_card == 'final' else True,
-                                         children=ge.initial_window_final()),
-                            ],
-                        ], style={'text:align': 'justify !important'})
+                    children=[#html.H3("Welcome!"),
+                              html.P(["The EVN Observation Planner allows you to plan observations with the ",
+                        html.A(href="https://www.evlbi.org", children="European VLBI Network"),
+                        " (EVN) and other Very Long Baseline Interferometry (VLBI) networks. "
+                        "The EVN Observation Planner helps you to determine when your source "
+                        "can be observed by the different antennas, and provides the expected "
+                        "outcome of these observations, like the expected sensitivity or resolution."]),
+                        html.Br(),
+                        *[
+                            # html.Div(hidden=False if choice_card == 'choice' else True,
+                            #          children=ge.initial_window_start(app)),
+                            html.Div(hidden=False if choice_card == 'band' else True,
+                                     children=ge.initial_window_pick_band()),
+                            html.Div(hidden=False if choice_card == 'network' else True,
+                                     children=ge.initial_window_pick_network(app, default_arrays)),
+                            html.Div(hidden=False if choice_card == 'time' else True,
+                                     children=ge.initial_window_pick_time()),
+                            html.Div(hidden=False if choice_card == 'mode' else True,
+                                     children=ge.initial_window_pick_mode(app)),
+                            html.Div(hidden=False if choice_card == 'final' else True,
+                                     children=ge.initial_window_final()),
+                        ],
+                    ], style={'text:align': 'justify !important'})
                 ])
             )]
 
@@ -536,7 +540,7 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                 ]),
                 html.Br(),
                 html.Div(className='form-group', children=[
-                    html.H5(['Your observing Band',
+                    html.H5(['Observing Band',
                         *ge.tooltip(idname='popover-band',
                             message="This will update the "
                                     "antenna list showing the ones that can observe "
@@ -568,8 +572,8 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                                                  "value": ge.SourceEpoch.UNSPECIFIED.value},
                                                 {"label": "Find epoch for given source",
                                                  "value": ge.SourceEpoch.ONLY_SOURCE.value},
-                                                {"label": "I will define source and epoch",
-                                                 "value": ge.SourceEpoch.SOURCE_AND_EPOCH.value},],
+                                                {"label": "Define source and epoch",
+                                                 "value": ge.SourceEpoch.SOURCE_AND_EPOCH.value}],
                                        value=ge.SourceEpoch.SOURCE_AND_EPOCH.value, id="timeselection", inline=True,
                                        persistence=True),
                         html.Small("", id='timeselection-div-smalltext', style={'color': '#999999'}),
@@ -621,12 +625,12 @@ def main_page(results_visible=False, summary_output=None, fig_elev_output=None,
                                 # html.Small("Note that this option may not provide the best (expected) "
                                 #            "results in case of combining different networks very far apart "
                                 #            "(e.g. LBA and EVN).", style={'color': '#999999'}),
-                                html.Label('Duration of the observation (in hours)'),
+                                html.H6('Duration of the observation (in hours)'),
                                 html.Div(className='form-group', children=[
                                     dcc.Input(id='duration', value=None, type='number', className='form-control',
                                            placeholder="Duration in hours", persistence=True, inputMode='numeric'),
                                     html.Small(id='error_duration', className='form-text text-danger')
-                                ])
+                                ]),
                         ]),
                     ]),
                 ]),
@@ -1116,7 +1120,7 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                dash.no_update, dash.no_update
 
-    if epoch_selected:
+    if epoch_selected == ge.SourceEpoch.SOURCE_AND_EPOCH:
         # All options must be completed
         if None in (band, starttime, starthour, duration, source, datarate, subbands, channels, pols, inttime) \
                 or source == "":
@@ -1124,6 +1128,19 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                         'start observing time', 'duration of the observation', 'data rate', 'number of subbands',
                         'number of channels', 'number of polarizations', 'integration time'), (band, source,
                         starttime, starthour, duration, datarate, subbands, channels, pols, inttime)) \
+                        if (atr is None) or (atr == "")]
+            temp = [alert_message(["Complete all fields and options before computing the observation.\n" + \
+                                  f"Currently it is missing: {', '.join(missing)}."]), '']
+            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    elif epoch_selected == ge.SourceEpoch.UNSPECIFIED.value:
+        if None in (band, duration, datarate, subbands, channels, pols, inttime) \
+                or source == "":
+            missing = [label for label,atr in zip(('observing band',
+                        'duration of the observation', 'data rate', 'number of subbands',
+                        'number of channels', 'number of polarizations', 'integration time'), (band,
+                        duration, datarate, subbands, channels, pols, inttime)) \
                         if (atr is None) or (atr == "")]
             temp = [alert_message(["Complete all fields and options before computing the observation.\n" + \
                                   f"Currently it is missing: {', '.join(missing)}."]), '']
@@ -1163,24 +1180,26 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                 dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    try:
-        target_source = observation.Source(convert_colon_coord(source), 'Source')
-    except ValueError as e:
+    if epoch_selected != ge.SourceEpoch.UNSPECIFIED.value:
         try:
-            target_source = observation.Source(coord.get_icrs_coordinates(source), source)
-        except coord.name_resolve.NameResolveError as e:
-            temp = [alert_message(["Wrong source name or coordinates.", html.Br(),
-                    "Either the source name hasn't been found or the coordinates format is incorrect."]), '']
-            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            target_source = observation.Source(convert_colon_coord(source), 'Source')
         except ValueError as e:
-            temp = [alert_message(["Wrong source name or coordinates.", html.Br(),
-                    "Either the source name hasn't been found or the coordinates format is incorrect."]), '']
-            return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-                    dash.no_update, dash.no_update, dash.no_update, dash.no_update
-    if not epoch_selected:
+            try:
+                target_source = observation.Source(coord.get_icrs_coordinates(source), source)
+            except coord.name_resolve.NameResolveError as e:
+                temp = [alert_message(["Wrong source name or coordinates.", html.Br(),
+                        "Either the source name hasn't been found or the coordinates format is incorrect."]), '']
+                return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                        dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                        dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            except ValueError as e:
+                temp = [alert_message(["Wrong source name or coordinates.", html.Br(),
+                        "Either the source name hasn't been found or the coordinates format is incorrect."]), '']
+                return *[temp if out_center else temp[::-1]][0], dash.no_update, dash.no_update, dash.no_update, \
+                        dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
+                        dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+    if epoch_selected == ge.SourceEpoch.ONLY_SOURCE.value:
         try:
             utc_times, _ = observation.Observation.guest_times_for_source(target_source,
                             stations.Stations('Observation', itertools.compress(all_antennas, ants)))
@@ -1197,7 +1216,7 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
         obs_times = utc_times[0] + np.linspace(0, (utc_times[1]-utc_times[0]).to(u.min).value, 50)*u.min
-    else:
+    elif epoch_selected == ge.SourceEpoch.SOURCE_AND_EPOCH.value:
         try:
             time0 = Time(dt.strptime(f"{starttime} {starthour}", '%Y-%m-%d %H:%M'),
                          format='datetime', scale='utc')
@@ -1220,6 +1239,10 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
                     dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
         obs_times = time0 + np.linspace(0, duration*60, 50)*u.min
+    elif epoch_selected == ge.SourceEpoch.UNSPECIFIED.value:
+        # Some dummy times
+        obs_times = Time(dt.strptime('2020-01-01 00:00', '%Y-%m-%d %H:%M')) + np.linspace(0, duration*60, 2)*u.min
+        target_source = None
 
     try:
         obs = observation.Observation(target=target_source, times=obs_times, band=band,
@@ -1261,8 +1284,15 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
 
 
     try:
-        with mp.Pool() as pool:
-            output_figs = pool.map(smap,
+        if epoch_selected == ge.SourceEpoch.UNSPECIFIED.value:
+            output_figs = [{'data': []}, {'data': []}]
+            with mp.Pool() as pool:
+                output_figs += pool.map(smap,
+                               [functools.partial(get_fig_uvplane, obs),
+                                functools.partial(get_fig_dirty_map, obs)])
+        else:
+            with mp.Pool() as pool:
+                output_figs = pool.map(smap,
                                [functools.partial(get_fig_ant_elev, obs),
                                 functools.partial(get_fig_ant_up, obs),
                                 functools.partial(get_fig_uvplane, obs),
@@ -1290,11 +1320,11 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
     if out_center:
         return dbc.Alert("Results have been updated.", color='info', dismissable=True), '', False, True, \
            sensitivity_results, *list(output_figs), dash.no_update, \
-           'tab-summary', False, False, False
+           'tab-summary', False, epoch_selected == ge.SourceEpoch.UNSPECIFIED.value, False
     else:
         return '', dbc.Alert("Results have been updated.", color='info', dismissable=True), False, True, \
            sensitivity_results, *list(output_figs), dash.no_update, \
-           dash.no_update, False, False, False
+           dash.no_update, False, epoch_selected == ge.SourceEpoch.UNSPECIFIED.value, False
 
 
 
@@ -1438,24 +1468,36 @@ def get_fig_uvplane(obs):
 
 
 def get_fig_dirty_map(obs):
+    # Right now I only leave the natural weighting map (the uniform does not always correspond to the true one)
     dirty_map_nat, laxis = obs.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
-    dirty_map_uni, laxis = obs.get_dirtymap(pixsize=1024, robust='uniform', oversampling=4)
     fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
             aspect='equal')
-    fig2 = px.imshow(img=dirty_map_uni, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
-            aspect='equal')
-    fig = make_subplots(rows=1, cols=2, subplot_titles=('Natural weighting', 'Uniform weighting'),
-                        shared_xaxes=True, shared_yaxes=True)
+    fig = make_subplots(rows=1, cols=1, subplot_titles=('Natural weighting',), shared_xaxes=True, shared_yaxes=True)
     fig.add_trace(fig1.data[0], row=1, col=1)
-    fig.add_trace(fig2.data[0], row=1, col=2)
     mapsize = 30*obs.synthesized_beam()['bmaj'].to(u.mas).value
     fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
                       xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
-                      # This xaxis2 represents the xaxis for fig2.
-                      xaxis2={'autorange': False, 'range': [mapsize, -mapsize]},
                       yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
     fig.update_xaxes(title_text="RA (mas)", constrain="domain")
-    fig.update_yaxes(title_text="Dec (mas)", row=1, col=1, scaleanchor="x", scaleratio=1)
+    fig.update_yaxes(title_text="Dec (mas)", scaleanchor="x", scaleratio=1)
+    # dirty_map_nat, laxis = obs.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
+    # dirty_map_uni, laxis = obs.get_dirtymap(pixsize=1024, robust='uniform', oversampling=4)
+    # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+    #         aspect='equal')
+    # fig2 = px.imshow(img=dirty_map_uni, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+    #         aspect='equal')
+    # fig = make_subplots(rows=1, cols=2, subplot_titles=('Natural weighting', 'Uniform weighting'),
+    #                     shared_xaxes=True, shared_yaxes=True)
+    # fig.add_trace(fig1.data[0], row=1, col=1)
+    # fig.add_trace(fig2.data[0], row=1, col=2)
+    # mapsize = 30*obs.synthesized_beam()['bmaj'].to(u.mas).value
+    # fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
+    #                   xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
+    #                   # This xaxis2 represents the xaxis for fig2.
+    #                   xaxis2={'autorange': False, 'range': [mapsize, -mapsize]},
+    #                   yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
+    # fig.update_xaxes(title_text="RA (mas)", constrain="domain")
+    # fig.update_yaxes(title_text="Dec (mas)", row=1, col=1, scaleanchor="x", scaleratio=1)
 
     return fig
 

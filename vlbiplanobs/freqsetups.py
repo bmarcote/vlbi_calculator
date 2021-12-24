@@ -14,7 +14,7 @@ import enum
 bands = {'92cm': '92 cm or 0.33 GHz', '49cm': '49 cm or 0.6 GHz',
          '30cm': '30 cm or  1 GHz', '21cm': '21 cm or 1.4 GHz',
          '18cm': '18 cm or 1.7 GHz', '13cm': '13 cm or 2.3 GHz',
-         '6cm': '6cm or 5 GHz', '5cm': '5 cm or 6 GHz',
+         '6cm': '6 cm or 5 GHz', '5cm': '5 cm or 6 GHz',
          '3.6cm': '3.6 cm or 8.3 GHz', '2.5cm': '2.5 cm or 12 GHz',
          '2cm': '2 cm or 15 GHz)',
          '1.3cm': '1.3 cm or 23 GHz', #'0.9cm': 'Ka band (0.9 cm or 33 GHz)',

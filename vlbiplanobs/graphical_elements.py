@@ -18,9 +18,9 @@ from vlbiplanobs import freqsetups as fs
 class SourceEpoch(enum.Enum):
     """Enum-type class with the three possible types of observations to set,
     in terms of how to specify the source and epoch to observe:
-    -
-    -
-    -
+    - UNSPECIFIED: if neither source nor epoch have been specified.
+    - ONLY_SOURCE: only source is specified, not the epoch.
+    - SOURCE_AND_EPOCH: both the epoch and the duration are specified.
     """
     UNSPECIFIED = 0
     ONLY_SOURCE = 1
@@ -306,7 +306,6 @@ def summary_card_frequency(app, obs):
 def summary_card_fov(app, obs):
     """Creates a summary card showing the expected FoV limitations.
     """
-    # primary_beam =
     shortest_bl = obs.shortest_baseline()[1]
     largest_ang_scales = ((2.063e8*u.mas)*(obs.wavelength/shortest_bl)).to(u.mas)
     pb_scale = ((2.063e8*u.mas)*(obs.wavelength/(100*u.m))).to(u.arcsec)
@@ -314,7 +313,6 @@ def summary_card_fov(app, obs):
     tm_smearing = obs.time_smearing()
     smearing_ratio = bw_smearing/tm_smearing
     smearing_ratio = smearing_ratio if smearing_ratio <= 1.0 else 1/smearing_ratio
-
     temp_msg = [html.Div(className='row', style={'height': '1rem'}),
             html.Div(className='row justify-content-center align-self-center',
                     children=[ellipse(bmaj="5rem", bmin="5rem", pa="0deg"),
@@ -537,72 +535,119 @@ def initial_window_pick_time():
     """
     return [
         html.Div(className='row justify-content-center', children=[
-            html.H3('Select the observing epoch'),
-            html.P(["Introduce the epoch when the observation will be conducted, or let the tool to find "
+            html.H3('Select the observing epoch and target'),
+            html.P(["Introduce the epoch when the observation will be conducted and the target "
+                "source to observe, if known,, or let the tool to find "
                 "the most appropriate times for a given source/network."]),
             html.Br(),
             html.Div(className='row justify-content-center', children=[dbc.FormGroup([
-                dbc.RadioItems(options=[{"label": "I don't have a preferred epoch", "value": False},
-                                        {"label": "I know the observing epoch", "value": True}],
-                               value=True, id="initial-timeselection", inline=True, persistence=True),
-                ], className='col-5', inline=True), #),
-            html.Div(className='col-7', children=[
-                html.Div(id='initial-timeselection-div-guess', className='row justify-content-center',
-                    children=[
-                        html.Small("Choose this option if you just want to find out when your source will "
-                            "be visible. It will pick the time range when more than 3 antennas can observe "
-                            "simultaneously."),
-                        html.Small("Note that this option may not provide the best (expected) results in the "
-                            "case of combining different networks that are far apart (e.g. LBA together with "
-                            "the EVN).")
-                ]),
-                html.Div(id='initial-timeselection-div-epoch', children=[
-                    html.Label('Start of observation (UTC)'),
-                    *tooltip(idname='popover-startime', message="Select the date and "
-                                "time of the start of the observation (Universal, UTC, "
-                                "time). You will also see the day of the year (DOY) in "
-                                "brackets once the date is selected."),
-                    html.Br(),
-                    dcc.DatePickerSingle(id='initial-starttime', date=None, min_date_allowed=dt(1900, 1, 1),
-                                         max_date_allowed=dt(2100, 1, 1),
-                                         display_format='DD-MM-YYYY (DDD)',
-                                         placeholder='Start date',
-                                         first_day_of_week=1,
-                                         initial_visible_month=dt.today(),
-                                         persistence=True,
-                                         className='form-picker'),
-                    dcc.Dropdown(id='initial-starthour', placeholder="Start time (UTC)", value=None,
-                                 options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
-                                           'value': f"{hm//60:02n}:{hm % 60:02n}"} \
-                                          for hm in range(0, 24*60, 15)],
-                                 persistence=True, className='form-hour'),
-                    html.Small(id='initial-error_starttime', style={'color': 'red'},
-                               className='form-text text-muted'),
-                    html.Label('Duration of the observation (in hours)'),
-                    html.Div(className='form-group', children=[
-                        dcc.Input(id='initial-duration', value=None, type='number', className='form-control',
-                                   placeholder="Duration in hours", persistence=True, inputMode='numeric'),
-                        html.Small(id='initial-error_duration',
-                                   className='form-text text-danger')
-                    ])
-                ])
-            ]),
-        ]),
-        html.Span(style={'height': '5rem'}),
-        html.Div(className='row justify-content-center', children=[
-            html.H3('Introduce your target source'),
-            html.P(["Introduce the name of the source (Simbad-recognized) you want to observe "
-                    "or the J2000 coordinates. ",
-                    html.Br(),
-                    "The two following formats are allowed for the coordinates: '00:00:00 00:00:00' or "
-                    "'00h00m00s 00d00m00s'."]),
+                dbc.RadioItems(options=[{"label": "Do not specify source nor epoch",
+                                         "value": SourceEpoch.UNSPECIFIED.value},
+                                        {"label": "Find best epoch for the given source",
+                                         "value": SourceEpoch.ONLY_SOURCE.value},
+                                        {"label": "Define observing epoch and target source",
+                                         "value": SourceEpoch.SOURCE_AND_EPOCH.value}],
+                               value=SourceEpoch.SOURCE_AND_EPOCH.value, id="initial-timeselection",
+                               inline=True, persistence=True),
+                html.Br(),
+                ], className='col-6', inline=True), #),
+                html.Div(className='col-6', children=[
+                    html.Small("", id='timeselection-div-smalltext', style={'color': '#999999'})
+                ])]
+            ),
             html.Br(),
-            html.Div(className='form-group', children=[
-                dcc.Input(id='initial-source', value=None, type='text',
-                          className='form-control', placeholder="hh:mm:ss dd:mm:ss",
-                          persistence=True),
-                html.Small(id='initial-error_source', className='form-text text-muted'),
-            ])
+            html.Div(className='col-7', children=[
+                html.Div(id='initial-timeselection-div-source', className='row justify-content-center',
+                    hidden=True, children=[
+                            html.Label(['Source (name or coordinates)',
+                                *tooltip(idname='popover-target',
+                                     message="Source name or coordinates. " \
+                                         "You may see an error if the given name is not properly resolved. "
+                                         "J2000 coordinates are assumed in both forms: 00:00:00 00:00:00 or " \
+                                         "00h00m00s 00d00m00s.")
+                            ]),
+                            html.Div(className='form-group', children=[
+                                dcc.Input(id='initial-source', value=None, type='text',
+                                          className='form-control', placeholder="hh:mm:ss dd:mm:ss",
+                                          persistence=True),
+                                html.Small(id='initial-error_source',
+                                           className='form-text text-muted'),
+                            ])
+                    ]),
+                    html.Div(id='initial-timeselection-div-epoch', hidden=False, children=[
+                        html.Label([html.Br(), 'Start of observation (UTC)']),
+                        *tooltip(idname='popover-startime', message="Select the date and "
+                                    "time of the start of the observation (Universal, UTC, "
+                                    "time). You will also see the day of the year (DOY) in "
+                                    "brackets once the date is selected."),
+                        html.Br(),
+                        dcc.DatePickerSingle(id='initial-starttime', date=None, min_date_allowed=dt(1900, 1, 1),
+                                             max_date_allowed=dt(2100, 1, 1),
+                                             display_format='DD-MM-YYYY (DDD)',
+                                             placeholder='Start date',
+                                             first_day_of_week=1,
+                                             initial_visible_month=dt.today(),
+                                             persistence=True,
+                                             className='form-picker'),
+                        dcc.Dropdown(id='initial-starthour', placeholder="Start time (UTC)", value=None,
+                                     options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
+                                               'value': f"{hm//60:02n}:{hm % 60:02n}"} \
+                                              for hm in range(0, 24*60, 15)],
+                                     persistence=True, className='form-hour'),
+                        html.Small(id='initial-error_starttime', style={'color': 'red'},
+                                   className='form-text text-muted')
+                    ]),
+                    html.Div(id='initial-timeselection-div-duration', className='row justify-content-center',
+                        hidden=True, children=[
+                            html.Label([html.Br(), 'Duration of the observation (in hours)']),
+                            html.Div(className='form-group', children=[
+                                dcc.Input(id='initial-duration', value=None, type='number', className='form-control',
+                                       placeholder="Duration in hours", persistence=True, inputMode='numeric'),
+                                html.Small(id='initial-error_duration', className='form-text text-danger')
+                            ]),
+                    ]),
+
+
+
+    #             html.Div(id='initial-timeselection-div-guess', className='row justify-content-center',
+    #                 children=[
+    #                     html.Small("Choose this option if you just want to find out when your source will "
+    #                         "be visible. It will pick the time range when more than 3 antennas can observe "
+    #                         "simultaneously."),
+    #                     html.Small("Note that this option may not provide the best (expected) results in the "
+    #                         "case of combining different networks that are far apart (e.g. LBA together with "
+    #                         "the EVN).")
+    #             ]),
+    #             html.Div(id='initial-timeselection-div-epoch', children=[
+    #                 html.Label('Start of observation (UTC)'),
+    #                 *tooltip(idname='popover-startime', message="Select the date and "
+    #                             "time of the start of the observation (Universal, UTC, "
+    #                             "time). You will also see the day of the year (DOY) in "
+    #                             "brackets once the date is selected."),
+    #                 html.Br(),
+    #                 dcc.DatePickerSingle(id='initial-starttime', date=None, min_date_allowed=dt(1900, 1, 1),
+    #                                      max_date_allowed=dt(2100, 1, 1),
+    #                                      display_format='DD-MM-YYYY (DDD)',
+    #                                      placeholder='Start date',
+    #                                      first_day_of_week=1,
+    #                                      initial_visible_month=dt.today(),
+    #                                      persistence=True,
+    #                                      className='form-picker'),
+    #                 dcc.Dropdown(id='initial-starthour', placeholder="Start time (UTC)", value=None,
+    #                              options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
+    #                                        'value': f"{hm//60:02n}:{hm % 60:02n}"} \
+    #                                       for hm in range(0, 24*60, 15)],
+    #                              persistence=True, className='form-hour'),
+    #                 html.Small(id='initial-error_starttime', style={'color': 'red'},
+    #                            className='form-text text-muted'),
+    #                 html.Label('Duration of the observation (in hours)'),
+    #                 html.Div(className='form-group', children=[
+    #                     dcc.Input(id='initial-duration', value=None, type='number', className='form-control',
+    #                                placeholder="Duration in hours", persistence=True, inputMode='numeric'),
+    #                     html.Small(id='initial-error_duration',
+    #                                className='form-text text-danger')
+    #                 ])
+    #             ])
         ]),
         html.Span(style={'height': '2rem'}),
         html.Div(className='row justify-content-center',

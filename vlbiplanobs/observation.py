@@ -730,8 +730,9 @@ class Observation(object):
                 # No sources visible
                 raise SourceNotVisible('No single baseline can observe the source.')
 
-            temp = 1.0/np.sqrt(temp*self.ontarget_fraction)
-            self._rms = ((1.0/0.7)*temp/np.sqrt(self.datarate.to(u.bit/u.s).value/2))*u.Jy
+        temp = 1.0/np.sqrt(temp*self.ontarget_fraction)
+        self._rms = ((1.0/0.7)*temp/np.sqrt(self.datarate.to(u.bit/u.s).value/2))*u.Jy
+
         return self._rms
 
 
@@ -757,7 +758,13 @@ class Observation(object):
             return self._uv_baseline
 
         bl_uv_up = {}
-        hourangle = (self.gstimes - self.target.ra.to(u.hourangle)).value % 24*u.hourangle
+        if self.target is None:
+            # Just assumes a source at +/-45 deg elevation without taking into account the Earth
+            hourangle = self.gstimes
+            print("WARNING: 'target' is not set yet but used in 'Observation'")
+        else:
+            hourangle = (self.gstimes - self.target.ra.to(u.hourangle)).value % 24*u.hourangle
+
         nstat = len(self.stations)
         # Determines the xyz of all baselines. Time independent
         bl_xyz = np.empty(((nstat*(nstat-1))//2, 3))
@@ -773,24 +780,39 @@ class Observation(object):
                                                self.stations[j].codename))
 
         # Matrix to convert xyz to uvw for each timestamp (but w is not considered)
-        m = np.array([[np.sin(hourangle), np.cos(hourangle), np.zeros(len(hourangle))],
+        if self.target is None:
+            m = np.array([[np.sin(hourangle), np.cos(hourangle), np.zeros(len(hourangle))],
+                      [-np.sin(45*u.deg)*np.cos(hourangle),
+                      np.sin(45*u.deg)*np.sin(hourangle),
+                      np.cos(45*u.deg)*np.ones(len(hourangle))]])
+        else:
+            m = np.array([[np.sin(hourangle), np.cos(hourangle), np.zeros(len(hourangle))],
                       [-np.sin(self.target.dec)*np.cos(hourangle),
                       np.sin(self.target.dec)*np.sin(hourangle),
                       np.cos(self.target.dec)*np.ones(len(hourangle))]])
 
         bl_uv = np.array([m[:,:,i] @ bl_xyz.T  for i in range(m.shape[-1])])*u.m
-        ants_up = self.is_visible()
-        for i,bl_name in enumerate(bl_names):
-            ant1, ant2 = bl_name.split('-')
-            bl_up = (np.array([a for a in ants_up[ant1][0] if a in ants_up[ant2][0]]), )
-            if len(bl_up[0]) > 0:
-                bl_uv_up[bl_name] = (bl_uv[:,:,i][bl_up]/self.wavelength).decompose()
 
-        if len(bl_uv_up.keys()) == 0:
-            raise SourceNotVisible
+        if self.target is None:
+            for i,bl_name in enumerate(bl_names):
+                ant1, ant2 = bl_name.split('-')
+                bl_uv_up[bl_name] = (bl_uv[:,:,i]/self.wavelength).decompose()
 
-        self._uv_baseline = bl_uv_up
-        return bl_uv_up
+            self._uv_baseline = bl_uv_up
+            return bl_uv_up
+        else:
+            ants_up = self.is_visible()
+            for i,bl_name in enumerate(bl_names):
+                ant1, ant2 = bl_name.split('-')
+                bl_up = (np.array([a for a in ants_up[ant1][0] if a in ants_up[ant2][0]]), )
+                if len(bl_up[0]) > 0:
+                    bl_uv_up[bl_name] = (bl_uv[:,:,i][bl_up]/self.wavelength).decompose()
+
+            if len(bl_uv_up.keys()) == 0:
+                raise SourceNotVisible
+
+            self._uv_baseline = bl_uv_up
+            return bl_uv_up
 
 
     def get_uv_array(self) -> np.ndarray:
@@ -865,7 +887,7 @@ class Observation(object):
         return self._synth_beam
 
 
-    def get_dirtymap(self, pixsize:int = 1024, robust: str = "natural", oversampling: int = 4):
+    def get_dirtymap(self, pixsize: int = 1024, robust: str = "natural", oversampling: int = 4):
         """Returns the dirty beam produced for the given observation.
 
         Input:

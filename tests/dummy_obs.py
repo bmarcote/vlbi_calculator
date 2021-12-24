@@ -40,13 +40,12 @@ def get_selected_antennas(list_of_selected_antennas):
     selected_antennas = stations.Stations('Observation', [])
     for ant in list_of_selected_antennas:
         selected_antennas.add(all_stations[ant])
-
     return selected_antennas
 
 
 
 # evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc']
-evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc', 'Pa', 'Mo', 'Ho', 'Nl', 'Pt', 'Sc', 'Kp', 'Hn']
+evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc', 'Pa', 'Mp', 'Ho', 'Nl', 'Pt', 'Sc', 'Kp', 'Hn']
 obs.stations = get_selected_antennas(evn6)
 
 

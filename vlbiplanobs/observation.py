@@ -998,11 +998,11 @@ class Observation(object):
                                                   (self.gstimes[-1].hour*60) // 60,
                                                   (self.gstimes[0].hour*60) % 60)
         if self.times[0].datetime.date() == self.times[-1].datetime.date():
-            return "{}\n{}-{} UTC\nGST range: {}".format(self.times[0].datetime.strftime(date_format),
+            return "{} {}-{} UTC\nGST range: {}".format(self.times[0].datetime.strftime(date_format),
                                         self.times[0].datetime.strftime('%H:%M'),
                                         self.times[-1].datetime.strftime('%H:%M'), gsttext)
         elif (self.times[-1] - self.times[0]) < 24*u.h:
-            return "{}\n{}-{} UTC (+1d)\nGST range: {}".format(
+            return "{} {}-{} UTC (+1d)\nGST range: {}".format(
                                         self.times[0].datetime.strftime(date_format),
                                         self.times[0].datetime.strftime('%H:%M'),
                                         self.times[-1].datetime.strftime('%H:%M'), gsttext)

@@ -177,17 +177,6 @@ def alert_message(message, title="Warning!"):
 
 
 
-# @app.callback([],
-#         [Input("request-printable-version", "n_clicks")],
-#         prevent_initial_call=True)
-# def get_printable_version(n_clicks):
-#     if n_clicks is None:
-#         return
-#
-#     pathlib.Path('assets/obs_summary.pdf').unlink(missing_ok=True)
-#     return
-
-
 def update_sensitivity(obs):
     """Given the observation, it sets the text for all summary cards
     with information about the observation.
@@ -205,12 +194,10 @@ def update_sensitivity(obs):
     pdf = ge.summary_printable(app, obs)
     pdf.output('assets/obs_summary.pdf', 'F')
     pdf_mutex.release()
-    # return [html.Br(), html.Button('Download printable summary', id='request-printable-version', n_clicks=0,
-    #                     className='btn btn-link btn-lg justify-content-center', style={'text-align': 'center'}),
-    return [html.Br(), html.A('Download summary', id='request-printable-version', download='evn_planobs_summary.pdf',
-                        href=app.get_asset_url('obs_summary.pdf'),
-                        className='btn btn-link btn-lg justify-content-center', style={'text-align': 'center'}),
-            # dcc.Download(id="download-summary"),
+    return [html.Br(), html.Div(html.A('Download summary as PDF', id='request-printable-version',
+                        download='evn_planobs_summary.pdf', href=app.get_asset_url('obs_summary.pdf'),
+                        className='btn btn-link btn-lg', style={'text-align': 'center'}),
+            className='col-12 justify-content-center', style={'text-align': 'center'}),
             html.Br(),
             html.Div(className='card-deck col-12 justify-content-center',
                      children=cards),

@@ -17,11 +17,13 @@ __status__ = "Production"   # Prototype, Development, Production.
 
 import os
 from os import path
+import pathlib
 from time import sleep
 import itertools
 import functools
 from importlib import resources
 import multiprocessing as mp
+import threading as th
 import datetime
 # import time
 from datetime import datetime as dt
@@ -77,6 +79,8 @@ doc_files = {'About the EVN Observation Planner': 'doc-contact.md',
 
 selected_band = '6cm'
 obs = observation.Observation()
+obs_mutex = th.Lock()
+
 
 external_stylesheets = []
 external_scripts = ["https://kit.fontawesome.com/69c65a0ab5.js"]
@@ -172,6 +176,18 @@ def alert_message(message, title="Warning!"):
                         color='warning', dismissable=True)]
 
 
+
+# @app.callback([],
+#         [Input("request-printable-version", "n_clicks")],
+#         prevent_initial_call=True)
+# def get_printable_version(n_clicks):
+#     if n_clicks is None:
+#         return
+#
+#     pathlib.Path('assets/obs_summary.pdf').unlink(missing_ok=True)
+#     return
+
+
 def update_sensitivity(obs):
     """Given the observation, it sets the text for all summary cards
     with information about the observation.
@@ -184,7 +200,19 @@ def update_sensitivity(obs):
     cards += ge.summary_card_beam(app, obs)
     cards += ge.summary_card_rms(app, obs)
     cards += ge.summary_card_fov(app, obs)
-    return [html.Div(className='card-deck col-12 justify-content-center',
+    pdf_mutex = th.Lock()
+    pdf_mutex.acquire()
+    pdf = ge.summary_printable(app, obs)
+    pdf.output('assets/obs_summary.pdf', 'F')
+    pdf_mutex.release()
+    # return [html.Br(), html.Button('Download printable summary', id='request-printable-version', n_clicks=0,
+    #                     className='btn btn-link btn-lg justify-content-center', style={'text-align': 'center'}),
+    return [html.Br(), html.A('Download summary', id='request-printable-version', download='evn_planobs_summary.pdf',
+                        href=app.get_asset_url('obs_summary.pdf'),
+                        className='btn btn-link btn-lg justify-content-center', style={'text-align': 'center'}),
+            # dcc.Download(id="download-summary"),
+            html.Br(),
+            html.Div(className='card-deck col-12 justify-content-center',
                      children=cards),
             html.Br(),
             html.Div(style={'height': '5rem'}),
@@ -1245,11 +1273,16 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
         target_source = None
 
     try:
+        global obs
+        global obs_mutex
+        obs_mutex.acquire()
         obs = observation.Observation(target=target_source, times=obs_times, band=band,
                       datarate=datarate, subbands=subbands, channels=channels,
                       polarizations=pols, inttime=inttime, ontarget=onsourcetime/100.0,
                       stations=stations.Stations('Observation',
-                                                 itertools.compress(all_antennas, ants)))
+                                                 itertools.compress(all_antennas, ants)),
+                      fixed_time=epoch_selected != ge.SourceEpoch.UNSPECIFIED.value)
+        obs_mutex.release()
         sensitivity_results = update_sensitivity(obs)
     except observation.SourceNotVisible:
         temp = [alert_message([
@@ -1286,17 +1319,15 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
     try:
         if epoch_selected == ge.SourceEpoch.UNSPECIFIED.value:
             output_figs = [{'data': []}, {'data': []}]
-            with mp.Pool() as pool:
-                output_figs += pool.map(smap,
-                               [functools.partial(get_fig_uvplane, obs),
-                                functools.partial(get_fig_dirty_map, obs)])
+            output_figs += [obs.get_fig_uvplane(), obs.get_fig_dirty_map()]
+            # with mp.Pool() as pool:
+            #     output_figs += pool.map(smap, [obs.get_fig_uvplane, obs.get_fig_dirty_map])
         else:
-            with mp.Pool() as pool:
-                output_figs = pool.map(smap,
-                               [functools.partial(get_fig_ant_elev, obs),
-                                functools.partial(get_fig_ant_up, obs),
-                                functools.partial(get_fig_uvplane, obs),
-                                functools.partial(get_fig_dirty_map, obs)])
+            output_figs = [obs.get_fig_ant_elev(), obs.get_fig_ant_up(),
+                                              obs.get_fig_uvplane(), obs.get_fig_dirty_map()]
+            # with mp.Pool() as pool:
+            #     output_figs = pool.map(smap, [obs.get_fig_ant_elev, obs.get_fig_ant_up,
+            #                                   obs.get_fig_uvplane, obs.get_fig_dirty_map])
     except Exception as e:
         # Let's print into the STDOUT the current state for later debugging...
         print("--- UNEXPECTED ERROR")
@@ -1328,180 +1359,6 @@ def compute_observation(n_clicks, band, starttime, starthour, duration, source, 
 
 
 
-def get_fig_ant_elev(obs):
-    data_fig = []
-    data_dict = obs.elevations()
-    # Some reference lines at low elevations
-    for ant in data_dict:
-        data_fig.append({'x': obs.times.datetime, 'y': data_dict[ant].value,
-                        'mode': 'lines', 'hovertemplate': "Elev: %{y:.2n}º<br>%{x}",
-                        'name': obs.stations[ant].name})
-
-    data_fig.append({'x': obs.times.datetime, 'y': np.zeros_like(obs.times)+10,
-                     'mode': 'lines', 'hoverinfo': 'skip', 'name': 'Elev. limit 10º',
-                     'line': {'dash': 'dash', 'opacity': 0.5, 'color': 'gray'}})
-    data_fig.append({'x': np.unwrap(obs.gstimes.value*2*np.pi/24)*24/(2*np.pi), 'y': np.zeros_like(obs.times)+20,
-                     'xaxis': 'x2', 'mode': 'lines', 'hoverinfo': 'skip',
-                     'name': 'Elev. limit 20º', 'line': {'dash': 'dot', 'opacity': 0.5,
-                     'color': 'gray'}})
-    return {'data': data_fig,
-            'layout': {'title': 'Source elevation during the observation',
-                       'hovermode': 'closest',
-                       'xaxis': {'title': 'Time (UTC)', 'showgrid': False,
-                                 'ticks': 'inside', 'showline': True, 'mirror': False,
-                                 'hovermode': 'closest', 'color': 'black'},
-                       'xaxis2': {'title': {'text': 'Time (GST)', 'standoff': 0},
-                                  'showgrid': False, 'overlaying': 'x', #'dtick': 1.0,
-                                  'tickvals': np.arange(np.ceil(obs.gstimes.value[0]),
-                                        np.floor(np.unwrap(obs.gstimes.value*2*np.pi/24)[-1]*24/(2*np.pi))+1),
-                                  'ticktext': np.arange(np.ceil(obs.gstimes.value[0]),
-                                        np.floor(np.unwrap(obs.gstimes.value*2*np.pi/24)[-1]*24/(2*np.pi))+1)%24,
-                                  'ticks': 'inside', 'showline': True, 'mirror': False,
-                                  'hovermode': 'closest', 'color': 'black', 'side': 'top'},
-                       'yaxis': {'title': 'Elevation (degrees)', 'range': [0., 92.],
-                                 'ticks': 'inside', 'showline': True, 'mirror': "all",
-                                 'showgrid': False, 'hovermode': 'closest'},
-                       'zeroline': True, 'zerolinecolor': 'k'}}
-
-
-
-def get_fig_ant_up(obs):
-    data_fig = []
-    data_dict = obs.is_visible()
-    gstimes = np.unwrap(obs.gstimes.value*2*np.pi/24)*24/(2*np.pi)
-    gstimes = np.array([dt(obs.times.datetime[0].year, obs.times.datetime[0].month, obs.times.datetime[0].day) \
-                        + datetime.timedelta(seconds=gst*3600) for gst in gstimes])
-    for i,ant in enumerate(data_dict):
-        # xs = [obs.times.datetime[0].date() + datetime.timedelta(seconds=i*3600) for i in np.unwrap(obs.gstimes.value*2*np.pi/24)[data_dict[ant]]*24/(2*np.pi)]
-        xs = gstimes[data_dict[ant]]
-        data_fig.append({'x': xs,
-                         'y': np.zeros_like(data_dict[ant][0])-i, 'type': 'scatter',
-                         'hovertemplate': "GST %{x}",
-                         'mode': 'markers', 'marker_symbol': "41",
-                         'hoverinfo': "skip",
-                         'name': obs.stations[ant].name})
-
-    data_fig.append({'x': obs.times.datetime, 'y': np.zeros_like(obs.times)-0.5,
-                     'xaxis': 'x2',
-                     'mode': 'lines', 'hoverinfo': 'skip', 'showlegend': False,
-                     'line': {'dash': 'dot', 'opacity': 0.0, 'color': 'white'}})
-    return {'data': data_fig,
-            'layout': {'title': {'text': 'Source visible during the observation',
-                                 'y': 1, 'yanchor': 'top'},
-                       'hovermode': 'closest',
-                       'xaxis': {'title': 'Time (GST)', 'showgrid': False,
-                                 'range': [gstimes[0], gstimes[-1]],
-                                 # 'tickvals': np.arange(np.ceil(obs.gstimes.value[0]),
-                                 #        np.floor(np.unwrap(obs.gstimes.value*2*np.pi/24)[-1]*24/(2*np.pi))+1),
-                                 # 'ticktext': np.arange(np.ceil(obs.gstimes.value[0]),
-                                 #        np.floor(np.unwrap(obs.gstimes.value*2*np.pi/24)[-1]*24/(2*np.pi))+1)%24,
-                                 'tickformat': '%H:%M',
-                                 'ticks': 'inside', 'showline': True, 'mirror': False,
-                                 'hovermode': 'closest', 'color': 'black'},
-                       'xaxis2': {'title': {'text': 'Time (UTC)', 'standoff': 0},
-                                  'showgrid': False, 'overlaying': 'x', #'dtick': 1.0,
-                                  'ticks': 'inside', 'showline': True, 'mirror': False,
-                                  'hovermode': 'closest', 'color': 'black', 'side': 'top'},
-                       'yaxis': {'ticks': '', 'showline': True, 'mirror': True,
-                                 'showticklabels': False, 'zeroline': False,
-                                 'showgrid': False, 'hovermode': 'closest',
-                                 'startline': False}}}
-
-    data_fig = []
-    data_dict = obs.is_visible()
-    for i,ant in enumerate(data_dict):
-        data_fig.append({'x': obs.times.datetime[data_dict[ant]],
-                         'y': np.zeros_like(data_dict[ant][0])-i, 'type': 'scatter',
-                         'hovertemplate': "%{x}",
-                         'mode': 'markers', 'marker_symbol': "41",
-                         'hoverinfo': "skip",
-                         'name': obs.stations[ant].name})
-
-    data_fig.append({'x': np.unwrap(obs.gstimes.value), 'y': np.zeros_like(obs.times)-0.5,
-                     'xaxis': 'x2',
-                     'mode': 'lines', 'hoverinfo': 'skip', 'showlegend': False,
-                     'line': {'dash': 'dot', 'opacity': 0.0, 'color': 'white'}})
-    return {'data': data_fig,
-            'layout': {'title': 'Source visible during the observation',
-                       'xaxis': {'title': 'Time (UTC)', 'showgrid': False,
-                                 'ticks': 'inside', 'showline': True, 'mirror': False,
-                                 'hovermode': 'closest', 'color': 'black'},
-                       'xaxis2': {'title': {'text': 'Time (GST)', 'standoff': 0},
-                                  'showgrid': False, 'overlaying': 'x', #'dtick': 1.0,
-                                  'tickvals': np.arange(np.ceil(obs.gstimes.value[0]),
-                                            np.floor(np.unwrap(obs.gstimes.value)[-1])+1),
-                                  'ticktext': np.arange(np.ceil(obs.gstimes.value[0]),
-                                            np.floor(np.unwrap(obs.gstimes.value)[-1])+1) % 24,
-                                  'ticks': 'inside', 'showline': True, 'mirror': False,
-                                  'hovermode': 'closest', 'color': 'black', 'side': 'top'},
-                       'yaxis': {'ticks': '', 'showline': True, 'mirror': True,
-                                 'showticklabels': False, 'zeroline': False,
-                                 'showgrid': False, 'hovermode': 'closest',
-                                 'startline': False}}}
-
-
-def get_fig_uvplane(obs):
-    data_fig = []
-    bl_uv = obs.get_uv_baseline()
-    for bl_name in bl_uv:
-        # accounting for complex conjugate
-        uv = np.empty((2*len(bl_uv[bl_name]), 2))
-        uv[:len(bl_uv[bl_name]), :] = bl_uv[bl_name]
-        uv[len(bl_uv[bl_name]):, :] = -bl_uv[bl_name]
-        data_fig.append({'x': uv[:,0],
-                         'y': uv[:,1],
-                         # 'type': 'scatter', 'mode': 'lines',
-                         'type': 'scatter', 'mode': 'markers',
-                         'marker': {'symbol': '.', 'size': 2},
-                         'name': bl_name, 'hovertext': bl_name, 'hoverinfo': 'name', 'hovertemplate': ''})
-    return {'data': data_fig,
-            'layout': {'title': '', 'showlegend': False,
-                       'hovermode': 'closest',
-                       'width': 700, 'height': 700,
-                       'xaxis': {'title': 'u (lambda)', 'showgrid': False, 'zeroline': False,
-                                 'ticks': 'inside', 'showline': True, 'mirror': "all",
-                                 'color': 'black'},
-                       'yaxis': {'title': 'v (lambda)', 'showgrid': False, 'scaleanchor': 'x',
-                                 'ticks': 'inside', 'showline': True, 'mirror': "all",
-                                 'color': 'black', 'zeroline': False}}}
-
-
-
-def get_fig_dirty_map(obs):
-    # Right now I only leave the natural weighting map (the uniform does not always correspond to the true one)
-    dirty_map_nat, laxis = obs.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
-    fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
-            aspect='equal')
-    fig = make_subplots(rows=1, cols=1, subplot_titles=('Natural weighting',), shared_xaxes=True, shared_yaxes=True)
-    fig.add_trace(fig1.data[0], row=1, col=1)
-    mapsize = 30*obs.synthesized_beam()['bmaj'].to(u.mas).value
-    fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
-                      xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
-                      yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
-    fig.update_xaxes(title_text="RA (mas)", constrain="domain")
-    fig.update_yaxes(title_text="Dec (mas)", scaleanchor="x", scaleratio=1)
-    # dirty_map_nat, laxis = obs.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
-    # dirty_map_uni, laxis = obs.get_dirtymap(pixsize=1024, robust='uniform', oversampling=4)
-    # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
-    #         aspect='equal')
-    # fig2 = px.imshow(img=dirty_map_uni, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
-    #         aspect='equal')
-    # fig = make_subplots(rows=1, cols=2, subplot_titles=('Natural weighting', 'Uniform weighting'),
-    #                     shared_xaxes=True, shared_yaxes=True)
-    # fig.add_trace(fig1.data[0], row=1, col=1)
-    # fig.add_trace(fig2.data[0], row=1, col=2)
-    # mapsize = 30*obs.synthesized_beam()['bmaj'].to(u.mas).value
-    # fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
-    #                   xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
-    #                   # This xaxis2 represents the xaxis for fig2.
-    #                   xaxis2={'autorange': False, 'range': [mapsize, -mapsize]},
-    #                   yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
-    # fig.update_xaxes(title_text="RA (mas)", constrain="domain")
-    # fig.update_yaxes(title_text="Dec (mas)", row=1, col=1, scaleanchor="x", scaleratio=1)
-
-    return fig
-
-
 
 
 #####################  This is the webpage layout
@@ -1521,7 +1378,6 @@ app.layout = html.Div([
     html.Div([html.Br(), html.Br()]),
     # html.Div(id='full-window', children=html.Div(id='main-window', children=main_page(False)))])
     html.Div(id='full-window', children=initial_page())])
-
 
 
 

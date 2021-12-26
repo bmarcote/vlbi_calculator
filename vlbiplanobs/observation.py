@@ -5,6 +5,8 @@ from astropy import units as u
 from astropy import coordinates as coord
 from astropy.time import Time, TimeDelta
 from astroplan import FixedTarget
+import plotly.express as px
+from plotly.subplots import make_subplots
 
 from vlbiplanobs.stations import Stations
 
@@ -69,7 +71,7 @@ class Observation(object):
     def __init__(self, target: Source = None, times: Time = None, band: str = None,
                  datarate=None, subbands: int = None, channels: int = None,
                  polarizations: int = None, inttime=None, ontarget: float = 1.0,
-                 stations: Stations = None, bits: int = 2):
+                 stations: Stations = None, bits: int = 2, fixed_time = True):
         """Initializes an observation.
         Note that you can initialize an empty observation at this stage and add the
         information for the different attributes later. However, you may raise exception
@@ -119,6 +121,9 @@ class Observation(object):
         - bits : int
             Number of bits at which the data have been recorded (sampled). A typical VLBI observation is
             almost always recorded with 2-bit data.
+        - fixed_time : bool [default True]
+            In case the observing time should not be fixed. Only used for internal use when the user does not
+            specify the epoch (but internally a random epoch is set so an estimation of the observation is done).
         """
         self.target = target
         # Because otherwise gstimes is not initialized
@@ -145,6 +150,7 @@ class Observation(object):
         self._uv_array = None
         self._rms = None
         self._synth_beam = None
+        self._fixed_time = fixed_time
 
 
     @property
@@ -985,6 +991,8 @@ class Observation(object):
             - strtime : str
                 A string showing the time-range of the observation.
         """
+        if self.gstimes is None:
+            return "Observing time unspecifed."
         gsttext = "{:02n}:{:02.2n}-{:02n}:{:02.2n}".format((self.gstimes[0].hour*60) // 60,
                                                   (self.gstimes[0].hour*60) % 60,
                                                   (self.gstimes[-1].hour*60) // 60,
@@ -1006,7 +1014,170 @@ class Observation(object):
                                         self.times[-1].datetime.strftime('%H:%M'), gsttext)
 
 
+    def get_fig_ant_elev(self):
+        data_fig = []
+        data_dict = self.elevations()
+        # Some reference lines at low elevations
+        for ant in data_dict:
+            data_fig.append({'x': self.times.datetime, 'y': data_dict[ant].value,
+                            'mode': 'lines', 'hovertemplate': "Elev: %{y:.2n}º<br>%{x}",
+                            'name': self.stations[ant].name})
+
+        data_fig.append({'x': self.times.datetime, 'y': np.zeros_like(self.times)+10,
+                         'mode': 'lines', 'hoverinfo': 'skip', 'name': 'Elev. limit 10º',
+                         'line': {'dash': 'dash', 'opacity': 0.5, 'color': 'gray'}})
+        data_fig.append({'x': np.unwrap(self.gstimes.value*2*np.pi/24)*24/(2*np.pi), 'y': np.zeros_like(self.times)+20,
+                         'xaxis': 'x2', 'mode': 'lines', 'hoverinfo': 'skip',
+                         'name': 'Elev. limit 20º', 'line': {'dash': 'dot', 'opacity': 0.5,
+                         'color': 'gray'}})
+        return {'data': data_fig,
+                'layout': {'title': 'Source elevation during the observation',
+                           'hovermode': 'closest',
+                           'xaxis': {'title': 'Time (UTC)', 'showgrid': False,
+                                     'ticks': 'inside', 'showline': True, 'mirror': False,
+                                     'hovermode': 'closest', 'color': 'black'},
+                           'xaxis2': {'title': {'text': 'Time (GST)', 'standoff': 0},
+                                      'showgrid': False, 'overlaying': 'x', #'dtick': 1.0,
+                                      'tickvals': np.arange(np.ceil(self.gstimes.value[0]),
+                                            np.floor(np.unwrap(self.gstimes.value*2*np.pi/24)[-1]*24/(2*np.pi))+1),
+                                      'ticktext': np.arange(np.ceil(self.gstimes.value[0]),
+                                            np.floor(np.unwrap(self.gstimes.value*2*np.pi/24)[-1]*24/(2*np.pi))+1)%24,
+                                      'ticks': 'inside', 'showline': True, 'mirror': False,
+                                      'hovermode': 'closest', 'color': 'black', 'side': 'top'},
+                           'yaxis': {'title': 'Elevation (degrees)', 'range': [0., 92.],
+                                     'ticks': 'inside', 'showline': True, 'mirror': "all",
+                                     'showgrid': False, 'hovermode': 'closest'},
+                           'zeroline': True, 'zerolinecolor': 'k'}}
 
 
+
+
+    def get_fig_ant_up(self):
+        data_fig = []
+        data_dict = self.is_visible()
+        gstimes = np.unwrap(self.gstimes.value*2*np.pi/24)*24/(2*np.pi)
+        gstimes = np.array([dt.datetime(self.times.datetime[0].year, self.times.datetime[0].month,
+                            self.times.datetime[0].day) + dt.timedelta(seconds=gst*3600) for gst in gstimes])
+        for i,ant in enumerate(data_dict):
+            # xs = [obs.times.datetime[0].date() + datetime.timedelta(seconds=i*3600) for i in np.unwrap(obs.gstimes.value*2*np.pi/24)[data_dict[ant]]*24/(2*np.pi)]
+            xs = gstimes[data_dict[ant]]
+            data_fig.append({'x': xs,
+                             'y': np.zeros_like(data_dict[ant][0])-i, 'type': 'scatter',
+                             'hovertemplate': "GST %{x}",
+                             'mode': 'markers', 'marker_symbol': "41",
+                             'hoverinfo': "skip",
+                             'name': self.stations[ant].name})
+
+        data_fig.append({'x': self.times.datetime, 'y': np.zeros_like(self.times)-0.5,
+                         'xaxis': 'x2',
+                         'mode': 'lines', 'hoverinfo': 'skip', 'showlegend': False,
+                         'line': {'dash': 'dot', 'opacity': 0.0, 'color': 'white'}})
+        return {'data': data_fig,
+                'layout': {'title': {'text': 'Source visible during the observation',
+                                     'y': 1, 'yanchor': 'top'},
+                           'hovermode': 'closest',
+                           'xaxis': {'title': 'Time (GST)', 'showgrid': False,
+                                     'range': [gstimes[0], gstimes[-1]],
+                                     # 'tickvals': np.arange(np.ceil(obs.gstimes.value[0]),
+                                     #        np.floor(np.unwrap(obs.gstimes.value*2*np.pi/24)[-1]*24/(2*np.pi))+1),
+                                     # 'ticktext': np.arange(np.ceil(obs.gstimes.value[0]),
+                                     #        np.floor(np.unwrap(obs.gstimes.value*2*np.pi/24)[-1]*24/(2*np.pi))+1)%24,
+                                     'tickformat': '%H:%M',
+                                     'ticks': 'inside', 'showline': True, 'mirror': False,
+                                     'hovermode': 'closest', 'color': 'black'},
+                           'xaxis2': {'title': {'text': 'Time (UTC)', 'standoff': 0},
+                                      'showgrid': False, 'overlaying': 'x', #'dtick': 1.0,
+                                      'ticks': 'inside', 'showline': True, 'mirror': False,
+                                      'hovermode': 'closest', 'color': 'black', 'side': 'top'},
+                           'yaxis': {'ticks': '', 'showline': True, 'mirror': True,
+                                     'showticklabels': False, 'zeroline': False,
+                                     'showgrid': False, 'hovermode': 'closest',
+                                     'startline': False}}}
+
+
+
+    def get_fig_uvplane(self):
+        data_fig = []
+        bl_uv = self.get_uv_baseline()
+        for bl_name in bl_uv:
+            # accounting for complex conjugate
+            uv = np.empty((2*len(bl_uv[bl_name]), 2))
+            uv[:len(bl_uv[bl_name]), :] = bl_uv[bl_name]
+            uv[len(bl_uv[bl_name]):, :] = -bl_uv[bl_name]
+            data_fig.append({'x': uv[:,0],
+                             'y': uv[:,1],
+                             # 'type': 'scatter', 'mode': 'lines',
+                             'type': 'scatter', 'mode': 'markers',
+                             'marker': {'symbol': '.', 'size': 2},
+                             'name': bl_name, 'hovertext': bl_name, 'hoverinfo': 'name', 'hovertemplate': ''})
+        return {'data': data_fig,
+                'layout': {'title': '', 'showlegend': False,
+                           'hovermode': 'closest',
+                           'width': 700, 'height': 700,
+                           'xaxis': {'title': 'u (lambda)', 'showgrid': False, 'zeroline': False,
+                                     'ticks': 'inside', 'showline': True, 'mirror': "all",
+                                     'color': 'black'},
+                           'yaxis': {'title': 'v (lambda)', 'showgrid': False, 'scaleanchor': 'x',
+                                     'ticks': 'inside', 'showline': True, 'mirror': "all",
+                                     'color': 'black', 'zeroline': False}}}
+
+
+
+    def get_fig_dirty_map(self):
+        # Right now I only leave the natural weighting map (the uniform does not always correspond to the true one)
+        dirty_map_nat, laxis = self.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
+        fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+                aspect='equal')
+        fig = make_subplots(rows=1, cols=1, subplot_titles=('Natural weighting',), shared_xaxes=True, shared_yaxes=True)
+        fig.add_trace(fig1.data[0], row=1, col=1)
+        mapsize = 30*self.synthesized_beam()['bmaj'].to(u.mas).value
+        fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
+                          xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
+                          yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
+        fig.update_xaxes(title_text="RA (mas)", constrain="domain")
+        fig.update_yaxes(title_text="Dec (mas)", scaleanchor="x", scaleratio=1)
+        # dirty_map_nat, laxis = obs.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
+        # dirty_map_uni, laxis = obs.get_dirtymap(pixsize=1024, robust='uniform', oversampling=4)
+        # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+        #         aspect='equal')
+        # fig2 = px.imshow(img=dirty_map_uni, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+        #         aspect='equal')
+        # fig = make_subplots(rows=1, cols=2, subplot_titles=('Natural weighting', 'Uniform weighting'),
+        #                     shared_xaxes=True, shared_yaxes=True)
+        # fig.add_trace(fig1.data[0], row=1, col=1)
+        # fig.add_trace(fig2.data[0], row=1, col=2)
+        # mapsize = 30*obs.synthesized_beam()['bmaj'].to(u.mas).value
+        # fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
+        #                   xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
+        #                   # This xaxis2 represents the xaxis for fig2.
+        #                   xaxis2={'autorange': False, 'range': [mapsize, -mapsize]},
+        #                   yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
+        # fig.update_xaxes(title_text="RA (mas)", constrain="domain")
+        # fig.update_yaxes(title_text="Dec (mas)", row=1, col=1, scaleanchor="x", scaleratio=1)
+
+        return fig
+
+    # def export_to_pdf(self, outputname):
+    #     """Exports the basic information of the observation into a PDF file.
+    #     """
+    # https://towardsdatascience.com/creating-pdf-files-with-python-ad3ccadfae0f
+    #     from fpdf import FPDF
+    #     pdf = FPDF(orientation='P', unit='cm', format='A4')
+    #     # pdf_w = 21.0
+    #     # pdf_h = 29.7
+    #     pdf.add_page()
+    #
+    #     plotly.io.write_image(pltx,file='pltx.png',format='png',width=700, height=450)
+    #     pltx=(os.getcwd()+'/'+"pltx.png")
+    #
+    #     pdf.image(sctplt,  link='', type='', w=1586/80, h=1920/80)
+    #     self.set_font('Arial', 'B', 16)
+    #     self.set_text_color(220, 50, 50)
+    #     self.cell(w=210.0, h=40.0, align='C', txt="LORD OF THE PDFS", border=0)
+    #     self.set_font('Arial', '', 12)
+    #     self.multi_cell(0,10,txt)
+    #
+    #     pdf.output('test.pdf','F')
+    #
 
 

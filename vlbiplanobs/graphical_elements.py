@@ -3,6 +3,7 @@ from datetime import datetime as dt
 import enum
 from astropy import units as u
 import dash
+from fpdf import FPDF
 from dash.dependencies import Input, Output, State
 from dash import dcc
 from dash import html
@@ -350,6 +351,131 @@ def summary_card_rms(app, obs):
                         f"channel, or approx. {rms_time:.3n}/beam per time integration "
                         f"({optimal_units(obs.inttime, [u.s,u.ms,u.us]):.3n}).")]
     return create_sensitivity_card('Sensitivity', temp_msg)
+
+
+
+def summary_printable(app, obs):
+    """Returns a html.Div object with a HTML format.
+    """
+    rms = optimal_units(obs.thermal_noise(), [u.MJy, u.kJy, u.Jy, u.mJy, u.uJy])
+    rms_channel = optimal_units(rms*np.sqrt(obs.subbands*obs.channels),
+                        [u.MJy, u.kJy, u.Jy, u.mJy, u.uJy])
+    bw_smearing = obs.bandwidth_smearing()
+    tm_smearing = obs.time_smearing()
+    pol_dict = {1: 'single', 2: 'dual', 4: 'full'}
+    synthbeam = obs.synthesized_beam()
+    synthbeam_units = optimal_units(synthbeam['bmaj'], [u.arcsec, u.mas, u.uas]).unit
+    ants_up = obs.is_visible()
+    ant_no_obs = []
+    for an_ant in ants_up:
+        if len(ants_up[an_ant][0]) == 0:
+            ant_no_obs.append(an_ant)
+
+    ants = [ant for ant in obs.stations.codenames if ant not in ant_no_obs]
+    if obs.target is not None:
+        target = f"Target source: {obs.target.coord.to_string('hmsdms')}{' ('+obs.target.name+').' if obs.target.name != 'Source' else '.'}"
+    else:
+        target = "Target source: unspecified."
+
+    epoch = f"{obs.print_obs_times()}" if obs._fixed_time else \
+        f"Observing epoch: unspecified.\nTotal observing time: {optimal_units(obs.duration, [u.h, u.min, u.s]):.3n}"
+    # Create the PDF and returns it
+    pdf = FPDF(orientation='P', unit='mm', format='A4')
+    pdf.compress = False
+    pdf_w = 210
+    pdf_h = 297
+    # self.image(sctplt,  link='', type='', w=1586/80, h=1920/80)
+    pdf.add_page()
+    pdf.ln(1)
+    pdf.set_xy(0.0, 0.0)
+    pdf.set_font('Arial', 'B', 16)
+    # self.set_text_color(220, 50, 50)
+    pdf.cell(w=210.0, h=40.0, align='C', txt="EVN Observation Planner - Summary Report", border=0)
+    pdf.set_xy(10.0, 40.0)
+    pdf.set_font('Arial', 'B', 12)
+    pdf.multi_cell(0, 0, "Schedule")
+    pdf.set_xy(10.0, 45.0)
+    pdf.set_font('Arial', '', 10)
+    pdf.multi_cell(0, 6, f"{epoch}.\n" \
+       f"{optimal_units(obs.ontarget_time, [u.h, u.min, u.s, u.ms]):.3n} are on target.\n" \
+       f"{target}\n" \
+       f"Output FITS file size: {optimal_units(obs.datasize(), [u.TB, u.GB, u.MB, u.kB]):.3n}.\n\n\n")
+    pdf.set_xy(10.0, 85.0)
+    pdf.set_font('Arial', 'B', 12)
+    pdf.multi_cell(0, 0, "Frequency Setup")
+    pdf.set_xy(10.0, 90.0)
+    pdf.set_font('Arial', '', 10)
+    pdf.multi_cell(0, 6, f"Central frequency: {optimal_units(obs.frequency, [u.GHz, u.MHz]):.3n} " \
+       f"({optimal_units(obs.wavelength, [u.m, u.cm, u.mm]):.2n}).\n" \
+       f"{obs.subbands} subbands of {optimal_units(obs.bandwidth/obs.subbands, [u.GHz, u.MHz, u.kHz]):.3n} each.\n" \
+       f"Channels per subband: {obs.channels}.\n" \
+       f"Polarization: {pol_dict[obs.polarizations]}.\n" \
+       f"time integration: {optimal_units(obs.inttime, [u.s,u.ms,u.us]):.2n}.\n\n\n")
+    pdf.set_xy(10.0, 135.0)
+    pdf.set_font('Arial', 'B', 12)
+    pdf.multi_cell(0, 0, "VLBI Network")
+    pdf.set_xy(10.0, 140.0)
+    pdf.set_font('Arial', '', 10)
+    pdf.multi_cell(0, 6, f"Participating antennas: {', '.join(ants)}.\n" \
+       f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.3n} x {synthbeam['bmin'].to(synthbeam_units):.3n}, PA = {synthbeam['pa']:.3n}.\n" \
+       f"Expected rms thermal noise level: {rms:.3n}/beam.\n" \
+       f"Per spectral channel: {rms_channel:.3n}/beam.\n" \
+       f"Time smearing (10% loss): {optimal_units(tm_smearing, [u.arcmin, u.arcsec]):.3n}.\n" \
+       f"Frequency smearing (10% loss): {optimal_units(bw_smearing, [u.arcmin, u.arcsec]):.3n}.\n")
+
+    return pdf
+    # Single string version
+    return "EVN Observation Planner - Summary Report\n\n\n" \
+           "- Schedule\n\n" \
+           f"{obs.print_obs_times()}.\n" \
+           f"{optimal_units(obs.ontarget_time, [u.h, u.min, u.s, u.ms]):.3n} are on target.\n" \
+           f"{target}\n" \
+           f"FITS file size: {optimal_units(obs.datasize(), [u.TB, u.GB, u.MB, u.kB]):.3n}.\n\n\n" \
+           "- Frequency Setup\n\n" \
+           f"Central frequency: {optimal_units(obs.frequency, [u.GHz, u.MHz]):.3n} " \
+           f"({optimal_units(obs.wavelength, [u.m, u.cm, u.mm]):.2n}).\n" \
+           f"{obs.subbands} subbands of {optimal_units(obs.bandwidth/obs.subbands, [u.GHz, u.MHz, u.kHz]):.3n} each.\n" \
+           f"Channels per subband: {obs.channels}.\n" \
+           f"Polarization: {pol_dict[obs.polarizations]}.\n" \
+           f"time integration: {optimal_units(obs.inttime, [u.s,u.ms,u.us]):.2n}.\n\n\n" \
+           "- VLBI Network\n\n" \
+           f"Participating antennas: {ants}.\n" \
+           f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.3n} x {synthbeam['bmin'].to(synthbeam_units):.3n}, PA = {synthbeam['pa']:.3n}.\n" \
+           f"Expected rms thermal noise level: {rms:.3n}/beam.\n" \
+           f"Per spectral channel: {rms_channel:.3n}/beam.\n" \
+           f"Time smearing (10% loss): {optimal_units(tm_smearing, [u.arcmin, u.arcsec]):.3n}\n" \
+           f"Frequency smearing (10% loss): {optimal_units(bw_smearing, [u.arcmin, u.arcsec]):.3n}\n" \
+           f"Per spectral channel: {rms_channel:.3n}/beam.\n"
+    # Dash version
+    return html.Div([
+            html.H3("EVN Observation Planner - Report"),
+            html.H5("Schedule"),
+            html.P(f"{obs.print_obs_times()}."),
+            html.P(f"{optimal_units(obs.ontarget_time, [u.h, u.min, u.s, u.ms]):.3n} are on target."),
+            html.P(f"Target source: {obs.target.coord.to_string('hmsdms')}" \
+                    f"{' ('+obs.target.name+').' if obs.target.name != 'Source' else '.'}" \
+                if obs.target is not None else 'Target source: Unspecified.'),
+            html.P(f"FITS file size: {optimal_units(obs.datasize(), [u.TB, u.GB, u.MB, u.kB]):.3n}."),
+
+            html.H5("Frequency Setup"),
+            html.P(f"Central frequency: {optimal_units(obs.frequency, [u.GHz, u.MHz]):.3n} " \
+                   f"({optimal_units(obs.wavelength, [u.m, u.cm, u.mm]):.2n})."),
+            html.P(f"{obs.subbands} subbands of {optimal_units(obs.bandwidth/obs.subbands, [u.GHz, u.MHz, u.kHz]):.3n} each."),
+            html.P(f"Channels per subband: {obs.channels}."),
+            html.P(f"Polarization: {pol_dict[obs.polarizations]}."),
+            html.P(f"time integration: {optimal_units(obs.inttime, [u.s,u.ms,u.us]):.2n}."),
+            html.P(f""),
+
+            html.H5("VLBI Network"),
+            html.P(f"Participating antennas: {ants}."),
+            html.P(f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.3n} x {synthbeam['bmin'].to(synthbeam_units):.3n}, PA = {synthbeam['pa']:.3n}."),
+            html.P(f"Expected rms thermal noise level: {rms:.3n}/beam."),
+            html.P(f"Per spectral channel: {rms_channel:.3n}/beam."),
+            html.P(f"Time smearing (10% loss): {optimal_units(tm_smearing, [u.arcmin, u.arcsec]):.3n}"),
+            html.P(f"Frequency smearing (10% loss): {optimal_units(bw_smearing, [u.arcmin, u.arcsec]):.3n}"),
+            html.P(f"Per spectral channel: {rms_channel:.3n}/beam."),
+            # TODO: Add figure elevations per antenna
+        ])
 
 
 

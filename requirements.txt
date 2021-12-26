@@ -27,3 +27,4 @@ six
 Werkzeug
 gunicorn
 pytest
+fpdf

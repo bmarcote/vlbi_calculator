@@ -158,8 +158,8 @@ class Observation(object):
         """Returns the target source to be observed during the current observation.
         It can return None if the target has not been set yet, showing a warning.
         """
-        if self._target is None:
-            print("WARNING: 'target' source not set yet but used in 'Observation'.")
+        # if self._target is None:
+        #     print("WARNING: 'target' source not set yet but used in 'Observation'.")
         return self._target
 
 
@@ -180,8 +180,8 @@ class Observation(object):
         """Returns the times when the observation runs as an astropy.time.Time object.
         It can return None if the times have not been set yet, showing a warning.
         """
-        if self._times is None:
-            print("WARNING: 'times' not set yet but used in 'Observation'.")
+        # if self._times is None:
+        #     print("WARNING: 'times' not set yet but used in 'Observation'.")
         return self._times
 
 
@@ -203,8 +203,8 @@ class Observation(object):
         object (meaning in hourangle units).
         It can return None if the times have not been set yet, showing a warning.
         """
-        if self._gstimes is None:
-            print("WARNING: 'times' not set yet but used in 'Observation'.")
+        # if self._gstimes is None:
+        #     print("WARNING: 'times' not set yet but used in 'Observation'.")
         return self._gstimes
 
 
@@ -224,9 +224,8 @@ class Observation(object):
         """Returns the observing band at which the observation will be conducted.
         It can return None if the band has not been set yet, showing a warning.
         """
-        if self._band is None:
-            print("WARNING: 'band' not set yet but used in 'Observation'.")
-
+        # if self._band is None:
+        #     print("WARNING: 'band' not set yet but used in 'Observation'.")
         return self._band
 
 
@@ -261,9 +260,8 @@ class Observation(object):
         """Retuns the data rate (per station) used at which the observation is conducted.
         It can return None if the data rate has not been set yet, showing a warning.
         """
-        if self._datarate is None:
-            print("WARNING: 'datarate' not set yet but used in 'Observation'.")
-
+        # if self._datarate is None:
+        #     print("WARNING: 'datarate' not set yet but used in 'Observation'.")
         return self._datarate
 
 
@@ -300,9 +298,8 @@ class Observation(object):
         in which the total bandwidth of the observation will be divided during correlation.
         It can return None if the number of subbands has not been set yet, showing a warning.
         """
-        if self._subbands is None:
-            print("WARNING: 'subbands' not set yet but used in 'Observation'.")
-
+        # if self._subbands is None:
+        #     print("WARNING: 'subbands' not set yet but used in 'Observation'.")
         return self._subbands
 
 
@@ -317,9 +314,8 @@ class Observation(object):
         """Returns the number of channels in which each subband will be divided during correlation.
         It can return None if the number of channels has not been set yet, showing a warning.
         """
-        if self._channels is None:
-            print("WARNING: 'channels' not set yet but used in 'Observation'.")
-
+        # if self._channels is None:
+        #     print("WARNING: 'channels' not set yet but used in 'Observation'.")
         return self._channels
 
 
@@ -334,9 +330,8 @@ class Observation(object):
         """Returns the number of polarizations that will be stored in the final data.
         It can return None if the number of polarizations has not been set yet, showing a warning.
         """
-        if self._polarizations is None:
-            print("WARNING: 'polarizations' not set yet but used in 'Observation'.")
-
+        # if self._polarizations is None:
+        #     print("WARNING: 'polarizations' not set yet but used in 'Observation'.")
         return self._polarizations
 
 
@@ -351,9 +346,8 @@ class Observation(object):
         """Returns the integration time used when correlating the observation as an astropy.units.Quantity.
         It can return None if the integration time has not been set yet, showing a warning.
         """
-        if self._inttime is None:
-            print("WARNING: 'inttime' not set yet but used in 'Observation'.")
-
+        # if self._inttime is None:
+        #     print("WARNING: 'inttime' not set yet but used in 'Observation'.")
         return self._inttime
 
 
@@ -385,9 +379,8 @@ class Observation(object):
         """Fraction of the total observing time spent on the target source.
         It can return None if the ontarget_fraction has not been set yet, showing a warning.
         """
-        if self._ontarget is None:
-            print("WARNING: 'ontarget_fraction' not set yet but used in 'Observation'.")
-
+        # if self._ontarget is None:
+        #     print("WARNING: 'ontarget_fraction' not set yet but used in 'Observation'.")
         return self._ontarget
 
 
@@ -767,7 +760,7 @@ class Observation(object):
         if self.target is None:
             # Just assumes a source at +/-45 deg elevation without taking into account the Earth
             hourangle = self.gstimes
-            print("WARNING: 'target' is not set yet but used in 'Observation'")
+            # print("WARNING: 'target' is not set yet but used in 'Observation'")
         else:
             hourangle = (self.gstimes - self.target.ra.to(u.hourangle)).value % 24*u.hourangle
 

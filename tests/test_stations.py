@@ -1,14 +1,10 @@
 import pytest
-import configparser
-from importlib import resources
 import numpy as np
 from vlbiplanobs import stations
 from astropy import coordinates as coord
 from astropy import units as u
 from astropy.time import Time
-from astroplan import Observer, FixedTarget
-
-
+from astroplan import FixedTarget
 
 
 def test_station_init():
@@ -38,7 +34,7 @@ def test_station_functions():
     """
     sefds = {'18': 100, '6': 40, '0.1': 200}
     a_station = stations.Station('name', 'Nm', 'VLBI',
-                     coord.EarthLocation(3839348.973*u.m, 430403.51*u.m, 5057990.099*u.m), sefds, 20)
+                                 coord.EarthLocation(3839348.973*u.m, 430403.51*u.m, 5057990.099*u.m), sefds, 20)
     assert isinstance(a_station.name, str)
     assert isinstance(a_station.fullname, str)
     assert a_station.fullname == a_station.name
@@ -67,6 +63,5 @@ def test_station_functions():
     assert len(a_station.is_visible(times2, src1)[0]) == 10
     assert len(a_station.elevation(times2, src1)) == len(times1)
     assert np.equal(a_station.elevation(times2, src1).value, a_station.altaz(times2, src1).alt.value)[0]
-
 
 

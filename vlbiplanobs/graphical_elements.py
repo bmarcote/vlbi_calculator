@@ -425,7 +425,7 @@ def summary_printable(app, obs):
 
     return pdf
     # Single string version
-    return "EVN Observation Planner - Summary Report\n\n\n" \
+    return "EVN Observation Planner - Summary Report\n\n\n"
            "- Schedule\n\n" \
            f"{obs.print_obs_times()}.\n" \
            f"{optimal_units(obs.ontarget_time, [u.h, u.min, u.s, u.ms]):.3n} are on target.\n" \
@@ -440,7 +440,8 @@ def summary_printable(app, obs):
            f"time integration: {optimal_units(obs.inttime, [u.s,u.ms,u.us]):.2n}.\n\n\n" \
            "- VLBI Network\n\n" \
            f"Participating antennas: {ants}.\n" \
-           f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.3n} x {synthbeam['bmin'].to(synthbeam_units):.3n}, PA = {synthbeam['pa']:.3n}.\n" \
+           f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.3n} " \
+           f"x {synthbeam['bmin'].to(synthbeam_units):.3n}, PA = {synthbeam['pa']:.3n}.\n" \
            f"Expected rms thermal noise level: {rms:.3n}/beam.\n" \
            f"Per spectral channel: {rms_channel:.3n}/beam.\n" \
            f"Time smearing (10% loss): {optimal_units(tm_smearing, [u.arcmin, u.arcsec]):.3n}\n" \
@@ -452,15 +453,16 @@ def summary_printable(app, obs):
             html.H5("Schedule"),
             html.P(f"{obs.print_obs_times()}."),
             html.P(f"{optimal_units(obs.ontarget_time, [u.h, u.min, u.s, u.ms]):.3n} are on target."),
-            html.P(f"Target source: {obs.target.coord.to_string('hmsdms')}" \
-                    f"{' ('+obs.target.name+').' if obs.target.name != 'Source' else '.'}" \
-                if obs.target is not None else 'Target source: Unspecified.'),
+            html.P(f"Target source: {obs.target.coord.to_string('hmsdms')}"
+                   f"{' ('+obs.target.name+').' if obs.target.name != 'Source' else '.'}"
+                   if obs.target is not None else 'Target source: Unspecified.'),
             html.P(f"FITS file size: {optimal_units(obs.datasize(), [u.TB, u.GB, u.MB, u.kB]):.3n}."),
 
             html.H5("Frequency Setup"),
-            html.P(f"Central frequency: {optimal_units(obs.frequency, [u.GHz, u.MHz]):.3n} " \
+            html.P(f"Central frequency: {optimal_units(obs.frequency, [u.GHz, u.MHz]):.3n} "
                    f"({optimal_units(obs.wavelength, [u.m, u.cm, u.mm]):.2n})."),
-            html.P(f"{obs.subbands} subbands of {optimal_units(obs.bandwidth/obs.subbands, [u.GHz, u.MHz, u.kHz]):.3n} each."),
+            html.P(f"{obs.subbands} subbands of "
+                   f"{optimal_units(obs.bandwidth/obs.subbands, [u.GHz, u.MHz, u.kHz]):.3n} each."),
             html.P(f"Channels per subband: {obs.channels}."),
             html.P(f"Polarization: {pol_dict[obs.polarizations]}."),
             html.P(f"time integration: {optimal_units(obs.inttime, [u.s,u.ms,u.us]):.2n}."),
@@ -468,7 +470,9 @@ def summary_printable(app, obs):
 
             html.H5("VLBI Network"),
             html.P(f"Participating antennas: {ants}."),
-            html.P(f"The expected synthesized beam will be approx. {synthbeam['bmaj'].to(synthbeam_units).value:.3n} x {synthbeam['bmin'].to(synthbeam_units):.3n}, PA = {synthbeam['pa']:.3n}."),
+            html.P("The expected synthesized beam will be approx. "
+                   f"{synthbeam['bmaj'].to(synthbeam_units).value:.3n} x "
+                   f"{synthbeam['bmin'].to(synthbeam_units):.3n}, PA = {synthbeam['pa']:.3n}."),
             html.P(f"Expected rms thermal noise level: {rms:.3n}/beam."),
             html.P(f"Per spectral channel: {rms_channel:.3n}/beam."),
             html.P(f"Time smearing (10% loss): {optimal_units(tm_smearing, [u.arcmin, u.arcsec]):.3n}"),
@@ -476,7 +480,6 @@ def summary_printable(app, obs):
             html.P(f"Per spectral channel: {rms_channel:.3n}/beam."),
             # TODO: Add figure elevations per antenna
         ])
-
 
 
 #################################################################################
@@ -500,11 +503,11 @@ def baseline_img(app, is_long=True):
     is for a long baseline (True) or for a short baseline (False).
     """
     if is_long:
-        baseline = html.Td(className='baseline-td-hr',children=html.Hr(className='hr-baseline'),
-                            style={'width': '80%', 'padding': '0', 'margin': '0'})
+        baseline = html.Td(className='baseline-td-hr', children=html.Hr(className='hr-baseline'),
+                           style={'width': '80%', 'padding': '0', 'margin': '0'})
     else:
-        baseline = html.Td(className='baseline-td-hr',children=html.Hr(className='hr-baseline'),
-                            style={'width': '30%', 'padding': '0', 'margin': '0'})
+        baseline = html.Td(className='baseline-td-hr', children=html.Hr(className='hr-baseline'),
+                           style={'width': '30%', 'padding': '0', 'margin': '0'})
 
     return [html.Table(className='baseline-table', children=[
             html.Tr(className='baseline-tr', children=[
@@ -516,8 +519,6 @@ def baseline_img(app, is_long=True):
                         src=app.get_asset_url("icon-32.png"), alt='Antenna logo',
                         className='d-inline-block align-left img-baseline')),
             ])])]
-
-
 
 
 #################################################################################
@@ -566,7 +567,6 @@ def optimal_units(value, units):
     return value.to(units[-1])
 
 
-
 #################################################################################
 # Cards from the initial window where user keeps selecting options
 
@@ -601,7 +601,6 @@ def initial_window_start(app):
         ]
 
 
-
 def initial_window_pick_band():
     """Initial window with the introduction to the EVN Observation Planner and the band selection.
     """
@@ -616,8 +615,8 @@ def initial_window_pick_band():
                 dcc.Slider(id='initial-band', min=0, max=len(fs.bands)-1,
                        value=tuple(fs.bands).index('18cm'), step=-1,
                        marks={i: fq for i,fq in enumerate(fs.bands)},
-                       persistence=True, # tooltip={'always_visible': True, 'placement': 'top'},
-                       updatemode='drag', included=False)), html.Br(), #html.Br(),
+                       persistence=True,
+                       updatemode='drag', included=False)), html.Br(),
                 html.Div(id='initial-pickband-label', className='row justify-content-center', children=''),
                 html.Br(),
                 html.Div(className='row text-center',
@@ -639,7 +638,7 @@ def initial_window_pick_network(app, vlbi_networks):
             ]),
             html.Br(),
             html.Div(className='row justify-content-center', children=[
-                network_card(app, a_network, vlbi_networks[a_network]['name'], "") \
+                network_card(app, a_network, vlbi_networks[a_network]['name'], "")
                 for a_network in vlbi_networks if a_network != 'e-EVN'
             ]),
             html.Br(),
@@ -676,7 +675,7 @@ def initial_window_pick_time():
                                value=SourceEpoch.SOURCE_AND_EPOCH.value, id="initial-timeselection",
                                inline=True, persistence=True),
                 html.Br(),
-                ], className='col-6', inline=True), #),
+                ], className='col-6', inline=True),
                 html.Div(className='col-6', children=[
                     html.Small("", id='timeselection-div-smalltext', style={'color': '#999999'})
                 ])]
@@ -732,9 +731,6 @@ def initial_window_pick_time():
                                 html.Small(id='initial-error_duration', className='form-text text-danger')
                             ]),
                     ]),
-
-
-
     #             html.Div(id='initial-timeselection-div-guess', className='row justify-content-center',
     #                 children=[
     #                     html.Small("Choose this option if you just want to find out when your source will "
@@ -783,7 +779,6 @@ def initial_window_pick_time():
     ]
 
 
-
 def initial_window_pick_mode(app):
     """Initial window to select the observing mode: spectral line or continuum observation.
     """
@@ -807,20 +802,21 @@ def initial_window_pick_mode(app):
                     ]), className='text-center shadow-0')
                 ),
                 html.Button(id='button-mode-line', className='card-button btn btn-gray m-4',
-                    title='Go to the main window containing all options to configure.',
-                    children=[dbc.Card(dbc.CardBody([
-                        html.H5("Spectral line mode", className='card-title'),
-                        html.Img(height='80rem', src=app.get_asset_url('waves-line.png'),
-                                 className='card-text m-3'),
-                        html.Br(),
-                        html.P("Provides higher frequency resolution", className='card-text px-0'),
-                        html.P("In general uses a reduced bandwidth", className='card-text px-0')
-                    ]), className='text-center shadow-0')]
+                            title='Go to the main window containing all options to configure.',
+                            children=[dbc.Card(dbc.CardBody([
+                                html.H5("Spectral line mode", className='card-title'),
+                                html.Img(height='80rem', src=app.get_asset_url('waves-line.png'),
+                                         className='card-text m-3'),
+                                html.Br(),
+                                html.P("Provides higher frequency resolution", className='card-text px-0'),
+                                html.P("In general uses a reduced bandwidth", className='card-text px-0')
+                            ]), className='text-center shadow-0')]
                 )
             ]),
             html.Div(hidden=True, children=[dbc.Checklist(id='is_line',
-                options=[{'label': 'line obs', 'value': False}], value=[])])
-        ]
+                                                          options=[{'label': 'line obs', 'value': False}],
+                                                          value=[])])
+            ]
 
 
 def initial_window_final():
@@ -831,14 +827,14 @@ def initial_window_final():
         html.Div(className='row justify-content-center', children=[
             html.H3('You are now ready'),
             html.P(["Press compute to produce the summary for your observation. "
-                "You would then see different tabs with the information. "
-                "You will also be able to change the setup and re-compute it."]),
+                    "You would then see different tabs with the information. "
+                    "You will also be able to change the setup and re-compute it."]),
             html.Br(),
         ]),
         html.Div(style={'height': '4rem'}),
         html.Div(className='row justify-content-center',
-             children=html.Button('Compute', id='antenna-selection-button',
-                        className='btn btn-primary btn-lg')),
+                 children=html.Button('Compute', id='antenna-selection-button',
+                                      className='btn btn-primary btn-lg')),
         html.Br(),
         html.Div(className='col-9 text-center justify-content-center', children=[
             dcc.Loading(id="loading", children=[html.Div(id="loading-output",
@@ -846,7 +842,7 @@ def initial_window_final():
                         type="dot"),
         ]),
         html.Div(className='row text-center justify-content-center',
-            children=dcc.ConfirmDialog(id='global-error', message=''))
+                 children=dcc.ConfirmDialog(id='global-error', message=''))
         ])]
 
 

@@ -1,15 +1,8 @@
 import pytest
-import configparser
-from importlib import resources
-import numpy as np
-# from vlbiplanobs import stations
 from vlbiplanobs import observation as obs
 from astropy import coordinates as coord
 from astropy import units as u
 from astropy.time import Time
-from astroplan import Observer, FixedTarget
-
-
 
 
 def test_source():
@@ -37,5 +30,3 @@ def test_source():
     assert s2.name == 'a_name'
     assert s1.coord == s2.coord
     assert s3.name == 'Cyg X-1'
-
-

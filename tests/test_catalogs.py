@@ -1,13 +1,8 @@
-import pytest
 import configparser
 from importlib import resources
-import numpy as np
 from vlbiplanobs import stations
 from astropy import coordinates as coord
 from astropy import units as u
-from astropy.time import Time
-from astroplan import Observer, FixedTarget
-
 
 
 def test_stations_catalog():
@@ -61,9 +56,5 @@ def test_network_catalog():
             assert antenna in all_stations, \
                    f"{antenna}, defined in {networkname} is not present in stations_catalog.inp"
         temp = int(config[networkname]['max_datarate'])
-
-
-
-
 
 

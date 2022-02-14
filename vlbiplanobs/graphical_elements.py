@@ -425,7 +425,7 @@ def summary_printable(app, obs):
 
     return pdf
     # Single string version
-    return "EVN Observation Planner - Summary Report\n\n\n"
+    return "EVN Observation Planner - Summary Report\n\n\n" \
            "- Schedule\n\n" \
            f"{obs.print_obs_times()}.\n" \
            f"{optimal_units(obs.ontarget_time, [u.h, u.min, u.s, u.ms]):.3n} are on target.\n" \

@@ -531,10 +531,10 @@ diameter = 32/16 m
 position = 3183649.314, 1276902.989, 5359264.71
 min_elevation = 10.0
 real_time = yes
-SEFD_18 = 3600.0
-SEFD_6 = 430.0
-SEFD_5 = 480.0
-SEFD_3.6 = 1300.0
+SEFD_18 = 800.0
+SEFD_6 = 300.0
+SEFD_5 = 300.0
+SEFD_3.6 = 500.0
 
 
 [Iriki]

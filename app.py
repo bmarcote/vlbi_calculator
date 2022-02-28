@@ -83,9 +83,8 @@ obs_mutex = th.Lock()
 
 
 external_stylesheets = []
-external_scripts = ["https://kit.fontawesome.com/69c65a0ab5.js", "http://0.0.0.0:8050/assets/mixpanel-analytics.js"]
+external_scripts = ["https://kit.fontawesome.com/69c65a0ab5.js", "https://planobs.jive.eu/assets/mixpanel-analytics.js"]
 
-# app.scripts.append_script({'external_url':'https://mywebsite.com/assets/mixpanel-analytics.js'})
 
 app = dash.Dash(__name__, title='EVN Observation Planner', external_scripts=external_scripts,
                 assets_folder=current_directory+'/assets/')

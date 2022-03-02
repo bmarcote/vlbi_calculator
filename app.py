@@ -87,7 +87,7 @@ external_scripts = ["https://kit.fontawesome.com/69c65a0ab5.js", "https://planob
 
 
 app = dash.Dash(__name__, title='EVN Observation Planner', external_scripts=external_scripts,
-                assets_folder=current_directory+'/assets/')
+                assets_folder=current_directory+'/assets/', eager_loading=True)
 
 app.config.suppress_callback_exceptions = True  # Avoids error messages for id's that haven't been loaded yet
 server = app.server

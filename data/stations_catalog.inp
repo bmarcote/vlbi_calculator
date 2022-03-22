@@ -1343,6 +1343,24 @@ SEFD_1.3 = 543
 SEFD_0.7 = 640.0
 
 
+[St. Maria]
+
+station = St. Maria
+code = Sm
+network = Other
+possible_networks =
+country = Portugal (Azores)
+diameter = 32 m
+#img =
+#link =
+position = 4548799.2646, -2185741.56436, 3887127.2794
+min_elevation = 10.0
+real_time = no
+SEFD_6 = 170.0
+SEFD_5 = 840.0
+SEFD_3.6 = 320.0
+
+
 [Svetloe]
 
 station = Svetloe

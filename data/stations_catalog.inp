@@ -87,7 +87,7 @@ SEFD_6 = 42.0
 SEFD_5 = 47.0
 SEFD_3.6 = 48.0
 SEFD_1.3 = 106
-SEFD_0.7 = 168.0
+SEFD_0.7 = 1440
 SEFD_0.3 = 1450
 
 
@@ -478,6 +478,24 @@ SEFD_3.6 = 630.0
 SEFD_2.5 = 630.0
 SEFD_1.3 = 1800
 
+
+[Haystack]
+
+station = Haystack
+code = Ha
+network = Other
+possible_networks = GMVA
+country = U.S.A.
+diameter = 37 m
+#img =
+#link =
+position = 5088967.9, 301681.6, 3825015.8
+min_elevation = 10.0
+real_time = no
+SEFD_1.3 = 1160
+SEFD_0.7 = 6135
+SEFD_0.3 = 654
+ 
 
 [Hobart]
 
@@ -939,7 +957,7 @@ SEFD_5 = 350.0
 SEFD_3.6 = 430.0
 SEFD_2.5 = 1300
 SEFD_1.3 = 1300
-SEFD_0.7 = 675.0
+SEFD_0.7 = 3750
 SEFD_0.3 = 8300
 
 

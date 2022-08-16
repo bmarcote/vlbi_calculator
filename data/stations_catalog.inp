@@ -12,7 +12,8 @@ position = 2225061.164, -5440057.37, -2481681.151
 min_elevation = 10.0
 real_time = no
 SEFD_0.3 = 68
-SEFD_0.1 = 85
+SEFD_0.13 = 94
+SEFD_0.09 = 132.7
 
 
 [APEX]
@@ -28,7 +29,8 @@ diameter = 12 m
 position = 2225213.22, -5441629.65, 2478102.85
 min_elevation = 10.0
 real_time = no
-SEFD_0.1 = 4977
+SEFD_0.13 = 4977
+SEFD_0.09 = 9362.5
 
 
 [ARO12m]
@@ -45,7 +47,7 @@ position = -1995957.628, -5037394.446, 3357047.274
 min_elevation = 10.0
 real_time = no
 SEFD_0.3 = 5000
-SEFD_0.1 = 9400
+SEFD_0.13 = 9400
 
 
 [ASKAP]
@@ -425,7 +427,8 @@ position = 1501130.9818, -1190492.8908, 6066548.7399
 min_elevation = 10.0
 real_time = no
 SEFD_0.3 = 5000.0
-SEFD_0.1 = 9400.0
+SEFD_0.13 = 9400.0
+SEFD_0.09 = 10600.7
 
 
 [Hancock]
@@ -584,7 +587,8 @@ diameter = 15 m
 position = -5464559.08, -2492999.13, 2150638.19
 min_elevation = 10.0
 real_time = no
-SEFD_0.1 = 3842
+SEFD_0.13 = 4700
+SEFD_0.09 = 11428.6
 
 
 [Jodrell Bank]
@@ -723,7 +727,7 @@ position = -768715.632, -5988507.072, 2063354.852
 min_elevation = 10.0
 real_time = no
 SEFD_0.3 = 615
-SEFD_0.1 = 3536
+SEFD_0.13 = 3536
 
 
 [Los Alamos]
@@ -1072,7 +1076,8 @@ position = 4524000.43, 468042.14, 4460309.76
 min_elevation = 10.0
 real_time = no
 SEFD_0.3 = 260
-SEFD_0.1 = 4299
+SEFD_0.13 = 700
+SEFD_0.09 = 3703.7
 
 
 [Parkes]
@@ -1130,7 +1135,8 @@ position = 5088967.9, 301681.6, 3825015.8
 min_elevation = 10.0
 real_time = no
 SEFD_0.3 = 654
-SEFD_0.1 = 1160
+SEFD_0.13 = 1160
+SEFD_0.09 = 6135
 
 
 [Pie Town]
@@ -1243,7 +1249,8 @@ diameter = 8 x 6 m
 position = -1828790.81, -5054428.74, 3427884.59
 min_elevation = 10.0
 real_time = no
-SEFD_0.1 = 2374
+SEFD_0.13 = 6200
+SEFD_0.09 = 10285.7
 
 
 [SMT]
@@ -1259,7 +1266,8 @@ diameter = 10 m
 position = -1828790.81, -5054428.74, 3427884.59
 min_elevation = 10.0
 real_time = no
-SEFD_0.1 = 9057
+SEFD_0.13 = 17100
+SEFD_0.09 = 30674.8
 
 
 [Sardinia]
@@ -1314,7 +1322,8 @@ diameter = 10 m
 position = 0.0, 0.0, -6359552.31424518
 min_elevation = 10.0
 real_time = no
-SEFD_0.1 = 7497
+SEFD_0.13 = 19300
+SEFD_0.09 = 17647.1
 
 
 [St. Croix]

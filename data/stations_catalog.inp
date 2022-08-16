@@ -482,14 +482,14 @@ SEFD_1.3 = 1800
 [Haystack]
 
 station = Haystack
-code = Ha
+code = Hs
 network = Other
 possible_networks = GMVA
 country = U.S.A.
 diameter = 37 m
 #img =
-#link =
-position = 5088967.9, 301681.6, 3825015.8
+#link =                                                            
+position = 1492404.3883, -4457266.5569, 4296881.8698 
 min_elevation = 10.0
 real_time = no
 SEFD_1.3 = 1160

@@ -539,6 +539,21 @@ SEFD_3.6 = 4800.0
 SEFD_2.5 = 4800.0
 
 
+[IAR 30m]
+
+station = IAR 30m
+code = Bs
+network = Other
+possble_networks =
+country = Argentina
+diameter = 30 m
+position = 2765430.41084967, -4449689.81067113, -3625736.7055416
+min_elevation = 10.0
+real_time = no
+SEFD_21 = 1000
+SEFD_18 = 1000
+
+
 [Irbene]
 
 station = Irbene

@@ -205,7 +205,7 @@ class Station(object):
         return self.observer.altaz(obs_times, target).alt
 
 
-    def altaz(self, obs_times: Time, target: FixedTarget) -> coord.sky_coordinate.SkyCoord:
+    def altaz(self, obs_times: Time, target: FixedTarget) -> coord.SkyCoord:
         """Returns the altaz coordinates of the target source for the given observing times.
 
         Inputs

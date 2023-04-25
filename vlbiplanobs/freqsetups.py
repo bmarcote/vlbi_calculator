@@ -23,7 +23,7 @@ bands = {'92cm': '92 cm or 0.33 GHz', '49cm': '49 cm or 0.6 GHz',
          '0.09cm': '0.087 cm or 345 GHz'}
 
 # from 4 Mbps to 32 Gbps
-data_rates = {2**i: f"{2**i} Mbps" if 2**i<1e3 else f"{2**i/1000:.0f} Gbps" for i in range(2, 16)}
+data_rates = {2**i: f"{i} Mbps" if i<1e3 else f"{i/1000:.0f} Gbps" for i in [4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 3000, 4096, 8192, 16384, 32768]}
 subbands = {2**i: f"{2**i} subbands" for i in range(5, -1, -1)} # from 1 to 16
 channels = {2**i: f"{2**i} channels per subband" for i in range(14, 4, -1)}# from 16 to 8192.
 polarizations = {4: '4 (Full polarization)', 2: '2 (dual polarization)',

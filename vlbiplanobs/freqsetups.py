@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
 
-import enum
-
-
-
 # class bands():
 #     """Observing bands available for the array.
 #     """

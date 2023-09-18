@@ -1,17 +1,16 @@
 import numpy as np
 from datetime import datetime as dt
 import enum
+from typing import Optional, Union
 from astropy import units as u
-import dash
 from fpdf import FPDF
-from dash.dependencies import Input, Output, State
 from dash import dcc
 from dash import html
 import dash_bootstrap_components as dbc
 import plotly.express as px
-
-from vlbiplanobs.Checkbox import Checkbox
 from vlbiplanobs import freqsetups as fs
+from vlbiplanobs import stations
+from vlbiplanobs import observation
 
 
 
@@ -29,7 +28,8 @@ class SourceEpoch(enum.Enum):
 
 
 
-def tooltip(message, idname, trigger='?', placement='right',trigger_is_sup=True,  **kwargs):
+def tooltip(message: str, idname: str, trigger: str = '?', placement: str = 'right',
+            trigger_is_sup: bool = True,  **kwargs) -> list:
     """Defines a tooltip (popover) that will be shown in the rendered page.
     It will place a <sup>`trigger`</sup> in the page within a span tag.
     Returns the list with all html elements.
@@ -42,7 +42,7 @@ def tooltip(message, idname, trigger='?', placement='right',trigger_is_sup=True,
             dbc.Tooltip(message, target=idname, placement=placement, **kwargs)]
 
 
-def tooltip_card(a_card, idname, trigger, placement='right', **kwargs):
+def tooltip_card(a_card: dbc.Card, idname: str, trigger: str, placement: str = 'right', **kwargs) -> list:
     """Defines a tooltip (popover) that shows a card.
     """
     return [html.Span(children=trigger, className='popover-link', id=idname),
@@ -51,7 +51,7 @@ def tooltip_card(a_card, idname, trigger, placement='right', **kwargs):
                 **kwargs)]
 
 
-def create_accordion_card(title, text, id, is_open=True):
+def create_accordion_card(title: str, text: str, id: str, is_open: bool = True) -> dbc.Card:
     """Given a title (header) and a text (which can be either text, a dcc/html object),
     it will return a dbc.Card object which is one input for an accordion.
     """
@@ -62,7 +62,7 @@ def create_accordion_card(title, text, id, is_open=True):
     return dbc.Card([card_header, card_body], className='accordion-card')
 
 
-def create_sensitivity_card(title, message):
+def create_sensitivity_card(title: str, message: Union[str, list[str]]) -> list:
     """Defines one of the cards that are shown in the Sensitivity tab. Each tab
     shows a title `title` and a message `message`.
     If message is a list (of strings), it is assumed as different paragraphs.
@@ -93,7 +93,7 @@ def create_sensitivity_card(title, message):
 #################################################################################
 # It is all about cards in this section
 
-def antenna_card(app, station):
+def antenna_card(app, station: stations.Station) -> dbc.Card:
     """Generates a card showing the basic information for the given station
     """
     s = lambda st : st[::-1].replace(' ,',' dna ',1)[::-1]
@@ -117,13 +117,16 @@ def antenna_card(app, station):
     return card
 
 
-def antenna_cards(app, stations):
+
+def antenna_cards(app, stations: list[stations.Station]) -> dbc.Row:
     cards = dbc.Row([antenna_card(app, s) for s in stations],
             className='row justify-content-center')
     return cards
 
 
-def network_card(app, network_acr, network_name, body, network_img=None):
+
+def network_card(app, network_acr: str, network_name: str, body,
+                 network_img: Optional[str] = None) -> dbc.Card:
     """Generates a card showing the basic information from a network.
     """
     card = dbc.Card([
@@ -146,8 +149,7 @@ def network_card(app, network_acr, network_name, body, network_img=None):
 
 
 
-
-def summary_card_worldmap(app, obs):
+def summary_card_worldmap(app, obs: observation.Observation) -> html.Div:
     """Generates a world map with the participating stations
     """
     ants_up = obs.is_visible()
@@ -160,7 +162,8 @@ def summary_card_worldmap(app, obs):
                 if a not in ant_no_obs])
 
 
-def summary_card_antennas(app, obs):
+
+def summary_card_antennas(app, obs: observation.Observation) -> list:
     """Generates the summary card with the information about which
     antennas can observe the given source, and the longest/shortest baselines.
     """

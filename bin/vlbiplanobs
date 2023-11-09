@@ -72,7 +72,7 @@ default_arrays = {'EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
           'e-EVN': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'On', 'T6', 'Tr', 'Ys', 'Wb',
                     'Bd', 'Sv', 'Zc', 'Ir', 'Sr', 'Ur'],
           'eMERLIN': ['Cm', 'Kn', 'Pi', 'Da', 'De', 'Jb2'],
-          'LBA': ['ATCA', 'Pa', 'Mo', 'Ho', 'Cd', 'Td', 'Ww'],
+          'LBA': ['ATCA', 'Pa', 'Mp', 'Ho', 'Cd', 'Td', 'Ww'],
           'VLBA': ['Br', 'Fd', 'Hn', 'Kp', 'La', 'Mk', 'Nl', 'Ov', 'Pt', 'Sc'],
           'KVN': ['Ky', 'Ku', 'Kt'],
           'Global VLBI': ['Ef', 'Hh', 'Jb2', 'Mc', 'Nt', 'Ur', 'On', 'Sr', 'T6',
@@ -90,7 +90,8 @@ default_datarates = {'EVN': 2048, 'e-EVN': 2048, 'eMERLIN': 4096, 'LBA': 1024, '
 # Safety check that all these antennas are available in the file
 for a_array in default_arrays:
     for a_station in default_arrays[a_array]:
-        assert a_station in all_antennas.codenames
+        assert a_station in all_antennas.codenames, \
+               f"The antenna {a_station} is not recognized in the list of provided antennas."
 
 doc_files = {'About this tool': 'doc-contact.md',
              'About the antennas': 'doc-antennas.md',

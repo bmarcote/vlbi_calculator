@@ -1,3 +1,5 @@
+_I would like to note that I am drafting the design of a major v2.0 of the Planner. Better UI, much faster, and with a better API. But if you have some wishes, I will be happy to receive feedback!_
+
 # EVN Observation Planner
 
 

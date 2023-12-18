@@ -1,4 +1,4 @@
-    #! /usr/bin/env python
+#! /usr/bin/env python
 # -*- coding: utf-8 -*-
 """EVN Observation Planner.
 
@@ -17,15 +17,9 @@ __status__ = "Production"   # Prototype, Development, Production.
 
 import os
 from os import path
-import pathlib
-from time import sleep
 import itertools
-import functools
 from importlib import resources
-import multiprocessing as mp
 import threading as th
-import datetime
-# import time
 from datetime import datetime as dt
 import numpy as np
 import dash
@@ -33,14 +27,9 @@ from dash.dependencies import Input, Output, State
 from dash import dcc
 from dash import html
 import dash_bootstrap_components as dbc
-import plotly.express as px
-from plotly.subplots import make_subplots
-import plotly.graph_objects as go
 from astropy.time import Time
 from astropy import coordinates as coord
 from astropy import units as u
-
-from astroplan import FixedTarget
 
 current_directory = path.dirname(path.realpath(__file__))
 if path.isfile(current_directory + '/.astropy/cache/download/py3/lock'):

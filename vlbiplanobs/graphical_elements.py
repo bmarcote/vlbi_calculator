@@ -62,7 +62,7 @@ def create_accordion_card(title: str, text: str, id: str, is_open: bool = True) 
     return dbc.Card([card_header, card_body], className='accordion-card')
 
 
-def create_sensitivity_card(title: str, message: Union[str, list[str]]) -> list:
+def create_sensitivity_card(title: str, message: Union[str, list]) -> list:
     """Defines one of the cards that are shown in the Sensitivity tab. Each tab
     shows a title `title` and a message `message`.
     If message is a list (of strings), it is assumed as different paragraphs.
@@ -118,7 +118,7 @@ def antenna_card(app, station: stations.Station) -> dbc.Card:
 
 
 
-def antenna_cards(app, stations: list[stations.Station]) -> dbc.Row:
+def antenna_cards(app, stations: list) -> dbc.Row:
     cards = dbc.Row([antenna_card(app, s) for s in stations],
             className='row justify-content-center')
     return cards

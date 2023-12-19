@@ -81,7 +81,7 @@ observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.
 [GMVA]
 
 name = Gobal mm-VLBI Array
-default_antennas = Ef, Mh, On, Ys, Pv, Nn, Br, Fd, Kp, La, Mk, Nl, Ov, Pt, Gb, Ku, Kt, Kp
+default_antennas = Ef, Mh, On, Ys, Pv, Nn, Br, Fd, Kp, La, Mk, Nl, Ov, Pt, Gb, Ku, Kt, Ky
 max_datarate = 4096
 observing_bands = 0.7cm, 0.3cm
 

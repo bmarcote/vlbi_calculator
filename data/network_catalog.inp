@@ -19,7 +19,7 @@ observing_bands = 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm
 name = eMERLIN
 default_antennas = Cm, Kn, Pi, Da, De, Jb2
 max_datarate = 4096
-observing_bands = 92cm, 49cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 2cm, 1.3cm, 0.7cm, 0.3cm
+observing_bands = 92cm, 49cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 2cm, 1.3cm, 0.7cm, 0.348cm
 
 
 [VLBA]
@@ -27,7 +27,7 @@ observing_bands = 92cm, 49cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 2cm, 1.3cm, 0.7
 name = Very Long Baseline Array
 default_antennas = Br, Fd, Hn, Kp, La, Mk, Nl, Ov, Pt, Sc
 max_datarate = 4096
-observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm, 0.3cm
+observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm, 0.348cm
 
 
 [Global VLBI]
@@ -51,7 +51,7 @@ observing_bands = 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 2.5cm, 1.3cm, 0.7cm
 name = Korean VLBI Network
 default_antennas = Ky, Ku, Kt
 max_datarate = 16384
-observing_bands = 1.3cm, 0.7cm, 0.3cm
+observing_bands = 1.3cm, 0.7cm, 0.348cm
 
 
 [VERA]
@@ -75,7 +75,7 @@ observing_bands = 1.3cm, 0.7cm
 name = High Sensitivity Array
 default_antennas = Br, Fd, Hn, Kp, La, Mk, Nl, Ov, Pt, Sc, Ef, Gb, Y27
 max_datarate = 4096
-observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm, 0.3cm
+observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm, 0.348cm
 
 
 [GMVA]
@@ -83,7 +83,7 @@ observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.
 name = Gobal mm-VLBI Array
 default_antennas = Ef, Mh, On, Ys, Pv, Nn, Br, Fd, Kp, La, Mk, Nl, Ov, Pt, Gb, Ku, Kt, Ky
 max_datarate = 4096
-observing_bands = 0.7cm, 0.3cm
+observing_bands = 0.7cm, 0.348cm
 
 
 [EHT]
@@ -91,6 +91,6 @@ observing_bands = 0.7cm, 0.3cm
 name = Event Horizon Telescope
 default_antennas = ALMA, Pv, LMT, Nn, SMA, JCMT, APEX, SMT, SPT, GLT
 max_datarate = 32768
-observing_bands = 0.3cm, 0.1cm
+observing_bands = 0.348cm, 0.1cm
 
 

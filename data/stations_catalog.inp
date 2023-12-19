@@ -12,7 +12,7 @@ position = 2225061.164, -5440057.37, -2481681.151
 min_elevation = 10.0
 real_time = no
 SEFD_0.7 = 40
-SEFD_0.35 = 68.6
+SEFD_0.348 = 68.6
 SEFD_0.13 = 94
 SEFD_0.09 = 132.7
 
@@ -47,7 +47,7 @@ diameter = 12 m
 position = -1995957.628, -5037394.446, 3357047.274
 min_elevation = 10.0
 real_time = no
-SEFD_0.35 = 5000
+SEFD_0.348 = 5000
 SEFD_0.13 = 9400
 
 
@@ -89,7 +89,7 @@ SEFD_5 = 47.0
 SEFD_3.6 = 48.0
 SEFD_1.3 = 106
 SEFD_0.7 = 180
-SEFD_0.35 = 1450
+SEFD_0.348 = 1450
 
 
 [Alesund]
@@ -194,7 +194,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
-SEFD_0.35 = 5217.4
+SEFD_0.348 = 5217.4
 
 
 [Cambridge]
@@ -318,7 +318,7 @@ SEFD_5 = 25.0
 SEFD_3.6 = 20.0
 SEFD_1.3 = 70
 SEFD_0.7 = 200.0
-SEFD_0.35 = 1000.0
+SEFD_0.348 = 1000.0
 
 
 [FAST]
@@ -364,7 +364,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
-SEFD_0.35 = 4107.1
+SEFD_0.348 = 4107.1
 
 
 [GMRT]
@@ -411,7 +411,7 @@ SEFD_3.6 = 15.0
 SEFD_2 = 15.0
 SEFD_1.3 = 20
 SEFD_0.7 = 60.0
-SEFD_0.35 = 132.7
+SEFD_0.348 = 132.7
 
 
 [Greenland]
@@ -427,7 +427,7 @@ diameter = 12 m
 position = 1501130.9818, -1190492.8908, 6066548.7399
 min_elevation = 10.0
 real_time = no
-SEFD_0.35 = 5312.5
+SEFD_0.348 = 5312.5
 SEFD_0.13 = 9400.0
 SEFD_0.09 = 10600.7
 
@@ -495,7 +495,7 @@ min_elevation = 10.0
 real_time = no
 SEFD_1.3 = 1160
 SEFD_0.7 = 6135
-SEFD_0.35 = 654
+SEFD_0.348 = 654
 
 
 [Hobart]
@@ -689,7 +689,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
-SEFD_0.35 = 4400.0
+SEFD_0.348 = 4400.0
 
 
 [Knockin]
@@ -760,7 +760,7 @@ diameter = 50 m
 position = -768715.632, -5988507.072, 2063354.852
 min_elevation = 10.0
 real_time = no
-SEFD_0.35 = 512.8
+SEFD_0.348 = 512.8
 SEFD_0.13 = 3536
 
 
@@ -788,7 +788,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
-SEFD_0.35 = 3666.7
+SEFD_0.348 = 3666.7
 
 
 [Lovell]
@@ -852,7 +852,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
-SEFD_0.35 = 13000.0
+SEFD_0.348 = 13000.0
 
 
 [Medicina]
@@ -932,7 +932,7 @@ SEFD_13 = 4500.0
 SEFD_3.6 = 3200.0
 SEFD_1.3 = 2608
 SEFD_0.7 = 4500.0
-SEFD_0.35 = 15000.0
+SEFD_0.348 = 15000.0
 
 
 [Mizusawa]
@@ -974,7 +974,7 @@ SEFD_3.6 = 430.0
 SEFD_2.5 = 1300
 SEFD_1.3 = 1300
 SEFD_0.7 = 3750
-SEFD_0.35 = 8300
+SEFD_0.348 = 8300
 
 
 [North Liberty]
@@ -1001,7 +1001,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
-SEFD_0.35 = 13636.4
+SEFD_0.348 = 13636.4
 
 
 [Noto]
@@ -1068,7 +1068,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
-SEFD_0.35 = 3625.0
+SEFD_0.348 = 3625.0
 
 
 [Onsala]
@@ -1093,7 +1093,7 @@ SEFD_5 = 850.0
 SEFD_3.6 = 785.0
 SEFD_1.3 = 1200
 SEFD_0.7 = 1310.0
-SEFD_0.35 = 2653.1
+SEFD_0.348 = 2653.1
 
 
 [NOEMA]
@@ -1109,7 +1109,7 @@ diameter = 10 x 15 m
 position = 4524000.43, 468042.14, 4460309.76
 min_elevation = 10.0
 real_time = no
-SEFD_0.35 = 162.8
+SEFD_0.348 = 162.8
 SEFD_0.13 = 700
 SEFD_0.09 = 3703.7
 
@@ -1168,7 +1168,7 @@ diameter = 30 m
 position = 5088967.9, -301681.6, 3825015.8
 min_elevation = 10.0
 real_time = no
-SEFD_0.35 = 653.6
+SEFD_0.348 = 653.6
 SEFD_0.13 = 1160
 SEFD_0.09 = 6135
 
@@ -1197,7 +1197,7 @@ SEFD_3.6 = 327.0
 SEFD_2 = 543.0
 SEFD_1.3 = 543
 SEFD_0.7 = 640.0
-SEFD_0.35 = 7500.0
+SEFD_0.348 = 7500.0
 
 
 [Robledo 34]
@@ -1440,7 +1440,7 @@ min_elevation = 10.0
 real_time = no
 SEFD_1.3 = 1288
 SEFD_0.7 = 1919.0
-SEFD_0.35 = 3226.0
+SEFD_0.348 = 3226.0
 
 
 [Tianma]
@@ -1521,7 +1521,7 @@ min_elevation = 10.0
 real_time = no
 SEFD_1.3 = 1288
 SEFD_0.7 = 1919.0
-SEFD_0.35 = 3125.0
+SEFD_0.348 = 3125.0
 
 
 [Urumqi]
@@ -1732,7 +1732,7 @@ SEFD_5 = 160.0
 SEFD_3.6 = 200.0
 SEFD_1.3 = 200
 SEFD_0.7 = 480.0
-SEFD_0.35 = 990.1
+SEFD_0.348 = 990.1
 
 
 [Yonsei]
@@ -1750,7 +1750,7 @@ min_elevation = 10.0
 real_time = no
 SEFD_1.3 = 1288
 SEFD_0.7 = 1919.0
-SEFD_0.35 = 2830.2
+SEFD_0.348 = 2830.2
 
 
 [Zelenchukskaya]

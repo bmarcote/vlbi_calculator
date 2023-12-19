@@ -366,7 +366,8 @@ app.layout = html.Div([
                         html.Label('Integration time (s)'),
                         *ge.tooltip(idname='popover-inttime',
                             message="Integration time to compute each visibility. Note that for continuum " \
-                                    "observations values of 1-2 seconds are typical."),
+                                    "observations values of 1-2 seconds are typical are cm wavelengths. " \
+                                    "Or 0.5-1 s for milimeter observations."),
                         dcc.Dropdown(id='inttime', placeholder="Select integration time...",
                                      options=[{'label': fs.inttimes[it], 'value': it} \
                                      for it in fs.inttimes], value=2, persistence=True),

@@ -326,7 +326,7 @@ def summary_card_fov(app, obs):
                               bmin=f"{2*smearing_ratio}rem",
                               pa="0deg", color="white", z_index=4, position='absolute',
                               className='align-self-center')])]
-    temp_msg += [f"The Field of View would be limited by time smearing to "
+    temp_msg += [f"The Field of View would be limited by time smearing to a radius of "
                  f"{optimal_units(tm_smearing, [u.arcmin, u.arcsec]):.3n} and by frequency smearing to "
                  f"{optimal_units(bw_smearing, [u.arcmin, u.arcsec]):.3n} (considering a 10% loss), "
                  "if no further time/frequency averaging is performed."]

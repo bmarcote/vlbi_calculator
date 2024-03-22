@@ -137,7 +137,6 @@ class Station(object):
     """
     def __init__(self, name: str, codename: str, network: str, location: coord.EarthLocation,
                  freqs_sefds: dict[str, Union[float, int]],
-                 min_elevation: Union[u.Quantity, int, float] = u.Quantity(20, u.deg),
                  fullname: Optional[str] = None, all_networks: Optional[str] = None, country: str = '',
                  diameter: str = '', real_time: bool = False, mount: Optional[Mount] = None) -> None:
         """Initializes a station.
@@ -159,10 +158,6 @@ class Station(object):
             at each frequency.
             Although the key format is in principle free, we recommend to use the syntax 'XXcm' (str type).
             This will be then consistent with the default station catalog.
-        - min_elevation : Quantity/int/float [OPTIONAL]
-            Minimum elevation that the station can reach to observe a source. If no units (astropy.units)
-            provided, degrees are assumed. By default it 20 degrees. It does not support an azimuth-dependent
-            elevation limits. It must be >= 0.
         - fullname : str [OPTIONAL]
             Full name of the station. If not given, same as `name` is assumed.
             It can be used to expand the full name if an abbreviation is typically used for the name.
@@ -193,19 +188,6 @@ class Station(object):
         self._codename: str = codename
         self._network: str = network
         self._freqs_sefds: dict[str, float] = {f: float(v) for f,v in freqs_sefds.items()}
-        assert isinstance(min_elevation, float) or isinstance(min_elevation, int) \
-               or isinstance(min_elevation, u.Quantity), \
-               "'min_elevation' must be either a float, int, or an astropy.units.Quantity object."
-        if isinstance(min_elevation, float) or isinstance(min_elevation, int):
-            self._min_elev: u.Quantity = u.Quantity(float(min_elevation), unit=u.deg)
-        else:  # isinstance(min_elevation, u.Quantity):
-            assert min_elevation.unit is not None, "min_elevation needs to be an angular quantity."
-            assert min_elevation.unit.is_equivalent(u.deg), \
-                   "'min_elevation' must have angular units (e.g. degrees)"
-            self._min_elev = min_elevation
-
-        assert self._min_elev.value >= 0.0, "'min_elevation' must be >= 0 degrees."
-        assert self._min_elev.value < 90.0, "'min_elevation' must be < 90 degrees."
         self._fullname: str = name if fullname is None else fullname
         self._all_networks: str = network if all_networks is None else all_networks
         self._country: str = country
@@ -214,7 +196,7 @@ class Station(object):
         if mount is None:
             self._mount: Mount = Mount(MountType.ALTAZ,
                                        Axis((-10*u.deg, 370*u.deg), 300*u.deg/u.s, 0.0*u.deg/u.s/u.s),
-                                       Axis((-10*u.deg, 100*u.deg), 300*u.deg/u.s, 0.0*u.deg/u.s/u.s))
+                                       Axis((10*u.deg, 100*u.deg), 300*u.deg/u.s, 0.0*u.deg/u.s/u.s))
         else:
             assert isinstance(mount, Mount)
             self._mount: Mount = mount
@@ -305,13 +287,6 @@ class Station(object):
 
 
     @property
-    def min_elevation(self) -> u.Quantity:
-        """Minimum elevation the station can observe a source.
-        Returns an astropy.units.Quantity (i.e. number with units).
-        """
-        return self._min_elev
-
-    @property
     def mount(self) -> Mount:
         """Returns the mount of the station
         """
@@ -373,8 +348,9 @@ class Station(object):
         if target is None:
             return (np.arange(2),)
 
+        # TODO: implement here the rest of Constraints
         elevations = self.elevation(obs_times, target)
-        return np.where(elevations >= self.min_elevation)
+        return np.where(elevations >= self.mount.ax2.limits[0])
 
 
     def has_band(self, band: str) -> bool:
@@ -429,7 +405,6 @@ class SelectedStation(Station):
     """
     def __init__(self, name: str, codename: str, network: str, location: coord.EarthLocation,
                  freqs_sefds: dict[str, float],
-                 min_elevation: Union[u.Quantity, int, float] = u.Quantity(20, u.deg),
                  fullname: Optional[str] = None, all_networks: Optional[str] = None, country: str = '',
                  diameter: str = '', real_time: bool = False, mount: Optional[Mount] = None,
                  selected: bool = True) -> None:
@@ -453,10 +428,6 @@ class SelectedStation(Station):
             at each frequency.
             Although the key format is in principle free, we recommend to use the syntax 'XXcm' (str type).
             This will be then consistent with the default station catalog.
-        - min_elevation : Quantity/int/float [OPTIONAL]
-            Minimum elevation that the station can reach to observe a source. If no units (astropy.units)
-            provided, degrees are assumed. By default it 20 degrees. It does not support an azimuth-dependent
-            elevation limits.
         - fullname : str [OPTIONAL]
             Full name of the station. If not given, same as `name` is assumed.
             It can be used to expand the full name if an abbreviation is typically used for the name.
@@ -480,7 +451,7 @@ class SelectedStation(Station):
         assert isinstance(selected, bool), "'selected' must be a bool"
         self._selected = selected
         super().__init__(name, codename, network, location,
-                         freqs_sefds, min_elevation, fullname,
+                         freqs_sefds, fullname,
                          all_networks, country, diameter, real_time, mount)
 
 
@@ -657,7 +628,6 @@ class Stations(object):
             - ax2rate - Slewing speed in deg/s for the axis 2 of the mount.
             - ax1acc - Slewing acceleration in deg/s/s for the axis 1 of the mount.
             - ax2acc - Slewing acceleration in deg/s/s for the axis 2 of the mount.
-            - min_elevation (in degrees) - minimum elevation the station can observe.
             - real_time = yes/no - if the station can participate in real-time observations (e.g. e-EVN).
             - SEFD_**  - SEFD (in Jy units) of the station at the **cm band. If a given band is not present,
                         it is assumed that the station cannot observe it.
@@ -691,7 +661,6 @@ class Stations(object):
                 a_loc = coord.EarthLocation(u.Quantity(temp[0], u.m), u.Quantity(temp[1], u.m),
                                             u.Quantity(temp[2], u.m))
                 # Getting the SEFD values for the bands
-                min_elev = u.Quantity(float(config[stationname]['min_elevation']), u.deg)
                 does_real_time = True if config[stationname]['real_time']=='yes' else False
                 sefds = {}
                 for akey in config[stationname].keys():
@@ -728,7 +697,7 @@ class Stations(object):
                     amount = None
 
                 new_station = SelectedStation(stationname, config[stationname]['code'],
-                        config[stationname]['network'], a_loc, sefds, min_elev,
+                        config[stationname]['network'], a_loc, sefds,
                         config[stationname]['station'], config[stationname]['possible_networks'],
                         config[stationname]['country'], config[stationname]['diameter'], does_real_time, amount)
                 networks.add(new_station)

@@ -27,9 +27,9 @@ class MountType(Enum):
 
 @dataclass
 class Axis:
-    limits: tuple[int, int]
+    limits: tuple[u.Quantity, u.Quantity]
     speed: u.Quantity
-    acceleration: u.Quantity
+    acceleration: u.Quantity = u.Quantity(0.0, u.deg/u.s/u.s)
 
 
 @dataclass
@@ -127,8 +127,8 @@ class Station(object):
         self._real_time: bool = real_time
         if mount is None:
             self._mount: Mount = Mount(MountType.ALTAZ,
-                                       Axis((-10, 370), 300*u.deg/u.s, 0.0*u.deg/u.s/u.s),
-                                       Axis((-10, 100), 300*u.deg/u.s, 0.0*u.deg/u.s/u.s))
+                                       Axis((-10*u.deg, 370*u.deg), 300*u.deg/u.s, 0.0*u.deg/u.s/u.s),
+                                       Axis((-10*u.deg, 100*u.deg), 300*u.deg/u.s, 0.0*u.deg/u.s/u.s))
         else:
             assert isinstance(mount, Mount)
             self._mount: Mount = mount
@@ -265,7 +265,11 @@ class Station(object):
         return self.observer.altaz(obs_times, target)
 
 
-    def is_visible(self, obs_times: Time, target: FixedTarget) -> tuple:
+    def hour_angle(self, obs_times: Time, target: FixedTarget) -> coord.SkyCoord:
+        raise NotImplementedError
+
+
+    def is_visible(self, obs_times: Time, target: Optional[FixedTarget] = None) -> tuple:
         """Returns when the target source is visible for this station at the given times.
 
         Inputs
@@ -341,7 +345,8 @@ class SelectedStation(Station):
                  freqs_sefds: dict[str, float],
                  min_elevation: Union[u.Quantity, int, float] = u.Quantity(20, u.deg),
                  fullname: Optional[str] = None, all_networks: Optional[str] = None, country: str = '',
-                 diameter: str = '', real_time: bool = False, selected: bool = True) -> None:
+                 diameter: str = '', real_time: bool = False, mount: Optional[Mount] = None,
+                 selected: bool = True) -> None:
         """Initializes a SelectedStation.
         This class extends Station by adding one additional attribute: `selected` (bool).
 
@@ -380,6 +385,9 @@ class SelectedStation(Station):
             meaning that the station is composed of 25 antennas of 20 m each.
         - real_time : bool [OPTIONAL]
             If the station can participate in real-time observations (e.g. e-EVN), False by default.
+        - mount : Mount [OPTIONAL]
+            The mount of the station, including the type of mount and the slewing limits, speed, and acceleration.
+            If not provided, it will assume an ALTAZ mount with no pointing limits and very high slewing speed.
         - selected : bool [OPTIONAL]
             If the station is selected to participate in a given observation or not. True by default.
         """
@@ -480,7 +488,6 @@ class Stations(object):
         return bands
 
 
-
     def add(self, a_station: Station):
         """Adds a new station to the network.
         If a station with the same codename is already present, it will do nothing.
@@ -557,6 +564,13 @@ class Stations(object):
             - diameter - free format string with the diameter of the station
                         (optional more information in case of interferometers).
             - position = x, y, z (in meters). Geocentric position of the station.
+            - mount = ALTAZ/EQUAT - type of the station mount.
+            - ax1lim = (x0, x1) - Limits in degrees for the axis 1 of the mount.
+            - ax2lim = (x0, x1) - Limits in degrees for the axis 2 of the mount.
+            - ax1rate - Slewing speed in deg/s for the axis 1 of the mount.
+            - ax2rate - Slewing speed in deg/s for the axis 2 of the mount.
+            - ax1acc - Slewing acceleration in deg/s/s for the axis 1 of the mount.
+            - ax2acc - Slewing acceleration in deg/s/s for the axis 2 of the mount.
             - min_elevation (in degrees) - minimum elevation the station can observe.
             - real_time = yes/no - if the station can participate in real-time observations (e.g. e-EVN).
             - SEFD_**  - SEFD (in Jy units) of the station at the **cm band. If a given band is not present,
@@ -603,10 +617,35 @@ class Stations(object):
                     raise ValueError(f"The antenna with code {config[stationname]['code']} is "
                                      "duplicated in the input file.")
 
+                if all([key in config[stationname] for key in ('mount', 'ax1rate', 'ax2rate', 'ax1lim',
+                                                               'ax2lim')]):
+                    for alim in ('ax1lim', 'ax2lim'):
+                        config[stationname][alim] = (float(i.strip())*u.deg for i in config[stationname][alim])
+
+                    for arate in ('ax1rate', 'ax2rate'):
+                        config[stationname][arate] = u.Quantity(float(config[stationname][arate].strip()), u.deg/u.s)
+
+                    if all([key in config[stationname] for key in ('ax1acc', 'ax2acc')]):
+                        for aacc in ('ax1acc', 'ax2acc'):
+                            config[stationname][aacc] = u.Quantity(float(config[stationname][aacc].strip(),
+                                                                   u.deg/u.s/u.s)
+
+                        amount = Mount(config[stationname]['mount'], Axis(config[stationname]['ax1lim'],
+                                                                 config[stationname]['ax1rate'],
+                                                                 config[stationname]['ax1acc']),
+                              Axis(config[stationname]['ax2lim'], config[stationname]['ax2rate'],
+                                   config[stationname]['ax2acc']))
+                    else:
+                        amount = Mount(config[stationname]['mount'], Axis(config[stationname]['ax1lim'],
+                                                                 config[stationname]['ax1rate']),
+                              Axis(config[stationname]['ax2lim'], config[stationame]['ax2rate']))
+                else:
+                    amount = None
+
                 new_station = SelectedStation(stationname, config[stationname]['code'],
                         config[stationname]['network'], a_loc, sefds, min_elev,
                         config[stationname]['station'], config[stationname]['possible_networks'],
-                        config[stationname]['country'], config[stationname]['diameter'], does_real_time)
+                        config[stationname]['country'], config[stationname]['diameter'], amount, does_real_time)
                 networks.add(new_station)
 
         return networks

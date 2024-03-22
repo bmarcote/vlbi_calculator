@@ -2,21 +2,44 @@
 # Licensed under GPLv3+ - see LICENSE
 from __future__ import annotations
 from collections import abc
+from typing import Optional, Union
 import configparser
 from importlib import resources
 import numpy as np
 from astropy import units as u
 from astropy import coordinates as coord
-from astropy.io import ascii
+# from astropy.io import ascii
 from astropy.time import Time
 from astroplan import Observer, FixedTarget
-
+from dataclasses import dataclass
+from enum import Enum, auto
 """Module that defines the `Station` and `Stations` objects, which represent a station (antenna)
 or a network composed of antennas.
 """
 
-__all__ = ['Station', 'SelectedStation', 'Stations']
+__all__: list[str] = ['Station', 'SelectedStation', 'Stations', 'Mount', 'MountType']
 
+
+class MountType(Enum):
+    ALTAZ = auto()
+    EQUAT = auto()
+
+
+@dataclass
+class Axis:
+    limits: tuple[int, int]
+    speed: u.Quantity
+    acceleration: u.Quantity
+
+
+@dataclass
+class Mount:
+    """Defines a telescope mount, including the mount type (ALTAZ, EQUAT), the limits of the telescope
+    to point in the sky, and the slewing velocity (rate) and acceleration (acc).
+    """
+    mount_type: MountType
+    ax1: Axis
+    ax2: Axis
 
 
 class Station(object):
@@ -27,8 +50,10 @@ class Station(object):
     or simply when a source is visible from the station for a given time range.
     """
     def __init__(self, name: str, codename: str, network: str, location: coord.EarthLocation,
-                 freqs_sefds: dict, min_elevation=20*u.deg, fullname: str = None,
-                 all_networks: str = None, country: str = '', diameter: str = '', real_time: bool = False):
+                 freqs_sefds: dict[str, Union[float, int]],
+                 min_elevation: Union[u.Quantity, int, float] = u.Quantity(20, u.deg),
+                 fullname: Optional[str] = None, all_networks: Optional[str] = None, country: str = '',
+                 diameter: str = '', real_time: bool = False, mount: Optional[Mount] = None) -> None:
         """Initializes a station.
 
         Inputs
@@ -48,7 +73,7 @@ class Station(object):
             at each frequency.
             Although the key format is in principle free, we recommend to use the syntax 'XXcm' (str type).
             This will be then consistent with the default station catalog.
-        - min_elevation : Quantity [OPTIONAL]
+        - min_elevation : Quantity/int/float [OPTIONAL]
             Minimum elevation that the station can reach to observe a source. If no units (astropy.units)
             provided, degrees are assumed. By default it 20 degrees. It does not support an azimuth-dependent
             elevation limits. It must be >= 0.
@@ -66,41 +91,54 @@ class Station(object):
             meaning that the station is composed of 25 antennas of 20 m each.
         - real_time : bool [OPTIONAL]
             If the station can participate in real-time observations (e.g. e-EVN), False by default.
+        - mount : Mount [OPTIONAL]
+            The mount of the station, including the type of mount and the slewing limits, speed, and acceleration.
+            If not provided, it will assume an ALTAZ mount with no pointing limits and very high slewing speed.
         """
         # Some sanity checks
         for a_var, a_var_name in zip((name, codename, network, country, diameter), \
                                      ('name', 'codename', 'network', 'country', 'diameter')):
             assert isinstance(a_var, str), f"'{a_var_name}' must be a str."
 
-        assert min_elevation >= 0.0, "'min_elevation' must be >= 0."
         assert isinstance(fullname, str) or fullname is None
         assert isinstance(all_networks, str) or fullname is None
         assert type(real_time) is bool, "'real_time' must be a bool."
-        self.observer = Observer(name=name.replace('_', ' '), location=location)
-        self._codename = codename
-        self._network = network
-        self._freqs_sefds = freqs_sefds
+        self.observer: Observer = Observer(name=name.replace('_', ' '), location=location)
+        self._codename: str = codename
+        self._network: str = network
+        self._freqs_sefds: dict[str, float] = {f: float(v) for f,v in freqs_sefds.items()}
         assert isinstance(min_elevation, float) or isinstance(min_elevation, int) \
                or isinstance(min_elevation, u.Quantity), \
                "'min_elevation' must be either a float, int, or an astropy.units.Quantity object."
         if isinstance(min_elevation, float) or isinstance(min_elevation, int):
-            self._min_elev = min_elevation*u.deg
+            self._min_elev: u.Quantity = u.Quantity(float(min_elevation), unit=u.deg)
         else:  # isinstance(min_elevation, u.Quantity):
+            assert min_elevation.unit is not None, "min_elevation needs to be an angular quantity."
             assert min_elevation.unit.is_equivalent(u.deg), \
                    "'min_elevation' must have angular units (e.g. degrees)"
             self._min_elev = min_elevation
 
-        self._fullname = name if fullname is None else fullname
-        self._all_networks = network if all_networks is None else all_networks
-        self._country = country
-        self._diameter = diameter
-        self._real_time = real_time
+        assert self._min_elev.value >= 0.0, "'min_elevation' must be >= 0 degrees."
+        assert self._min_elev.value < 90.0, "'min_elevation' must be < 90 degrees."
+        self._fullname: str = name if fullname is None else fullname
+        self._all_networks: str = network if all_networks is None else all_networks
+        self._country: str = country
+        self._diameter: str = diameter
+        self._real_time: bool = real_time
+        if mount is None:
+            self._mount: Mount = Mount(MountType.ALTAZ,
+                                       Axis((-10, 370), 300*u.deg/u.s, 0.0*u.deg/u.s/u.s),
+                                       Axis((-10, 100), 300*u.deg/u.s, 0.0*u.deg/u.s/u.s))
+        else:
+            assert isinstance(mount, Mount)
+            self._mount: Mount = mount
 
 
     @property
     def name(self) -> str:
         """Name of the station.
         """
+        assert self.observer.name is not None
         return self.observer.name
 
 
@@ -173,7 +211,7 @@ class Station(object):
 
 
     @property
-    def sefds(self) -> dict:
+    def sefds(self) -> dict[str, float]:
         """Returns a dictionary with the system equivalent flux density (SEFDs) for each
         of the frequencies the station can observe (given as keys).
         """
@@ -187,6 +225,11 @@ class Station(object):
         """
         return self._min_elev
 
+    @property
+    def mount(self) -> Mount:
+        """Returns the mount of the station
+        """
+        return self._mount
 
     def elevation(self, obs_times: Time, target: FixedTarget) -> coord.angles.Latitude:
         """Returns the elevation of the target source as seen by the Station during obs_times.
@@ -295,9 +338,10 @@ class SelectedStation(Station):
     or just disabling some of them.
     """
     def __init__(self, name: str, codename: str, network: str, location: coord.EarthLocation,
-                 freqs_sefds: dict, min_elevation=20*u.deg, fullname: str = None,
-                 all_networks: str = None, country: str = '', diameter: str = '',
-                 real_time: bool = False, selected: bool = True):
+                 freqs_sefds: dict[str, float],
+                 min_elevation: Union[u.Quantity, int, float] = u.Quantity(20, u.deg),
+                 fullname: Optional[str] = None, all_networks: Optional[str] = None, country: str = '',
+                 diameter: str = '', real_time: bool = False, selected: bool = True) -> None:
         """Initializes a SelectedStation.
         This class extends Station by adding one additional attribute: `selected` (bool).
 
@@ -318,7 +362,7 @@ class SelectedStation(Station):
             at each frequency.
             Although the key format is in principle free, we recommend to use the syntax 'XXcm' (str type).
             This will be then consistent with the default station catalog.
-        - min_elevation : Quantity [OPTIONAL]
+        - min_elevation : Quantity/int/float [OPTIONAL]
             Minimum elevation that the station can reach to observe a source. If no units (astropy.units)
             provided, degrees are assumed. By default it 20 degrees. It does not support an azimuth-dependent
             elevation limits.
@@ -341,8 +385,9 @@ class SelectedStation(Station):
         """
         assert isinstance(selected, bool), "'selected' must be a bool"
         self._selected = selected
-        super().__init__(name, codename, network, location, freqs_sefds,
-                         min_elevation, fullname, all_networks, country, diameter, real_time)
+        super().__init__(name, codename, network, location,
+                         freqs_sefds, min_elevation, fullname,
+                         all_networks, country, diameter, real_time)
 
 
     @property
@@ -364,7 +409,7 @@ class Stations(object):
     """Defines a network (collection) of stations (`Station` objects) that
     can participate in an observation together.
     """
-    def __init__(self, name: str, stations: list):
+    def __init__(self, name: str, stations: list[Station]) -> None:
         """Initializes a Stations.
 
         Inputs
@@ -385,7 +430,7 @@ class Stations(object):
             else:
                 print(f"WARNING: {a_station.codename} is duplicated in the 'stations' list.")
 
-        self._codenames = tuple(self._stations.keys())
+        self._codenames: tuple[str] = tuple(self._stations.keys())
 
 
     @property
@@ -490,7 +535,7 @@ class Stations(object):
 
 
     @staticmethod
-    def get_stations_from_configfile(filename: str = None, codenames: list = None,
+    def get_stations_from_configfile(filename: Optional[str] = None, codenames: Optional[list] = None,
                                                name: str = 'network') -> Stations:
         """Creates a Stations object (i.e. a network of stations) by reading the station
         information from an input file. Optionally, it allows to select only a subset of
@@ -531,7 +576,8 @@ class Stations(object):
         """
         config = configparser.ConfigParser()
         if filename is None:
-            with resources.path("data", "stations_catalog.inp") as stations_catalog_path:
+            with resources.as_file(resources.files("data").joinpath("stations_catalog.inp")) \
+                                                                     as stations_catalog_path:
                 config.read(stations_catalog_path)
         else:
             # With this approach it raises a FileNotFound exception.
@@ -542,15 +588,20 @@ class Stations(object):
         for stationname in config.sections():
             if (codenames is None) or (config[stationname]['code'] in codenames):
                 temp = [float(i.strip()) for i in config[stationname]['position'].split(',')]
-                a_loc = coord.EarthLocation(temp[0]*u.m, temp[1]*u.m, temp[2]*u.m)
+                a_loc = coord.EarthLocation(u.Quantity(temp[0], u.m), u.Quantity(temp[1], u.m),
+                                            u.Quantity(temp[2], u.m))
                 # Getting the SEFD values for the bands
-                min_elev = float(config[stationname]['min_elevation'])*u.deg
+                min_elev = u.Quantity(float(config[stationname]['min_elevation']), u.deg)
                 does_real_time = True if config[stationname]['real_time']=='yes' else False
                 sefds = {}
                 for akey in config[stationname].keys():
                     if 'SEFD_' in akey.upper():
                         sefds[f"{akey.upper().replace('SEFD_', '').strip()}cm"] = \
                                             float(config[stationname][akey])
+
+                if config[stationname]['code'] in networks.codenames:
+                    raise ValueError(f"The antenna with code {config[stationname]['code']} is "
+                                     "duplicated in the input file.")
 
                 new_station = SelectedStation(stationname, config[stationname]['code'],
                         config[stationname]['network'], a_loc, sefds, min_elev,
@@ -561,7 +612,7 @@ class Stations(object):
         return networks
 
 
-    def stations_with_band(self, band: str, output_network_name: str = None) -> Stations:
+    def stations_with_band(self, band: str, output_network_name: Optional[str] = None) -> Stations:
         """Given the current network, it creates a sub-network including only the stations
         that can observe at the given band.
 
@@ -588,7 +639,7 @@ class Stations(object):
         return subnetwork
 
 
-    def select_stations(self, codenames: list, name: str = None) -> Stations:
+    def select_stations(self, codenames: list, name: Optional[str] = None) -> Stations:
         """Returns a new Stations object which will only contain the stations
         defined by the given list of codenames. It will thus be a subset of the current
         network.
@@ -615,13 +666,13 @@ class Stations(object):
 
 
     @staticmethod
-    def get_network_names_from_configfile(filename: str = None) -> dict:
+    def get_network_names_from_configfile(filename: Optional[str] = None) -> dict:
         """Reads a config file containing the different VLBI networks defined as a config parser file.
         Returns a dictionary with the nickname of the VLBI network as keys, and the information as
         keys in a second-order dict.
 
         Inputs
-        - filename : str
+        - filename : str  OPTIONAL
             Path to the text file containing the information from all stations.
             If not provided, it reads the default station catalog file located in
                             data/network_catalog.inp

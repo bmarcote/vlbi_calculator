@@ -10,7 +10,7 @@ from astropy import units as u
 from astropy import coordinates as coord
 # from astropy.io import ascii
 from astropy.time import Time
-from astroplan import Observer, FixedTarget
+from astroplan import Observer, FixedTarget, Constraint
 from dataclasses import dataclass
 from enum import Enum, auto
 """Module that defines the `Station` and `Stations` objects, which represent a station (antenna)
@@ -40,6 +40,92 @@ class Mount:
     mount_type: MountType
     ax1: Axis
     ax2: Axis
+
+
+# Limits for the station to check if it can observe, adapted for VLBI
+# - SunSeparationConstraint(min, max=None)
+# - AltitudeConstraint(min, max)
+# - MoonSeparationConstraint(min, max=None)
+
+ElevationConstraint = AltitudeConstraint
+
+class AzimuthConstraint(Constraint):
+    """Constraint the azimuth for the station
+    """
+    def __init__(self, min: Optional[u.Quantity] = None, max: Optional[u.Quantity] = None, boolean_constraint: bool = True):
+        """
+        min : `~astropy.units.Quantity` or `None` (optional)
+            Minimum acceptable azimuth for the target. `None` indicates no limit.
+        max : `~astropy.units.Quantity` or `None` (optional)
+            Minimum acceptable azimuth for the target. `None` indicates no limit.
+        """
+        self.min = min if min is not None else -10*u.deg
+        self.max = max if max is not None else 370*u.deg
+        self.boolean_constraint = boolean_constraint
+
+    def compute_constraint(self, times, observer, targets):
+        azimuths = observer.altaz(obs_times, target).az % 360
+        if self.boolean_constraint:
+            return ((self.min < azimuths) & (azimuths < self.max))
+        # if we want to return a non-boolean score
+        else:
+            # rescale the vega_separation values so that they become
+            # scores between zero and one
+            rescale = min_best_rescale(azimuths, self.min, self.max, less_than_min=0)
+            return rescale
+
+class HourAngleConstraint(Constraint):
+    """Constraint the hour angle for the station
+    """
+    def __init__(self, min: Optional[u.Quantity] = None, max: Optional[u.Quantity] = None, boolean_constraint: bool = True):
+        """
+        min : `~astropy.units.Quantity` or `None` (optional)
+            Minimum acceptable hour angle for the target. `None` indicates no limit.
+        max : `~astropy.units.Quantity` or `None` (optional)
+            Maximum acceptable hour angle for the target. `None` indicates no limit.
+        """
+        self.min = min if min is not None else -370*u.deg
+        self.max = max if max is not None else 370*u.deg
+        self.boolean_constraint = boolean_constraint
+
+    def compute_constraint(self, times, observer, targets):
+        hour_angles = observer.hour_angle(obs_times, targets) # TODO
+        if self.boolean_constraint:
+            return ((self.min < hour_angles) & (hour_angles < self.max))
+        # if we want to return a non-boolean score
+        else:
+            # rescale the vega_separation values so that they become
+            # scores between zero and one
+            rescale = min_best_rescale(hour_angles, self.min, self.max, less_than_min=0)
+            return rescale
+
+
+class AzimuthConstraint(Constraint):
+    """Constraint the azimuth for the station
+    """
+    def __init__(self, min: Optional[u.Quantity] = None, max: Optional[u.Quantity] = None, boolean_constraint: bool = True):
+        """
+        min : `~astropy.units.Quantity` or `None` (optional)
+            Minimum acceptable separation between Vega and target. `None`
+            indicates no limit.
+        max : `~astropy.units.Quantity` or `None` (optional)
+            Minimum acceptable separation between Vega and target. `None`
+            indicates no limit.
+        """
+        self.min = min if min is not None else -10*u.deg
+        self.max = max if max is not None else 370*u.deg
+        self.boolean_constraint = boolean_constraint
+
+    def compute_constraint(self, times, observer, targets):
+        azimuths = observer.altaz(obs_times, target).az % 360
+        if self.boolean_constraint:
+            return ((self.min < azimuths) & (azimuths < self.max))
+        # if we want to return a non-boolean score
+        else:
+            # rescale the vega_separation values so that they become
+            # scores between zero and one
+            rescale = min_best_rescale(azimuths, self.min, self.max, less_than_min=0)
+            return rescale
 
 
 class Station(object):
@@ -103,7 +189,7 @@ class Station(object):
         assert isinstance(fullname, str) or fullname is None
         assert isinstance(all_networks, str) or fullname is None
         assert type(real_time) is bool, "'real_time' must be a bool."
-        self.observer: Observer = Observer(name=name.replace('_', ' '), location=location)
+        self.observer: ,bserver = Observer(name=name.replace('_', ' '), location=location, n_grid_points=15)
         self._codename: str = codename
         self._network: str = network
         self._freqs_sefds: dict[str, float] = {f: float(v) for f,v in freqs_sefds.items()}
@@ -395,7 +481,7 @@ class SelectedStation(Station):
         self._selected = selected
         super().__init__(name, codename, network, location,
                          freqs_sefds, min_elevation, fullname,
-                         all_networks, country, diameter, real_time)
+                         all_networks, country, diameter, real_time, mount)
 
 
     @property
@@ -619,33 +705,32 @@ class Stations(object):
 
                 if all([key in config[stationname] for key in ('mount', 'ax1rate', 'ax2rate', 'ax1lim',
                                                                'ax2lim')]):
+                    configs = {}
                     for alim in ('ax1lim', 'ax2lim'):
-                        config[stationname][alim] = (float(i.strip())*u.deg for i in config[stationname][alim])
+                        configs[alim] = (u.Quantity(float(i.strip()), u.deg) for i in config[stationname][alim])
 
                     for arate in ('ax1rate', 'ax2rate'):
-                        config[stationname][arate] = u.Quantity(float(config[stationname][arate].strip()), u.deg/u.s)
+                        configs[arate] = u.Quantity(float(config[stationname][arate].strip()), u.deg/u.s)
 
                     if all([key in config[stationname] for key in ('ax1acc', 'ax2acc')]):
                         for aacc in ('ax1acc', 'ax2acc'):
-                            config[stationname][aacc] = u.Quantity(float(config[stationname][aacc].strip(),
-                                                                   u.deg/u.s/u.s)
+                            configs[aacc] = u.Quantity(float(config[stationname][aacc].strip()), u.deg/u.s/u.s)
 
-                        amount = Mount(config[stationname]['mount'], Axis(config[stationname]['ax1lim'],
-                                                                 config[stationname]['ax1rate'],
-                                                                 config[stationname]['ax1acc']),
-                              Axis(config[stationname]['ax2lim'], config[stationname]['ax2rate'],
-                                   config[stationname]['ax2acc']))
+                        amount = Mount(MountType[config[stationname]['mount']],
+                                       Axis(config[stationname]['ax1lim'], configs['ax1rate'], configs['ax1acc']),
+                                       Axis(config[stationname]['ax2lim'], config[stationname]['ax2rate'],
+                                            config[stationname]['ax2acc']))
                     else:
-                        amount = Mount(config[stationname]['mount'], Axis(config[stationname]['ax1lim'],
-                                                                 config[stationname]['ax1rate']),
-                              Axis(config[stationname]['ax2lim'], config[stationame]['ax2rate']))
+                        amount = Mount(MountType[config[stationname]['mount']],
+                                       Axis(config[stationname]['ax1lim'], config[stationname]['ax1rate']),
+                                       Axis(config[stationname]['ax2lim'], config[stationame]['ax2rate']))
                 else:
                     amount = None
 
                 new_station = SelectedStation(stationname, config[stationname]['code'],
                         config[stationname]['network'], a_loc, sefds, min_elev,
                         config[stationname]['station'], config[stationname]['possible_networks'],
-                        config[stationname]['country'], config[stationname]['diameter'], amount, does_real_time)
+                        config[stationname]['country'], config[stationname]['diameter'], does_real_time, amount)
                 networks.add(new_station)
 
         return networks

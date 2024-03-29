@@ -1,3 +1,4 @@
+from typing import Optional, Union, Iterable, Sequence
 import numpy as np
 import scipy.ndimage
 import datetime as dt
@@ -8,7 +9,7 @@ from astroplan import FixedTarget
 import plotly.express as px
 from plotly.subplots import make_subplots
 
-from vlbiplanobs.stations import Stations
+from vlbiplanobs.stations import Network
 
 __all__ = ['SourceNotVisible', 'Source', 'Observation']
 
@@ -22,12 +23,10 @@ class SourceNotVisible(Exception):
     """
     pass
 
-
-
 class Source(FixedTarget):
     """Defines a target source located at some coordinates and with a given name.
     """
-    def __init__(self, coordinates: str = None, name: str = None, **kwargs):
+    def __init__(self, coordinates: Optional[str] = None, name: Optional[str] = None, **kwargs):
         """Initializes a Source object.
 
         Inputs
@@ -58,6 +57,7 @@ class Source(FixedTarget):
 
 
 
+
 class Observation(object):
     """Defines an observation of a single target source with a given network of stations.
     The observation can be set up in incremental steps (i.e. not all inputs are necessary
@@ -71,7 +71,7 @@ class Observation(object):
     def __init__(self, target: Source = None, times: Time = None, band: str = None,
                  datarate=None, subbands: int = None, channels: int = None,
                  polarizations: int = None, inttime=None, ontarget: float = 1.0,
-                 stations: Stations = None, bits: int = 2, fixed_time = True):
+                 stations: Network = None, bits: int = 2, fixed_time = True):
         """Initializes an observation.
         Note that you can initialize an empty observation at this stage and add the
         information for the different attributes later. However, you may raise exception
@@ -93,7 +93,7 @@ class Observation(object):
             free-format string, it should match the type used when defining the bands
             at which each station can observe, and the default is the str format `XXcm`
             where XX represents the wavelength to observe in cm units.
-            You can always check the available bands in `{Stations object}.observing_bands`.
+            You can always check the available bands in `{Network object}.observing_bands`.
         - datarate : int or astropy.units.Quantity
             Data rate for each antenna. It assumes that all antennas will run at the same
             data rate, which may not be true. If an int is introduce, it will be assumed to
@@ -116,7 +116,7 @@ class Observation(object):
             spent on the target source. Note that in a typical VLBI observation only a fraction
             of the total observing time will end up in on-target source, commonly between 0.4-0.8
             (~40-80% of the time). This has an effect on the determination of the final rms noise level.
-        - stations : vlbiplanobs.stations.Stations
+        - stations : vlbiplanobs.stations.Network
             Network of stations that will participate in the given observation.
         - bits : int
             Number of bits at which the data have been recorded (sampled). A typical VLBI observation is
@@ -142,7 +142,7 @@ class Observation(object):
         if stations is not None:
             self.stations = stations
         else:
-            self.stations = Stations('empty', [])
+            self.stations = Network('empty', [])
 
         self.bitsampling = bits
         self.ontarget_fraction = ontarget
@@ -438,16 +438,16 @@ class Observation(object):
 
 
     @property
-    def stations(self) -> Stations:
-        """Returns the network of stations 'Stations' that will participate in this observation
+    def stations(self) -> Network:
+        """Returns the network of stations 'Network' that will participate in this observation
         observing the target source.
         """
         return self._stations
 
 
     @stations.setter
-    def stations(self, new_stations: Stations):
-        assert isinstance(new_stations, Stations)
+    def stations(self, new_stations: Network):
+        assert isinstance(new_stations, Network)
         self._stations = new_stations
         self._uv_baseline = None
         self._uv_array = None
@@ -506,7 +506,7 @@ class Observation(object):
 
 
     @staticmethod
-    def guest_times_for_source(target: Source, stations: Stations, date: Time = None, min_stations : int = 3) \
+    def guest_times_for_source(target: Source, stations: Network, date: Time = None, min_stations : int = 3) \
                                                                                                     -> tuple:
         """Use this function to discover when your target source can be observed by the given network
         of stations. It will return the start and end time of the possible observation (both in UTC and GST).
@@ -517,7 +517,7 @@ class Observation(object):
         Inputs
         - target : Source
             The target source to be observed.
-        - stations : Stations
+        - stations : Network
             The array of stations that will potentially observe the target source.
         - date : astropy.time.Time [OPTIONAL]
             In case you have a specific date which you want to use to compute the possible start time

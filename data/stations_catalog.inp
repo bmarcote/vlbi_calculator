@@ -237,6 +237,7 @@ SEFD_18 = 175.0
 SEFD_6 = 175.0
 SEFD_5 = 225.0
 SEFD_1.3 = 720
+maxdatarate_512 = EVN
 
 
 [Ceduna]
@@ -277,6 +278,7 @@ SEFD_18 = 450.0
 SEFD_6 = 325.0
 SEFD_5 = 325.0
 SEFD_1.3 = 1500
+maxdatarate_512 = EVN
 
 
 [Defford]
@@ -295,6 +297,7 @@ SEFD_21 = 350.0
 SEFD_18 = 350.0
 SEFD_6 = 1000.0
 SEFD_5 = 1600.0
+maxdatarate_512 = EVN
 
 
 [Dwingeloo]
@@ -323,6 +326,13 @@ diameter = 100 m
 #img =
 #link =
 position = 4033947.2616, 486990.7943, 4900431.0017
+mount = ALTAZ
+ax1rate = 25
+ax2rate = 15
+ax1lim = 34, 480
+ax2lim = 9, 89
+ax1acc = 0.018
+ax2acc = 0.018
 real_time = yes
 SEFD_92 = 600
 SEFD_49 = 600
@@ -708,6 +718,7 @@ SEFD_18 = 400.0
 SEFD_6 = 325.0
 SEFD_5 = 325.0
 SEFD_1.3 = 1500
+maxdatarate_512 = EVN
 
 
 [Kunming]
@@ -1130,6 +1141,7 @@ SEFD_18 = 450.0
 SEFD_6 = 325.0
 SEFD_5 = 325.0
 SEFD_1.3 = 1500
+maxdatarate_512 = EVN
 
 
 [Pico Veleta]
@@ -1501,6 +1513,7 @@ SEFD_6 = 250.0
 SEFD_5 = 750.0
 SEFD_3.6 = 350.0
 SEFD_1.3 = 850
+maxdatarate = 1024
 
 
 [VLA 1]
@@ -1604,6 +1617,7 @@ SEFD_13 = 840.0
 SEFD_6 = 1680.0
 SEFD_5 = 1600.0
 SEFD_3.6 = 1680.0
+maxdatarate = 1024
 
 
 [WSRT]

@@ -2,7 +2,7 @@
 
 name = European VLBI Network
 default_antennas = Ef, Hh, Jb2, Mc, Nt, Ur, On, Sr, T6, Tr, Ys, Wb, Ir
-max_datarate = 2048
+max_datarate = 1024, 1024, 1024, 1024, 1024, 2048, 4096, 4096, 4096, 4096, 4096
 observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm
 
 
@@ -10,7 +10,7 @@ observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.
 
 name = European VLBI Network
 default_antennas = Ef, Hh, Jb2, Mc, Nt, On, Sr, T6, Tr, Ys, Wb, Ir
-max_datarate = 2048
+max_datarate = 1024, 1024, 2048, 4096, 4096, 4096, 4096, 4096
 observing_bands = 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm
 
 
@@ -34,7 +34,7 @@ observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.
 
 name = Global VLBI (EVN+VLBA)
 default_antennas = Ef, Hh, Jb2, Mc, Nt, Ur, On, Sr, T6, Tr, Ys, Wb, Ir, Br, Fd, Hn, Kp, La, Mk, Nl, Ov, Pt, Sc
-max_datarate = 2048
+max_datarate = 1024, 1024, 1024, 1024, 1024, 2048, 4096, 4096, 4096, 4096, 4096
 observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm
 
 
@@ -91,6 +91,6 @@ observing_bands = 0.7cm, 0.348cm
 name = Event Horizon Telescope
 default_antennas = ALMA, Pv, LMT, Nn, SMA, JCMT, APEX, SMT, SPT, GLT
 max_datarate = 32768
-observing_bands = 0.348cm, 0.1cm
+observing_bands = 0.348cm, 0.13cm
 
 

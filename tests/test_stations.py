@@ -148,13 +148,24 @@ def test_station_file():
             if aline.strip().replace(' ', '') == 'maxdatarate_':
                 assert aline.split('=')[0].strip().removeprefix('maxdatarate_') in all_networks
 
-        # This value may change in the future but then is a problem of the test, not the code
-        assert 'EVN' in all_stations['De'].max_datarate, \
-                f"De doesn't have max_datarate for EVN (keys: {all_stations['De'].max_datarate})"
-        assert all_stations['De'].max_datarate['EVN'] == 512*u.Mb/u.s, \
-                f"De has a mismatching data rate of {all_stations['De'].max_datarate['EVN']}."
-        assert n_ants == len(all_stations)
+    # This value may change in the future but then is a problem of the test, not the code
+    assert 'EVN' in all_stations['De'].max_datarate, \
+            f"De doesn't have max_datarate for EVN (keys: {all_stations['De'].max_datarate})"
+    assert all_stations['De'].max_datarate['EVN'] == 512*u.Mb/u.s, \
+            f"De has a mismatching data rate of {all_stations['De'].max_datarate['EVN']}."
+    assert n_ants == len(all_stations)
 
+    # Check that all stations have an associated image
+    for ant in all_stations:
+        with resources.as_file(resources.files("assets").joinpath(f"ant-{ant.name.replace(' ','_').lower()}.jpg")) \
+                                                                                                         as antfile:
+            assert antfile.exists()
+
+    for net in all_networks:
+        with resources.as_file(resources.files("assets").joinpath(f"network-{net.replace(' ','_').lower()}.png")) \
+                                                                                                      as netfile:
+            if net != 'e-EVN':
+                assert netfile.exists()
 
 
 

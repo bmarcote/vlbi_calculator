@@ -1,5 +1,4 @@
 import pytest
-import subprocess
 import numpy as np
 from importlib import resources
 from astropy import coordinates as coord
@@ -14,20 +13,21 @@ def test_station_init():
     """Tests the Station class and different possibilities during the creation of the station.
     """
     sefds = {'18': 100, '6': 40, '0.1': 200}
-    a_station = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), sefds)
-    a_station = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {})
+    _ = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), sefds)
+    _ = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {})
     with pytest.raises(AssertionError):
         # Wrong names
-        a_station = stations.Station(None, 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {}, 10)
-        a_station = stations.Station(5, 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {}, 10)
-        a_station = stations.Station('name', None, 'VLBI', coord.EarthLocation(0., 0., 0.), {}, 10)
-        a_station = stations.Station('name', True, 'VLBI', coord.EarthLocation(0., 0., 0.), {}, 10)
-        a_station = stations.Station('name', 'Nm', None, coord.EarthLocation(0., 0., 0.), {}, 10)
-        a_station = stations.Station('name', 'Nm', 5.0, coord.EarthLocation(0., 0., 0.), {}, 10)
+        _ = stations.Station(None, 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {}, 10)
+        _ = stations.Station(5, 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {}, 10)
+        _ = stations.Station('name', None, 'VLBI', coord.EarthLocation(0., 0., 0.), {}, 10)
+        _ = stations.Station('name', True, 'VLBI', coord.EarthLocation(0., 0., 0.), {}, 10)
+        _ = stations.Station('name', 'Nm', None, coord.EarthLocation(0., 0., 0.), {}, 10)
+        _ = stations.Station('name', 'Nm', 5.0, coord.EarthLocation(0., 0., 0.), {}, 10)
         # Negative min_elevations
-        a_station = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {}, -10)
+        _ = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {}, -10)
         # Wrong units min_elevations
-        a_station = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {}, 10*u.m)
+        _ = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {}, 10*u.m)
+
 
 
 def test_station_functions():

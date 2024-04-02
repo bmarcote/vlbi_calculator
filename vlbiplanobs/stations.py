@@ -719,30 +719,34 @@ class Network(object):
                 if all([key in config[stationname] for key in ('mount', 'ax1rate', 'ax2rate', 'ax1lim',
                                                                'ax2lim')]):
                     configs = {}
-                    for alim in ('ax1lim', 'ax2lim'):
-                        # Because they are the cable limits...
-                        lims = [float(i) for i in config[stationname][alim].split(', ')]
-                        # easy check, if the range is >360, they can observe all azimuths
-                        if (lims[1] - lims[0]) > 360:
-                            configs[alim] = tuple((-1*u.deg, 361*u.deg))
+                    try:
+                        for alim in ('ax1lim', 'ax2lim'):
+                            # Because they are the cable limits...
+                            lims = [float(i) for i in config[stationname][alim].split(',')]
+                            # easy check, if the range is >360, they can observe all azimuths
+                            if (lims[1] - lims[0]) > 360:
+                                configs[alim] = tuple((-1*u.deg, 361*u.deg))
+                            else:
+                                configs[alim] = tuple((lims[0]*u.deg, lims[1]*u.deg))
+
+                        for arate in ('ax1rate', 'ax2rate'):
+                            configs[arate] = u.Quantity(float(config[stationname][arate].strip()), u.deg/u.s)
+
+                        if all([key in config[stationname] for key in ('ax1acc', 'ax2acc')]):
+                            for aacc in ('ax1acc', 'ax2acc'):
+                                configs[aacc] = u.Quantity(float(config[stationname][aacc].strip()), u.deg/u.s/u.s)
+
+                            amount = Mount(MountType[config[stationname]['mount']],
+                                           Axis(configs['ax1lim'], configs['ax1rate'], configs['ax1acc']),
+                                           Axis(configs['ax2lim'], configs['ax2rate'],
+                                                config[stationname]['ax2acc']))
                         else:
-                            configs[alim] = tuple((lims[0]*u.deg, lims[1]*u.deg))
+                            amount = Mount(MountType[config[stationname]['mount']],
+                                           Axis(configs['ax1lim'], config[stationname]['ax1rate']),
+                                           Axis(configs['ax2lim'], config[stationname]['ax2rate']))
+                    except ValueError:
+                        raise ValueError(f"when loading the data from antenna {stationname}.")
 
-                    for arate in ('ax1rate', 'ax2rate'):
-                        configs[arate] = u.Quantity(float(config[stationname][arate].strip()), u.deg/u.s)
-
-                    if all([key in config[stationname] for key in ('ax1acc', 'ax2acc')]):
-                        for aacc in ('ax1acc', 'ax2acc'):
-                            configs[aacc] = u.Quantity(float(config[stationname][aacc].strip()), u.deg/u.s/u.s)
-
-                        amount = Mount(MountType[config[stationname]['mount']],
-                                       Axis(configs['ax1lim'], configs['ax1rate'], configs['ax1acc']),
-                                       Axis(configs['ax2lim'], configs['ax2rate'],
-                                            config[stationname]['ax2acc']))
-                    else:
-                        amount = Mount(MountType[config[stationname]['mount']],
-                                       Axis(configs['ax1lim'], config[stationname]['ax1rate']),
-                                       Axis(configs['ax2lim'], config[stationname]['ax2rate']))
                 else:
                     amount = None
 

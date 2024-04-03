@@ -23,6 +23,8 @@ class SourceNotVisible(Exception):
     """
     pass
 
+
+
 class Source(FixedTarget):
     """Defines a target source located at some coordinates and with a given name.
     """
@@ -39,7 +41,7 @@ class Source(FixedTarget):
             Name associated to the source. By default is None.
         - kwargs
             keyword arguments to be passed to astropy.coordinates.SkyCoord() if needed.
-            For example, unit= parameter.
+            For example, the 'unit=' parameter.
 
         If both provided, the given coordinates will be used for the given source.
 
@@ -56,6 +58,46 @@ class Source(FixedTarget):
         super().__init__(coord.SkyCoord(coordinates, **kwargs), name)
 
 
+    def sun_separation(self, times: Time) -> np.array:
+        """Returns the separation of the source to the Sun at the given epoch(s).
+
+        Inputs
+        - times : astropy.time.Time
+            An array of times defining the duration of the observation. That is,
+            the first time will define the start of the observation and the last one
+            will be the end of the observation. Note that the higher time resolution
+            in `times` the more precise values you will obtain for antenna source
+            visibility or determination of the rms noise levels. However, that will
+            also imply a longer computing time.
+        """
+        return self.coord.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
+
+
+    def sun_constraint(self, min_separation: u.Quantity, times: Optional[Time] = None) -> np.array:
+        """Checks if the Sun can be a restriction to observe the given source.
+        This is defined as if the Sun is at a separation lower than 'min_separation' from the
+        target in the sky at a given moment.
+
+        Inputs
+        - min_separation : astropy.units.Quantity
+            Minimun separation allowed for the Sun to be near the source.
+            One can make use of the default separations provided in `freqsetups.solar_separations`
+            for the different observing bands.
+        - times : astropy.time.Time  [OPTIONAL]
+            An array of times to check the separation of the Sun. If not provided, it will compute
+            the full (current) calendar year with a resolution of one day.
+
+        Returns
+        - astropy.time.Time
+            A list of times when the Sun is closer than the minimum separation.
+            It would be an empty list if this condition never meets.
+        """
+        if times is None:
+            times = Time(f"{dt.datetime.now(tz=dt.timezone.utc).year}-01-01 00:00") + \
+                    np.arange(0, 365, 1)*u.day
+
+        sun_separation = self.coord.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
+        return times[sun_separation < min_separation]
 
 
 class Observation(object):
@@ -68,10 +110,12 @@ class Observation(object):
     observation, or the resolution of the resulting images, assuming a standard neutral
     robust weighting.
     """
-    def __init__(self, target: Source = None, times: Time = None, band: str = None,
-                 datarate=None, subbands: int = None, channels: int = None,
-                 polarizations: int = None, inttime=None, ontarget: float = 1.0,
-                 stations: Network = None, bits: int = 2, fixed_time = True):
+    def __init__(self, target: Optional[Source] = None, times: Optional[Time] = None,
+                 band: Optional[str] = None, datarate: Optional[int | u.Quantity] = None,
+                 subbands: Optional[int] = None, channels: Optional[int] = None,
+                 polarizations: Optional[int] = None, inttime: Optional[float | u.Quantity] = None,
+                 ontarget: float = 1.0, stations: Optional[Network] = None, bits: int = 2,
+                 fixed_time: bool = True):
         """Initializes an observation.
         Note that you can initialize an empty observation at this stage and add the
         information for the different attributes later. However, you may raise exception
@@ -154,7 +198,7 @@ class Observation(object):
 
 
     @property
-    def target(self) -> Source:
+    def target(self) -> Optional[Source]:
         """Returns the target source to be observed during the current observation.
         It can return None if the target has not been set yet, showing a warning.
         """

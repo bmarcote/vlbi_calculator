@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 from vlbiplanobs import observation as obs
 from astropy import coordinates as coord
 from astropy import units as u
@@ -30,3 +31,15 @@ def test_source():
     assert s2.name == 'a_name'
     assert s1.coord == s2.coord
     assert s3.name == 'Cyg X-1'
+
+    # checking that the distance to the Sun is right
+    # times are spring equinox, summer solstice fall equinox
+    times = Time(['2024-03-19 22:06', '2024-06-20 15:51', '2024-09-22 07:44'], scale='utc')
+    s1 = obs.Source('0h0m0s 0d0m0s', 'equinox source')
+    # print(f"\n\nSeparations: {s1.sun_separation(times)}\n\n")
+    assert all(np.abs(s1.sun_separation(times) - np.array([0.0, 90.0, 180])*u.deg) < 1*u.deg)
+    # print(f"\n\nConstraints: {s1.sun_constraint(20*u.deg, times=times)}\n\n")
+    assert len(s1.sun_constraint(20*u.deg, times=times)) == 1
+    s1 = obs.Source('0h0m0s 90d0m0s', 'polar source')
+    print(f"\n\nSeparations: {s1.sun_separation(times)}\n\n")
+    assert all(np.abs(s1.sun_separation(times[(0, 2),]) - np.array([90.0, 90.0])*u.deg) < 1*u.deg)

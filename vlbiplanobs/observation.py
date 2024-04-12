@@ -1,7 +1,12 @@
-from typing import Optional, Union, Iterable, Sequence
+import asyncio
+from typing import Optional, Union, Iterable, Sequence, Self
+from importlib import resources
+import subprocess
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import numpy as np
 import scipy.ndimage
 import datetime as dt
+from enum import Enum, auto
 from astropy import units as u
 from astropy import coordinates as coord
 from astropy.time import Time, TimeDelta
@@ -9,7 +14,9 @@ from astroplan import FixedTarget
 import plotly.express as px
 from plotly.subplots import make_subplots
 
-from vlbiplanobs.stations import Network
+from vlbiplanobs.stations import Network, Station
+from vlbiplanobs import freqsetups
+
 
 __all__ = ['SourceNotVisible', 'Source', 'Observation']
 
@@ -28,17 +35,18 @@ class SourceNotVisible(Exception):
 class Source(FixedTarget):
     """Defines a target source located at some coordinates and with a given name.
     """
-    def __init__(self, coordinates: Optional[str] = None, name: Optional[str] = None, **kwargs):
+    def __init__(self, name: Optional[Union[str, list[str]]] = None,
+                 coordinates: Optional[Union[str, list[str]]] = None, **kwargs):
         """Initializes a Source object.
 
         Inputs
-        - coordinates : str [OPTIONAL]
+        - name : str or list[str] [OPTIONAL]
+            Name associated to the source. By default is None.
+        - coordinates : str or list[str] [OPTIONAL]
             Coordinates of the target source in a str format recognized by
             astropy.coordinates.SkyCoord (e.g. XXhXXmXXs XXdXXmXXs).
             J2000 coordinates are assumed.
-            If not provided, name must be a source name recognized by astroquery.
-        - name : str [OPTIONAL]
-            Name associated to the source. By default is None.
+            If not provided, name must be a source name recognized by the RFC catalog or astroquery.
         - kwargs
             keyword arguments to be passed to astropy.coordinates.SkyCoord() if needed.
             For example, the 'unit=' parameter.
@@ -48,17 +56,81 @@ class Source(FixedTarget):
         It may raise:
         - NameResolveError: if the name is not recognized (and no coordinates are provided)
         - ValueError: if the coordinates have an unrecognized format.
-        - AssertionError: if none, coordinates nor name, are provided.
+        - AttributeError: if neither name or coordinates are provided, or name is empty.
         """
-        assert (name is not None) or (coordinates is not None), \
-               "At least one 'coordiantes' or 'name' must be provided"
+        if ((name is None) and (coordinates is None)) or (name == ''):
+            raise AttributeError("At least one 'coordiantes' or 'name' (not empty) must be provided")
+
         if (name is not None) and (coordinates is None):
-            coordinates = coord.get_icrs_coordinates(name)
+            if isinstance(name, list):
+                coordinates = [self.get_coordinates_from_name(a_name) for a_name in name]
+            else:
+                coordinates = self.get_coordinates_from_name(name)
 
         super().__init__(coord.SkyCoord(coordinates, **kwargs), name)
 
 
-    def sun_separation(self, times: Time) -> np.array:
+    @staticmethod
+    def get_coordinates_from_name(src_name: str) -> coord.SkyCoord:
+        """Returns the coordinates of a source by searching for them given the source name.
+        First it searches in the RFC catalog, and if not found, in the ICRS catalogs.
+
+        Inputs
+        - src_name : str
+            Name of the source to search for.
+
+        Returns
+        - src_coord : astropy.coordinates.SkyCoord
+            The coordinates of the source, if found.
+
+        It may raise
+        - NameResolveError - if there is no connection or unable to find ICRS sources.
+        - ValueError: if the coordinates have an unrecognized format.
+        """
+        try:
+            return Source.get_rfc_coordinates(src_name)
+        except ValueError:
+            return coord.get_icrs_coordinates(src_name)
+
+
+    @classmethod
+    def get_source_from_name(cls, src_name: str) -> Self:
+        """Returns a Source object by finding the coordinates from its name.
+        It first searches wihtin the RFC catalog, and if not found, through the
+        'astropy.coordinates.get_icrs_coordinates' function through the RFC catalogs.
+        """
+        return cls(src_name, coordinates=Source.get_coordinates_from_name(src_name))
+
+
+    @staticmethod
+    def get_rfc_coordinates(src_name: str) -> coord.SkyCoord:
+        """Returns the coordinates of the object by searching the provided name through the RFC catalog.
+        """
+        rfc_files = tuple((r.name for r in resources.files("data").iterdir() if r.is_file() and 'rfc' in r.name))
+        assert len(rfc_files) > 0, "No RFC files found under the 'data' folder."
+
+        with resources.as_file(resources.files("data").joinpath(sorted(rfc_files)[-1])) as rfcfile:
+            process = subprocess.run(["grep", src_name, rfcfile], capture_output=True, text=True)
+
+        if process.returncode == 1:
+            raise ValueError(f"The source {src_name} was not found in the RFC catalog.")
+        elif process.returncode != 0:
+            raise RuntimeError("A problem happened while parsing the RFC catalog file.")
+        elif process.stdout.count('\n') != 1:
+            raise ValueError(f"None or multiple coincidences for the source {src_name} in the RFC catalog.")
+
+        temp = process.stdout.split()  # Fields:  IVS  name  J2000name  h m s d m s
+        return coord.SkyCoord(f"{temp[3]}h{temp[4]}m{temp[5]}s {temp[6]}d{temp[7]}m{temp[8]}s")
+
+
+    @classmethod
+    def get_rfc_source(cls, src_name: str) -> Self:
+        """Returns a Source object by searching the provided name through the RFC catalog.
+        """
+        return cls(src_name, Source.get_rfc_coordinates(src_name))
+
+
+    def sun_separation(self, times: Time) -> Union[list, np.array]:
         """Returns the separation of the source to the Sun at the given epoch(s).
 
         Inputs
@@ -70,10 +142,14 @@ class Source(FixedTarget):
             visibility or determination of the rms noise levels. However, that will
             also imply a longer computing time.
         """
-        return self.coord.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
+        if len(self.coord.shape) > 0:
+            return [c.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times)) \
+                    for c in self.coord]
+        else:
+            return self.coord.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
 
 
-    def sun_constraint(self, min_separation: u.Quantity, times: Optional[Time] = None) -> np.array:
+    def sun_constraint(self, min_separation: u.Quantity, times: Optional[Time] = None) -> Union[list, np.array]:
         """Checks if the Sun can be a restriction to observe the given source.
         This is defined as if the Sun is at a separation lower than 'min_separation' from the
         target in the sky at a given moment.
@@ -96,8 +172,23 @@ class Source(FixedTarget):
             times = Time(f"{dt.datetime.now(tz=dt.timezone.utc).year}-01-01 00:00") + \
                     np.arange(0, 365, 1)*u.day
 
-        sun_separation = self.coord.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
-        return times[sun_separation < min_separation]
+        sun_separation = self.sun_separation(times=times)
+        if isinstance(sun_separation, list):
+            return [times[sun_separation[i] < min_separation] for i in range(len(self.coord))]
+        else:
+            return times[sun_separation < min_separation]
+
+
+
+class Polarization(Enum):
+    """Number of polarizations to be recorded. Possible values are:
+    - SINGLE (only one polarization is recorded per antenna/baseline).
+    - DUAL (the two RR,LL polarizations are recorded per antenna/baseline).
+    - FULL (the full four RR,LL,RL,LR polarizations are recorded per antenna/baseline).
+    """
+    SINGLE = 1
+    DUAL = 2
+    FULL = 4
 
 
 class Observation(object):
@@ -113,7 +204,7 @@ class Observation(object):
     def __init__(self, target: Optional[Source] = None, times: Optional[Time] = None,
                  band: Optional[str] = None, datarate: Optional[int | u.Quantity] = None,
                  subbands: Optional[int] = None, channels: Optional[int] = None,
-                 polarizations: Optional[int] = None, inttime: Optional[float | u.Quantity] = None,
+                 polarizations: Optional[Union[int,str]] = None, inttime: Optional[float | u.Quantity] = None,
                  ontarget: float = 1.0, stations: Optional[Network] = None, bits: int = 2,
                  fixed_time: bool = True):
         """Initializes an observation.
@@ -147,7 +238,7 @@ class Observation(object):
             during correlation.
         - channels : int
             Number of channels for each subband to be created during correlation.
-        - polarizations : int (1, 2, 4)
+        - polarizations : int (1, 2, 4)  or str (single, dual, full)
             Number of polarizations to record in the observation. Three values are only possible
             0: single polarization.
             2: dual polarization (only direct terms: RR and LL, or XX and YY, are kept).
@@ -186,7 +277,7 @@ class Observation(object):
         if stations is not None:
             self.stations = stations
         else:
-            self.stations = Network('empty', [])
+            self.stations = Network('empty')
 
         self.bitsampling = bits
         self.ontarget_fraction = ontarget
@@ -202,15 +293,14 @@ class Observation(object):
         """Returns the target source to be observed during the current observation.
         It can return None if the target has not been set yet, showing a warning.
         """
-        # if self._target is None:
-        #     print("WARNING: 'target' source not set yet but used in 'Observation'.")
         return self._target
 
 
     @target.setter
-    def target(self, new_target: Source):
-        assert isinstance(new_target, Source) or (new_target is None), \
-                "The new target must be a observation.Source instance, or None."
+    def target(self, new_target: Optional[Source]):
+        if (not isinstance(new_target, Source)) and (new_target is not None):
+            raise ValueError("The new target must be a observation.Source instance or None.")
+
         self._target = new_target
         # Resets all parameters than depend on the source coordinates
         self._uv_baseline = None
@@ -220,7 +310,7 @@ class Observation(object):
 
 
     @property
-    def times(self) -> Time:
+    def times(self) -> Optional[Time]:
         """Returns the times when the observation runs as an astropy.time.Time object.
         It can return None if the times have not been set yet, showing a warning.
         """
@@ -230,11 +320,18 @@ class Observation(object):
 
 
     @times.setter
-    def times(self, new_times):
-        assert isinstance(new_times, Time) and len(new_times) >= 2, \
-               "'times' must be an astropy.time.Time instance and to have at least two time values (start/end)."
+    def times(self, new_times: Optional[Time]):
+        if (new_times is not None) and (not isinstance(new_times, Time)):
+            raise ValueError("'times' must be an astropy.time.Time instance or be None")
+        elif isinstance(new_times, Time) and new_times.size < 2:
+            raise ValueError("'times' must have at least two time values (start and end of the observation).")
+
         self._times = new_times
-        self._gstimes = self._times.sidereal_time('mean', 'greenwich')
+        if self._times is None:
+            self._gstimes = None
+        else:
+            self._gstimes = self._times.sidereal_time('mean', 'greenwich')
+
         self._uv_baseline = None
         self._uv_array = None
         self._rms = None
@@ -242,40 +339,36 @@ class Observation(object):
 
 
     @property
-    def gstimes(self) -> coord.angles.Longitude:
+    def gstimes(self) -> Optional[coord.angles.Longitude]:
         """Returns the GST times when the observation runs as an astropy.coordinates.angles.Longitude
         object (meaning in hourangle units).
         It can return None if the times have not been set yet, showing a warning.
         """
-        # if self._gstimes is None:
-        #     print("WARNING: 'times' not set yet but used in 'Observation'.")
         return self._gstimes
 
 
     @property
-    def duration(self) -> u.Quantity:
+    def duration(self) -> Optional[u.Quantity]:
         """Returns the total duration of the observation.
-        It raises AttributeError if the attribute 'times' has not been set yet.
         """
-        if self.times is None:
-            raise AttributeError("'times' in 'Observation' has not been set yet.")
-
-        return (self.times[-1] - self.times[0]).to(u.h)
+        return None if self.times is None else (self.times[-1] - self.times[0]).to(u.h)
 
 
     @property
-    def band(self) -> str:
+    def band(self) -> Optional[str]:
         """Returns the observing band at which the observation will be conducted.
         It can return None if the band has not been set yet, showing a warning.
         """
-        # if self._band is None:
-        #     print("WARNING: 'band' not set yet but used in 'Observation'.")
         return self._band
 
 
     @band.setter
-    def band(self, new_band):
-        assert (isinstance(new_band, str) and 'cm' in new_band) or (new_band is None)
+    def band(self, new_band: Optional[str]):
+
+        if (new_band not in freqsetups.bands) and (new_band is not None):
+            raise ValueError("'new_band' needs to  match the following bands: " \
+                             f"{', '.join(freqsetups.bands.keys())} (wavelengths given in cm.)")
+
         self._band = new_band
         self._uv_baseline = None
         self._uv_array = None
@@ -284,33 +377,29 @@ class Observation(object):
 
 
     @property
-    def wavelength(self) -> u.Quantity:
+    def wavelength(self) -> Optional[u.Quantity]:
         """Returns the central wavelength of the observation.
         """
-        assert self.band is not None
-        return float(self.band.replace('cm',''))*u.cm
+        return None if self.band is None else float(self.band)*u.cm
 
 
     @property
-    def frequency(self) -> u.Quantity:
+    def frequency(self) -> Optional[u.Quantity]:
         """Returns the central frequency of the observations.
         """
-        assert self.band is not None
-        return 30*u.GHz/self.wavelength.to(u.cm).value
+        return None if self.wavelength is None else 30*u.GHz/self.wavelength.to(u.cm).value
 
 
     @property
-    def datarate(self) -> u.Quantity:
+    def datarate(self) -> Optional[u.Quantity]:
         """Retuns the data rate (per station) used at which the observation is conducted.
         It can return None if the data rate has not been set yet, showing a warning.
         """
-        # if self._datarate is None:
-        #     print("WARNING: 'datarate' not set yet but used in 'Observation'.")
         return self._datarate
 
 
     @datarate.setter
-    def datarate(self, new_datarate):
+    def datarate(self, new_datarate: Optional[Union[int, u.Quantity]]):
         """Sets the data rate used at each station during the observation.
 
         Inputs
@@ -337,66 +426,72 @@ class Observation(object):
 
 
     @property
-    def subbands(self) -> int:
+    def subbands(self) -> Optional[int]:
         """Returns the number of subbands (also known as intermediate frequencies for AIPS users)
         in which the total bandwidth of the observation will be divided during correlation.
         It can return None if the number of subbands has not been set yet, showing a warning.
         """
-        # if self._subbands is None:
-        #     print("WARNING: 'subbands' not set yet but used in 'Observation'.")
         return self._subbands
 
 
     @subbands.setter
-    def subbands(self, n_subbands: int):
-        assert (isinstance(n_subbands, int) and n_subbands > 0) or n_subbands is None
+    def subbands(self, n_subbands: Optional[int]):
+        if (n_subbands is not None) and (not isinstance(n_subbands, int)) and (n_subbands <= 0):
+            raise ValueError("n_subbands needs to be a positive int, or None.")
+
         self._subbands = n_subbands
 
 
     @property
-    def channels(self) -> int:
+    def channels(self) -> Optional[int]:
         """Returns the number of channels in which each subband will be divided during correlation.
         It can return None if the number of channels has not been set yet, showing a warning.
         """
-        # if self._channels is None:
-        #     print("WARNING: 'channels' not set yet but used in 'Observation'.")
         return self._channels
 
 
     @channels.setter
-    def channels(self, n_channels: int):
-        assert (isinstance(n_channels, int) and n_channels > 0) or (n_channels is None)
+    def channels(self, n_channels: Optional[int]):
+        if (not isinstance(n_channels, int)) and (n_channels is not None) and (n_channels <= 0):
+            raise ValueError("channels needs to be a positive int, or None.")
+
         self._channels = n_channels
 
 
     @property
-    def polarizations(self) -> int:
+    def polarizations(self) -> Optional[Polarization]:
         """Returns the number of polarizations that will be stored in the final data.
         It can return None if the number of polarizations has not been set yet, showing a warning.
         """
-        # if self._polarizations is None:
-        #     print("WARNING: 'polarizations' not set yet but used in 'Observation'.")
         return self._polarizations
 
 
     @polarizations.setter
-    def polarizations(self, n_pols: int):
-        assert (n_pols in (1, 2, 4)) or (n_pols is None)
-        self._polarizations = n_pols
+    def polarizations(self, pols: Optional[Union[int, str]]):
+        if (pols not in (1, 2, 4)) and (pols is not None and pols not in ('single', 'dual', 'full')):
+            raise ValueError("Polarizations needs to be either the number 1, 2, or 4, " \
+                             "string 'single', 'dual' or 'full' ,or None.")
+
+        if pols is None:
+            self._polarizations = None
+        elif pols == 1 or pols == 'single':
+            self._polarizations = Polarization.SINGLE
+        elif pols == 2 or pols == 'dual':
+            self._polarizations = Polarization.DUAL
+        elif pols == 4 or pols == 'full':
+            self._polarizations = Polarization.FULL
 
 
     @property
-    def inttime(self) -> u.Quantity:
+    def inttime(self) -> Optional[u.Quantity]:
         """Returns the integration time used when correlating the observation as an astropy.units.Quantity.
         It can return None if the integration time has not been set yet, showing a warning.
         """
-        # if self._inttime is None:
-        #     print("WARNING: 'inttime' not set yet but used in 'Observation'.")
         return self._inttime
 
 
     @inttime.setter
-    def inttime(self, new_inttime):
+    def inttime(self, new_inttime: Optional[Union[int,float,u.Quantity]]):
         """Sets the integration time of the observation.
         Inputs
         - new_inttime float/int or astropy.units.Quantity.
@@ -423,14 +518,13 @@ class Observation(object):
         """Fraction of the total observing time spent on the target source.
         It can return None if the ontarget_fraction has not been set yet, showing a warning.
         """
-        # if self._ontarget is None:
-        #     print("WARNING: 'ontarget_fraction' not set yet but used in 'Observation'.")
         return self._ontarget
 
 
     @ontarget_fraction.setter
     def ontarget_fraction(self, ontarget: float):
-        assert (0.0 < ontarget <= 1.0) or (ontarget is None)
+        if not (0.0 < ontarget <= 1.0):
+            raise ValueError("'ontarget_fraction' must be a float within (0.0, 1.0].")
         self._ontarget = ontarget
         self._rms = None
 
@@ -440,10 +534,7 @@ class Observation(object):
         """Total time spent on the target source during the observation.
         It can return None if the ontarget_fraction and duration have not been set yet, showing a warning.
         """
-        if (self._ontarget is None):
-            raise AttributeError("'ontarget_time' in 'Observation' has not been set yet.")
-
-        return self.duration*self.ontarget_fraction
+        return None if self.duration is None else self.duration*self.ontarget_fraction
 
 
     @property
@@ -455,7 +546,11 @@ class Observation(object):
         if None in (self.polarizations, self.datarate, self.bitsampling):
             raise AttributeError("'polarizations', 'datarate', and 'bitsampling' in 'Observation'" \
                                  "have not been set yet.")
-        pols = self.polarizations % 3 + self.polarizations // 3  # Either 1 or 2
+
+        assert self.polarizations is not None
+        assert self.datarate is not None
+        assert self.bitsampling is not None
+        pols = self.polarizations.value % 3 + self.polarizations.value // 3  # Either 1 or 2
         return (self.datarate/(pols*self.bitsampling*2)).to(u.MHz)
 
 
@@ -467,18 +562,18 @@ class Observation(object):
 
 
     @bitsampling.setter
-    def bitsampling(self, new_bitsampling):
+    def bitsampling(self, new_bitsampling: Union[int, u.Quantity]):
         """Sets the bit sampling of the observation.
         Inputs
-        - new_bitsampling : int/float or astropy.units.Quantity
+        - new_bitsampling : int or astropy.units.Quantity
             If no units provided, bits are assumed.
         """
-        if isinstance(new_bitsampling, float) or isinstance(new_bitsampling, int):
+        if  isinstance(new_bitsampling, int):
             self._bitsampling = new_bitsampling*u.bit
         elif isinstance(new_bitsampling, u.Quantity):
             self._bitsampling = new_bitsampling.to(u.bit)
         else:
-            raise ValueError(f"Unknown type for {new_bitsampling} (float/int/Quantity(bit) expected)")
+            raise ValueError(f"Unknown type for {new_bitsampling} (int/Quantity(bit) expected)")
 
 
     @property
@@ -499,9 +594,73 @@ class Observation(object):
         self._synth_beam = None
 
 
+    def stations_from_codenames(self, new_stations: list[str]):
+        """Includes the given antennas in the observation, specified by their code names as
+        set in the stations_catalog file.
+        """
+        self.stations = Network.get_stations_from_configfile(codenames=new_stations)
+
+
     def elevations(self) -> dict:
         """Returns the elevation of the target source for each stations participating in the observation
         for all the given observing times.
+
+        Returns
+            elevations : dict
+                Dictionary where they keys are the station code names, and the values will be
+                an astropy.coordinates.angles.Latitude object with the elevation at each observing time.
+        """
+        # the current timing checks provided (on a test observation):
+        # Elevations with process: 16.56423762498889 s
+        # Elevations with threads: 0.2133850830141455 s
+        # Elevations with nothing: 0.36229008401278406 s
+        return self._elevations_threads()
+
+
+    # INFO: this code in the following was meant to test how the computation runs faster (process, threads, etc)
+    def _elevation_func(self, a_station: Station) -> list:
+        return a_station.elevation(self.times, self.target)
+
+
+    def _elevations_process(self) -> dict:
+        """Returns the elevation of the target source for each stations participating in the observation
+        for all the given observing times.
+
+        It computes it using different processes in parallel.
+
+        Returns
+            elevations : dict
+                Dictionary where they keys are the station code names, and the values will be
+                an astropy.coordinates.angles.Latitude object with the elevation at each observing time.
+        """
+        with ProcessPoolExecutor() as pool:
+            results = pool.map(self._elevation_func, self.stations)
+
+        return {s.codename: r for s, r in zip(self.stations, results)}
+
+
+    def _elevations_threads(self) -> dict:
+        """Returns the elevation of the target source for each stations participating in the observation
+        for all the given observing times.
+
+        It computes it using different concurrent threads.
+
+        Returns
+            elevations : dict
+                Dictionary where they keys are the station code names, and the values will be
+                an astropy.coordinates.angles.Latitude object with the elevation at each observing time.
+        """
+        with ThreadPoolExecutor() as pool:
+            results = pool.map(self._elevation_func, self.stations)
+
+        return {s.codename: r for s, r in zip(self.stations, results)}
+
+
+    def _elevations_single(self) -> dict:
+        """Returns the elevation of the target source for each stations participating in the observation
+        for all the given observing times.
+
+        It computes it without parallelization.
 
         Returns
             elevations : dict
@@ -514,6 +673,24 @@ class Observation(object):
         return elevations
 
 
+    async def _elevations_async_func(self, a_station: Station) -> list:
+        return a_station.elevation(self.times, self.target)
+
+
+    async def _elevations_async_launch(self) -> dict:
+        tasks: dict = {}
+        for station in self.stations:
+            tasks[station.codename] = asyncio.create_task(self._elevations_async_func(station))
+            await tasks[station.codename]
+
+        return tasks
+
+
+    def _elevations_asyncio(self) -> dict:
+        return asyncio.run(self._elevations_async_launch())
+        # return {s.codename: v for s,v in zip(self.stations, asyncio.run(self._elevations_async_launch()))}
+
+
     def altaz(self) -> dict:
         """Returns the altitude/azimuth of the target source for each stations participating
         in the observation for all the given observing times.
@@ -524,13 +701,35 @@ class Observation(object):
                 an astropy.coordinates.SkyCoord object with the altitude and azimuth
                 of the source at each observing time.
         """
+        return self._altaz_threads()
+
+
+    def _altaz_func(self, a_station: Station) -> list:
+        return a_station.altaz(self.times, self.target)
+
+
+    def _altaz_single(self) -> dict:
         aa = {}
         for a_station in self.stations:
             aa[a_station.codename] = a_station.altaz(self.times, self.target)
         return aa
 
 
-    def is_visible(self) -> dict:
+    def _altaz_process(self) -> dict:
+        with ProcessPoolExecutor() as pool:
+            results = pool.map(self._altaz_func, self.stations)
+
+        return {s.codename: r for s, r in zip(self.stations, results)}
+
+
+    def _altaz_threads(self) -> dict:
+        with ThreadPoolExecutor() as pool:
+            results = pool.map(self._altaz_func, self.stations)
+
+        return {s.codename: r for s, r in zip(self.stations, results)}
+
+
+    def is_visible(self) -> dict[str, list[bool]]:
         """Returns whenever the target source is visible for each station for each time
         of the observation.
 
@@ -543,10 +742,14 @@ class Observation(object):
                 In this sense, you can e.g. call obs.times[obs.is_visible[a_station_codename]]
                 to get such times.
         """
-        iv = {}
-        for a_station in self.stations:
-            iv[a_station.codename] = a_station.is_visible(self.times, self.target)
-        return iv
+        with ThreadPoolExecutor() as pool:
+            results = pool.map(self._is_visible_func, self.stations)
+
+        return {s.codename: r for s, r in zip(self.stations, results)}
+
+
+    def _is_visible_func(self, a_station: Station) -> list:
+        return a_station.is_visible(self.times, self.target)
 
 
     @staticmethod
@@ -581,7 +784,7 @@ class Observation(object):
           enough stations.
         """
         if date is None:
-            dtdate = dt.datetime.today()
+            dtdate = dt.datetime.now(tz=dt.timezone.utc)
         else:
             dtdate = date.datetime
 

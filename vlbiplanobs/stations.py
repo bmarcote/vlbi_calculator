@@ -2,7 +2,7 @@
 # Licensed under GPLv3+ - see LICENSE
 from __future__ import annotations
 from collections import abc
-from typing import Optional, Union, Iterable, Sequence
+from typing import Optional, Union, Iterable, Sequence, Self
 import configparser
 from importlib import resources
 import numpy as np
@@ -486,7 +486,7 @@ class Network(object):
             If not provided, it will assume no upper limit on the data rate.
         """
         assert isinstance(name, str), "'name' must be a str."
-        assert isinstance(stations, abc.Iterable), "'stations' must be a list."
+        assert isinstance(stations, abc.Iterable) or stations is None, "'stations' must be a list or be empty."
         if observing_bands is None:
             assert not np.iterable(max_datarates), \
                    "`max_datarates` cannot be iterable if `observing_bands` is None."
@@ -629,9 +629,9 @@ class Network(object):
         return self._stations.__contains__(item)
 
 
-    @staticmethod
-    def get_stations_from_configfile(filename: Optional[str] = None, codenames: Optional[list] = None,
-                                               name: str = 'network') -> Network:
+    @classmethod
+    def get_stations_from_configfile(cls, filename: Optional[str] = None, codenames: Optional[list[str]] = None,
+                                     name: str = 'network') -> Self:
         """Creates a Network object (i.e. a network of stations) by reading the station
         information from an input file. Optionally, it allows to select only a subset of
         all stations in the file.
@@ -687,7 +687,7 @@ class Network(object):
             # Otherwise config will run smoothly and provide an empty list.
             config.read(open(filename, 'r'))
 
-        networks = Network(name, None, [])
+        networks = cls(name, None, [])
         for stationname in config.sections():
             if (codenames is None) or (config[stationname]['code'] in codenames):
                 temp = [float(i.strip()) for i in config[stationname]['position'].split(',')]
@@ -882,7 +882,13 @@ class Network(object):
                 assert int(max_dt.value) in freqsetups.data_rates.keys(), f"Data rate ({max_dt}) not " \
                        "present in freqsetups.py!"
 
-            antennas = [all_ants[ant] for ant in default_ant]
+            antennas = [ant for ant in all_ants if networkname in ant.all_networks]
+            # antennas = [all_ants[ant] for ant in default_ant]
+            for ant in antennas:
+                ant.selected = ant.codename in default_ant
+
+            assert len(antennas) > 0, f"No antennas found for the network {networkname}."
+
             networks[networkname] =  Network(name=networkname, full_name=config[networkname]['name'],
                                              stations=antennas,
                                              observing_bands=obs_bands,

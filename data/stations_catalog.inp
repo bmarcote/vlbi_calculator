@@ -1329,6 +1329,7 @@ position = 4865183.542, 791922.255, 4035136.024
 real_time = yes
 sefd_21 = 67.0
 sefd_18 = 67.0
+sefd_6 = 40.0
 sefd_5 = 50.0
 sefd_1.3 = 138
 mount = ALTAZ

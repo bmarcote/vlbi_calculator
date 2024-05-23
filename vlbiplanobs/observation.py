@@ -1,12 +1,14 @@
 import asyncio
 from typing import Optional, Union, Iterable, Sequence, Self
 from importlib import resources
+from functools import partial
 import subprocess
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import numpy as np
 import scipy.ndimage
 import datetime as dt
 from enum import Enum, auto
+from dataclasses import dataclass
 from astropy import units as u
 from astropy import coordinates as coord
 from astropy.time import Time, TimeDelta
@@ -15,168 +17,9 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 
 from vlbiplanobs.stations import Network, Station
+from vlbiplanobs.sources import Source
 from vlbiplanobs import freqsetups
 
-
-__all__ = ['SourceNotVisible', 'Source', 'Observation']
-
-"""Defines an observation, which basically consist of a given network of stations,
-observing a target source for a given time range and at an observing band.
-"""
-
-class SourceNotVisible(Exception):
-    """Exception produced when a given target source cannot be observed for any
-    antenna in the network.
-    """
-    pass
-
-
-
-class Source(FixedTarget):
-    """Defines a target source located at some coordinates and with a given name.
-    """
-    def __init__(self, name: Optional[Union[str, list[str]]] = None,
-                 coordinates: Optional[Union[str, list[str]]] = None, **kwargs):
-        """Initializes a Source object.
-
-        Inputs
-        - name : str or list[str] [OPTIONAL]
-            Name associated to the source. By default is None.
-        - coordinates : str or list[str] [OPTIONAL]
-            Coordinates of the target source in a str format recognized by
-            astropy.coordinates.SkyCoord (e.g. XXhXXmXXs XXdXXmXXs).
-            J2000 coordinates are assumed.
-            If not provided, name must be a source name recognized by the RFC catalog or astroquery.
-        - kwargs
-            keyword arguments to be passed to astropy.coordinates.SkyCoord() if needed.
-            For example, the 'unit=' parameter.
-
-        If both provided, the given coordinates will be used for the given source.
-
-        It may raise:
-        - NameResolveError: if the name is not recognized (and no coordinates are provided)
-        - ValueError: if the coordinates have an unrecognized format.
-        - AttributeError: if neither name or coordinates are provided, or name is empty.
-        """
-        if ((name is None) and (coordinates is None)) or (name == ''):
-            raise AttributeError("At least one 'coordiantes' or 'name' (not empty) must be provided")
-
-        if (name is not None) and (coordinates is None):
-            if isinstance(name, list):
-                coordinates = [self.get_coordinates_from_name(a_name) for a_name in name]
-            else:
-                coordinates = self.get_coordinates_from_name(name)
-
-        super().__init__(coord.SkyCoord(coordinates, **kwargs), name)
-
-
-    @staticmethod
-    def get_coordinates_from_name(src_name: str) -> coord.SkyCoord:
-        """Returns the coordinates of a source by searching for them given the source name.
-        First it searches in the RFC catalog, and if not found, in the ICRS catalogs.
-
-        Inputs
-        - src_name : str
-            Name of the source to search for.
-
-        Returns
-        - src_coord : astropy.coordinates.SkyCoord
-            The coordinates of the source, if found.
-
-        It may raise
-        - NameResolveError - if there is no connection or unable to find ICRS sources.
-        - ValueError: if the coordinates have an unrecognized format.
-        """
-        try:
-            return Source.get_rfc_coordinates(src_name)
-        except ValueError:
-            return coord.get_icrs_coordinates(src_name)
-
-
-    @classmethod
-    def get_source_from_name(cls, src_name: str) -> Self:
-        """Returns a Source object by finding the coordinates from its name.
-        It first searches wihtin the RFC catalog, and if not found, through the
-        'astropy.coordinates.get_icrs_coordinates' function through the RFC catalogs.
-        """
-        return cls(src_name, coordinates=Source.get_coordinates_from_name(src_name))
-
-
-    @staticmethod
-    def get_rfc_coordinates(src_name: str) -> coord.SkyCoord:
-        """Returns the coordinates of the object by searching the provided name through the RFC catalog.
-        """
-        rfc_files = tuple((r.name for r in resources.files("data").iterdir() if r.is_file() and 'rfc' in r.name))
-        assert len(rfc_files) > 0, "No RFC files found under the 'data' folder."
-
-        with resources.as_file(resources.files("data").joinpath(sorted(rfc_files)[-1])) as rfcfile:
-            process = subprocess.run(["grep", src_name, rfcfile], capture_output=True, text=True)
-
-        if process.returncode == 1:
-            raise ValueError(f"The source {src_name} was not found in the RFC catalog.")
-        elif process.returncode != 0:
-            raise RuntimeError("A problem happened while parsing the RFC catalog file.")
-        elif process.stdout.count('\n') != 1:
-            raise ValueError(f"None or multiple coincidences for the source {src_name} in the RFC catalog.")
-
-        temp = process.stdout.split()  # Fields:  IVS  name  J2000name  h m s d m s
-        return coord.SkyCoord(f"{temp[3]}h{temp[4]}m{temp[5]}s {temp[6]}d{temp[7]}m{temp[8]}s")
-
-
-    @classmethod
-    def get_rfc_source(cls, src_name: str) -> Self:
-        """Returns a Source object by searching the provided name through the RFC catalog.
-        """
-        return cls(src_name, Source.get_rfc_coordinates(src_name))
-
-
-    def sun_separation(self, times: Time) -> Union[list, np.array]:
-        """Returns the separation of the source to the Sun at the given epoch(s).
-
-        Inputs
-        - times : astropy.time.Time
-            An array of times defining the duration of the observation. That is,
-            the first time will define the start of the observation and the last one
-            will be the end of the observation. Note that the higher time resolution
-            in `times` the more precise values you will obtain for antenna source
-            visibility or determination of the rms noise levels. However, that will
-            also imply a longer computing time.
-        """
-        if len(self.coord.shape) > 0:
-            return [c.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times)) \
-                    for c in self.coord]
-        else:
-            return self.coord.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
-
-
-    def sun_constraint(self, min_separation: u.Quantity, times: Optional[Time] = None) -> Union[list, np.array]:
-        """Checks if the Sun can be a restriction to observe the given source.
-        This is defined as if the Sun is at a separation lower than 'min_separation' from the
-        target in the sky at a given moment.
-
-        Inputs
-        - min_separation : astropy.units.Quantity
-            Minimun separation allowed for the Sun to be near the source.
-            One can make use of the default separations provided in `freqsetups.solar_separations`
-            for the different observing bands.
-        - times : astropy.time.Time  [OPTIONAL]
-            An array of times to check the separation of the Sun. If not provided, it will compute
-            the full (current) calendar year with a resolution of one day.
-
-        Returns
-        - astropy.time.Time
-            A list of times when the Sun is closer than the minimum separation.
-            It would be an empty list if this condition never meets.
-        """
-        if times is None:
-            times = Time(f"{dt.datetime.now(tz=dt.timezone.utc).year}-01-01 00:00") + \
-                    np.arange(0, 365, 1)*u.day
-
-        sun_separation = self.sun_separation(times=times)
-        if isinstance(sun_separation, list):
-            return [times[sun_separation[i] < min_separation] for i in range(len(self.coord))]
-        else:
-            return times[sun_separation < min_separation]
 
 
 
@@ -272,7 +115,7 @@ class Observation(object):
         self.datarate = datarate
         self.subbands = subbands
         self.channels = channels
-        self.polarizations = polarizations
+        self.polarizations = polarizations if polarizations is not None else Polarization.FULL
         self.inttime = inttime
         if stations is not None:
             self.stations = stations
@@ -285,6 +128,9 @@ class Observation(object):
         self._uv_array = None
         self._rms = None
         self._synth_beam = None
+        self._is_visible: Optional[dict] = None
+        self._altaz: Optional[dict] = None
+        self._elevations: Optional[dict] = None
         self._fixed_time = fixed_time
 
 
@@ -307,6 +153,9 @@ class Observation(object):
         self._uv_array = None
         self._rms = None
         self._synth_beam = None
+        self._is_visible = None
+        self._altaz = None
+        self._elevations = None
 
 
     @property
@@ -364,7 +213,6 @@ class Observation(object):
 
     @band.setter
     def band(self, new_band: Optional[str]):
-
         if (new_band not in freqsetups.bands) and (new_band is not None):
             raise ValueError("'new_band' needs to  match the following bands: " \
                              f"{', '.join(freqsetups.bands.keys())} (wavelengths given in cm.)")
@@ -459,7 +307,7 @@ class Observation(object):
 
 
     @property
-    def polarizations(self) -> Optional[Polarization]:
+    def polarizations(self) -> Polarization:
         """Returns the number of polarizations that will be stored in the final data.
         It can return None if the number of polarizations has not been set yet, showing a warning.
         """
@@ -467,19 +315,22 @@ class Observation(object):
 
 
     @polarizations.setter
-    def polarizations(self, pols: Optional[Union[int, str]]):
+    def polarizations(self, pols: Union[int, str, Polarization]):
+        if isinstance(pols, Polarization):
+            self._polarizations = pols
+            return
+
         if (pols not in (1, 2, 4)) and (pols is not None and pols not in ('single', 'dual', 'full')):
             raise ValueError("Polarizations needs to be either the number 1, 2, or 4, " \
                              "string 'single', 'dual' or 'full' ,or None.")
 
-        if pols is None:
-            self._polarizations = None
-        elif pols == 1 or pols == 'single':
+        if pols == 1 or pols == 'single':
             self._polarizations = Polarization.SINGLE
         elif pols == 2 or pols == 'dual':
             self._polarizations = Polarization.DUAL
         elif pols == 4 or pols == 'full':
-            self._polarizations = Polarization.FULL
+             self._polarizations = Polarization.FULL
+
 
 
     @property
@@ -592,6 +443,10 @@ class Observation(object):
         self._uv_array = None
         self._rms = None
         self._synth_beam = None
+        self._elevations = None
+        self._is_visible = None
+        self._altaz = None
+
 
 
     def stations_from_codenames(self, new_stations: list[str]):
@@ -610,16 +465,24 @@ class Observation(object):
                 Dictionary where they keys are the station code names, and the values will be
                 an astropy.coordinates.angles.Latitude object with the elevation at each observing time.
         """
+        if (self.target is None) or (self.times is None):
+            raise ValueError("The target and/or observing times have not been initialized")
         # the current timing checks provided (on a test observation):
         # Elevations with process: 16.56423762498889 s
         # Elevations with threads: 0.2133850830141455 s
         # Elevations with nothing: 0.36229008401278406 s
-        return self._elevations_threads()
+        if self._elevations is None:
+            self._elevations = self._elevations_threads()
+
+        return self._elevations
 
 
     # INFO: this code in the following was meant to test how the computation runs faster (process, threads, etc)
     def _elevation_func(self, a_station: Station) -> list:
-        return a_station.elevation(self.times, self.target)
+        if (self.target is None) or (self.times is None):
+            raise ValueError("The target and/or observing times have not been initialized")
+
+        return [a_station.elevation(self.times, a_target) for a_target in self.target]
 
 
     def _elevations_process(self) -> dict:
@@ -701,7 +564,13 @@ class Observation(object):
                 an astropy.coordinates.SkyCoord object with the altitude and azimuth
                 of the source at each observing time.
         """
-        return self._altaz_threads()
+        if (self.target is None) or (self.times is None):
+            raise ValueError("The target and/or observing times have not been initialized")
+
+        if self._altaz is None:
+            self._altaz = self._altaz_threads()
+
+        return self._altaz
 
 
     def _altaz_func(self, a_station: Station) -> list:
@@ -729,9 +598,14 @@ class Observation(object):
         return {s.codename: r for s, r in zip(self.stations, results)}
 
 
-    def is_visible(self) -> dict[str, list[bool]]:
+    def is_visible(self, times: Optional[Time] = None) -> dict[str, list[bool]]:
         """Returns whenever the target source is visible for each station for each time
         of the observation.
+
+        Inputs
+            - times : Time  [Optional]
+              Defines the time range to check for the source(s) if visible.
+              If provided, it will overrule the default self.times from the Observation to compute it.
 
         Returns
             is_visible : dict
@@ -741,15 +615,61 @@ class Observation(object):
 
                 In this sense, you can e.g. call obs.times[obs.is_visible[a_station_codename]]
                 to get such times.
+
         """
-        with ThreadPoolExecutor() as pool:
-            results = pool.map(self._is_visible_func, self.stations)
+        if (self.target is None) or (self.times is None):
+            raise ValueError("The target and/or observing times have not been initialized")
 
-        return {s.codename: r for s, r in zip(self.stations, results)}
+        if self._is_visible is None:
+            with ThreadPoolExecutor() as pool:
+                results = pool.map(partial(self._is_visible_func, times=times), self.stations)
+
+            self._is_visible = {s.codename: r for s, r in zip(self.stations, results)}
+
+        return self._is_visible
 
 
-    def _is_visible_func(self, a_station: Station) -> list:
-        return a_station.is_visible(self.times, self.target)
+    def _is_visible_func(self, a_station: Station, times: Optional[Time] = None) -> list:
+        return a_station.is_visible(self.times if times is None else times, self.target)
+
+
+    def observability(self, min_stations: int = 3, mandatory_stations: Optional[list[str]] = None,
+                      epoch: Optional[Time] = None, return_gst: bool = False) -> list[tuple]:
+        """Returns the time range when the source is visible verifying the set requirements.
+
+        Inputs
+        - min_stations : int  [default = 3]
+            Minimum number of stations that are allowed to consider the source as observable.
+        - mandatory_stations : list[str]  [default = None]
+            Defines the stations that must be able to observe the source to be consider for observations.
+            It must be a list of strings with the codes or names of the stations.
+            The wildcard 'all' is possible, indicating that only times where all antennas can observe
+            the source are allowed.
+        - epoch : Time  [default = None]
+            In case the observability of the source(s) are required for a specific epoch.
+            If it's None but an epoch is given in the Observation, then the later is considered.
+            If provided, then the observability will be computed for the provided epoch.
+            If not provided, and no epoch is set in the Observation, then it will compute the observability
+            period for an epoch one day in the future.
+        - return_gst : bool  [default = True]
+            Defines if the returned times for the start and end of the observation should be in GST time instead of UTC.
+
+        Returns
+            List with a tuple per entry, which will represent the start and end time of the observability
+            period of the given source.
+            If there is only one source, then the list will contain one only source.
+
+        """
+        if (self.target is None):
+            raise ValueError("The target has not been initialized")
+
+        visibility = self.is_visible(times=epoch)  # returns a dict{ codename :  array[src, times]}
+
+
+
+
+
+
 
 
     @staticmethod

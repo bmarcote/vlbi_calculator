@@ -87,7 +87,7 @@ def test_station_init():
 def test_station_functions():
     """Tests the Station functions.
     """
-    sefds = {'18': 100, '6': 40, '0.1': 200}
+    sefds = {'18': 100*u.Jy, '6': 40*u.Jy, '0.1': 200*u.Jy}
     a_station = stations.Station('name', 'Nm', 'VLBI',
                                  coord.EarthLocation(3839348.973*u.m, 430403.51*u.m, 5057990.099*u.m), sefds)
     assert isinstance(a_station.name, str)
@@ -106,7 +106,7 @@ def test_station_functions():
     assert a_station.sefds == sefds
     assert a_station.has_band('18')
     assert not a_station.has_band('45')
-    assert a_station.sefd('18') == 100
+    assert a_station.sefd('18') == 100*u.Jy
     with pytest.raises(KeyError):
         a_station.sefd('45')
 

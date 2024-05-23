@@ -53,7 +53,7 @@ class Station(object):
     or simply when a source is visible from the station for a given time range.
     """
     def __init__(self, name: str, codename: str, network: str, location: coord.EarthLocation,
-                 freqs_sefds: dict[str, Union[float, int]],
+                 freqs_sefds: dict[str, u.Quantity],
                  fullname: Optional[str] = None, all_networks: Optional[list[str]] = None, country: str = '',
                  diameter: str = '', real_time: bool = False, mount: Optional[Mount] = None,
                  max_datarate: Optional[u.Quantity | dict[str, u.Quantity]] = None) -> None:
@@ -113,7 +113,7 @@ class Station(object):
         self.observer: Observer = Observer(name=name.replace('_', ' '), location=location)
         self._codename: str = codename
         self._network: str = network
-        self._freqs_sefds: dict[str, float] = {f: float(v) for f,v in freqs_sefds.items()}
+        self._freqs_sefds: dict[str, float] = {f: v for f,v in freqs_sefds.items()}
         self._fullname: str = name if fullname is None else fullname
         assert isinstance(all_networks, Sequence) or all_networks is None
         self._all_networks: list[str] = [network] if all_networks is None else list(all_networks)
@@ -228,7 +228,7 @@ class Station(object):
 
 
     @property
-    def sefds(self) -> dict[str, float]:
+    def sefds(self) -> dict[str, u.Quantity]:
         """Returns a dictionary with the system equivalent flux density (SEFDs) for each
         of the frequencies the station can observe (given as keys).
         """
@@ -346,7 +346,7 @@ class Station(object):
         return band in self.bands
 
 
-    def sefd(self, band: str) -> float:
+    def sefd(self, band: str) -> u.Quantity:
         """Returns the system equivalent flux density (SEFD) of the Station at the given band,
         in Jansky (Jy) units.
 
@@ -382,7 +382,7 @@ class SelectedStation(Station):
     or just disabling some of them.
     """
     def __init__(self, name: str, codename: str, network: str, location: coord.EarthLocation,
-                 freqs_sefds: dict[str, float],
+                 freqs_sefds: dict[str, u.Quantity],
                  fullname: Optional[str] = None, all_networks: Optional[list[str]] = None, country: str = '',
                  diameter: str = '', real_time: bool = False, mount: Optional[Mount] = None,
                  max_datarate: u.Quantity | dict[str, u.Quantity]| None = None,
@@ -700,7 +700,7 @@ class Network(object):
                 for akey in config[stationname].keys():
                     if 'SEFD_' in akey.upper():
                         sefds[f"{akey.upper().replace('SEFD_', '').strip()}"] = \
-                                            float(config[stationname][akey])
+                                            float(config[stationname][akey])*u.Jy
                     if 'maxdatarate' == akey.lower():
                         max_dt = int(config[stationname][akey])*u.Mb/u.s
                     elif 'maxdatarate_' in akey.lower():

@@ -288,17 +288,18 @@ class ScanBlock:
                 # full_n_reps = (max_duration - last_duration)/(loop_duration*)
                 booked_time, n_loop = 0*u.min, 1
                 while True:
-                    target_in_this_scan = []
+                    target_in_this_scan: list[Source] = []
                     for a_scan in [s for s in self.scans if s.every > -1]:
                         if n_loop % a_scan.every == 0:
-                            target_in_this_scan += [a_scan]
+                            target_in_this_scan += [a_scan.source]
 
                     if len(target_in_this_scan) == 0:
                         target_in_this_scan = self.sources(SourceType.TARGET)
 
                     to_append = self.sources(SourceType.PHASECAL) + target_in_this_scan
                     n_loop += 1
-                    if reduce(operator.add, [a.duration for a in to_append]) + booked_time > max_duration - last_duration:
+                    if reduce(operator.add, [a.duration for a in to_append]) + booked_time > \
+                                                                 max_duration - last_duration:
                         break
 
                     main_loop += to_append
@@ -310,7 +311,8 @@ class ScanBlock:
             main_loop += self.sources(SourceType.PHASECAL)
         else:
             target_duration = reduce(operator.add, [s.duration for s in self.sources(SourceType.TARGET)])
-            main_loop += self.sources(SourceType.TARGET) * int(max_duration.to(u.min).value // target_duration.to(u.min).value)
+            main_loop += self.sources(SourceType.TARGET) * \
+                         int(max_duration.to(u.min).value // target_duration.to(u.min).value)
 
         return main_loop
 

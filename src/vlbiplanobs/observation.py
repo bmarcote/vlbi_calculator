@@ -17,7 +17,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 
 from vlbiplanobs.stations import Network, Station
-from vlbiplanobs.sources import Source
+from vlbiplanobs.sources import Source, Scan, ScanBlock, SourceType
 from vlbiplanobs import freqsetups
 
 
@@ -44,7 +44,9 @@ class Observation(object):
     observation, or the resolution of the resulting images, assuming a standard neutral
     robust weighting.
     """
-    def __init__(self, target: Optional[Source] = None, times: Optional[Time] = None,
+    def __init__(self, target: Optional[Source] = None,
+                 scans: Optional[Union[Scan, ScanBlock, list[ScanBlock]]] = None,
+                 times: Optional[Time] = None,
                  band: Optional[str] = None, datarate: Optional[int | u.Quantity] = None,
                  subbands: Optional[int] = None, channels: Optional[int] = None,
                  polarizations: Optional[Union[int,str]] = None, inttime: Optional[float | u.Quantity] = None,
@@ -56,8 +58,15 @@ class Observation(object):
         if running methods that require some of the unset attributes.
 
         Inputs
-        - target : vlbiplanobs.observation.Source
-            Target source to be observed.
+        - target : Source
+            If only one source is going to be observed, if can be defined here. Otherwise, specified 'scans':
+        - scans : Scan | ScanBlock | list
+            Scans to be observed during the observation. It can specify either:
+            a Scan, if the full observation will only observe a single source. Equivalent to define directly
+            the source.
+            a block of scans (ScanBlock), of the observation will iterate through a ScanBlock until filling
+            the available observing time.
+            a list of ScanBlocks, If the observation needs to schedule different blocks.
         - times : astropy.time.Time
             An array of times defining the duration of the observation. That is,
             the first time will define the start of the observation and the last one
@@ -103,7 +112,20 @@ class Observation(object):
             In case the observing time should not be fixed. Only used for internal use when the user does not
             specify the epoch (but internally a random epoch is set so an estimation of the observation is done).
         """
-        self.target = target
+        if target is not None:
+            if scans is not None:
+                raise ValueError("Only one: target or scans must be specified.")
+
+            self.scans = [ScanBlock([Scan(target, duration=10*u.min)])]
+        elif isinstance(scans, Scan):
+            self.scans = [ScanBlock([scans])]
+        elif isinstance(scans, ScanBlock):
+            self.scans = [scans]
+        elif isinstance(scans, list):
+            self.scans = scans
+        else:
+            self.scans = None
+
         # Because otherwise gstimes is not initialized
         if times is None:
             self._times = None
@@ -135,19 +157,46 @@ class Observation(object):
 
 
     @property
-    def target(self) -> Optional[Source]:
-        """Returns the target source to be observed during the current observation.
+    def scans(self) -> Optional[list[ScanBlock]]:
+        """Returns the ScanBlock that will be observed during the observation.
+        """
+        return self._scans
+
+    @scans.setter
+    def scans(self, scans: Optional[list[ScanBlock]]):
+        self._scans = scans
+
+    def sources(self, source_type: Optional[SourceType] = None) -> Optional[list[Source]]:
+        """Returns the sources included during the observation.
+        It returns None if
+        """
+        if self._scans is None:
+            return None
+
+        source_list: set = set()
+        for a_scanblock in self._scans:
+            if source_type is None:
+                source_list.add(*a_scanblock.sources())
+            else:
+                source_list.add(*a_scanblock.sources(source_type))
+
+        return list(source_list)
+
+    @property
+    def targets(self) -> Optional[list[Source]]:
+        """Returns the target sources to be observed during the current observation.
         It can return None if the target has not been set yet, showing a warning.
         """
-        return self._target
+        return self.sources(SourceType.TARGET)
 
 
-    @target.setter
-    def target(self, new_target: Optional[Source]):
+    @targets.setter
+    def targets(self, new_target: Optional[Source]):
         if (not isinstance(new_target, Source)) and (new_target is not None):
             raise ValueError("The new target must be a observation.Source instance or None.")
 
-        self._target = new_target
+
+        self.scans = [ScanBlock([Scan(new_target, duration=10*u.min)])] if new_target is not None else None
         # Resets all parameters than depend on the source coordinates
         self._uv_baseline = None
         self._uv_array = None

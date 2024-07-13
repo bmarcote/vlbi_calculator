@@ -1,23 +1,21 @@
-from setuptools import setup
-from setuptools import find_packages
+from setuptools import setup, find_packages, find_namespace_packages
 import pathlib
 
 # Get the long description from the README file
 long_description = (pathlib.Path(__file__).parent.resolve() / 'README.md').read_text(encoding='utf-8')
 
-
 setup(name='vlbiplanobs',
         # Versions should comply with PEP 440:
         # https://www.python.org/dev/peps/pep-0440/
         # [N!]N(.N)*[{a|b|rc}N][.postN][.devN]
-        version='4.1.2',
+        version='2.0.4',
         # one-line description or tagline of what your project does
         description='Planner for VLBI observations',
         # "Description" metadata field
         long_description=long_description,
         long_description_content_type='text/markdown',
         url='https://github.com/bmarcote/vlbi_calculator',
-        download_url='https://github.com/bmarcote/vlbi_calculator/tarball/2.0.3',
+        download_url='https://github.com/bmarcote/vlbi_calculator/tarball/2.0.4',
         author='B. Marcote',
         author_email='marcote@jive.eu',
         # Classifiers help users find your project by categorizing it.
@@ -27,7 +25,7 @@ setup(name='vlbiplanobs',
             #   3 - Alpha
             #   4 - Beta
             #   5 - Production/Stable
-            'Development Status :: 5 - Production/Stable',
+            'Development Status :: 4 - Production/Stable',
             # Indicate who your project is intended for
             'Intended Audience :: Science/Research',
             'Topic :: Scientific/Engineering :: Astronomy',
@@ -42,12 +40,14 @@ setup(name='vlbiplanobs',
             'Programming Language :: Python :: 3 :: Only',
         ],
         keywords='astronomy, astrophysics, cosmology, radio, science, observations, planner, coordinate',
-        python_requires='>=3.7, <4',
+        python_requires='>=3.9',
         # When your source code is in a subdirectory under the project root, e.g.
         # `src/`, it is necessary to specify the `package_dir` argument.
         # package_dir={'': 'src'},  # Optional
-        packages=find_packages(),
-        scripts=['bin/vlbiplanobs'],
+        # packages=find_packages(),
+        packages=find_namespace_packages(where="src"),
+        # TODO: the following line can be uncommented in the final release
+        # scripts=['bin/vlbiplanobs'],
         # This field lists other packages that your project depends on to run.
         # Any package you put here will be installed by pip when your project is
         # installed, so they must be valid existing projects.
@@ -59,9 +59,10 @@ setup(name='vlbiplanobs',
         # If there are data files included in your packages that need to be
         # installed, specify them here.
         package_data={
-            'stations': ['data/stations_catalog.inp'],
+            'stations': ['src/vlbiplanobs/data/stations_catalog.inp'],
+            'networks': ['src/vlbiplanobs/data/network_catalog.inp'],
             'docs': ['docs/*'],
-            'assets': ['assets/*']
+            'assets': ['src/vlbiplanobs/gui/assets/*']
         },
 
         # Although 'package_data' is the preferred approach, in some case you may

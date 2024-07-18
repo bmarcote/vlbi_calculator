@@ -1,4 +1,4 @@
-from typing import Optional, Union, Self, Generator
+from typing import Optional, Union, Self, Generator, Sequence
 from importlib import resources
 import subprocess
 # from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -222,7 +222,7 @@ class Source(FixedTarget):
         return cls(src_name, Source.get_rfc_coordinates(src_name))
 
 
-    def sun_separation(self, times: Time) -> Union[list, np.array]:
+    def sun_separation(self, times: Time) -> Union[list, Sequence]:
         """Returns the separation of the source to the Sun at the given epoch(s).
 
         Inputs

@@ -195,14 +195,13 @@ class Source(FixedTarget):
     def get_rfc_coordinates(src_name: str) -> coord.SkyCoord:
         """Returns the coordinates of the object by searching the provided name through the RFC catalog.
         """
-        # TODO: put back the following 4 commented lines
-        # rfc_files = tuple((r.name for r in resources.files("vlbiplanobs.data").iterdir() \
-        #                    if r.is_file() and 'rfc' in r.name))
-        # assert len(rfc_files) > 0, "No RFC files found under the 'data' folder."
-        #
-        # with resources.as_file(resources.files("vlbiplanobs.data").joinpath(sorted(rfc_files)[-1])) as rfcfile:
-        #     process = subprocess.run(["grep", src_name, rfcfile], capture_output=True, text=True)
-        process = subprocess.run(["grep", src_name, "./data/rfc_2021c_cat.txt"], capture_output=True, text=True)
+        rfc_files = tuple((r.name for r in resources.files("vlbiplanobs.data").iterdir() \
+                           if r.is_file() and 'rfc' in r.name))
+        assert len(rfc_files) > 0, "No RFC files found under the 'data' folder."
+
+        with resources.as_file(resources.files("vlbiplanobs.data").joinpath(sorted(rfc_files)[-1])) as rfcfile:
+            process = subprocess.run(["grep", src_name, rfcfile], capture_output=True, text=True)
+        # process = subprocess.run(["grep", src_name, "./data/rfc_2021c_cat.txt"], capture_output=True, text=True)
 
 
         if process.returncode == 1:
@@ -444,12 +443,12 @@ class Sources:
             path : str
                 The path to the yaml file with the catalog of sources to be imported.
         """
+        # TODO: convert this to another module and use duckDB, should be much faster
         if path is None:
-            # TODO: uncomment the following lines after testing
-            # with resources.as_file(resources.files("vlbiplanobs.data").joinpath("rfc_2021_cat.txt")) \
-            #                                                                   as stations_catalog_path:
-            stations_catalog_path = 'data/rfc_2021c_cat.txt'
-            all_lines = open(stations_catalog_path, 'r').readlines()
+            with resources.as_file(resources.files("vlbiplanobs.data").joinpath("rfc_2021_cat.txt")) \
+                                                                              as stations_catalog_path:
+                all_lines = open(stations_catalog_path, 'r').readlines()
+            # stations_catalog_path = 'data/rfc_2021c_cat.txt'
         else:
             with open(path, 'r') as stations_catalog_path:
                 all_lines = stations_catalog_path.readlines()

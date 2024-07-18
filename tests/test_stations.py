@@ -15,8 +15,8 @@ def test_stations_catalog():
     So no duplicated stations (with the same stationname, as that must be unique), or wrong parameters.
     """
     config = configparser.ConfigParser()
-    with resources.as_file(resources.files("data").joinpath("stations_catalog.inp")) as stations_catalog_path:
-        config.read(stations_catalog_path)
+    with resources.as_file(resources.files("vlbiplanobs.data").joinpath("stations_catalog.inp")) as stat_cat:
+        config.read(stat_cat)
 
     codenames = set()
     for stationname in config.sections():
@@ -47,8 +47,8 @@ def test_network_catalog():
     """Checks the consistency of the information in the  network_catalog.inp file.
     """
     config = configparser.ConfigParser()
-    with resources.as_file(resources.files("data").joinpath("network_catalog.inp")) as networks_catalog_path:
-        config.read(networks_catalog_path)
+    with resources.as_file(resources.files("vlbiplanobs.data").joinpath("network_catalog.inp")) as net_cat_path:
+        config.read(net_cat_path)
 
     # To verify that all stations (codenames) defined in the network file as defined in the stations_catalog
     all_stations = stations.Network.get_stations_from_configfile().codenames
@@ -66,7 +66,7 @@ def test_network_catalog():
 def test_station_init():
     """Tests the Station class and different possibilities during the creation of the station.
     """
-    sefds = {'18': 100, '6': 40, '0.1': 200}
+    sefds = {'18cm': 100, '6cm': 40, '0.1cm': 200}
     _ = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), sefds)
     _ = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {})
     with pytest.raises(AssertionError):
@@ -87,7 +87,7 @@ def test_station_init():
 def test_station_functions():
     """Tests the Station functions.
     """
-    sefds = {'18': 100*u.Jy, '6': 40*u.Jy, '0.1': 200*u.Jy}
+    sefds = {'18cm': 100*u.Jy, '6cm': 40*u.Jy, '0.1cm': 200*u.Jy}
     a_station = stations.Station('name', 'Nm', 'VLBI',
                                  coord.EarthLocation(3839348.973*u.m, 430403.51*u.m, 5057990.099*u.m), sefds)
     assert isinstance(a_station.name, str)
@@ -101,12 +101,12 @@ def test_station_functions():
     assert isinstance(a_station.real_time, bool)
     assert isinstance(a_station.location, coord.EarthLocation)
     assert a_station.location == coord.EarthLocation(3839348.973*u.m, 430403.51*u.m, 5057990.099*u.m)
-    assert list(a_station.bands) == ['18', '6', '0.1']
+    assert list(a_station.bands) == ['18cm', '6cm', '0.1cm']
     assert isinstance(a_station.sefds, dict)
     assert a_station.sefds == sefds
-    assert a_station.has_band('18')
-    assert not a_station.has_band('45')
-    assert a_station.sefd('18') == 100*u.Jy
+    assert a_station.has_band('18cm')
+    assert not a_station.has_band('45cm')
+    assert a_station.sefd('18cm') == 100*u.Jy
     with pytest.raises(KeyError):
         a_station.sefd('45')
 
@@ -135,7 +135,7 @@ def test_station_file():
     all_networks = stations.Network.get_network_names_from_configfile()
 
     # double checking with one Station in particular
-    with open(resources.files("data").joinpath("stations_catalog.inp")) as afile:
+    with open(resources.files("vlbiplanobs.data").joinpath("stations_catalog.inp")) as afile:
         in_ef = False
         n_ants = 0
         for aline in afile.readlines():
@@ -179,9 +179,9 @@ def test_station_file():
                         assert bool(value) == all_stations['Ef'].real_time
 
                 if 'SEFD' in key:
-                    assert all_stations['Ef'].has_band(key.removeprefix('SEFD_'))
+                    assert all_stations['Ef'].has_band(key.removeprefix('SEFD_') + 'cm')
                     assert all_stations['Ef'].sefd(key.removeprefix('SEFD_')) == float(value)
-                    assert key.removeprefix('SEFD_') in freqsetups.bands
+                    assert key.removeprefix('SEFD_') + 'cm' in freqsetups.bands
 
 
             if aline.strip() == 'station = Effelsberg':
@@ -211,13 +211,13 @@ def test_station_file():
 
     # Check that all stations have an associated image
     for ant in all_stations:
-        with resources.as_file(resources.files("assets").joinpath(f"ant-{ant.name.replace(' ','_').lower()}.jpg")) \
-                                                                                                         as antfile:
+        with resources.as_file(resources.files("vlbiplanobs.gui.assets"). \
+                joinpath(f"ant-{ant.name.replace(' ','_').lower()}.jpg")) as antfile:
             assert antfile.exists()
 
     for net in all_networks:
-        with resources.as_file(resources.files("assets").joinpath(f"network-{net.replace(' ','_').lower()}.png")) \
-                                                                                                      as netfile:
+        with resources.as_file(resources.files("vlbiplanobs.gui.assets"). \
+                joinpath(f"network-{net.replace(' ','_').lower()}.png")) as netfile:
             if net != 'e-EVN':
                 assert netfile.exists()
 

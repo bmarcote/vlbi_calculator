@@ -13,9 +13,8 @@ from astropy.time import Time
 from astroplan import Observer, FixedTarget, is_observable, is_always_observable
 from dataclasses import dataclass
 from enum import Enum, auto
-
-from vlbiplanobs import constraints
-from vlbiplanobs import freqsetups
+from . import constraints
+from . import freqsetups
 
 """Module that defines the `Station` and `Network` objects, which represent a station (antenna)
 or a network composed of antennas.
@@ -113,7 +112,7 @@ class Station(object):
         self.observer: Observer = Observer(name=name.replace('_', ' '), location=location)
         self._codename: str = codename
         self._network: str = network
-        self._freqs_sefds: dict[str, float] = {f: v for f,v in freqs_sefds.items()}
+        self._freqs_sefds: dict[str, float] = {f if 'cm' in f else f"{f}cm": v for f,v in freqs_sefds.items()}
         self._fullname: str = name if fullname is None else fullname
         assert isinstance(all_networks, Sequence) or all_networks is None
         self._all_networks: list[str] = [network] if all_networks is None else list(all_networks)
@@ -679,7 +678,9 @@ class Network(object):
         """
         config = configparser.ConfigParser()
         if filename is None:
-            with resources.as_file(resources.files("data").joinpath("stations_catalog.inp")) \
+#             from importlib.resources import files
+# data_text = files('mypkg.data').joinpath('data1.txt').read_text()
+            with resources.as_file(resources.files("vlbiplanobs.data").joinpath("stations_catalog.inp")) \
                                                                      as stations_catalog_path:
                 config.read(stations_catalog_path)
         else:
@@ -793,19 +794,22 @@ class Network(object):
         return subnetwork
 
 
-    def select_stations(self, codenames: list[str], name: Optional[str] = None,
+    def select_stations(self, name: Optional[str] = None, codenames: Optional[list[str]] = None,
+                        networknames: Optional[Union[str, list[str]]] = None,
                         full_name: Optional[str] = None) -> Network:
         """Returns a new Network object which will only contain the stations
         defined by the given list of codenames. It will thus be a subset of the current
         network.
 
         Input
-        - codenames : list[str]
-            List with the codenames of the stations that should be present in the new
-            network.
         - name : str [OPTIONAL]
             Name assigned to the new network. If not provided, it will be the original
             name with the 'sub' preffix.
+        - codenames : list[str]    [OPTIONAL]
+            List with the codenames of the stations that should be present in the new
+            network.
+        - networknames : str | list[str]    [OPTIONAL]
+            Network name or list of network names that should be present in the new network.
         - full_name : str [OPTIONAL]
             Full (expanded) name assigned to the new network. If not provided, it will use 'name'.
         Returns
@@ -816,8 +820,14 @@ class Network(object):
           among the current stations.
         """
         subnetwork = Network(name if name is not None else f"sub{self.name}", full_name, [])
-        for codename in codenames:
-            subnetwork.add(self[codename])
+
+        if networknames is not None:
+            pass
+
+        elif codenames is not None:
+            for codename in codenames:
+                subnetwork.add(self[codename])
+
 
         return subnetwork
 
@@ -848,7 +858,7 @@ class Network(object):
         """
         config = configparser.ConfigParser()
         if filename is None:
-            with resources.as_file(resources.files("data").joinpath("network_catalog.inp")) \
+            with resources.as_file(resources.files("vlbiplanobs.data").joinpath("network_catalog.inp")) \
                                                                      as networks_catalog_path:
                 config.read(networks_catalog_path)
         else:
@@ -865,7 +875,7 @@ class Network(object):
             else:
                 max_dt = int(temp)*u.Mb/u.s
 
-            obs_bands = [b.replace('cm', '').strip() for b in config[networkname]['observing_bands'].split(',')]
+            obs_bands = [b.strip() for b in config[networkname]['observing_bands'].split(',')]
             default_ant = [a.strip() for a in config[networkname]['default_antennas'].split(',')]
             assert all([ant in all_ants for ant in default_ant]), "The default antenna(s) " \
                     f"({' ,'.join([ant for ant in default_ant if ant not in all_ants])}) from '{networkname}' " \

@@ -1,3 +1,3 @@
-from vlbiplanobs import stations
-from vlbiplanobs import observation
-from vlbiplanobs import sources
+from . import stations
+from . import observation
+from . import sources

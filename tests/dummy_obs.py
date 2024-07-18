@@ -13,7 +13,7 @@ from vlbiplanobs import stations
 from vlbiplanobs import observation
 
 
-target = observation.Source('10h58m29.6s +81d33m58.8s', name='Target')
+target = observation.Source('Target', '10h58m29.6s +81d33m58.8s')
 
 obs = observation.Observation(target=target)
 obs.times = Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min

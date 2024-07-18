@@ -1,12 +1,11 @@
 import pytest
 import numpy as np
-from vlbiplanobs import observation as obs
-# from vlbiplanobs import stations
-from astropy import coordinates as coord
+# from astropy import coordinates as coord
 from astropy import units as u
 from astropy.time import Time
-from rich import print as rprint
+# from rich import print as rprint
 
+from vlbiplanobs import observation as obs
 
 
 
@@ -32,7 +31,7 @@ def test_observation_init():
         target = obs.Source(tar_name, tar_coord)
         o = obs.Observation(target=target)
         o.times = Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min
-        o.band = '18'
+        o.band = '18cm'
         o.datarate = 1024
         o.subbands = 8
         o.channels = 32

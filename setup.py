@@ -44,8 +44,8 @@ setup(name='vlbiplanobs',
         # When your source code is in a subdirectory under the project root, e.g.
         # `src/`, it is necessary to specify the `package_dir` argument.
         # package_dir={'': 'src'},  # Optional
-        # packages=find_packages(),
-        packages=find_namespace_packages(where="src"),
+        packages=find_packages(),
+        # packages=find_namespace_packages(where="src"),
         # TODO: the following line can be uncommented in the final release
         # scripts=['bin/vlbiplanobs'],
         # This field lists other packages that your project depends on to run.
@@ -62,6 +62,7 @@ setup(name='vlbiplanobs',
             'stations': ['src/vlbiplanobs/data/stations_catalog.inp'],
             'networks': ['src/vlbiplanobs/data/network_catalog.inp'],
             'docs': ['docs/*'],
+            'vlbiplanobs.data': ['src/vlbiplanobs/data/*'],
             'assets': ['src/vlbiplanobs/gui/assets/*']
         },
 

@@ -1,8 +1,10 @@
-from typing import Optional, Union, Self
+from typing import Optional, Union, Self, Generator
 from importlib import resources
 import subprocess
 # from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import numpy as np
+import yaml                # type: ignore
+# from rich import print as rprint
 import operator
 from functools import reduce
 import datetime as dt
@@ -36,6 +38,7 @@ class SourceType(Enum):
     AMPLITUDECAL = auto()
     CHECKSOURCE = auto()
     POLCAL = auto()
+    PULSAR = auto()
     UNKNOWN = auto()
 
 
@@ -44,7 +47,13 @@ class Source(FixedTarget):
     """
     def __init__(self, name: Optional[str] = None,
                  coordinates: Optional[str] = None,
-                 source_type: SourceType = SourceType.UNKNOWN, **kwargs):
+                 source_type: SourceType = SourceType.UNKNOWN,
+                 flux: Optional[dict[str, u.Quantity]] = None,
+                 notes: Optional[str] = None,
+                 grade: int = 5,
+                 phasecal: Optional[Self] = None,
+                 checksource: Optional[Self] = None,
+                 other_names: Optional[list[str]] = None, **kwargs):
         """Initializes a Source object.
 
         Inputs
@@ -57,6 +66,22 @@ class Source(FixedTarget):
             If not provided, name must be a source name recognized by the RFC catalog or astroquery.
         - source_type : SourceType  [default = UNKNOWN]
             Defines the type of the source.
+        - flux : dict[str, u.Quantity]  [default = None]
+            Estimated flux density of the source at a particular freqyency
+            (labeled as XX, with XXcm is the wavelength),
+            may be used to prioritize when different sources (i.e. for calibrators or fringe finders) to use.
+        - notes : str  [default = None]
+            Some notes that you want to add for further information on the source.
+        - grade : int  [default = 5]
+            Grade to quantify how good is this source for various purposes (e.g. to pick up fringe-finder sources).
+        - phasecal : Source  [default = None]
+            Links to the associated phase-calibrator to use when observing this source (should only
+            apply if this is a target source).
+        - checksource : Source  [default = None]
+            Links to the associated check source to use when observing this source (should only
+            apply if this is a target source).
+        - other_names : list[str]  [default = None]
+            A list of other possible names that the source may have.
         - kwargs
             keyword arguments to be passed to astropy.coordinates.SkyCoord() if needed.
             For example, the 'unit=' parameter.
@@ -80,10 +105,59 @@ class Source(FixedTarget):
         super().__init__(coord.SkyCoord(coordinates, **kwargs), name)
 
         self._type = source_type
+        self._flux = flux
+        self._notes = notes
+        self._grade = grade
+        self._phasecal = phasecal
+        self._checksource = checksource
+        self._other_names = other_names if other_names is not None else list()
+
+
+    @property
+    def other_names(self) -> list[str]:
+        """Returns a list of other possible names to refer to this source.
+        It may be None, if there are no other names.
+        """
+        return self._other_names
+
+    @other_names.setter
+    def other_names(self, other_names: list[str]):
+        self._other_names = other_names
 
     @property
     def type(self) -> SourceType:
         return self._type
+
+    @property
+    def flux(self) -> Optional[u.Quantity]:
+        """Estimated flux of the source
+        """
+        return self._flux
+
+    @property
+    def notes(self) -> Optional[str]:
+        """Some notes on the source
+        """
+        return self._notes
+
+    @property
+    def grade(self) -> int:
+        """Grade assigned to the source for various reasons (e.g. to compare possible fringe finders).
+        """
+        return self._grade
+
+    @property
+    def phasecal(self) -> Optional[Self]:
+        """Returns the source to be used as phase calibrator when observing this source, if any.
+        """
+        return self._phasecal
+
+    @property
+    def checksource(self) -> Optional[Self]:
+        """Returns the source to be used as check source when observing this source, if any.
+        """
+        return self._checksource
+
 
     @staticmethod
     def get_coordinates_from_name(src_name: str) -> coord.SkyCoord:
@@ -121,11 +195,15 @@ class Source(FixedTarget):
     def get_rfc_coordinates(src_name: str) -> coord.SkyCoord:
         """Returns the coordinates of the object by searching the provided name through the RFC catalog.
         """
-        rfc_files = tuple((r.name for r in resources.files("data").iterdir() if r.is_file() and 'rfc' in r.name))
-        assert len(rfc_files) > 0, "No RFC files found under the 'data' folder."
+        # TODO: put back the following 4 commented lines
+        # rfc_files = tuple((r.name for r in resources.files("vlbiplanobs.data").iterdir() \
+        #                    if r.is_file() and 'rfc' in r.name))
+        # assert len(rfc_files) > 0, "No RFC files found under the 'data' folder."
+        #
+        # with resources.as_file(resources.files("vlbiplanobs.data").joinpath(sorted(rfc_files)[-1])) as rfcfile:
+        #     process = subprocess.run(["grep", src_name, rfcfile], capture_output=True, text=True)
+        process = subprocess.run(["grep", src_name, "./data/rfc_2021c_cat.txt"], capture_output=True, text=True)
 
-        with resources.as_file(resources.files("data").joinpath(sorted(rfc_files)[-1])) as rfcfile:
-            process = subprocess.run(["grep", src_name, rfcfile], capture_output=True, text=True)
 
         if process.returncode == 1:
             raise ValueError(f"The source {src_name} was not found in the RFC catalog.")
@@ -194,6 +272,215 @@ class Source(FixedTarget):
             return times[sun_separation < min_separation]
 
 
+
+class Sources:
+    def __init__(self, personal_catalog: Optional[str] = None):
+        self._sources: dict[str, Source] = dict()
+        self._all_names: dict[str, str] = dict()
+        self._personal: set[str] = set()
+        self._catalog: set[str] = set()
+        self.read_rfc_catalog()
+        if personal_catalog is not None:
+            self.read_personal_catalog(personal_catalog)
+
+
+    @property
+    def source_names(self) -> list:
+        """Returns the names of the sources in the database.
+        """
+        return list(self._sources.keys())
+
+
+    @property
+    def source_names_all(self) -> list:
+        """Returns all available names for the sources.
+        Note that this will display different names that belong to the same source.
+        """
+        return list(self._all_names.keys())
+
+
+    @property
+    def sources(self) -> dict[str, Source]:
+        """Returns all sources.
+        """
+        return self._sources
+
+
+    @property
+    def personal(self) -> dict[str, Source]:
+        """Returns only the sources that belong to the personal database (if any have been imported).
+        """
+        return {src_name: self._sources[src_name] for src_name in self._personal}
+
+
+    @property
+    def catalog(self) -> dict[str, Source]:
+        """Returns only the sources that belong to the catalogs that have been automatically imported
+        from PlanObs, which are from the RFC.
+        """
+        return {src_name: self._sources[src_name] for src_name in self._catalog}
+
+
+    def add(self, a_src: Source, label: str = 'personal'):
+        """Adds a new source to the catalog
+
+        Inputs
+            a_src : Source
+                The new source (Source type) to add to the database.
+            label : str  (default 'personal')
+                In which category this source will be added. It can be either 'personal' or 'catalog'.
+        """
+        if a_src.name in self._sources:
+            prev_other_names =  self._sources[a_src.name].other_names
+            a_src.other_names += [o for o in prev_other_names if o not in a_src.other_names]
+            self._sources[a_src.name] = a_src
+            for another_name in a_src.other_names:
+                self._all_names[another_name] = a_src.name
+        elif a_src.name in self._all_names:
+            other_names = self._sources[self._all_names[a_src.name]].other_names + [self._all_names[a_src.name]]
+            a_src.other_names += [o for o in other_names if o not in a_src.other_names and o != a_src.name]
+            self._personal.discard(self._all_names[a_src.name])
+            self._catalog.discard(self._all_names[a_src.name])
+            del self._sources[self._all_names[a_src.name]]
+            for another_name in other_names:
+                del self._all_names[another_name]
+
+            self._sources[a_src.name] = a_src
+            for another_name in a_src.other_names:
+                self._all_names[another_name] = a_src.name
+        elif any([s in self._all_names for s in a_src.other_names]):
+            for s in a_src.other_names:
+                if s in self._all_names:
+                    prev_name = self._all_names[s]
+
+            a_src.other_names += [o for o in self._sources[prev_name].other_names \
+                                  if o not in a_src.other_names and o != a_src.name]
+            if prev_name not in a_src.other_names:
+                a_src.other_names.append(prev_name)
+
+            del self._sources[prev_name]
+            self._personal.discard(prev_name)
+            self._catalog.discard(prev_name)
+            self._sources[a_src.name] = a_src
+            for another_name in a_src.other_names:
+                self._all_names[another_name] = a_src.name
+        else:
+            self._sources[a_src.name] = a_src
+            for another_name in a_src.other_names:
+                self._all_names[another_name] = a_src.name
+
+        if label == 'personal':
+            self._personal.add(a_src.name)
+        else:
+            self._catalog.add(a_src.name)
+
+
+    def read_personal_catalog(self, path: str):
+        """Reads the yaml file with the information of all sources that may be scheduled.
+        It returns the catalog as a dictionary.
+
+        Input
+            path : str
+                The path to the yaml file with the catalog of sources to be imported.
+        """
+        with open(path, 'r') as sources_yaml:
+            catalog = yaml.safe_load(sources_yaml)
+            for a_type in catalog:
+                for a_src in catalog[a_type]:
+                    src = catalog[a_type][a_src]
+                    if 'phasecal' in src:
+                        self.add(Source(name=src['phasecal']['name'],
+                              coordinates=src['phasecal']['coordinates'],
+                              source_type=SourceType.PHASECAL,
+                              flux={'6': u.Quantity(src['phasecal']['flux'], u.Jy)} \
+                                   if 'flux' in src['phasecal'] else None,
+                              grade=src['phasecal']['grade'] if 'grade' in src['phasecal'] \
+                                   else 5), label='personal')
+
+                    if 'checkSource' in src:
+                        self.add(Source(name=src['checkSource']['name'],
+                                 coordinates=src['checkSource']['coordinates'],
+                                 source_type=SourceType.CHECKSOURCE,
+                                 flux={'6': u.Quantity(src['checkSource']['flux'], u.Jy)} \
+                                       if 'flux' in src['checkSource'] else None,
+                                 grade=src['checkSource']['grade'] if 'grade' in src['checkSource'] \
+                                      else 5), label='personal')
+
+                    match a_type:
+                        case 'pulsars':
+                            src_type = SourceType.PULSAR
+                        case 'targets':
+                            src_type = SourceType.TARGET
+                        case 'amplitudecals':
+                            src_type = SourceType.AMPLITUDECAL
+                        case 'checksources':
+                            src_type = SourceType.CHECKSOURCE
+                        case 'phasecals':
+                            src_type = SourceType.PHASECAL
+                        case 'fringefinders':
+                            src_type = SourceType.FRINGEFINDER
+                        case 'polcals':
+                            src_type = SourceType.POLCAL
+                        case _:
+                            src_type = SourceType.UNKNOWN
+
+                    self.add(Source(name=a_src,
+                                    coordinates=src['coordinates'],
+                                    source_type=src_type,
+                                    flux={'6': u.Quantity(src['flux'], u.Jy)} if 'flux' in src else None,
+                                    grade=src['grade'] if 'grade' in src else 5,
+                                    phasecal=self._sources[src['phasecal']['name']] \
+                                             if 'phasecal' in src else None,
+                                    checksource=self._sources[src['checkSource']['name']] \
+                                             if 'checkSource' in src else None), label='personal')
+
+
+
+    def read_rfc_catalog(self, path: Optional[str] = None):
+        """Reads the catalog yaml file with the information of all sources that may be scheduled.
+        It returns the catalog as a dictionary.
+
+        Input
+            path : str
+                The path to the yaml file with the catalog of sources to be imported.
+        """
+        if path is None:
+            # TODO: uncomment the following lines after testing
+            # with resources.as_file(resources.files("vlbiplanobs.data").joinpath("rfc_2021_cat.txt")) \
+            #                                                                   as stations_catalog_path:
+            stations_catalog_path = 'data/rfc_2021c_cat.txt'
+            all_lines = open(stations_catalog_path, 'r').readlines()
+        else:
+            with open(path, 'r') as stations_catalog_path:
+                all_lines = stations_catalog_path.readlines()
+
+        for aline in all_lines:
+            if aline.strip()[0] == '#':
+                continue
+
+            pars = aline.strip().split()
+            if len(pars) != 25:
+                raise ValueError(f"Expected 25 elements in a row but {len(pars)} found: {pars}")
+
+            a_flux = {}
+            for cm, apar in zip(('13', '6', '3.6', '2', '1.3'), (14, 16, 18, 20, 22)):
+                if pars[apar] != '-1.00' and pars[apar].isnumeric():
+                    a_flux[cm] = float(pars[apar])*u.Jy
+
+            # if len(a_flux) > 0:
+            #     grade = 9 if all([af > 0.7*u.Jy for af in a_flux.values()]) else 5
+            # else:
+            #     grade = 3
+
+            self.add(Source(name=pars[2],
+                   grade=8 if pars[0] == 'C' else 5 if pars[0] == 'N' else 3,
+                   other_names=[pars[1]],
+                   coordinates="{0}h{1}m{2}s {3}d{4}m{5}s".format(*pars[3:9]),
+                   source_type=SourceType.PHASECAL,
+                   flux=a_flux, notes="RFC Source"), label='catalog')
+
+
+
 @dataclass
 class Scan:
     source: Source
@@ -251,6 +538,11 @@ class ScanBlock:
 
         return [s.source for s in self.scans if s.source.type is source_type]
 
+    def scans_with_sources(self, source_type: SourceType) -> list[Scan]:
+        """Returns the scans with the given source types in this block.
+        """
+        return [s for s in self._scans if s.source.type == source_type]
+
 
     def fill(self, max_duration: u.Quantity) -> list[Scan]:
         """Given the list of scans, returns the final arrangement of scans that fills the available time.
@@ -277,9 +569,9 @@ class ScanBlock:
             if not self.has(SourceType.TARGET):
                 raise ValueError("If phase calibrator scans provided, then target scans must also be provided.")
 
-            loop_duration = reduce(operator.add, [s.duration for s in self.sources(SourceType.TARGET) + \
-                                                                      self.sources(SourceType.PHASECAL)])
-            last_duration = reduce(operator.add, [s.duration for s in self.sources(SourceType.PHASECAL)])
+            loop_duration = reduce(operator.add, [s.duration for s in self.scans_with_sources(SourceType.TARGET) + \
+                                                                      self.scans_with_sources(SourceType.PHASECAL)])
+            last_duration = reduce(operator.add, [s.duration for s in self.scans_with_sources(SourceType.PHASECAL)])
             # the second sum above is because the phase-referencing loop needs to be closed at the end.
 
             if any([s.every > -1 for s in self.scans \
@@ -288,15 +580,15 @@ class ScanBlock:
                 # full_n_reps = (max_duration - last_duration)/(loop_duration*)
                 booked_time, n_loop = 0*u.min, 1
                 while True:
-                    target_in_this_scan: list[Source] = []
+                    target_in_this_scan: list[Scan] = []
                     for a_scan in [s for s in self.scans if s.every > -1]:
                         if n_loop % a_scan.every == 0:
-                            target_in_this_scan += [a_scan.source]
+                            target_in_this_scan += [a_scan,]
 
                     if len(target_in_this_scan) == 0:
-                        target_in_this_scan = self.sources(SourceType.TARGET)
+                        target_in_this_scan = self.scans_with_sources(SourceType.TARGET)
 
-                    to_append = self.sources(SourceType.PHASECAL) + target_in_this_scan
+                    to_append = self.scans_with_sources(SourceType.PHASECAL) + target_in_this_scan
                     n_loop += 1
                     if reduce(operator.add, [a.duration for a in to_append]) + booked_time > \
                                                                  max_duration - last_duration:
@@ -305,13 +597,14 @@ class ScanBlock:
                     main_loop += to_append
                     booked_time += reduce(operator.add, [a.duration for a in to_append])
             else:
-                main_loop += (self.sources(SourceType.PHASECAL) + self.sources(SourceType.TARGET)) * \
+                main_loop += (self.scans_with_sources(SourceType.PHASECAL) + \
+                             self.scans_with_sources(SourceType.TARGET)) * \
                              int(max_duration.to(u.min).value // (loop_duration + last_duration).to(u.min).value)
 
-            main_loop += self.sources(SourceType.PHASECAL)
+            main_loop += self.scans_with_sources(SourceType.PHASECAL)
         else:
-            target_duration = reduce(operator.add, [s.duration for s in self.sources(SourceType.TARGET)])
-            main_loop += self.sources(SourceType.TARGET) * \
+            target_duration = reduce(operator.add, [s.duration for s in self.scans_with_sources(SourceType.TARGET)])
+            main_loop += self.scans_with_sources(SourceType.TARGET) * \
                          int(max_duration.to(u.min).value // target_duration.to(u.min).value)
 
         return main_loop

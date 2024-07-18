@@ -5,7 +5,7 @@ from functools import partial
 import subprocess
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import numpy as np
-import scipy.ndimage
+# import scipy.ndimage
 import datetime as dt
 from enum import Enum, auto
 from dataclasses import dataclass
@@ -13,12 +13,13 @@ from astropy import units as u
 from astropy import coordinates as coord
 from astropy.time import Time, TimeDelta
 from astroplan import FixedTarget
-import plotly.express as px
-from plotly.subplots import make_subplots
+# TODO: uncomment this and move dependency outside observation.py
+# import plotly.express as px
+# from plotly.subplots import make_subplots
 
-from vlbiplanobs.stations import Network, Station
-from vlbiplanobs.sources import Source, Scan, ScanBlock, SourceType
-from vlbiplanobs import freqsetups
+from .stations import Network, Station
+from .sources import Source, Scan, ScanBlock, SourceType
+from . import freqsetups
 
 
 
@@ -137,7 +138,26 @@ class Observation(object):
         self.datarate = datarate
         self.subbands = subbands
         self.channels = channels
-        self.polarizations = polarizations if polarizations is not None else Polarization.FULL
+
+        # This is just to avoid a mypy error in incompatibility types...
+        # if polarizations is None:
+        #     self.polarizations = Polarization.FULL
+        # elif isinstance(polarizations, Polarization):
+        #     self.polarizations = polarizations
+        # else:
+        #     match polarizations:
+        #         case 1 | 'single':
+        #             self.polarizations = Polarization.SINGLE
+        #         case 2 | 'dual':
+        #             self.polarizations = Polarization.DUAL
+        #         case 4 | 'full':
+        #             self.polarizations = Polarization.FULL
+        #         case _:
+        #             raise ValueError("Polarizations needs to be either a Polarization value, " \
+        #                              "the number 1, 2, or 4, or the strings " \
+        #                              "'single', 'dual' or 'full' (equivalent to the numbers, respectively).")
+        self.polarizations = polarizations if polarizations is not None else Polarization.FULL  # type: ignore
+
         self.inttime = inttime
         if stations is not None:
             self.stations = stations
@@ -176,9 +196,11 @@ class Observation(object):
         source_list: set = set()
         for a_scanblock in self._scans:
             if source_type is None:
-                source_list.add(*a_scanblock.sources())
+                for a_src in a_scanblock.sources():
+                    source_list.add(a_src)
             else:
-                source_list.add(*a_scanblock.sources(source_type))
+                for a_src in a_scanblock.sources(source_type):
+                    source_list.add(a_src)
 
         return list(source_list)
 
@@ -369,17 +391,17 @@ class Observation(object):
             self._polarizations = pols
             return
 
-        if (pols not in (1, 2, 4)) and (pols is not None and pols not in ('single', 'dual', 'full')):
-            raise ValueError("Polarizations needs to be either the number 1, 2, or 4, " \
-                             "string 'single', 'dual' or 'full' ,or None.")
-
-        if pols == 1 or pols == 'single':
-            self._polarizations = Polarization.SINGLE
-        elif pols == 2 or pols == 'dual':
-            self._polarizations = Polarization.DUAL
-        elif pols == 4 or pols == 'full':
-             self._polarizations = Polarization.FULL
-
+        match pols:
+            case 1 | 'single':
+                self._polarizations = Polarization.SINGLE
+            case 2 | 'dual':
+                self._polarizations = Polarization.DUAL
+            case 4 | 'full':
+                self._polarizations = Polarization.FULL
+            case _:
+                raise ValueError("Polarizations needs to be either a Polarization value, " \
+                                 "the number 1, 2, or 4, or the strings " \
+                                 "'single', 'dual' or 'full' (equivalent to the numbers, respectively).")
 
 
     @property
@@ -497,6 +519,24 @@ class Observation(object):
         self._altaz = None
 
 
+    def with_networks(self, networks: Union[str, list[str]]):
+        """Selects the given network(s) to observe in this observation. It can be only one single
+        VLBI network or multiple of them.
+        This function will adjust the setup of the observations to the default setup for the given networks,
+        although this can be later manually adjust again by the user.
+
+        Input
+            networks :  str | list[str]
+                Name fo the network or networks to join the observation.
+        """
+        if isinstance(networks, str):
+            self.stations = Network.get_network_names_from_configfile()[networks]
+        elif isinstance(networks, list):
+            for a_network in networks:
+                self.stations += Network.get_network_names_from_configfile()[a_network]
+        else:
+            raise ValueError(f"The value of 'networks' needs to be a str or a list of str, not '{networks}'.")
+
 
     def stations_from_codenames(self, new_stations: list[str]):
         """Includes the given antennas in the observation, specified by their code names as
@@ -514,7 +554,7 @@ class Observation(object):
                 Dictionary where they keys are the station code names, and the values will be
                 an astropy.coordinates.angles.Latitude object with the elevation at each observing time.
         """
-        if (self.target is None) or (self.times is None):
+        if (self.targets is None) or (self.times is None):
             raise ValueError("The target and/or observing times have not been initialized")
         # the current timing checks provided (on a test observation):
         # Elevations with process: 16.56423762498889 s
@@ -528,10 +568,10 @@ class Observation(object):
 
     # INFO: this code in the following was meant to test how the computation runs faster (process, threads, etc)
     def _elevation_func(self, a_station: Station) -> list:
-        if (self.target is None) or (self.times is None):
+        if (self.targets is None) or (self.times is None):
             raise ValueError("The target and/or observing times have not been initialized")
 
-        return [a_station.elevation(self.times, a_target) for a_target in self.target]
+        return [a_station.elevation(self.times, a_target) for a_target in self.targets]
 
 
     def _elevations_process(self) -> dict:
@@ -581,12 +621,12 @@ class Observation(object):
         """
         elevations = {}
         for a_station in self.stations:
-            elevations[a_station.codename] = a_station.elevation(self.times, self.target)
+            elevations[a_station.codename] = a_station.elevation(self.times, self.targets)
         return elevations
 
 
     async def _elevations_async_func(self, a_station: Station) -> list:
-        return a_station.elevation(self.times, self.target)
+        return a_station.elevation(self.times, self.targets)
 
 
     async def _elevations_async_launch(self) -> dict:
@@ -613,7 +653,7 @@ class Observation(object):
                 an astropy.coordinates.SkyCoord object with the altitude and azimuth
                 of the source at each observing time.
         """
-        if (self.target is None) or (self.times is None):
+        if (self.targets is None) or (self.times is None):
             raise ValueError("The target and/or observing times have not been initialized")
 
         if self._altaz is None:
@@ -623,13 +663,13 @@ class Observation(object):
 
 
     def _altaz_func(self, a_station: Station) -> list:
-        return a_station.altaz(self.times, self.target)
+        return a_station.altaz(self.times, self.targets)
 
 
     def _altaz_single(self) -> dict:
         aa = {}
         for a_station in self.stations:
-            aa[a_station.codename] = a_station.altaz(self.times, self.target)
+            aa[a_station.codename] = a_station.altaz(self.times, self.targets)
         return aa
 
 
@@ -666,7 +706,7 @@ class Observation(object):
                 to get such times.
 
         """
-        if (self.target is None) or (self.times is None):
+        if (self.targets is None) or (self.times is None):
             raise ValueError("The target and/or observing times have not been initialized")
 
         if self._is_visible is None:
@@ -679,7 +719,7 @@ class Observation(object):
 
 
     def _is_visible_func(self, a_station: Station, times: Optional[Time] = None) -> list:
-        return a_station.is_visible(self.times if times is None else times, self.target)
+        return a_station.is_visible(self.times if times is None else times, self.targets)
 
 
     def observability(self, min_stations: int = 3, mandatory_stations: Optional[list[str]] = None,
@@ -701,7 +741,8 @@ class Observation(object):
             If not provided, and no epoch is set in the Observation, then it will compute the observability
             period for an epoch one day in the future.
         - return_gst : bool  [default = True]
-            Defines if the returned times for the start and end of the observation should be in GST time instead of UTC.
+            Defines if the returned times for the start and end of the observation should be in GST time
+            instead of UTC.
 
         Returns
             List with a tuple per entry, which will represent the start and end time of the observability
@@ -709,12 +750,11 @@ class Observation(object):
             If there is only one source, then the list will contain one only source.
 
         """
-        if (self.target is None):
+        if (self.targets is None):
             raise ValueError("The target has not been initialized")
 
         visibility = self.is_visible(times=epoch)  # returns a dict{ codename :  array[src, times]}
-
-
+        return visibility
 
 
 
@@ -888,7 +928,7 @@ class Observation(object):
                 (self.wavelength/(self.longest_baseline()[1]*self.inttime))).to(u.arcsec)
 
 
-    def datasize(self) -> u.Quantity:
+    def datasize(self) -> Optional[u.Quantity]:
         """Returns the expected size for the output FITS IDI files.
 
         A regular observation with the European VLBI Network is stored in FITS IDI files,
@@ -898,8 +938,11 @@ class Observation(object):
         stations. The provided value will thus always be un upper-limit for the real, final,
         value.
         """
-        temp = len(self.stations)**2*(self.duration/self.inttime).decompose()
-        temp *= self.polarizations*self.subbands*self.channels
+        if None in (self.duration, self.inttime, self.subbands, self.channels):
+            return None
+
+        temp = len(self.stations)**2*(self.duration/self.inttime).decompose()  # type: ignore
+        temp *= self.polarizations.value*self.subbands*self.channels  # type: ignore
         return temp*1.75*u.GB/(131072*3600)
 
 
@@ -1335,9 +1378,11 @@ class Observation(object):
     def get_fig_dirty_map(self):
         # Right now I only leave the natural weighting map (the uniform does not always correspond to the true one)
         dirty_map_nat, laxis = self.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
-        fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
-                aspect='equal')
-        fig = make_subplots(rows=1, cols=1, subplot_titles=('Natural weighting',), shared_xaxes=True, shared_yaxes=True)
+        raise NotImplementedError
+        # TODO: uncomment these two lines and move them outside observation. Flexibility
+        # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+        #         aspect='equal')
+        # fig = make_subplots(rows=1, cols=1, subplot_titles=('Natural weighting',), shared_xaxes=True, shared_yaxes=True)
         fig.add_trace(fig1.data[0], row=1, col=1)
         mapsize = 30*self.synthesized_beam()['bmaj'].to(u.mas).value
         fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,

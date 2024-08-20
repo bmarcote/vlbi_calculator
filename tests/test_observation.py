@@ -28,8 +28,12 @@ def test_observation_init():
 
     for tar_name, tar_coord in (('Target', '10h58m29.6s +81d33m58.8s'),
                     (['Tar1', 'Tar2'], ['10h58m29.6s +81d33m58.8s', '20h58m29.6s +71d33m58.8s'])):
-        target = obs.Source(tar_name, tar_coord)
-        o = obs.Observation(target=target)
+        if isinstance(tar_name, list):
+            target = [obs.Source(aname, acoord) for aname,acoord in zip(tar_name, tar_coord)]
+        else:
+            target = obs.Source(tar_name, tar_coord)
+
+        o = obs.Observation(sources=target)
         o.times = Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min
         o.band = '18cm'
         o.datarate = 1024
@@ -46,7 +50,12 @@ def test_observation_init():
 
         o.inttime = 2
 
-        assert len(o.target) == len(tar_name) if isinstance(tar_name, list) else 1
+        if isinstance(tar_name, list):
+            assert len(o.sources) == len(tar_name)
+        else:
+            assert len(o.sources) == 1
+
+        # assert len(o.sources) == len(tar_name) if isinstance(tar_name, list) else 1
         # all_stations = stations.Network.get_stations_from_configfile()
         evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc', 'Pa', 'Mp', 'Ho', 'Nl', 'Pt', 'Sc', 'Kp', 'Hn']
         o.stations_from_codenames(evn6)
@@ -54,9 +63,13 @@ def test_observation_init():
         temp = o.is_visible()
         assert len(temp) == len(evn6) and len(evn6) == len(o.stations)
         # If multiple sources, then it will keep the structure of one ouput per source
-        assert temp[evn6[0]].shape[0] == len(tar_name) if isinstance(tar_name, list) else 1
-        # temp = o.guest_times_for_source()
+        assert len(temp[evn6[0]]) == len(tar_name) if isinstance(tar_name, list) else 1
+        # temp = obs.Observation.guest_times_for_source(target if not isinstance(target, list) else target[0],
+        #                                               obs.Network.get_stations_from_configfile(codenames=evn6))
         # beam = o.synthesized_beam)
+        temp = o.is_always_visible()
+        assert len(temp['Ef']) == len(o.sources)
+        assert temp['Ef']
         # _ = o.thermal_noise()
         # _ = o.get_uv_array()
         # _ = o.get_dirtymap(robust='natural')
@@ -65,6 +78,18 @@ def test_observation_init():
 
         # If no time is defined
         o.times = None
-        o.is_visible()
+        with pytest.raises(ValueError):
+            o.is_visible()
+
+        o.with_networks(['EVN', 'eMERLIN'])
+        assert 'Ef' in o.stations.codenames
+        assert 'Hh' in o.stations.codenames
+        assert 'Cm' in o.stations.codenames
+        assert 'Jb2' in o.stations.codenames
+        with pytest.raises(AssertionError):
+            assert 'Nl' in o.stations.codenames
+            assert 'Ku' in o.stations.codenames
+            assert 'Pa' in o.stations.codenames
+
 
 

@@ -28,6 +28,12 @@ def test_source():
 
     s1 = sources.Source('a_name', '10h20m10s 40d30m10s')
     s2 = sources.Source('a_name', '10:20:10 40:30:10', unit=(u.hourangle, u.deg))
+
+    with pytest.raises(ValueError):
+        sources.Source(['a_name', 'a_second_name'])
+        sources.Source(['a_name', 'a_second_name'], ['10h20m10s 40d30m10s', '10h20m10s 40d30m10s'])
+        sources.Source(coordinates=['10h20m10s 40d30m10s', '20h30m0s 20d20m10s'])
+
     try:
         s3 = sources.Source(name='Cyg X-1')
         assert s3.name == 'Cyg X-1'
@@ -53,11 +59,11 @@ def test_source():
     assert all(np.abs(s1.sun_separation(times[(0, 2),]) - np.array([90.0, 90.0])*u.deg) < 1*u.deg)
 
     # Playing with multiple sources
-    s1 = sources.Source(['s2', 's3'], ['10h20m10s 40d30m10s', '20h30m0s 20d20m10s'])
-    sep = s1.sun_separation(times)
-    assert len(sep) == 2
-    assert (len(sep[0]) == len(times)) and (len(sep[1]) == len(times))
-    s1.sun_constraint(20*u.deg)
+    # s1 = sources.Source(['s2', 's3'], ['10h20m10s 40d30m10s', '20h30m0s 20d20m10s'])
+    # sep = s1.sun_separation(times)
+    # assert len(sep) == 2
+    # assert (len(sep[0]) == len(times)) and (len(sep[1]) == len(times))
+    # s1.sun_constraint(20*u.deg)
 
 
 

@@ -6,6 +6,7 @@ from typing import Optional, Union, Iterable, Sequence, Self
 import configparser
 from importlib import resources
 import numpy as np
+from rich import print as rprint
 from astropy import units as u
 from astropy import coordinates as coord
 # from astropy.io import ascii
@@ -544,11 +545,14 @@ class Network(object):
 
 
     @property
-    def stations(self) -> list:
+    def stations(self) -> list[Station]:
         """Returns a list containing all stations in the network.
         """
         return list(self._stations.values())
 
+    @stations.setter
+    def stations(self, new_stations: list[Station]):
+        self._stations = {s.codename: s for s in new_stations}
 
     @property
     def number_of_stations(self) -> int:
@@ -556,12 +560,17 @@ class Network(object):
         """
         return len(self.stations)
 
+    @property
+    def names(self) -> list[str]:
+        """Returns the names from all the stations in the network
+        """
+        return [s.name for s in self._stations.values()]
 
     @property
-    def codenames(self) -> Iterable:
+    def codenames(self) -> list[str]:
         """Returns a dict_keys with the `codenames` from all the stations in the network.
         """
-        return self._stations.keys()
+        return list(self._stations.keys())
 
 
     @property
@@ -764,6 +773,10 @@ class Network(object):
                         config[stationname]['diameter'], does_real_time, amount, max_dt)
                 networks.add(new_station)
 
+        if codenames is not None:
+            for a_codename in codenames:
+                if a_codename not in networks:
+                    rprint(f"\n[yellow]WARNING: The antenna {a_codename} was not found in the catalogs.[/yellow]\n")
         return networks
 
 

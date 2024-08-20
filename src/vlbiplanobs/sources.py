@@ -1,4 +1,4 @@
-from typing import Optional, Union, Self, Generator, Sequence
+from typing import Optional, Union, Self, Sequence
 from importlib import resources
 import subprocess
 # from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -8,6 +8,7 @@ import yaml                # type: ignore
 import operator
 from functools import reduce
 import datetime as dt
+from pathlib import Path
 from enum import Enum, auto
 from dataclasses import dataclass
 from astropy import units as u
@@ -98,6 +99,10 @@ class Source(FixedTarget):
 
         if not isinstance(source_type, SourceType):
             raise ValueError("source_type must be a SourceType value.")
+
+        if isinstance(name, list) or isinstance(coordinates, list):
+            raise ValueError("Needs to be a single source. Call Source() multiple times to initialize "
+                             "multiple sources.")
 
         if (name is not None) and (coordinates is None):
             coordinates = self.get_coordinates_from_name(name)
@@ -278,7 +283,7 @@ class Sources:
         self._all_names: dict[str, str] = dict()
         self._personal: set[str] = set()
         self._catalog: set[str] = set()
-        self.read_rfc_catalog()
+        # self.read_rfc_catalog()
         if personal_catalog is not None:
             self.read_personal_catalog(personal_catalog)
 
@@ -435,7 +440,7 @@ class Sources:
 
 
 
-    def read_rfc_catalog(self, path: Optional[str] = None):
+    def read_rfc_catalog(self, path: Optional[Union[str, Path]] = None):
         """Reads the catalog yaml file with the information of all sources that may be scheduled.
         It returns the catalog as a dictionary.
 
@@ -444,13 +449,22 @@ class Sources:
                 The path to the yaml file with the catalog of sources to be imported.
         """
         # TODO: convert this to another module and use duckDB, should be much faster
+        raise NotImplementedError
+        if path is None:
+            path = resources.as_file(resources.files("vlbiplanobs.data").joinpath("rfc_2021_cat.txt"))
+
+        with open(path, 'rt') as stations_catalog_path:
+            pass
+
+        # This is old code
+
         if path is None:
             with resources.as_file(resources.files("vlbiplanobs.data").joinpath("rfc_2021_cat.txt")) \
                                                                               as stations_catalog_path:
-                all_lines = open(stations_catalog_path, 'r').readlines()
+                all_lines = open(stations_catalog_path, 'rt').readlines()
             # stations_catalog_path = 'data/rfc_2021c_cat.txt'
         else:
-            with open(path, 'r') as stations_catalog_path:
+            with open(path, 'rt') as stations_catalog_path:
                 all_lines = stations_catalog_path.readlines()
 
         for aline in all_lines:
@@ -612,7 +626,6 @@ class ScanBlock:
 
 
 
-
     # def __getitem__(self, item: Union[str, int]):
     #     """Returns the source associated to the given index position or source name.
     #     """
@@ -631,7 +644,8 @@ class ScanBlock:
     #         return 1
 
 
-    # def __iter__(self):
+    def __iter__(self):
+        yield from self._scans
     #     # TODO: I think when source == 1, then this goes into an infinite loop
     #     if len(self.coord.shape) > 0:
     #         yield Source(self.name[self._index], self.coord[self._index])
@@ -641,7 +655,7 @@ class ScanBlock:
 
     # def __next__(self):
     #     self._index += 1
-    #     if self._index > len(self):
+    #     if self._index > len(self.):
     #         raise StopIteration
     #     # if self._index > len(self.coord.shape):
     #     # The standard action is to increase the current counter (e.g. self._index, = 0 created in init), and return the element at that index. If the index > len, then raise StopIteration.

@@ -579,6 +579,7 @@ country = Latvia
 diameter = 32/16 m
 position = 3183649.314, 1276902.989, 5359264.71
 real_time = yes
+sefd_21 = 800.0
 sefd_18 = 800.0
 sefd_6 = 300.0
 sefd_5 = 300.0

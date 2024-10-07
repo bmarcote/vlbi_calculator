@@ -1,4 +1,4 @@
-**WARMING**:
+**WARNING**:
 _I would like to note that I am currently developing a major new version (v2.0) of the Planner. Better UI, much faster, and with a better API. Meanwhile, most of the code is broken in the current repo. Please download the last stable version if you want to use it. But if you have some wishes, I will be happy to receive feedback!_
 
 # EVN Observation Planner

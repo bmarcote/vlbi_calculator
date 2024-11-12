@@ -1460,6 +1460,20 @@ ax2rate = 177
 ax1acc = 3
 ax2acc = 3
 
+[THERMOpYlae]
+station = THERMOpYlae
+code = Th
+network = Other
+possible_networks = EVN
+country = Greece
+diameter = 32 m
+position = 4590591.793, 1919092.551, 3977132.112
+real_time = no
+mount = ALTAZ
+sefd_6 = 250
+sefd_5 = 250
+sefd_3.6 = 250
+
 [Tianma]
 station = Tianma
 code = T6

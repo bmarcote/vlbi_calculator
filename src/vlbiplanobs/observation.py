@@ -665,11 +665,11 @@ class Observation(object):
 
 
     # INFO: this code in the following was meant to test how the computation runs faster (process, threads, etc)
-    def _elevation_func(self, a_station: Station) -> list:
+    def _elevation_func(self, a_station: Station) -> dict[str, Iterable]:
         if (self.sources is None) or (self.times is None):
             raise ValueError("The target and/or observing times have not been initialized")
 
-        return [a_station.elevation(self.times, src) for src in self.sources]
+        return {src.name: a_station.elevation(self.times, src) for src in self.sources}
 
 
     def _elevations_process(self) -> dict:

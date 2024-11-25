@@ -30,6 +30,79 @@ class SourceNotVisible(Exception):
     pass
 
 
+class SourceFlux(object):
+    """Fluxes attributed to a given source.
+    It provides the flux density (total flux) and peak flux (flux on the longest baselines)
+    for a particular frequency.
+    """
+    def __init__(self, band: Union[str, list[str]], flux_density: Union[u.Quantity, list[u.Quantity]],
+                 peak_flux: Union[u.Quantity, list[u.Quantity]]):
+        if isinstance(band, list):
+            if (not isinstance(flux_density, list)) or (not isinstance(peak_flux, list)):
+                raise TypeError("'flux_density' and 'peak_flux' need to be a list if 'band' is a list.")
+
+            if (len(flux_density) != len(peak_flux)) or (len(flux_density) != len(band)):
+                raise IndexError("'flux_density' and 'peak_flux' need to have the same dimensions as 'band'.")
+
+            self._band = band
+            self._flux = flux_density
+            self._peak = peak_flux
+        else:
+            if isinstance(flux_density, list) or isinstance(peak_flux, list):
+                raise TypeError("'flux_density' and 'peak_flux' cannot be a list if 'band' is not a list.")
+
+            self._band = [band]
+            self._flux = [flux_density]
+            self._peak = [peak_flux]
+
+
+    @property
+    def bands(self) -> list[str]:
+        """Returns the bands at which there is flux information.
+        """
+        return self._band
+
+
+    @property
+    def flux_density(self) -> list[u.Quantity]:
+        """Returns all flux density measurements associated to the source.
+        """
+        return self._flux
+
+
+    @property
+    def peak_flux(self) -> list[u.Quantity]:
+        """Returns all peak flux (brightness) measurements associated to the source.
+        """
+        return self._peak
+
+
+    def add_band(self, band: str, flux_density: u.Quantity, peak_flux: u.Quantity):
+        """Adds a new measurement of the flux at a new frequency, or overwrites a previous one if the band exists.
+        """
+        if band in self._band:
+            index = self._band.index(band)
+            self._flux[index] = flux_density
+            self._peak[index] = peak_flux
+        else:
+            self._band.append(band)
+            self._flux.append(flux_density)
+            self._peak.append(peak_flux)
+
+
+    def flux_density_at(self, band: str) -> u.Quantity:
+        """Returns the flux density at the given band.
+        """
+        return self._flux[self._band.index(band)]
+
+
+    def peak_flux_at(self, band: str) -> u.Quantity:
+        """Returns the peak flux (brightness) at the given band.
+        """
+        return self._peak[self._band.index(band)]
+
+
+
 class SourceType(Enum):
     """Types of sources in a regular VLBI observation
     """
@@ -43,44 +116,32 @@ class SourceType(Enum):
     UNKNOWN = auto()
 
 
+
 class Source(FixedTarget):
     """Defines a target source located at some coordinates and with a given name.
     """
-    def __init__(self, name: Optional[str] = None,
-                 coordinates: Optional[str] = None,
+    def __init__(self, name: str,
+                 coordinates: Optional[Union[str, coord.SkyCoord]] = None,
                  source_type: SourceType = SourceType.UNKNOWN,
-                 flux: Optional[dict[str, u.Quantity]] = None,
+                 flux: Optional[SourceFlux] = None,
                  notes: Optional[str] = None,
-                 grade: int = 5,
-                 phasecal: Optional[Self] = None,
-                 checksource: Optional[Self] = None,
                  other_names: Optional[list[str]] = None, **kwargs):
         """Initializes a Source object.
 
         Inputs
-        - name : str  [OPTIONAL]
-            Name associated to the source. By default is None.
-        - coordinates : str [OPTIONAL]
+        - name : str
+            Name associated to the source.
+        - coordinates : str or astropy.coordinates.SkyCoord [OPTIONAL]
             Coordinates of the target source in a str format recognized by
             astropy.coordinates.SkyCoord (e.g. XXhXXmXXs XXdXXmXXs).
             J2000 coordinates are assumed.
             If not provided, name must be a source name recognized by the RFC catalog or astroquery.
         - source_type : SourceType  [default = UNKNOWN]
             Defines the type of the source.
-        - flux : dict[str, u.Quantity]  [default = None]
-            Estimated flux density of the source at a particular freqyency
-            (labeled as XX, with XXcm is the wavelength),
-            may be used to prioritize when different sources (i.e. for calibrators or fringe finders) to use.
+        - flux : SourceFlux  [default = None]
+            Estimated flux density of the source at some given frequencies.
         - notes : str  [default = None]
             Some notes that you want to add for further information on the source.
-        - grade : int  [default = 5]
-            Grade to quantify how good is this source for various purposes (e.g. to pick up fringe-finder sources).
-        - phasecal : Source  [default = None]
-            Links to the associated phase-calibrator to use when observing this source (should only
-            apply if this is a target source).
-        - checksource : Source  [default = None]
-            Links to the associated check source to use when observing this source (should only
-            apply if this is a target source).
         - other_names : list[str]  [default = None]
             A list of other possible names that the source may have.
         - kwargs
@@ -94,27 +155,19 @@ class Source(FixedTarget):
         - ValueError: if the coordinates have an unrecognized format.
         - AttributeError: if neither name or coordinates are provided, or name is empty.
         """
-        if ((name is None) and (coordinates is None)) or (name == ''):
-            raise AttributeError("At least one 'coordiantes' or 'name' (not empty) must be provided")
+        if not isinstance(name, str):
+            raise ValueError("'name' for Source needs to be a string (single source allowed).")
 
         if not isinstance(source_type, SourceType):
             raise ValueError("source_type must be a SourceType value.")
 
-        if isinstance(name, list) or isinstance(coordinates, list):
-            raise ValueError("Needs to be a single source. Call Source() multiple times to initialize "
-                             "multiple sources.")
-
-        if (name is not None) and (coordinates is None):
+        if coordinates is None:
             coordinates = self.get_coordinates_from_name(name)
 
         super().__init__(coord.SkyCoord(coordinates, **kwargs), name)
-
         self._type = source_type
         self._flux = flux
         self._notes = notes
-        self._grade = grade
-        self._phasecal = phasecal
-        self._checksource = checksource
         self._other_names = other_names if other_names is not None else list()
 
 
@@ -134,8 +187,8 @@ class Source(FixedTarget):
         return self._type
 
     @property
-    def flux(self) -> Optional[u.Quantity]:
-        """Estimated flux of the source
+    def flux(self) -> Optional[SourceFlux]:
+        """Estimated flux of the source.
         """
         return self._flux
 
@@ -144,25 +197,6 @@ class Source(FixedTarget):
         """Some notes on the source
         """
         return self._notes
-
-    @property
-    def grade(self) -> int:
-        """Grade assigned to the source for various reasons (e.g. to compare possible fringe finders).
-        """
-        return self._grade
-
-    @property
-    def phasecal(self) -> Optional[Self]:
-        """Returns the source to be used as phase calibrator when observing this source, if any.
-        """
-        return self._phasecal
-
-    @property
-    def checksource(self) -> Optional[Self]:
-        """Returns the source to be used as check source when observing this source, if any.
-        """
-        return self._checksource
-
 
     @staticmethod
     def get_coordinates_from_name(src_name: str) -> coord.SkyCoord:
@@ -220,13 +254,6 @@ class Source(FixedTarget):
         return coord.SkyCoord(f"{temp[3]}h{temp[4]}m{temp[5]}s {temp[6]}d{temp[7]}m{temp[8]}s")
 
 
-    @classmethod
-    def get_rfc_source(cls, src_name: str) -> Self:
-        """Returns a Source object by searching the provided name through the RFC catalog.
-        """
-        return cls(src_name, Source.get_rfc_coordinates(src_name))
-
-
     def sun_separation(self, times: Time) -> Union[list, Sequence]:
         """Returns the separation of the source to the Sun at the given epoch(s).
 
@@ -277,6 +304,7 @@ class Source(FixedTarget):
 
 
 
+# TODO: this part may go away or as a Catalog class (see freeform notes).
 class Sources:
     def __init__(self, personal_catalog: Optional[str] = None):
         self._sources: dict[str, Source] = dict()
@@ -396,8 +424,6 @@ class Sources:
                         self.add(Source(name=src['phasecal']['name'],
                               coordinates=src['phasecal']['coordinates'],
                               source_type=SourceType.PHASECAL,
-                              flux={'6': u.Quantity(src['phasecal']['flux'], u.Jy)} \
-                                   if 'flux' in src['phasecal'] else None,
                               grade=src['phasecal']['grade'] if 'grade' in src['phasecal'] \
                                    else 5), label='personal')
 
@@ -405,8 +431,6 @@ class Sources:
                         self.add(Source(name=src['checkSource']['name'],
                                  coordinates=src['checkSource']['coordinates'],
                                  source_type=SourceType.CHECKSOURCE,
-                                 flux={'6': u.Quantity(src['checkSource']['flux'], u.Jy)} \
-                                       if 'flux' in src['checkSource'] else None,
                                  grade=src['checkSource']['grade'] if 'grade' in src['checkSource'] \
                                       else 5), label='personal')
 
@@ -431,8 +455,6 @@ class Sources:
                     self.add(Source(name=a_src,
                                     coordinates=src['coordinates'],
                                     source_type=src_type,
-                                    flux={'6': u.Quantity(src['flux'], u.Jy)} if 'flux' in src else None,
-                                    grade=src['grade'] if 'grade' in src else 5,
                                     phasecal=self._sources[src['phasecal']['name']] \
                                              if 'phasecal' in src else None,
                                     checksource=self._sources[src['checkSource']['name']] \

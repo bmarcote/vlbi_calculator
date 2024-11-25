@@ -13,7 +13,7 @@ from vlbiplanobs import sources
 def test_source():
     """Tests the Source class
     """
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
         sources.Source()
 
     with pytest.raises(ValueError):
@@ -38,6 +38,7 @@ def test_source():
         s3 = sources.Source(name='Cyg X-1')
         assert s3.name == 'Cyg X-1'
         s3.coord.to_string('hmsdms')
+        assert s3.coord.separation(coord.SkyCoord('19h58m21.6757344s +35d12m05.784516s')) < 0.01*u.arcsec
     except coord.name_resolve.NameResolveError:
         rprint("[yellow]WARNING: seems like no internet connection is available. " \
                "Unable to resolve source names[/yellow]")
@@ -90,7 +91,6 @@ def test_source_from_names():
 
 
 def test_scan_block():
-
     target_source = sources.Source('target', '10h20m10s 40d30m10s', source_type=sources.SourceType.TARGET)
     pcal1_source = sources.Source('pcal1', '10h21m00s 40d31m00s', source_type=sources.SourceType.PHASECAL)
     pcal2_source = sources.Source('pcal2', '10h19m00s 40d29m00s', source_type=sources.SourceType.PHASECAL)

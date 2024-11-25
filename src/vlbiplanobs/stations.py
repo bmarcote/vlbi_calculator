@@ -212,19 +212,19 @@ class Station(object):
 
 
     @property
-    def constraints(self) -> list:
+    def constraints(self) -> list[constraints.Constraint]:
         """Returns the observing constraints for the station
         """
         return self._constraints
 
 
     @property
-    def bands(self):
+    def bands(self) -> list[str]:
         """Observing bands the station can observe.
         Returns a dict_keys object with all bands in a string format as introduced in the freqs_sefd
         attribute when the Station was created.
         """
-        return self._freqs_sefds.keys()
+        return list(self._freqs_sefds.keys())
 
 
     @property
@@ -243,7 +243,7 @@ class Station(object):
 
 
     @property
-    def max_datarate(self) -> Union[u.Quantity, dict, None]:
+    def max_datarate(self) -> Union[u.Quantity, dict[str, u.Quantity], None]:
         """Returns the maximum data rate that the station can observe.
         It can be either a astropy.unit.Quantity value (equivalent to Mb/s),
         or a dictionary in the case that the antenna can show different data rates
@@ -295,8 +295,8 @@ class Station(object):
         return self.observer.target_hour_angle(time=obs_times, target=target)
 
 
-    def is_visible(self, obs_times: Time, target: FixedTarget) -> list[bool]:
-        """Returns when the target source is visible for this station at the given times.
+    def is_observable(self, obs_times: Time, target: FixedTarget) -> list[bool]:
+        """Returns when the target source is observable for this station at the given times.
 
         Inputs
         - obs_times : astropy.time.Time
@@ -313,8 +313,8 @@ class Station(object):
         return is_observable(self.constraints, self.observer, target, times=obs_times)
 
 
-    def is_always_visible(self, obs_times: Time, target: FixedTarget) -> list[bool]:
-        """Returns whenever the target source is visible for this station at all given times.
+    def is_always_observable(self, obs_times: Time, target: FixedTarget) -> bool:
+        """Returns whenever the target source is observable for this station at all given times.
 
         Inputs
         - obs_times : astropy.time.Time
@@ -324,11 +324,10 @@ class Station(object):
              Target coordinates to observe. If None, the target would be assumed to be visible at all times.
 
         Output
-        - visible : list[bool]
-            List of booleans of same length as targets for whether or not each target is observable
-            in the time range given the constraints.
+        - visible : bool
+            Whether or not each target is observable in the time range given the constraints.
         """
-        return is_always_observable(self.constraints, self.observer, target, times=obs_times)
+        return is_always_observable(self.constraints, self.observer, target, times=obs_times)[0]
 
 
     def has_band(self, band: str) -> bool:

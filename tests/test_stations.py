@@ -115,8 +115,9 @@ def test_station_functions():
     src1 = FixedTarget(coord=coord.SkyCoord('0h0m0s 30d0m0s'), name='testSrc')
     # a_station.elevation(times1, src1)  # Should have elevation ranging -7 to 1.1 deg.
     # a_station.elevation(times2, src1)  # Should have elevation ranging 2.2 to 34 deg.
-    assert not all(a_station.is_visible(times1, src1))
-    assert all(a_station.is_visible(times2, src1))
+    assert not all(a_station.is_observable(times1, src1))
+    assert all(a_station.is_observable(times2, src1))
+    assert not a_station.is_always_observable(times2, src1)
     assert len(a_station.elevation(times2, src1)) == len(times2)
     assert len(a_station.elevation(times1, src1)) == len(times1)
     assert np.equal(a_station.elevation(times2, src1).value, a_station.altaz(times2, src1).alt.value)[0]

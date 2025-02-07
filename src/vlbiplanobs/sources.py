@@ -23,6 +23,7 @@ __all__ = ['SourceNotVisible', 'Source', 'SourceType', 'Scan', 'ScanBlock']
 observing a target source for a given time range and at an observing band.
 """
 
+
 class SourceNotVisible(Exception):
     """Exception produced when a given target source cannot be observed for any
     antenna in the network.
@@ -35,6 +36,7 @@ class SourceFlux(object):
     It provides the flux density (total flux) and peak flux (flux on the longest baselines)
     for a particular frequency.
     """
+
     def __init__(self, band: Union[str, list[str]], flux_density: Union[u.Quantity, list[u.Quantity]],
                  peak_flux: Union[u.Quantity, list[u.Quantity]]):
         if isinstance(band, list):
@@ -55,13 +57,11 @@ class SourceFlux(object):
             self._flux = [flux_density]
             self._peak = [peak_flux]
 
-
     @property
     def bands(self) -> list[str]:
         """Returns the bands at which there is flux information.
         """
         return self._band
-
 
     @property
     def flux_density(self) -> list[u.Quantity]:
@@ -69,13 +69,11 @@ class SourceFlux(object):
         """
         return self._flux
 
-
     @property
     def peak_flux(self) -> list[u.Quantity]:
         """Returns all peak flux (brightness) measurements associated to the source.
         """
         return self._peak
-
 
     def add_band(self, band: str, flux_density: u.Quantity, peak_flux: u.Quantity):
         """Adds a new measurement of the flux at a new frequency, or overwrites a previous one if the band exists.
@@ -89,18 +87,15 @@ class SourceFlux(object):
             self._flux.append(flux_density)
             self._peak.append(peak_flux)
 
-
     def flux_density_at(self, band: str) -> u.Quantity:
         """Returns the flux density at the given band.
         """
         return self._flux[self._band.index(band)]
 
-
     def peak_flux_at(self, band: str) -> u.Quantity:
         """Returns the peak flux (brightness) at the given band.
         """
         return self._peak[self._band.index(band)]
-
 
 
 class SourceType(Enum):
@@ -116,10 +111,10 @@ class SourceType(Enum):
     UNKNOWN = auto()
 
 
-
 class Source(FixedTarget):
     """Defines a target source located at some coordinates and with a given name.
     """
+
     def __init__(self, name: str,
                  coordinates: Optional[Union[str, coord.SkyCoord]] = None,
                  source_type: SourceType = SourceType.UNKNOWN,
@@ -170,7 +165,6 @@ class Source(FixedTarget):
         self._notes = notes
         self._other_names = other_names if other_names is not None else list()
 
-
     @property
     def other_names(self) -> list[str]:
         """Returns a list of other possible names to refer to this source.
@@ -220,7 +214,6 @@ class Source(FixedTarget):
         except ValueError:
             return coord.get_icrs_coordinates(src_name)
 
-
     @classmethod
     def get_source_from_name(cls, src_name: str) -> Self:
         """Returns a Source object by finding the coordinates from its name.
@@ -229,19 +222,17 @@ class Source(FixedTarget):
         """
         return cls(src_name, coordinates=Source.get_coordinates_from_name(src_name))
 
-
     @staticmethod
     def get_rfc_coordinates(src_name: str) -> coord.SkyCoord:
         """Returns the coordinates of the object by searching the provided name through the RFC catalog.
         """
-        rfc_files = tuple((r.name for r in resources.files("vlbiplanobs.data").iterdir() \
+        rfc_files = tuple((r.name for r in resources.files("vlbiplanobs.data").iterdir()
                            if r.is_file() and 'rfc' in r.name))
         assert len(rfc_files) > 0, "No RFC files found under the 'data' folder."
 
         with resources.as_file(resources.files("vlbiplanobs.data").joinpath(sorted(rfc_files)[-1])) as rfcfile:
             process = subprocess.run(["grep", src_name, rfcfile], capture_output=True, text=True)
         # process = subprocess.run(["grep", src_name, "./data/rfc_2021c_cat.txt"], capture_output=True, text=True)
-
 
         if process.returncode == 1:
             raise ValueError(f"The source {src_name} was not found in the RFC catalog.")
@@ -252,7 +243,6 @@ class Source(FixedTarget):
 
         temp = process.stdout.split()  # Fields:  IVS  name  J2000name  h m s d m s
         return coord.SkyCoord(f"{temp[3]}h{temp[4]}m{temp[5]}s {temp[6]}d{temp[7]}m{temp[8]}s")
-
 
     def sun_separation(self, times: Time) -> Union[list, Sequence]:
         """Returns the separation of the source to the Sun at the given epoch(s).
@@ -267,13 +257,12 @@ class Source(FixedTarget):
             also imply a longer computing time.
         """
         if len(self.coord.shape) > 0:
-            return [c.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times)) \
+            return [c.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
                     for c in self.coord]
         else:
             return self.coord.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
 
-
-    def sun_constraint(self, min_separation: u.Quantity, times: Optional[Time] = None) -> Union[list, np.array]:
+    def sun_constraint(self, min_separation: u.Quantity, times: Optional[Time] = None) -> Union[list, np.ndarray]:
         """Checks if the Sun can be a restriction to observe the given source.
         This is defined as if the Sun is at a separation lower than 'min_separation' from the
         target in the sky at a given moment.
@@ -303,7 +292,6 @@ class Source(FixedTarget):
             return times[sun_separation < min_separation]
 
 
-
 # TODO: this part may go away or as a Catalog class (see freeform notes).
 class Sources:
     def __init__(self, personal_catalog: Optional[str] = None):
@@ -315,13 +303,11 @@ class Sources:
         if personal_catalog is not None:
             self.read_personal_catalog(personal_catalog)
 
-
     @property
     def source_names(self) -> list:
         """Returns the names of the sources in the database.
         """
         return list(self._sources.keys())
-
 
     @property
     def source_names_all(self) -> list:
@@ -330,13 +316,11 @@ class Sources:
         """
         return list(self._all_names.keys())
 
-
     @property
     def sources(self) -> dict[str, Source]:
         """Returns all sources.
         """
         return self._sources
-
 
     @property
     def personal(self) -> dict[str, Source]:
@@ -344,14 +328,12 @@ class Sources:
         """
         return {src_name: self._sources[src_name] for src_name in self._personal}
 
-
     @property
     def catalog(self) -> dict[str, Source]:
         """Returns only the sources that belong to the catalogs that have been automatically imported
         from PlanObs, which are from the RFC.
         """
         return {src_name: self._sources[src_name] for src_name in self._catalog}
-
 
     def add(self, a_src: Source, label: str = 'personal'):
         """Adds a new source to the catalog
@@ -363,7 +345,7 @@ class Sources:
                 In which category this source will be added. It can be either 'personal' or 'catalog'.
         """
         if a_src.name in self._sources:
-            prev_other_names =  self._sources[a_src.name].other_names
+            prev_other_names = self._sources[a_src.name].other_names
             a_src.other_names += [o for o in prev_other_names if o not in a_src.other_names]
             self._sources[a_src.name] = a_src
             for another_name in a_src.other_names:
@@ -385,7 +367,7 @@ class Sources:
                 if s in self._all_names:
                     prev_name = self._all_names[s]
 
-            a_src.other_names += [o for o in self._sources[prev_name].other_names \
+            a_src.other_names += [o for o in self._sources[prev_name].other_names
                                   if o not in a_src.other_names and o != a_src.name]
             if prev_name not in a_src.other_names:
                 a_src.other_names.append(prev_name)
@@ -406,7 +388,6 @@ class Sources:
         else:
             self._catalog.add(a_src.name)
 
-
     def read_personal_catalog(self, path: str):
         """Reads the yaml file with the information of all sources that may be scheduled.
         It returns the catalog as a dictionary.
@@ -422,17 +403,17 @@ class Sources:
                     src = catalog[a_type][a_src]
                     if 'phasecal' in src:
                         self.add(Source(name=src['phasecal']['name'],
-                              coordinates=src['phasecal']['coordinates'],
-                              source_type=SourceType.PHASECAL,
-                              grade=src['phasecal']['grade'] if 'grade' in src['phasecal'] \
-                                   else 5), label='personal')
+                                        coordinates=src['phasecal']['coordinates'],
+                                        source_type=SourceType.PHASECAL,
+                                        grade=src['phasecal']['grade'] if 'grade' in src['phasecal']
+                                        else 5), label='personal')
 
                     if 'checkSource' in src:
                         self.add(Source(name=src['checkSource']['name'],
                                  coordinates=src['checkSource']['coordinates'],
                                  source_type=SourceType.CHECKSOURCE,
-                                 grade=src['checkSource']['grade'] if 'grade' in src['checkSource'] \
-                                      else 5), label='personal')
+                                 grade=src['checkSource']['grade'] if 'grade' in src['checkSource']
+                                 else 5), label='personal')
 
                     match a_type:
                         case 'pulsars':
@@ -455,12 +436,10 @@ class Sources:
                     self.add(Source(name=a_src,
                                     coordinates=src['coordinates'],
                                     source_type=src_type,
-                                    phasecal=self._sources[src['phasecal']['name']] \
-                                             if 'phasecal' in src else None,
-                                    checksource=self._sources[src['checkSource']['name']] \
-                                             if 'checkSource' in src else None), label='personal')
-
-
+                                    phasecal=self._sources[src['phasecal']['name']]
+                                    if 'phasecal' in src else None,
+                                    checksource=self._sources[src['checkSource']['name']]
+                                    if 'checkSource' in src else None), label='personal')
 
     def read_rfc_catalog(self, path: Optional[Union[str, Path]] = None):
         """Reads the catalog yaml file with the information of all sources that may be scheduled.
@@ -507,32 +486,23 @@ class Sources:
             # else:
             #     grade = 3
 
-            self.add(Source(name=pars[2],
-                   grade=8 if pars[0] == 'C' else 5 if pars[0] == 'N' else 3,
-                   other_names=[pars[1]],
-                   coordinates="{0}h{1}m{2}s {3}d{4}m{5}s".format(*pars[3:9]),
-                   source_type=SourceType.PHASECAL,
-                   flux=a_flux, notes="RFC Source"), label='catalog')
-
+            self.add(Source(name=pars[2], grade=8 if pars[0] == 'C' else 5 if pars[0] == 'N' else 3,
+                            other_names=[pars[1]], coordinates="{0}h{1}m{2}s {3}d{4}m{5}s".format(*pars[3:9]),
+                            source_type=SourceType.PHASECAL, flux=a_flux, notes="RFC Source"), label='catalog')
 
 
 @dataclass
 class Scan:
     source: Source
-    duration: u.Quantity
+    duration: u.Quantity = 10*u.min
     every: int = -1
 
 
 class ScanBlock:
     """Defines a list of scans, each of them defined as a pointing to a given source during a given time.
     """
+
     def __init__(self, scans: list[Scan]):
-                 #target: Union[tuple, Scan], phasecal: Optional[Union[tuple, Scan]] = None,
-                 # checksource: Optional[Union[tuple, Scan]] = None,
-                 # fringefinder: Optional[Union[tuple, Scan]] = None,
-                 # duration: Optional[u.Quantity] = None,
-                 # max_duration: Optional[u.Quantity] = None, min_duration: Optional[u.Quantity] = None,
-                 # wavelength: Optional[u.Quantity] = None):
         """Creates a block of scans, ideally a block to be observed with the target scans, phase-reference
         calibrator source (if needed), and check sources.
 
@@ -554,11 +524,9 @@ class ScanBlock:
 
         self._scans = scans
 
-
     @property
     def scans(self) -> list[Scan]:
         return self._scans
-
 
     def has(self, source_type: SourceType) -> bool:
         """Returns if the given source type is included among the ones observed in the provided list of scans.
@@ -577,7 +545,6 @@ class ScanBlock:
         """Returns the scans with the given source types in this block.
         """
         return [s for s in self._scans if s.source.type == source_type]
-
 
     def fill(self, max_duration: u.Quantity) -> list[Scan]:
         """Given the list of scans, returns the final arrangement of scans that fills the available time.
@@ -598,19 +565,18 @@ class ScanBlock:
 
         main_loop: list[Scan] = []
 
-
         # First it arranges the (phasecal)/target scans if exist
         if self.has(SourceType.PHASECAL):
             if not self.has(SourceType.TARGET):
                 raise ValueError("If phase calibrator scans provided, then target scans must also be provided.")
 
-            loop_duration = reduce(operator.add, [s.duration for s in self.scans_with_sources(SourceType.TARGET) + \
-                                                                      self.scans_with_sources(SourceType.PHASECAL)])
+            loop_duration = reduce(operator.add, [s.duration for s in self.scans_with_sources(SourceType.TARGET) +
+                                                  self.scans_with_sources(SourceType.PHASECAL)])
             last_duration = reduce(operator.add, [s.duration for s in self.scans_with_sources(SourceType.PHASECAL)])
             # the second sum above is because the phase-referencing loop needs to be closed at the end.
 
-            if any([s.every > -1 for s in self.scans \
-                                 if s.source.type not in (SourceType.TARGET, SourceType.PHASECAL)]):
+            if any([s.every > -1 for s in self.scans
+                    if s.source.type not in (SourceType.TARGET, SourceType.PHASECAL)]):
                 # As there can be multiple sources to be observed every certain scans, better to do it incremental...
                 # full_n_reps = (max_duration - last_duration)/(loop_duration*)
                 booked_time, n_loop = 0*u.min, 1
@@ -625,61 +591,24 @@ class ScanBlock:
 
                     to_append = self.scans_with_sources(SourceType.PHASECAL) + target_in_this_scan
                     n_loop += 1
-                    if reduce(operator.add, [a.duration for a in to_append]) + booked_time > \
-                                                                 max_duration - last_duration:
+                    if reduce(operator.add, [a.duration for a in to_append]) + \
+                       booked_time > max_duration - last_duration:
                         break
 
                     main_loop += to_append
                     booked_time += reduce(operator.add, [a.duration for a in to_append])
             else:
-                main_loop += (self.scans_with_sources(SourceType.PHASECAL) + \
-                             self.scans_with_sources(SourceType.TARGET)) * \
-                             int(max_duration.to(u.min).value // (loop_duration + last_duration).to(u.min).value)
+                main_loop += (self.scans_with_sources(SourceType.PHASECAL) +
+                              self.scans_with_sources(SourceType.TARGET)) * \
+                              int(max_duration.to(u.min).value // (loop_duration + last_duration).to(u.min).value)
 
             main_loop += self.scans_with_sources(SourceType.PHASECAL)
         else:
             target_duration = reduce(operator.add, [s.duration for s in self.scans_with_sources(SourceType.TARGET)])
             main_loop += self.scans_with_sources(SourceType.TARGET) * \
-                         int(max_duration.to(u.min).value // target_duration.to(u.min).value)
+                int(max_duration.to(u.min).value // target_duration.to(u.min).value)
 
         return main_loop
 
-
-
-
-
-    # def __getitem__(self, item: Union[str, int]):
-    #     """Returns the source associated to the given index position or source name.
-    #     """
-    #     if isinstance(item, str):
-    #         return Source(name=item, coordinates=self.coord[self.name.index(item)])
-    #     elif isinstance(item, int):
-    #         return Source(name=self.name[item], coordinates=self.coord[item])
-    #     else:
-    #         raise ValueError("'item' needs to be either a string with the name of the source or " \
-    #                 "the index in the current source list.")
-
-    # def __len__(self):
-    #     if len(self.coord.shape) > 0:
-    #         return self.coord.shape[0]
-    #     else:
-    #         return 1
-
-
     def __iter__(self):
         yield from self._scans
-    #     # TODO: I think when source == 1, then this goes into an infinite loop
-    #     if len(self.coord.shape) > 0:
-    #         yield Source(self.name[self._index], self.coord[self._index])
-    #     else:
-    #         yield Source(self.name, self.coord)
-
-
-    # def __next__(self):
-    #     self._index += 1
-    #     if self._index > len(self.):
-    #         raise StopIteration
-    #     # if self._index > len(self.coord.shape):
-    #     # The standard action is to increase the current counter (e.g. self._index, = 0 created in init), and return the element at that index. If the index > len, then raise StopIteration.
-
-

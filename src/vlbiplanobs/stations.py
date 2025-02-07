@@ -9,7 +9,6 @@ import numpy as np
 from rich import print as rprint
 from astropy import units as u
 from astropy import coordinates as coord
-# from astropy.io import ascii
 from astropy.time import Time
 from astroplan import Observer, FixedTarget, is_observable, is_always_observable
 from dataclasses import dataclass
@@ -21,7 +20,8 @@ from . import freqsetups
 or a network composed of antennas.
 """
 
-__all__: list[str] = ['Station', 'SelectedStation', 'Network', 'Mount', 'MountType']
+__all__: list[str] = ["Station", "SelectedStation", "Network", "Mount", "MountType"]
+
 
 class MountType(Enum):
     ALTAZ = auto()
@@ -32,14 +32,15 @@ class MountType(Enum):
 class Axis:
     limits: tuple[u.Quantity, u.Quantity]
     speed: u.Quantity
-    acceleration: u.Quantity = u.Quantity(0.0, u.deg/u.s/u.s)
+    acceleration: u.Quantity = u.Quantity(0.0, u.deg / u.s / u.s)
 
 
 @dataclass
 class Mount:
-    """Defines a telescope mount, including the mount type (ALTAZ, EQUAT), the limits of the telescope
-    to point in the sky, and the slewing velocity (rate) and acceleration (acc).
+    """Defines a telescope mount, including the mount type (ALTAZ, EQUAT), the limits of the
+    telescope to point in the sky, and the slewing velocity (rate) and acceleration (acc).
     """
+
     mount_type: MountType
     ax1: Axis
     ax2: Axis
@@ -49,13 +50,14 @@ class Station(object):
     """Defines an astronomical station (antenna).
     A station is defined by some names and codenames, coordinates, and its sensitivity for the
     radio bands (wavelengths) it can observe.
-    Apart of the metadata related to the station, it allows to compute the altitude/azimuth, elevation,
-    or simply when a source is visible from the station for a given time range.
+    Apart of the metadata related to the station, it allows to compute the altitude/azimuth,
+    elevation, or simply when a source is visible from the station for a given time range.
     """
+
     def __init__(self, name: str, codename: str, network: str, location: coord.EarthLocation,
-                 freqs_sefds: dict[str, u.Quantity],
-                 fullname: Optional[str] = None, all_networks: Optional[list[str]] = None, country: str = '',
-                 diameter: str = '', real_time: bool = False, mount: Optional[Mount] = None,
+                 freqs_sefds: dict[str, u.Quantity], fullname: Optional[str] = None,
+                 all_networks: Optional[list[str]] = None, country: str = "", diameter: str = "",
+                 real_time: bool = False, mount: Optional[Mount] = None,
                  max_datarate: Optional[u.Quantity | dict[str, u.Quantity]] = None) -> None:
         """Initializes a station.
 
@@ -64,15 +66,15 @@ class Station(object):
             Name of the station.
             If it contains undercores (_), they will be converted to blank spaces.
         - codename : str
-            A short code (accronym) for the name of the station. It is meant to follow the standard approach
-            from the EVN: an (often) two-letter code unique for each station.
+            A short code (accronym) for the name of the station. It is meant to follow the standard
+            approach from the EVN: an (often) two-letter code unique for each station.
         - network : str
             Name of the network to which the station belongs (e.g. EVN).
         - location : astropy.coordinates.EarthLocation
             Position of the station on Earth in (x,y,z) gecentric coordinates.
         - freqs_sefds : dict
-            Dictionary with all frequencies the station can observe as keys of the dictionary, and the
-            values representing the system equivalent flux density (SEFD; in Jansky units)
+            Dictionary with all frequencies the station can observe as keys of the dictionary, and
+            the values representing the system equivalent flux density (SEFD; in Jansky units)
             at each frequency.
             Although the key format is in principle free, we recommend to use the syntax 'XXcm' (str type).
             This will be then consistent with the default station catalog.
@@ -104,19 +106,19 @@ class Station(object):
             participating within the EVN.
         """
         # Some sanity checks
-        for a_var, a_var_name in zip((name, codename, network, country, diameter), \
-                                     ('name', 'codename', 'network', 'country', 'diameter')):
+        for a_var, a_var_name in zip((name, codename, network, country, diameter),
+                                     ("name", "codename", "network", "country", "diameter")):
             assert isinstance(a_var, str), f"'{a_var_name}' must be a str."
 
         assert isinstance(fullname, str) or fullname is None
         assert isinstance(real_time, bool), "'real_time' must be a bool."
-        self.observer: Observer = Observer(name=name.replace('_', ' '), location=location)
+        self.observer: Observer = Observer(name=name.replace("_", " "), location=location)
         self._codename: str = codename
         self._network: str = network
-        self._freqs_sefds: dict[str, float] = {f if 'cm' in f else f"{f}cm": v for f,v in freqs_sefds.items()}
+        self._freqs_sefds: dict[str, float] = {f if "cm" in f else f"{f}cm": v for f, v in freqs_sefds.items()}
         self._fullname: str = name if fullname is None else fullname
         assert isinstance(all_networks, Sequence) or all_networks is None
-        self._all_networks: list[str] = [network] if all_networks is None else list(all_networks)
+        self._all_networks: list[str] = ([network] if all_networks is None else list(all_networks))
         if network not in self._all_networks:
             self._all_networks.insert(0, network)
 
@@ -124,54 +126,55 @@ class Station(object):
         self._diameter: str = diameter
         self._real_time: bool = real_time
         if mount is None:
-            self._mount: Mount = Mount(MountType.ALTAZ,
-                                       Axis((-10*u.deg, 370*u.deg), 300*u.deg/u.s, 0.0*u.deg/u.s/u.s),
-                                       Axis((10*u.deg, 100*u.deg), 300*u.deg/u.s, 0.0*u.deg/u.s/u.s))
+            self._mount: Mount = Mount(MountType.ALTAZ, Axis((-10 * u.deg, 370 * u.deg),
+                                                             300 * u.deg / u.s,
+                                                             0.0 * u.deg / u.s / u.s),
+                                       Axis((10 * u.deg, 100 * u.deg), 300 * u.deg / u.s,
+                                            0.0 * u.deg / u.s / u.s))
         else:
             assert isinstance(mount, Mount)
             self._mount = mount
 
         self._max_datarate: u.Quantity | dict | None = max_datarate
         if self.mount.mount_type.ALTAZ:
-            self._constraints = [constraints.AzimuthConstraint(min=self.mount.ax1.limits[0],
-                                                                 max=self.mount.ax1.limits[1]),
-                                 constraints.ElevationConstraint(min=self.mount.ax2.limits[0],
-                                                                   max=self.mount.ax2.limits[1])]
+            self._constraints = [
+                constraints.AzimuthConstraint(
+                    min=self.mount.ax1.limits[0], max=self.mount.ax1.limits[1]
+                ),
+                constraints.ElevationConstraint(
+                    min=self.mount.ax2.limits[0], max=self.mount.ax2.limits[1]
+                ),
+            ]
         else:
-            self._constraints = [constraints.HourAngleConstraint(min=self.mount.ax1.limits[0],
-                                                                 max=self.mount.ax1.limits[1]),
-                                 constraints.DeclinationConstraint(min=self.mount.ax2.limits[0],
-                                                                   max=self.mount.ax2.limits[1])]
-
+            self._constraints = [
+                constraints.HourAngleConstraint(
+                    min=self.mount.ax1.limits[0], max=self.mount.ax1.limits[1]
+                ),
+                constraints.DeclinationConstraint(
+                    min=self.mount.ax2.limits[0], max=self.mount.ax2.limits[1]
+                ),
+            ]
 
     @property
     def name(self) -> str:
-        """Name of the station.
-        """
+        """Name of the station."""
         assert self.observer.name is not None
         return self.observer.name
 
-
     @property
     def codename(self) -> str:
-        """Codename of the station (typically a two-letter accronym).
-        """
+        """Codename of the station (typically a two-letter accronym)."""
         return self._codename
-
 
     @property
     def fullname(self) -> str:
-        """Full name of the station. If not specified, it can be the same as 'name'.
-        """
+        """Full name of the station. If not specified, it can be the same as 'name'."""
         return self._fullname
-
 
     @property
     def network(self) -> str:
-        """Name of the network to which the station belongs.
-        """
+        """Name of the network to which the station belongs."""
         return self._network
-
 
     @property
     def all_networks(self) -> list[str]:
@@ -180,14 +183,12 @@ class Station(object):
         """
         return self._all_networks
 
-
     @property
     def country(self) -> str:
         """Country where this station is located.
         It can be an empty string if not specified.
         """
         return self._country
-
 
     @property
     def diameter(self) -> str:
@@ -196,27 +197,20 @@ class Station(object):
         """
         return self._diameter
 
-
     @property
     def real_time(self) -> bool:
-        """If the station can participate in real-time observations (e.g. e-EVN).
-        """
+        """If the station can participate in real-time observations (e.g. e-EVN)."""
         return self._real_time
-
 
     @property
     def location(self) -> coord.EarthLocation:
-        """Location of the station as an astropy.coordinates.EarthLocation object.
-        """
+        """Location of the station as an astropy.coordinates.EarthLocation object."""
         return self.observer.location
-
 
     @property
     def constraints(self) -> list[constraints.Constraint]:
-        """Returns the observing constraints for the station
-        """
+        """Returns the observing constraints for the station"""
         return self._constraints
-
 
     @property
     def bands(self) -> list[str]:
@@ -226,7 +220,6 @@ class Station(object):
         """
         return list(self._freqs_sefds.keys())
 
-
     @property
     def sefds(self) -> dict[str, u.Quantity]:
         """Returns a dictionary with the system equivalent flux density (SEFDs) for each
@@ -234,13 +227,10 @@ class Station(object):
         """
         return self._freqs_sefds
 
-
     @property
     def mount(self) -> Mount:
-        """Returns the mount of the station
-        """
+        """Returns the mount of the station"""
         return self._mount
-
 
     @property
     def max_datarate(self) -> Union[u.Quantity, dict[str, u.Quantity], None]:
@@ -253,7 +243,6 @@ class Station(object):
         participating within the EVN.
         """
         return self._max_datarate
-
 
     def elevation(self, obs_times: Time, target: FixedTarget) -> coord.angles.Latitude:
         """Returns the elevation of the target source as seen by the Station during obs_times.
@@ -271,7 +260,6 @@ class Station(object):
         """
         return self.observer.altaz(obs_times, target).alt
 
-
     def altaz(self, obs_times: Time, target: FixedTarget) -> coord.SkyCoord:
         """Returns the altaz coordinates of the target source for the given observing times.
 
@@ -288,12 +276,9 @@ class Station(object):
         """
         return self.observer.altaz(obs_times, target)
 
-
     def hour_angle(self, obs_times: Time, target: FixedTarget) -> coord.Angle:
-        """Returns the local hour angle of the target at the given time.
-        """
+        """Returns the local hour angle of the target at the given time."""
         return self.observer.target_hour_angle(time=obs_times, target=target)
-
 
     def is_observable(self, obs_times: Time, target: FixedTarget) -> list[bool]:
         """Returns when the target source is observable for this station at the given times.
@@ -312,7 +297,6 @@ class Station(object):
         """
         return is_observable(self.constraints, self.observer, target, times=obs_times)
 
-
     def is_always_observable(self, obs_times: Time, target: FixedTarget) -> bool:
         """Returns whenever the target source is observable for this station at all given times.
 
@@ -327,8 +311,9 @@ class Station(object):
         - visible : bool
             Whether or not each target is observable in the time range given the constraints.
         """
-        return is_always_observable(self.constraints, self.observer, target, times=obs_times)[0]
-
+        return is_always_observable(
+            self.constraints, self.observer, target, times=obs_times
+        )[0]
 
     def has_band(self, band: str) -> bool:
         """Returns if the Station can observed the given band `the_band`.
@@ -343,7 +328,6 @@ class Station(object):
         - bool whenever the station has the given observing band.
         """
         return band in self.bands
-
 
     def sefd(self, band: str) -> u.Quantity:
         """Returns the system equivalent flux density (SEFD) of the Station at the given band,
@@ -365,14 +349,11 @@ class Station(object):
         """
         return self._freqs_sefds[band]
 
-
     def __str__(self):
         return f"<{self.codename}>"
 
-
     def __repr__(self):
         return f"<Station: {self.codename}>"
-
 
 
 class SelectedStation(Station):
@@ -380,12 +361,12 @@ class SelectedStation(Station):
     This allows the sub-seting of lists of stations by considering all of them to observe
     or just disabling some of them.
     """
+
     def __init__(self, name: str, codename: str, network: str, location: coord.EarthLocation,
-                 freqs_sefds: dict[str, u.Quantity],
-                 fullname: Optional[str] = None, all_networks: Optional[list[str]] = None, country: str = '',
-                 diameter: str = '', real_time: bool = False, mount: Optional[Mount] = None,
-                 max_datarate: u.Quantity | dict[str, u.Quantity]| None = None,
-                 selected: bool = True) -> None:
+                 freqs_sefds: dict[str, u.Quantity], fullname: Optional[str] = None,
+                 all_networks: Optional[list[str]] = None, country: str = "", diameter: str = "",
+                 real_time: bool = False, mount: Optional[Mount] = None,
+                 max_datarate: u.Quantity | dict[str, u.Quantity] | None = None, selected: bool = True) -> None:
         """Initializes a SelectedStation.
         This class extends Station by adding one additional attribute: `selected` (bool).
 
@@ -437,10 +418,8 @@ class SelectedStation(Station):
         """
         assert isinstance(selected, bool), "'selected' must be a bool"
         self._selected = selected
-        super().__init__(name, codename, network, location,
-                         freqs_sefds, fullname,
-                         all_networks, country, diameter, real_time, mount, max_datarate)
-
+        super().__init__(name, codename, network, location, freqs_sefds, fullname, all_networks,
+                         country, diameter, real_time, mount, max_datarate)
 
     @property
     def selected(self) -> bool:
@@ -449,18 +428,17 @@ class SelectedStation(Station):
         """
         return self._selected
 
-
     @selected.setter
     def selected(self, isselected: bool):
         assert isinstance(isselected, bool)
         self._selected = isselected
 
 
-
 class Network(object):
     """Defines a network (collection) of stations (`Station` objects) that
     can participate in an observation together.
     """
+
     def __init__(self, name: str, full_name: Optional[str] = None, stations: Optional[Iterable[Station]] = None,
                  observing_bands: Optional[Sequence[str]] = None,
                  max_datarates: Optional[Union[Sequence[u.Quantity], u.Quantity]] = None) -> None:
@@ -487,29 +465,28 @@ class Network(object):
         assert isinstance(name, str), "'name' must be a str."
         assert isinstance(stations, abc.Iterable) or stations is None, "'stations' must be a list or be empty."
         if observing_bands is None:
-            assert not np.iterable(max_datarates), \
-                   "`max_datarates` cannot be iterable if `observing_bands` is None."
+            assert not np.iterable(max_datarates), "`max_datarates` cannot be iterable if `observing_bands` is None."
 
         self._name = name
         self._fullname = name if full_name is None else full_name
         self._stations: dict[str, Station] = {}
 
         self._bands: dict[str, u.Quantity] = {}
-        if (observing_bands is not None):
+        if observing_bands is not None:
             # if np.iterable(max_datarates):
             if isinstance(max_datarates, Sequence):
                 assert len(observing_bands) == len(max_datarates), \
                        "'observing_bands' and 'max_datarates' must have the same dimensions."
-                for i,band in enumerate(observing_bands):
+                for i, band in enumerate(observing_bands):
                     self._bands[band] = max_datarates[i]
             else:
-                for i,band in enumerate(observing_bands):
+                for i, band in enumerate(observing_bands):
                     self._bands[band] = max_datarates
 
         if stations is not None:
             for a_station in stations:
                 assert isinstance(a_station, Station), \
-                    f"There is an element in 'stations' that is not a Station object ({a_station})."
+                       f"There is an element in 'stations' that is not a Station object ({a_station})."
                 if a_station.codename not in self._stations.keys():
                     self._stations[a_station.codename] = a_station
                 else:
@@ -519,34 +496,27 @@ class Network(object):
                     for aband in a_station.bands:
                         self._bands[aband] = max_datarates
 
-
     @property
     def name(self) -> str:
-        """Name of the network of stations.
-        """
+        """Name of the network of stations."""
         return self._name
-
 
     @name.setter
     def name(self, new_name: str):
         self._name = new_name
 
-
     @property
     def full_name(self) -> str:
-        """Returns the full (expanded) name of the network.
-        """
+        """Returns the full (expanded) name of the network."""
         return self._fullname
 
     @full_name.setter
     def full_name(self, new_full_name: str):
         self._fullname = new_full_name
 
-
     @property
     def stations(self) -> list[Station]:
-        """Returns a list containing all stations in the network.
-        """
+        """Returns a list containing all stations in the network."""
         return list(self._stations.values())
 
     @stations.setter
@@ -555,22 +525,18 @@ class Network(object):
 
     @property
     def number_of_stations(self) -> int:
-        """Returns the total number of stations in the network.
-        """
+        """Returns the total number of stations in the network."""
         return len(self.stations)
 
     @property
     def names(self) -> list[str]:
-        """Returns the names from all the stations in the network
-        """
+        """Returns the names from all the stations in the network"""
         return [s.name for s in self._stations.values()]
 
     @property
     def codenames(self) -> list[str]:
-        """Returns a dict_keys with the `codenames` from all the stations in the network.
-        """
+        """Returns a dict_keys with the `codenames` from all the stations in the network."""
         return list(self._stations.keys())
-
 
     @property
     def observing_bands(self) -> list[str]:
@@ -579,10 +545,8 @@ class Network(object):
         """
         return list(self._bands.keys())
 
-
     def max_datarate(self, observing_band: str) -> u.Quantity:
         return self._bands[observing_band]
-
 
     def add(self, a_station: Station):
         """Adds a new station to the network.
@@ -598,14 +562,11 @@ class Network(object):
         else:
             self._stations[a_station.codename] = a_station
 
-
     def __str__(self):
         return f"<{self.name}: <{self.number_of_stations}><{', '.join(self.codenames)}>>"
 
-
     def __len__(self):
         return self._stations.__len__()
-
 
     def __getitem__(self, key):
         if isinstance(key, int):
@@ -613,11 +574,9 @@ class Network(object):
         else:
             return self._stations[key]
 
-
     def __setitem__(self, key, value):
         self._stations[key] = value
         self._codenames = tuple(self._stations.keys())
-
 
     def __delitem__(self, key):
         if isinstance(key, int):
@@ -627,18 +586,15 @@ class Network(object):
 
         self._codenames = tuple(self._stations.keys())
 
-
     def __iter__(self):
         return iter(self._stations.values())
-
 
     def __contains__(self, item):
         return self._stations.__contains__(item)
 
-
     @classmethod
     def get_stations_from_configfile(cls, filename: Optional[str] = None, codenames: Optional[list[str]] = None,
-                                     name: str = 'network') -> Self:
+                                     name: str = "network") -> Self:
         """Creates a Network object (i.e. a network of stations) by reading the station
         information from an input file. Optionally, it allows to select only a subset of
         all stations in the file.
@@ -686,90 +642,91 @@ class Network(object):
         """
         config = configparser.ConfigParser()
         if filename is None:
-#             from importlib.resources import files
-# data_text = files('mypkg.data').joinpath('data1.txt').read_text()
+            #             from importlib.resources import files
+            # data_text = files('mypkg.data').joinpath('data1.txt').read_text()
             with resources.as_file(resources.files("vlbiplanobs.data").joinpath("stations_catalog.inp")) \
-                                                                     as stations_catalog_path:
+                                                                                 as stations_catalog_path:
                 config.read(stations_catalog_path)
         else:
             # With this approach it raises a FileNotFound exception.
             # Otherwise config will run smoothly and provide an empty list.
-            config.read(open(filename, 'r'))
+            config.read(open(filename, "r"))
 
         networks = cls(name, None, [])
         for stationname in config.sections():
-            if (codenames is None) or (config[stationname]['code'] in codenames):
-                temp = [float(i.strip()) for i in config[stationname]['position'].split(',')]
-                a_loc = coord.EarthLocation(u.Quantity(temp[0], u.m), u.Quantity(temp[1], u.m),
-                                            u.Quantity(temp[2], u.m))
+            if (codenames is None) or (config[stationname]["code"] in codenames):
+                temp = [float(i.strip()) for i in config[stationname]["position"].split(",")]
+                a_loc = coord.EarthLocation(
+                    u.Quantity(temp[0], u.m),
+                    u.Quantity(temp[1], u.m),
+                    u.Quantity(temp[2], u.m),
+                )
                 # Getting the SEFD values for the bands
-                does_real_time = True if config[stationname]['real_time']=='yes' else False
+                does_real_time = True if config[stationname]["real_time"] == "yes" else False
                 sefds = {}
                 max_dt: u.Quantity | dict[str, u.Quantity] | None = None
                 for akey in config[stationname].keys():
-                    if 'SEFD_' in akey.upper():
-                        sefds[f"{akey.upper().replace('SEFD_', '').strip()}"] = \
-                                            float(config[stationname][akey])*u.Jy
-                    if 'maxdatarate' == akey.lower():
-                        max_dt = int(config[stationname][akey])*u.Mb/u.s
-                    elif 'maxdatarate_' in akey.lower():
+                    if "SEFD_" in akey.upper():
+                        sefds[f"{akey.upper().replace('SEFD_', '').strip()}"] = float(config[stationname][akey]) * u.Jy
+                    if "maxdatarate" == akey.lower():
+                        max_dt = int(config[stationname][akey]) * u.Mb / u.s
+                    elif "maxdatarate_" in akey.lower():
                         if not isinstance(max_dt, dict):
                             max_dt = {}
 
-                        val = int(akey.removeprefix('maxdatarate_').strip())*u.Mb/u.s
-                        net = [n.strip() for n in config[stationname][akey].split(',')]
+                        val = int(akey.removeprefix("maxdatarate_").strip()) * u.Mb / u.s
+                        net = [n.strip() for n in config[stationname][akey].split(",")]
                         for n in net:
                             max_dt[n] = val
 
-                if config[stationname]['code'] in networks.codenames:
+                if config[stationname]["code"] in networks.codenames:
                     raise ValueError(f"The antenna with code {config[stationname]['code']} is "
                                      "duplicated in the input file.")
 
-                if all([key in config[stationname] for key in ('mount', 'ax1rate', 'ax2rate', 'ax1lim',
-                                                               'ax2lim')]):
+                if all([key in config[stationname] for key in ("mount", "ax1rate", "ax2rate", "ax1lim", "ax2lim")]):
                     configs = {}
                     try:
-                        for alim in ('ax1lim', 'ax2lim'):
+                        for alim in ("ax1lim", "ax2lim"):
                             # Because they are the cable limits...
-                            lims = [float(i) for i in config[stationname][alim].split(',')]
+                            lims = [float(i) for i in config[stationname][alim].split(",")]
                             # easy check, if the range is >360, they can observe all azimuths
                             if (lims[1] - lims[0]) > 360:
-                                configs[alim] = tuple((-1*u.deg, 361*u.deg))
+                                configs[alim] = tuple((-1 * u.deg, 361 * u.deg))
                             else:
-                                configs[alim] = tuple((lims[0]*u.deg, lims[1]*u.deg))
+                                configs[alim] = tuple((lims[0] * u.deg, lims[1] * u.deg))
 
-                        for arate in ('ax1rate', 'ax2rate'):
-                            configs[arate] = u.Quantity(float(config[stationname][arate].strip()), u.deg/u.s)
+                        for arate in ("ax1rate", "ax2rate"):
+                            configs[arate] = u.Quantity(float(config[stationname][arate].strip()), u.deg / u.s)
 
-                        if all([key in config[stationname] for key in ('ax1acc', 'ax2acc')]):
-                            for aacc in ('ax1acc', 'ax2acc'):
-                                configs[aacc] = u.Quantity(float(config[stationname][aacc].strip()), u.deg/u.s/u.s)
+                        if all([key in config[stationname] for key in ("ax1acc", "ax2acc")]):
+                            for aacc in ("ax1acc", "ax2acc"):
+                                configs[aacc] = u.Quantity(float(config[stationname][aacc].strip()), u.deg / u.s / u.s)
 
-                            amount = Mount(MountType[config[stationname]['mount']],
-                                           Axis(configs['ax1lim'], configs['ax1rate'], configs['ax1acc']),
-                                           Axis(configs['ax2lim'], configs['ax2rate'],
-                                                config[stationname]['ax2acc']))
+                            amount = Mount(MountType[config[stationname]["mount"]], Axis(configs["ax1lim"],
+                                                                                         configs["ax1rate"],
+                                                                                         configs["ax1acc"]),
+                                           Axis(configs["ax2lim"], configs["ax2rate"], config[stationname]["ax2acc"]))
                         else:
-                            amount = Mount(MountType[config[stationname]['mount']],
-                                           Axis(configs['ax1lim'], config[stationname]['ax1rate']),
-                                           Axis(configs['ax2lim'], config[stationname]['ax2rate']))
+                            amount = Mount(MountType[config[stationname]["mount"]], Axis(configs["ax1lim"],
+                                           config[stationname]["ax1rate"]), Axis(configs["ax2lim"],
+                                           config[stationname]["ax2rate"]))
                     except ValueError:
                         raise ValueError(f"when loading the data from antenna {stationname}.")
 
                 else:
                     amount = None
 
-                if (config[stationname]['possible_networks'] is not None) and \
-                           (len(config[stationname]['possible_networks']) > 0):
-                    the_networks: list[str] | None = [s.strip() \
-                            for s in config[stationname]['possible_networks'].split(',')]
+                if (config[stationname]["possible_networks"] is not None) and \
+                   (len(config[stationname]["possible_networks"]) > 0):
+                    the_networks: list[str] | None = [s.strip()
+                                                      for s in config[stationname]["possible_networks"].split(",")]
                 else:
                     the_networks = None
 
-                new_station = SelectedStation(stationname, config[stationname]['code'],
-                        config[stationname]['network'], a_loc, sefds,
-                        config[stationname]['station'], the_networks, config[stationname]['country'],
-                        config[stationname]['diameter'], does_real_time, amount, max_dt)
+                new_station = SelectedStation(stationname, config[stationname]["code"], config[stationname]["network"],
+                                              a_loc, sefds, config[stationname]["station"], the_networks,
+                                              config[stationname]["country"], config[stationname]["diameter"],
+                                              does_real_time, amount, max_dt)
                 networks.add(new_station)
 
         if codenames is not None:
@@ -777,7 +734,6 @@ class Network(object):
                 if a_codename not in networks:
                     rprint(f"\n[yellow]WARNING: The antenna {a_codename} was not found in the catalogs.[/yellow]\n")
         return networks
-
 
     def stations_with_band(self, band: str, output_network_name: Optional[str] = None) -> Network:
         """Given the current network, it creates a sub-network including only the stations
@@ -804,7 +760,6 @@ class Network(object):
                 subnetwork.add(station)
 
         return subnetwork
-
 
     def select_stations(self, name: Optional[str] = None, codenames: Optional[list[str]] = None,
                         networknames: Optional[Union[str, list[str]]] = None,
@@ -833,6 +788,7 @@ class Network(object):
         """
         subnetwork = Network(name if name is not None else f"sub{self.name}", full_name, [])
 
+        # TODO: Why I have this here?
         if networknames is not None:
             pass
 
@@ -840,9 +796,7 @@ class Network(object):
             for codename in codenames:
                 subnetwork.add(self[codename])
 
-
         return subnetwork
-
 
     @staticmethod
     def get_network_names_from_configfile(filename: Optional[str] = None) -> dict[str, Network]:
@@ -871,27 +825,27 @@ class Network(object):
         config = configparser.ConfigParser()
         if filename is None:
             with resources.as_file(resources.files("vlbiplanobs.data").joinpath("network_catalog.inp")) \
-                                                                     as networks_catalog_path:
+                                                                                as networks_catalog_path:
                 config.read(networks_catalog_path)
         else:
             # With this approach it raises a FileNotFound exception.
             # Otherwise config will run smoothly and provide an empty list.
-            config.read(open(filename, 'r'))
+            config.read(open(filename, "r"))
 
         all_ants = Network.get_stations_from_configfile()
         networks: dict[str, Network] = dict()
         for networkname in config.sections():
-            temp: str = config[networkname]['max_datarate']
-            if ',' in temp:
-                max_dt: list[u.Quantity] | u.Quantity = [int(dt.strip())*u.Mb/u.s for dt in temp.split(',')]
+            temp: str = config[networkname]["max_datarate"]
+            if "," in temp:
+                max_dt: list[u.Quantity] | u.Quantity = [int(dt.strip()) * u.Mb / u.s for dt in temp.split(",")]
             else:
-                max_dt = int(temp)*u.Mb/u.s
+                max_dt = int(temp) * u.Mb / u.s
 
-            obs_bands = [b.strip() for b in config[networkname]['observing_bands'].split(',')]
-            default_ant = [a.strip() for a in config[networkname]['default_antennas'].split(',')]
+            obs_bands = [b.strip() for b in config[networkname]["observing_bands"].split(",")]
+            default_ant = [a.strip() for a in config[networkname]["default_antennas"].split(",")]
             assert all([ant in all_ants for ant in default_ant]), "The default antenna(s) " \
-                    f"({' ,'.join([ant for ant in default_ant if ant not in all_ants])}) from '{networkname}' " \
-                    "is not present in stations_catalog!"
+                   f"({' ,'.join([ant for ant in default_ant if ant not in all_ants])}) from '{networkname}' " \
+                   "is not present in stations_catalog!"
 
             assert all([band in freqsetups.bands.keys() for band in obs_bands]), \
                    f"Observing band ({', '.join([b for b in obs_bands if b not in freqsetups.bands.keys()])}) " \
@@ -899,10 +853,11 @@ class Network(object):
 
             if isinstance(max_dt, Sequence):
                 assert all([int(dr.value) in freqsetups.data_rates.keys() for dr in max_dt]), \
-                       f"Data rate ({', '.join([d for d in max_dt if int(d.value) not in freqsetups.data_rates.keys()])}) not present in freqsetups.py!"
+                       f"Data rate ({', '.join([d for d in max_dt if int(d.value) not in
+                                               freqsetups.data_rates.keys()])}) not present in freqsetups.py!"
             else:
-                assert int(max_dt.value) in freqsetups.data_rates.keys(), f"Data rate ({max_dt}) not " \
-                       "present in freqsetups.py!"
+                assert int(max_dt.value) in freqsetups.data_rates.keys(), \
+                       f"Data rate ({max_dt}) not " "present in freqsetups.py!"
 
             antennas = [ant for ant in all_ants if networkname in ant.all_networks]
             # antennas = [all_ants[ant] for ant in default_ant]
@@ -911,10 +866,7 @@ class Network(object):
 
             assert len(antennas) > 0, f"No antennas found for the network {networkname}."
 
-            networks[networkname] =  Network(name=networkname, full_name=config[networkname]['name'],
-                                             stations=antennas,
-                                             observing_bands=obs_bands,
-                                             max_datarates=max_dt)
+            networks[networkname] = Network(name=networkname, full_name=config[networkname]["name"],
+                                            stations=antennas, observing_bands=obs_bands, max_datarates=max_dt)
 
         return networks
-

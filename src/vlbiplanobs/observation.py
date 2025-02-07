@@ -28,7 +28,6 @@ _NETWORKS = Network.get_network_names_from_configfile()
 _STATIONS = Network.get_stations_from_configfile()
 
 
-
 class Polarization(Enum):
     """Number of polarizations to be recorded. Possible values are:
     - SINGLE (only one polarization is recorded per antenna/baseline).
@@ -50,12 +49,12 @@ class Observation(object):
     observation, or the resolution of the resulting images, assuming a standard neutral
     robust weighting.
     """
-    def __init__(self, sources: Optional[Union[Source, list[Source]]] = None,
-                 scans: Optional[Union[Scan, ScanBlock, list[ScanBlock]]] = None,
+
+    def __init__(self, scans: Optional[Union[ScanBlock, list[ScanBlock]]] = None,
                  times: Optional[Time] = None,
-                 band: Optional[str] = None, datarate: Optional[int | u.Quantity] = None,
+                 band: Optional[str] = None, datarate: Optional[Union[int, u.Quantity]] = None,
                  subbands: Optional[int] = None, channels: Optional[int] = None,
-                 polarizations: Optional[Union[int,str]] = None, inttime: Optional[float | u.Quantity] = None,
+                 polarizations: Optional[Union[int, str]] = None, inttime: Optional[Union[float, u.Quantity]] = None,
                  ontarget: float = 1.0, stations: Optional[Network] = None, bits: int = 2,
                  fixed_time: bool = True):
         """Initializes an observation.
@@ -64,18 +63,11 @@ class Observation(object):
         if running methods that require some of the unset attributes.
 
         Inputs
-        - sources: Source | list[Source]
-            To define the source (or sources) to be observed.
-            This option can be used when each source is independent of the other and no time constraints
-            are required for them (in terms of which source should be observed for how long).
-            Otherwise, the 'scans' parameter should be used instead.
-        - scans : Scan | ScanBlock | list
+        - scans : ScanBlock | list[ScanBlock]
             Scans to be observed during the observation. It can specify either:
-            a Scan, if the full observation will only observe a single source. Equivalent to define directly
-            the source.
-            a block of scans (ScanBlock), of the observation will iterate through a ScanBlock until filling
+            A block of scans (ScanBlock), of the observation will iterate through a ScanBlock until filling
             the available observing time.
-            a list of ScanBlocks, If the observation needs to schedule different blocks.
+            A list of ScanBlocks, If the observation needs to schedule different blocks.
         - times : astropy.time.Time
             An array of times defining the duration of the observation. That is,
             the first time will define the start of the observation and the last one
@@ -121,22 +113,14 @@ class Observation(object):
             In case the observing time should not be fixed. Only used for internal use when the user does not
             specify the epoch (but internally a random epoch is set so an estimation of the observation is done).
         """
-        if sources is not None:
-            if scans is not None:
-                raise ValueError("Only one: target or scans must be specified.")
-
-            if isinstance(sources, list):
-                self.scans = [ScanBlock([Scan(s, duration=10*u.min)]) for s in sources]
-            else:
-                self.scans = [ScanBlock([Scan(sources, duration=10*u.min)])]
-        elif isinstance(scans, Scan):
-            self.scans = [ScanBlock([scans])]
-        elif isinstance(scans, ScanBlock):
+        if isinstance(scans, ScanBlock):
             self.scans = [scans]
         elif isinstance(scans, list):
             self.scans = scans
         else:
             self.scans = None
+
+        self._source_list: Optional[set[Source]] = None
 
         # Because otherwise gstimes is not initialized
         if times is None:
@@ -187,7 +171,6 @@ class Observation(object):
         self._elevations: Optional[dict] = None
         self._fixed_time = fixed_time
 
-
     @property
     def scans(self) -> Optional[list[ScanBlock]]:
         """Returns the ScanBlock that will be observed during the observation.
@@ -198,7 +181,6 @@ class Observation(object):
     def scans(self, scans: Optional[list[ScanBlock]]):
         self._scans = scans
 
-
     @property
     def sources(self) -> Optional[list[Source]]:
         """Returns the sources included during the observation.
@@ -207,31 +189,15 @@ class Observation(object):
         if self._scans is None:
             return None
 
-        source_list: set = set()
+        if self._source_list is not None:
+            return list(self._source_list)
+
+        self._source_list = set()
         for a_scanblock in self._scans:
             for a_src in a_scanblock.sources():
-                source_list.add(a_src)
+                self._source_list.add(a_src)
 
-        return [s for s in source_list]
-        return list(source_list)
-
-
-    @sources.setter
-    def sources(self, new_source: Optional[Source]):
-        if (not isinstance(new_source, Source)) and (new_source is not None):
-            raise ValueError("The new target must be a observation.Source instance or None.")
-
-        self.scans = [ScanBlock([Scan(new_source, duration=10*u.min)])] if new_source is not None else None
-        # Resets all parameters than depend on the source coordinates
-        self._uv_baseline = None
-        self._uv_array = None
-        self._rms = None
-        self._synth_beam = None
-        self._is_visible = None
-        self._is_always_visible = None
-        self._altaz = None
-        self._elevations = None
-
+        return list(self._source_list)
 
     @property
     def times(self) -> Optional[Time]:
@@ -241,7 +207,6 @@ class Observation(object):
         # if self._times is None:
         #     print("WARNING: 'times' not set yet but used in 'Observation'.")
         return self._times
-
 
     @times.setter
     def times(self, new_times: Optional[Time]):
@@ -261,7 +226,6 @@ class Observation(object):
         self._rms = None
         self._synth_beam = None
 
-
     @property
     def gstimes(self) -> Optional[coord.angles.Longitude]:
         """Returns the GST times when the observation runs as an astropy.coordinates.angles.Longitude
@@ -270,13 +234,11 @@ class Observation(object):
         """
         return self._gstimes
 
-
     @property
     def duration(self) -> Optional[u.Quantity]:
         """Returns the total duration of the observation.
         """
         return None if self.times is None else (self.times[-1] - self.times[0]).to(u.h)
-
 
     @property
     def band(self) -> Optional[str]:
@@ -285,11 +247,10 @@ class Observation(object):
         """
         return self._band
 
-
     @band.setter
     def band(self, new_band: Optional[str]):
         if (new_band not in freqsetups.bands) and (new_band is not None):
-            raise ValueError("'new_band' needs to  match the following bands: " \
+            raise ValueError("'new_band' needs to  match the following bands: "
                              f"{', '.join(freqsetups.bands.keys())} (wavelengths given in cm.)")
 
         self._band = new_band
@@ -298,20 +259,17 @@ class Observation(object):
         self._rms = None
         self._synth_beam = None
 
-
     @property
     def wavelength(self) -> Optional[u.Quantity]:
         """Returns the central wavelength of the observation.
         """
         return None if self.band is None else float(self.band.replace('cm', ''))*u.cm
 
-
     @property
     def frequency(self) -> Optional[u.Quantity]:
         """Returns the central frequency of the observations.
         """
         return None if self.wavelength is None else 30*u.GHz/self.wavelength.to(u.cm).value
-
 
     @property
     def datarate(self) -> Optional[u.Quantity]:
@@ -320,14 +278,12 @@ class Observation(object):
         """
         return self._datarate
 
-
     @datarate.setter
-    def datarate(self, new_datarate: Optional[Union[int, u.Quantity]]):
+    def datarate(self, new_datarate: Optional[u.Quantity]):
         """Sets the data rate used at each station during the observation.
 
         Inputs
-        - new_datarate : int or astropy.units.Quantity
-            If no units provided, Mbps assumed.
+        - new_datarate : astropy.units.Quantity  [e.g. Mb/s]
         """
         if new_datarate is None:
             self._datarate = None
@@ -342,11 +298,10 @@ class Observation(object):
 
             self._datarate = new_datarate.to(u.Mbit/u.s)
         else:
-            raise ValueError(f"Unknown type for datarate {new_datarate}" \
+            raise ValueError(f"Unknown type for datarate {new_datarate}"
                              "(int or astropy.units.Quantity (~bit/s) expected)")
 
         self._rms = None
-
 
     @property
     def subbands(self) -> Optional[int]:
@@ -356,14 +311,12 @@ class Observation(object):
         """
         return self._subbands
 
-
     @subbands.setter
     def subbands(self, n_subbands: Optional[int]):
         if (n_subbands is not None) and (not isinstance(n_subbands, int)) and (n_subbands <= 0):
             raise ValueError("n_subbands needs to be a positive int, or None.")
 
         self._subbands = n_subbands
-
 
     @property
     def channels(self) -> Optional[int]:
@@ -372,7 +325,6 @@ class Observation(object):
         """
         return self._channels
 
-
     @channels.setter
     def channels(self, n_channels: Optional[int]):
         if (not isinstance(n_channels, int)) and (n_channels is not None) and (n_channels <= 0):
@@ -380,14 +332,12 @@ class Observation(object):
 
         self._channels = n_channels
 
-
     @property
     def polarizations(self) -> Polarization:
         """Returns the number of polarizations that will be stored in the final data.
         It can return None if the number of polarizations has not been set yet, showing a warning.
         """
         return self._polarizations
-
 
     @polarizations.setter
     def polarizations(self, pols: Union[int, str, Polarization]):
@@ -403,10 +353,9 @@ class Observation(object):
             case 4 | 'full':
                 self._polarizations = Polarization.FULL
             case _:
-                raise ValueError("Polarizations needs to be either a Polarization value, " \
-                                 "the number 1, 2, or 4, or the strings " \
+                raise ValueError("Polarizations needs to be either a Polarization value, "
+                                 "the number 1, 2, or 4, or the strings "
                                  "'single', 'dual' or 'full' (equivalent to the numbers, respectively).")
-
 
     @property
     def inttime(self) -> Optional[u.Quantity]:
@@ -415,9 +364,8 @@ class Observation(object):
         """
         return self._inttime
 
-
     @inttime.setter
-    def inttime(self, new_inttime: Optional[Union[int,float,u.Quantity]]):
+    def inttime(self, new_inttime: Optional[Union[int, float, u.Quantity]]):
         """Sets the integration time of the observation.
         Inputs
         - new_inttime float/int or astropy.units.Quantity.
@@ -438,14 +386,12 @@ class Observation(object):
         else:
             raise ValueError(f"Unknown type for 'inttime' {new_inttime} (float/int/Quantity(~seconds) expected)")
 
-
     @property
     def ontarget_fraction(self) -> float:
         """Fraction of the total observing time spent on the target source.
         It can return None if the ontarget_fraction has not been set yet, showing a warning.
         """
         return self._ontarget
-
 
     @ontarget_fraction.setter
     def ontarget_fraction(self, ontarget: float):
@@ -454,53 +400,42 @@ class Observation(object):
         self._ontarget = ontarget
         self._rms = None
 
-
     @property
-    def ontarget_time(self) -> u.Quantity:
+    def ontarget_time(self) -> Optional[u.Quantity]:
         """Total time spent on the target source during the observation.
         It can return None if the ontarget_fraction and duration have not been set yet, showing a warning.
         """
         return None if self.duration is None else self.duration*self.ontarget_fraction
 
-
     @property
-    def bandwidth(self) -> u.Quantity:
+    def bandwidth(self) -> Optional[u.Quantity]:
         """Returns the total bandwidth of the observation.
-        It raises AttributeError if the attributes 'polarizations', 'datarate', or 'bitsampling'
+        It returns None if the attributes 'polarizations', 'datarate', or 'bitsampling'
         have not been set yet.
         """
         if None in (self.polarizations, self.datarate, self.bitsampling):
-            raise AttributeError("'polarizations', 'datarate', and 'bitsampling' in 'Observation'" \
-                                 "have not been set yet.")
+            return None
 
-        assert self.polarizations is not None
-        assert self.datarate is not None
-        assert self.bitsampling is not None
         pols = self.polarizations.value % 3 + self.polarizations.value // 3  # Either 1 or 2
-        return (self.datarate/(pols*self.bitsampling*2)).to(u.MHz)
-
+        return (self.datarate/(pols*self.bitsampling*2)).to(u.MHz)  # type: ignore
 
     @property
-    def bitsampling(self) -> u.Quantity:
+    def bitsampling(self) -> int:
         """Returns the bit sampling at which the data are recorded during the observation.
         """
         return self._bitsampling
 
-
     @bitsampling.setter
-    def bitsampling(self, new_bitsampling: Union[int, u.Quantity]):
+    def bitsampling(self, new_bitsampling: int):
         """Sets the bit sampling of the observation.
         Inputs
-        - new_bitsampling : int or astropy.units.Quantity
-            If no units provided, bits are assumed.
+        - new_bitsampling : int
+            In bits.
         """
-        if  isinstance(new_bitsampling, int):
+        if isinstance(new_bitsampling, int):
             self._bitsampling = new_bitsampling*u.bit
-        elif isinstance(new_bitsampling, u.Quantity):
-            self._bitsampling = new_bitsampling.to(u.bit)
         else:
-            raise ValueError(f"Unknown type for {new_bitsampling} (int/Quantity(bit) expected)")
-
+            raise ValueError(f"Unknown type for {new_bitsampling} (int, in bits, expected)")
 
     @property
     def stations(self) -> Network:
@@ -508,7 +443,6 @@ class Observation(object):
         observing the target source.
         """
         return self._stations
-
 
     @stations.setter
     def stations(self, new_stations: Network):
@@ -522,7 +456,6 @@ class Observation(object):
         self._is_visible = None
         self._is_always_visible = None
         self._altaz = None
-
 
     def with_networks(self, networks: Union[str, list[str]]):
         """Selects the given network(s) to observe in this observation. It can be only one single
@@ -542,13 +475,11 @@ class Observation(object):
         else:
             raise ValueError(f"The value of 'networks' needs to be a str or a list of str, not '{networks}'.")
 
-
     def stations_from_codenames(self, new_stations: list[str]):
         """Includes the given antennas in the observation, specified by their code names as
         set in the stations_catalog file.
         """
         self.stations = Network.get_stations_from_configfile(codenames=new_stations)
-
 
     # TODO: re-run this function if the band changes!
     def sources_from_catalog(self, path: str):
@@ -569,22 +500,18 @@ class Observation(object):
                     if 'phasecal' in src:
                         scans.append(Scan(Source(name=src['phasecal']['name'],
                                                  coordinates=src['phasecal']['coordinates'],
-                                                 source_type=SourceType.PHASECAL,
-                                                 grade=src['phasecal']['grade'] if 'grade' in src['phasecal'] \
-                                                      else 5),
-                                          duration=src['phasecal']['duration']*u.min \
-                                                   if 'duration' in src['phasecal'] else 2*u.min))
+                                                 source_type=SourceType.PHASECAL),
+                                          duration=src['phasecal']['duration']*u.min
+                                          if 'duration' in src['phasecal'] else 2*u.min))
 
                     if 'checkSource' in src:
                         scans.append(Scan(Source(name=src['checkSource']['name'],
                                                  coordinates=src['checkSource']['coordinates'],
-                                                 source_type=SourceType.CHECKSOURCE,
-                                                 grade=src['checkSource']['grade'] \
-                                                       if 'grade' in src['checkSource'] else 5),
-                                          duration=src['checkSource']['duration']*u.min \
-                                                   if 'duration' in src['checkSource'] else 3*u.min,
-                                          every=src['checkSource']['repeat'] \
-                                                if 'repeat' in src['checkSource'] else 3))
+                                                 source_type=SourceType.CHECKSOURCE),
+                                          duration=src['checkSource']['duration']*u.min
+                                          if 'duration' in src['checkSource'] else 3*u.min,
+                                          every=src['checkSource']['repeat']
+                                          if 'repeat' in src['checkSource'] else 3))
 
                     match a_type:
                         case 'pulsars':
@@ -612,22 +539,18 @@ class Observation(object):
                     else:
                         src['duration'] *= u.min
 
-                    scans.append(Scan(source=Source(name=a_src,
-                                                 coordinates=src['coordinates'],
-                                                 source_type=src_type,
-                                                 grade=src['grade'] if 'grade' in src else 5),
-                                   duration=src['duration']))
+                    scans.append(Scan(source=Source(name=a_src, coordinates=src['coordinates'],
+                                                    source_type=src_type), duration=src['duration']))
 
                     scanblocks.append(ScanBlock(scans))
         self.scans = scanblocks
         # return scanblocks
 
-
-    def recommended_phaseref_cycle(self) -> Optional[u.Quantity]:
+    def recommended_phaseref_cycle(self) -> u.Quantity:
         """Returns the
         """
         if self.band is None:
-            rprint("[yellow bold]WARNING: the observing band hasn't been set. " \
+            rprint("[yellow bold]WARNING: the observing band hasn't been set. "
                    "A recommended phase-referencing cycle cannot be returned.[/yellow bold]")
             return None
 
@@ -638,12 +561,9 @@ class Observation(object):
         elif self.wavelength > 1*u.cm:
             return 2*u.min
         else:
-            rprint("[bold]At wavelengths < 0.5 cm the phase-referencing technique is not feasible.[/bold]")
-            return None
+            return 0
 
-
-
-    def elevations(self) -> dict:
+    def elevations(self) -> dict[str, coord.angles.Latitude]:
         """Returns the elevation of the target source for each stations participating in the observation
         for all the given observing times.
 
@@ -663,14 +583,12 @@ class Observation(object):
 
         return self._elevations
 
-
     # INFO: this code in the following was meant to test how the computation runs faster (process, threads, etc)
     def _elevation_func(self, a_station: Station) -> dict[str, Iterable]:
         if (self.sources is None) or (self.times is None):
             raise ValueError("The target and/or observing times have not been initialized")
 
         return {src.name: a_station.elevation(self.times, src) for src in self.sources}
-
 
     def _elevations_process(self) -> dict:
         """Returns the elevation of the target source for each stations participating in the observation
@@ -688,7 +606,6 @@ class Observation(object):
 
         return {s.codename: r for s, r in zip(self.stations, results)}
 
-
     def _elevations_threads(self) -> dict:
         """Returns the elevation of the target source for each stations participating in the observation
         for all the given observing times.
@@ -704,7 +621,6 @@ class Observation(object):
             results = pool.map(self._elevation_func, self.stations)
 
         return {s.codename: r for s, r in zip(self.stations, results)}
-
 
     def _elevations_single(self) -> dict:
         """Returns the elevation of the target source for each stations participating in the observation
@@ -722,10 +638,8 @@ class Observation(object):
             elevations[a_station.codename] = a_station.elevation(self.times, self.sources)
         return elevations
 
-
     async def _elevations_async_func(self, a_station: Station) -> list:
         return a_station.elevation(self.times, self.sources)
-
 
     async def _elevations_async_launch(self) -> dict:
         tasks: dict = {}
@@ -735,13 +649,11 @@ class Observation(object):
 
         return tasks
 
-
     def _elevations_asyncio(self) -> dict:
         return asyncio.run(self._elevations_async_launch())
         # return {s.codename: v for s,v in zip(self.stations, asyncio.run(self._elevations_async_launch()))}
 
-
-    def altaz(self) -> dict:
+    def altaz(self) -> dict[str, coord.SkyCoord]:
         """Returns the altitude/azimuth of the target source for each stations participating
         in the observation for all the given observing times.
 
@@ -759,10 +671,8 @@ class Observation(object):
 
         return self._altaz
 
-
     def _altaz_func(self, a_station: Station) -> list:
         return a_station.altaz(self.times, self.sources)
-
 
     def _altaz_single(self) -> dict:
         aa = {}
@@ -770,20 +680,17 @@ class Observation(object):
             aa[a_station.codename] = a_station.altaz(self.times, self.sources)
         return aa
 
-
     def _altaz_process(self) -> dict:
         with ProcessPoolExecutor() as pool:
             results = pool.map(self._altaz_func, self.stations)
 
         return {s.codename: r for s, r in zip(self.stations, results)}
 
-
     def _altaz_threads(self) -> dict:
         with ThreadPoolExecutor() as pool:
             results = pool.map(self._altaz_func, self.stations)
 
         return {s.codename: r for s, r in zip(self.stations, results)}
-
 
     def is_visible_per_antenna(self, times: Optional[Time] = None) -> dict[str, list[bool]]:
         """Returns whenever the target source is visible for each station for each time
@@ -813,16 +720,14 @@ class Observation(object):
             with ThreadPoolExecutor() as pool:
                 results = pool.map(partial(self._is_visible_func, times=times), self.stations)
 
-            self._is_visible = {s.codename: [all(r[src_blocks_cum[i]:src_blocks_cum[i]+src_blocks[i]]) \
+            self._is_visible = {s.codename: [all(r[src_blocks_cum[i]:src_blocks_cum[i]+src_blocks[i]])
                                              for i in range(len(src_blocks))]
                                 for s, r in zip(self.stations, results)}
 
         return self._is_visible
 
-
     def _is_visible_func(self, a_station: Station, times: Optional[Time] = None) -> list:
-        return a_station.is_visible(self.times if times is None else times, self.sources)
-
+        return a_station.is_observable(self.times if times is None else times, self.sources)
 
     def is_always_visible(self, times: Optional[Time] = None) -> dict[str, bool]:
         """Returns whenever the target source is always visible for each station at any time
@@ -848,16 +753,14 @@ class Observation(object):
             with ThreadPoolExecutor() as pool:
                 results = pool.map(partial(self._is_always_visible_func, times=times), self.stations)
 
-            self._is_always_visible = {s.codename: [all(r[src_blocks_cum[i]:src_blocks_cum[i]+src_blocks[i]]) \
+            self._is_always_visible = {s.codename: [all(r[src_blocks_cum[i]:src_blocks_cum[i]+src_blocks[i]])
                                                     for i in range(len(src_blocks))]
                                        for s, r in zip(self.stations, results)}
 
         return self._is_always_visible
 
-
-    def _is_always_visible_func(self, a_station: Station, times: Optional[Time] = None) -> list:
-        return a_station.is_always_visible(self.times if times is None else times, self.sources)
-
+    def _is_always_visible_func(self, a_station: Station, times: Optional[Time] = None) -> list[bool]:
+        return a_station.is_always_observable(self.times if times is None else times, self.sources)
 
     def is_visible(self, min_stations: int = 3, mandatory_stations: Optional[list[str]] = None,
                    stations_all_time: bool = False, times: Optional[Time] = None,
@@ -889,10 +792,7 @@ class Observation(object):
         if (self.sources is None):
             raise ValueError("The target has not been initialized")
 
-
-
-
-        visibility = self.is_visible(times=epoch)  # returns a dict{ codename :  array[src, times]}
+        visibility = self.is_visible(times=times)  # returns a dict{ codename :  array[src, times]}
         return visibility
 
 

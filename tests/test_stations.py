@@ -67,7 +67,7 @@ def test_station_init():
     """
     sefds = {'18cm': 100, '6cm': 40, '0.1cm': 200}
     _ = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), sefds)
-    _ = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {})
+    _ = stations.Station('name', 'Nm', ('EVN', 'VLBA'), coord.EarthLocation(0., 0., 0.), {})
     with pytest.raises(AssertionError):
         # Wrong names
         _ = stations.Station(None, 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {}, 10)
@@ -91,9 +91,8 @@ def test_station_functions():
     assert isinstance(a_station.name, str)
     assert isinstance(a_station.fullname, str)
     assert a_station.fullname == a_station.name
-    assert a_station.network == 'VLBI'
-    assert len(a_station.all_networks) == 1
-    assert a_station.all_networks[0] == a_station.network
+    assert a_station.networks == ('VLBI',)
+    assert len(a_station.networks) == 1
     assert isinstance(a_station.country, str)
     assert isinstance(a_station.diameter, str)
     assert isinstance(a_station.real_time, bool)

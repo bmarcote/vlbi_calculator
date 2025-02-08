@@ -1224,7 +1224,7 @@ sefd_21 = 551
 sefd_18 = 551
 
 [SKA1 MID]
-station = Square Kilometre Array
+station = Square Kilometre Array (phased up)
 code = SKA
 networks =
 country = South Africa

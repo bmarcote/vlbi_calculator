@@ -464,6 +464,17 @@ class Network(object):
         else:
             self._stations[a_station.codename] = a_station
 
+    def remove(self, a_station: Station):
+        """Removes a station from the network.
+        If the station is not present, then it will do nothing.
+
+        Inputs
+        - a_station : Station
+            Station to be added to the network.
+        """
+        if a_station.codename in self.station_codenames:
+            self._stations.__delitem__(a_station.codename)
+
     def __str__(self):
         return f"<{self.name}: <{self.number_of_stations}><{', '.join(self.codenames)}>>"
 
@@ -569,7 +580,7 @@ class Network(object):
                 max_dt: u.Quantity | dict[str, u.Quantity] | None = None
                 for akey in config[stationname].keys():
                     if "SEFD_" in akey.upper():
-                        sefds[f"{akey.upper().replace('SEFD_', '').strip()}"] = float(config[stationname][akey]) * u.Jy
+                        sefds[f"{akey.upper().replace('SEFD_', '').strip()}"] = float(config[stationname][akey])*u.Jy
                     if "maxdatarate" == akey.lower():
                         max_dt = int(config[stationname][akey]) * u.Mb / u.s
                     elif "maxdatarate_" in akey.lower():
@@ -598,16 +609,17 @@ class Network(object):
                                 configs[alim] = tuple((lims[0] * u.deg, lims[1] * u.deg))
 
                         for arate in ("ax1rate", "ax2rate"):
-                            configs[arate] = u.Quantity(float(config[stationname][arate].strip()), u.deg / u.s)
+                            configs[arate] = u.Quantity(float(config[stationname][arate].strip()), u.deg/u.s)
 
                         if all([key in config[stationname] for key in ("ax1acc", "ax2acc")]):
                             for aacc in ("ax1acc", "ax2acc"):
-                                configs[aacc] = u.Quantity(float(config[stationname][aacc].strip()), u.deg / u.s / u.s)
+                                configs[aacc] = u.Quantity(float(config[stationname][aacc].strip()), u.deg/u.s/u.s)
 
                             amount = Mount(MountType[config[stationname]["mount"]], Axis(configs["ax1lim"],
                                                                                          configs["ax1rate"],
                                                                                          configs["ax1acc"]),
-                                           Axis(configs["ax2lim"], configs["ax2rate"], config[stationname]["ax2acc"]))
+                                           Axis(configs["ax2lim"], configs["ax2rate"],
+                                                config[stationname]["ax2acc"]))
                         else:
                             amount = Mount(MountType[config[stationname]["mount"]], Axis(configs["ax1lim"],
                                            config[stationname]["ax1rate"]), Axis(configs["ax2lim"],
@@ -671,11 +683,11 @@ class Network(object):
         if not all([codename in self.station_codenames for codename in codenames]):
             unexpected_ant = set(codenames).difference(set(self.station_codenames))
             if len(unexpected_ant) == 1:
-                raise ValueError(f"The antenna with codename {unexpected_ant.pop()} is not present "
-                                 "in the current network.")
+                rprint(f"[yellow bold]WARNING: The antenna with codename {unexpected_ant.pop()} is not present "
+                       "in the current network.[/yellow bold]")
             else:
-                raise ValueError(f"The antennas with codenames {', '.join(list(unexpected_ant))} are not present "
-                                 "in the current network.")
+                rprint(f"[yellow bold]WARNING: The antennas with codenames {', '.join(list(unexpected_ant))} "
+                       "are not present in the current network.[/yellow bold]")
 
         subnetwork = Network(name if name is not None else f"sub-{self.name}",
                              [s for s in self.stations if s.codename in codenames])

@@ -20,7 +20,7 @@ def test_stations_catalog():
 
     codenames = set()
     for stationname in config.sections():
-        for a_key in ('station', 'code', 'network', 'possible_networks', 'country', 'diameter', \
+        for a_key in ('station', 'code', 'network', 'possible_networks', 'country', 'diameter',
                       'real_time', 'position'):
             assert a_key in config[stationname], \
                    f"'{a_key}' is not present in the stations_catalog.inp for {stationname}"
@@ -62,7 +62,6 @@ def test_network_catalog():
                    f"{antenna}, defined in {networkname} is not present in stations_catalog.inp"
 
 
-
 def test_station_init():
     """Tests the Station class and different possibilities during the creation of the station.
     """
@@ -81,7 +80,6 @@ def test_station_init():
         _ = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {}, -10)
         # Wrong units min_elevations
         _ = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {}, 10*u.m)
-
 
 
 def test_station_functions():
@@ -184,7 +182,6 @@ def test_station_file():
                     assert all_stations['Ef'].sefd(key.removeprefix('SEFD_')) == float(value)
                     assert key.removeprefix('SEFD_') + 'cm' in freqsetups.bands
 
-
             if aline.strip() == 'station = Effelsberg':
                 in_ef = True
 
@@ -205,25 +202,19 @@ def test_station_file():
 
     # This value may change in the future but then is a problem of the test, not the code
     assert 'EVN' in all_stations['De'].max_datarate, \
-            f"De doesn't have max_datarate for EVN (keys: {all_stations['De'].max_datarate})"
+           f"De doesn't have max_datarate for EVN (keys: {all_stations['De'].max_datarate})"
     assert all_stations['De'].max_datarate['EVN'] == 512*u.Mb/u.s, \
-            f"De has a mismatching data rate of {all_stations['De'].max_datarate['EVN']}."
+           f"De has a mismatching data rate of {all_stations['De'].max_datarate['EVN']}."
     assert n_ants == len(all_stations)
 
     # Check that all stations have an associated image
     for ant in all_stations:
-        with resources.as_file(resources.files("vlbiplanobs.gui.assets"). \
-                joinpath(f"ant-{ant.name.replace(' ','_').lower()}.jpg")) as antfile:
+        with resources.as_file(resources.files("vlbiplanobs.gui.assets").
+                               joinpath(f"ant-{ant.name.replace(' ', '_').lower()}.jpg")) as antfile:
             assert antfile.exists()
 
     for net in all_networks:
-        with resources.as_file(resources.files("vlbiplanobs.gui.assets"). \
-                joinpath(f"network-{net.replace(' ','_').lower()}.png")) as netfile:
+        with resources.as_file(resources.files("vlbiplanobs.gui.assets").
+                               joinpath(f"network-{net.replace(' ', '_').lower()}.png")) as netfile:
             if net != 'e-EVN':
                 assert netfile.exists()
-
-
-
-
-
-

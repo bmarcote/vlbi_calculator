@@ -16,11 +16,11 @@ from enum import Enum, auto
 from . import constraints
 from . import freqsetups
 
-"""Module that defines the `Station` and `Network` objects, which represent a station (antenna)
+"""Module that defines the `Station` and `Stations` objects, which represent a station (antenna)
 or a network composed of antennas.
 """
 
-__all__: list[str] = ["Station", "Network", "Mount", "MountType"]
+__all__: list[str] = ["Station", "Stations", "Mount", "MountType"]
 
 
 class MountType(Enum):
@@ -334,21 +334,22 @@ class Station(object):
         return f"<Station: {self.codename}>"
 
 
-class Network(object):
-    """Defines a network (collection) of stations (`Station` objects) that
-    can participate in an observation together.
+class Stations(object):
+    """Defines a network of antennas (collection) that can participate in an observation together.
     """
 
-    def __init__(self, name: str, stations: Iterable[Station], full_name: Optional[str] = None,
+    def __init__(self, filename: Optional[str] = None, stations: Optional[Iterable[Station]] = None,
                  observing_bands: Optional[Sequence[str]] = None,
                  max_datarates: Optional[Union[Sequence[u.Quantity], u.Quantity]] = None) -> None:
-        """Initializes a Network of antennas.
+        """Initializes a Stations of antennas.
 
         Inputs
-        - name : str
-            Name associated to the network of stations.
-        - stations : list of Station-type elements
-            List with all stations belonging to the given network.
+        - filename : str  [OPTIONAL]
+            Name of the file that contains the information of the antennas
+            (by default, the 'stations_catalog.inp').
+        - stations : list of Station-type elements  [OPTIONAL]
+            List with all stations belonging to the given network. If not provided, it will include
+            all antennas present in the catalogs.
         - observing_bands : list of str  [OPTIONAL]
             List with all possible observing bands, as specified in the freqsetups.py file.
             If not provided, it will consider all observing bands from the available antennas.
@@ -360,11 +361,11 @@ class Network(object):
             it must have the same dimensions as `observing_bands`. If scalar, means that the
             network has the same maximum data rate at all bands.
             If not provided, it will assume no upper limit on the data rate.
+
+        Raises
+            ValueError: If 'max_datarates' is provided, 'observing_bands' must also be provided.
         """
-        assert isinstance(name, str), "'name' must be a str."
         assert isinstance(stations, abc.Iterable) or stations is None, "'stations' must be a list or be empty."
-        self._name = name
-        self._fullname = name if full_name is None else full_name
         self._stations: dict[str, Station] = {}
         self._bands: dict[str, u.Quantity] = {}
         if (observing_bands is None) and (max_datarates is not None):
@@ -396,24 +397,16 @@ class Network(object):
                 if observing_bands is None:
                     for aband in a_station.bands:
                         self._bands[aband] = None
-
-    @property
-    def name(self) -> str:
-        """Name of the network of stations."""
-        return self._name
-
-    @name.setter
-    def name(self, new_name: str):
-        self._name = new_name
-
-    @property
-    def full_name(self) -> str:
-        """Returns the full (expanded) name of the network."""
-        return self._fullname
-
-    @full_name.setter
-    def full_name(self, new_full_name: str):
-        self._fullname = new_full_name
+        else:
+            # Read all stations from catalog,
+            for station in self.get_stations_from_configfile(filename):
+                self._stations[station.codename] = station
+                for aband in station.bands:
+                    self._bands[aband] = None
+            # I don't think I need to know the networks at this point
+            # _all_networks: dict[str, Stations] = self.get_networks_from_configfile(networks_filename)
+            # TODO: implement this part!!!!!!!!!!!!
+            raise NotImplementedError
 
     @property
     def stations(self) -> list[Station]:
@@ -459,7 +452,7 @@ class Network(object):
         """
         assert isinstance(a_station, Station)
         if a_station.codename in self.station_codenames:
-            rprint(f"[yellow bold]WARNING: {a_station.codename} already in {self.name}. "
+            rprint(f"[yellow bold]WARNING: {a_station.codename} already in stations. "
                    "Ignoring addition.[/yellow bold]")
         else:
             self._stations[a_station.codename] = a_station
@@ -505,10 +498,266 @@ class Network(object):
     def __contains__(self, item):
         return self._stations.__contains__(item)
 
-    @classmethod
-    def get_stations_from_configfile(cls, filename: Optional[str] = None, codenames: Optional[list[str]] = None,
-                                     name: str = "network") -> Self:
-        """Creates a Network object (i.e. a network of stations) by reading the station
+    def stations_with_band(self, band: str) -> Generator[Station]:
+        """Returns a the stations in the Stations that can observe at the given band.
+        that can observe at the given band.
+
+        Inputs
+        - band : str
+            The observing band.
+
+        Returns
+        - stations : Generator[Station]
+            A list containing only the stations that can observe at the given band.
+        """
+        for station in self.stations:
+            if band in station.bands:
+                yield station
+
+    def filter_networks(self, network: str, only_defaults: bool = False) -> Stations:
+        """Returns a new network which only contains the antennas that are part
+        of the given network
+
+        Input
+            - network : str
+                The name of the network to which all stations need to belong to.
+            - only_defaults : bool  [DEFAULT = False]
+                If True, it will only return the antennas that are part of the default
+                network, ignoring all others.
+
+        Returns
+            - Stations
+                A new network object containing only the antennas that can observe in the network.
+        """
+        if only_defaults:
+            the_network = self.get_networks_from_configfile()[network]
+            bands, datarates = None, None
+            for aband, adatarate in zip(self.observing_bands, self._bands.values()):
+                if aband in the_network.observing_bands:
+                    if bands is None:
+                        bands = [aband,]
+                    else:
+                        bands.append(aband)
+                    if datarates is None:
+                        datarates = [adatarate,]
+                    else:
+                        datarates.append(adatarate)
+
+            return Stations(stations=(s for s in self.stations if network in s.networks
+                                      and s.codename in the_network.station_codenames),
+                            observing_bands=bands, max_datarates=datarates)
+
+        return Stations(stations=(s for s in self.stations if network in s.networks),
+                        observing_bands=self.observing_bands, max_datarates=self._bands.values())
+
+    def filter_band(self, band: str) -> Stations:
+        """Returns a new network which only contains the antennas that can observe
+        at the given observing band.
+
+        Input
+            - band : str
+                The observing band.
+
+        Returns
+            - Stations
+                A new network object containing only the antennas that can observe at the given band.
+        """
+        return Stations(stations=(s for s in self.stations if band in s.bands), observing_bands=(band,),
+                        max_datarates=self.max_datarate(band))
+
+    def filter_antennas(self, codenames: list[str]) -> Stations:
+        """Returns a new network object which will only contain the stations
+        defined by the given list of codenames. It will thus be a subset of the current
+        network.
+
+        Input
+        - codenames : list[str]
+            List with the codenames of the stations that should be present in the new
+            network.
+
+        Returns
+        - subnetwork : Stations
+            A new Stations object containing only the defined stations.
+        Exceptions
+        - It may raise KeyError if one of the given codenames are not present
+          among the current stations.
+        """
+        if not all([codename in self.station_codenames for codename in codenames]):
+            unexpected_ant = set(codenames).difference(set(self.station_codenames))
+            if len(unexpected_ant) == 1:
+                rprint(f"[yellow bold]WARNING: The antenna with codename {unexpected_ant.pop()} is not present "
+                       "in the current network.[/yellow bold]")
+            else:
+                rprint(f"[yellow bold]WARNING: The antennas with codenames {', '.join(list(unexpected_ant))} "
+                       "are not present in the current network.[/yellow bold]")
+
+        return Stations(stations=[s for s in self.stations if s.codename in codenames],
+                        observing_bands=self.observing_bands, max_datarates=self._bands.values())
+
+    @staticmethod
+    def get_networks_from_configfile(filename: Optional[str] = None) -> dict[str, Stations]:
+        """Reads a config file containing the different VLBI networks defined as a config parser file.
+        Returns a dictionary with the nickname of the VLBI network as keys, and the information as
+        keys in a second-order dict.
+
+        Inputs
+        - filename : str  OPTIONAL
+            Path to the text file containing the information from all stations.
+            If not provided, it reads the default station catalog file located in
+                            data/network_catalog.inp
+            Any other file should contain the same format (standard Python input config files),
+            with the following fields per network (whose name would be provided as the name of
+            section).
+            - name - full name of the network.
+            - default_antennas - comma-separated list with the codename of the antennas involved in the network.
+            - max_datarate - integer number with the maximum datarate allowed in the network.
+            - observing_bands - comma-separated list with the bands that can be observed (following
+              the definition done in vlbiplanobs/freqsetups.py; e.g. 21, 18, etc, in cm).
+
+        Returns
+        - networks : dict[str, Stations]
+            Returns a dictionary containing the differnet networks.
+        """
+        config = configparser.ConfigParser()
+        if filename is None:
+            with resources.as_file(resources.files("vlbiplanobs.data").joinpath("network_catalog.inp")) \
+                                                                                as networks_catalog_path:
+                config.read(networks_catalog_path)
+        else:
+            # With this approach it raises a FileNotFound exception.
+            # Otherwise config will run smoothly and provide an empty list.
+            config.read(open(filename, "r"))
+
+        all_ants = list(Stations.get_stations_from_configfile())
+        networks: dict[str, Stations] = dict()
+        for networkname in config.sections():
+            temp: str = config[networkname]["max_datarate"]
+            if "," in temp:
+                max_dt: list[u.Quantity] | u.Quantity = [int(dt.strip())*u.Mb/u.s for dt in temp.split(",")]
+            else:
+                max_dt = int(temp)*u.Mb/u.s
+
+            obs_bands = [b.strip() for b in config[networkname]["observing_bands"].split(",")]
+            default_ant = [a.strip() for a in config[networkname]["default_antennas"].split(",")]
+            assert all([ant in all_ants for ant in default_ant]), "The default antenna(s) " \
+                   f"({' ,'.join([ant for ant in default_ant if ant not in all_ants])}) from '{networkname}' " \
+                   "is not present in stations_catalog!"
+
+            assert all([band in freqsetups.bands.keys() for band in obs_bands]), \
+                   f"Observing band ({', '.join([b for b in obs_bands if b not in freqsetups.bands.keys()])}) " \
+                   "not present in freqsetups.py!"
+
+            if isinstance(max_dt, Sequence):
+                assert all([int(dr.value) in freqsetups.data_rates.keys() for dr in max_dt]), \
+                       f"Data rate ({', '.join([d for d in max_dt if int(d.value) not in
+                                               freqsetups.data_rates.keys()])}) not present in freqsetups.py!"
+            else:
+                assert int(max_dt.value) in freqsetups.data_rates.keys(), \
+                       f"Data rate ({max_dt}) not " "present in freqsetups.py!"
+
+            antennas = [all_ants[[a.codename for a in all_ants].index(ant)] for ant in default_ant]
+            assert len(antennas) > 0, f"No antennas found for the network {networkname}."
+
+            networks[networkname] = Stations(stations=antennas, observing_bands=obs_bands, max_datarates=max_dt)
+
+        return networks
+
+    @staticmethod
+    def _parse_station_from_configfile(station: dict) -> Station:
+        """Parses the entry of a station from the config file and returns a Station object.
+
+        Inputs
+        - station : dict
+            A dictionary containing the different information from a station, with the following
+            fields per station (whose name would be provided as the name of section):
+            - station - full name of the station.
+            - code : codename assigned to the station. It must be unique (typically two letters).
+            - network - main network to which it belongs to.
+            - possible_networks - all networks the station can participate in (including 'network')
+            - country - country where the station is located.
+            - diameter - free format string with the diameter of the station
+                        (optional more information in case of interferometers).
+            - position = x, y, z (in meters). Geocentric position of the station.
+            - mount = ALTAZ/EQUAT - type of the station mount.
+            - ax1lim = (x0, x1) - Limits in degrees for the axis 1 of the mount.
+            - ax2lim = (x0, x1) - Limits in degrees for the axis 2 of the mount.
+            - ax1rate - Slewing speed in deg/s for the axis 1 of the mount.
+            - ax2rate - Slewing speed in deg/s for the axis 2 of the mount.
+            - ax1acc - Slewing acceleration in deg/s/s for the axis 1 of the mount.
+            - ax2acc - Slewing acceleration in deg/s/s for the axis 2 of the mount.
+            - real_time = yes/no - if the station can participate in real-time observations (e.g. e-EVN).
+            - SEFD_**  - SEFD (in Jy units) of the station at the **cm band. If a given band is not present,
+                        it is assumed that the station cannot observe it.
+                        For example SEFD_21 = 500 means that the SEFD at 21cm is 500 Jy.
+            - maxdatarate_** - maximum data rate of ** (in Mbps) that the station can achieve for the
+              specify network name (e.g. EVN).
+            - Any other attribute is accepted, but ignored in this code. That would easily allow future
+              extensions of the code.
+
+        Returns
+            Station
+        """
+        temp = [float(i.strip()) for i in station["position"].split(",")]
+        a_loc = coord.EarthLocation(u.Quantity(temp[0], u.m), u.Quantity(temp[1], u.m), u.Quantity(temp[2], u.m))
+        # Getting the SEFD values for the bands
+        does_real_time = True if station["real_time"] == "yes" else False
+        sefds = {}
+        max_dt: u.Quantity | dict[str, u.Quantity] | None = None
+        for akey in station.keys():
+            if "SEFD_" in akey.upper():
+                sefds[f"{akey.upper().replace('SEFD_', '').strip()}"] = float(station[akey])*u.Jy
+            if "maxdatarate" == akey.lower():
+                max_dt = int(station[akey]) * u.Mb / u.s
+            elif "maxdatarate_" in akey.lower():
+                if not isinstance(max_dt, dict):
+                    max_dt = {}
+
+                val = int(akey.removeprefix("maxdatarate_").strip()) * u.Mb / u.s
+                net = [n.strip() for n in station[akey].split(",")]
+                for n in net:
+                    max_dt[n] = val
+
+        if all([key in station for key in ("mount", "ax1rate", "ax2rate", "ax1lim", "ax2lim")]):
+            configs = {}
+            try:
+                for alim in ("ax1lim", "ax2lim"):
+                    # Because they are the cable limits...
+                    lims = [float(i) for i in station[alim].split(",")]
+                    # easy check, if the range is >360, they can observe all azimuths
+                    if (lims[1] - lims[0]) > 360:
+                        configs[alim] = tuple((-1 * u.deg, 361 * u.deg))
+                    else:
+                        configs[alim] = tuple((lims[0] * u.deg, lims[1] * u.deg))
+
+                for arate in ("ax1rate", "ax2rate"):
+                    configs[arate] = u.Quantity(float(station[arate].strip()), u.deg/u.s)
+
+                if all([key in station for key in ("ax1acc", "ax2acc")]):
+                    for aacc in ("ax1acc", "ax2acc"):
+                        configs[aacc] = u.Quantity(float(station[aacc].strip()), u.deg/u.s/u.s)
+
+                    amount = Mount(MountType[station["mount"]], Axis(configs["ax1lim"],
+                                                                     configs["ax1rate"],
+                                                                     configs["ax1acc"]),
+                                   Axis(configs["ax2lim"], configs["ax2rate"],
+                                        station["ax2acc"]))
+                else:
+                    amount = Mount(MountType[station["mount"]], Axis(configs["ax1lim"],
+                                   station["ax1rate"]), Axis(configs["ax2lim"],
+                                   station["ax2rate"]))
+            except ValueError:
+                raise ValueError(f"when loading the data from antenna {station['station']}.")
+        else:
+            amount = None
+
+        return Station(stationname, station["code"], tuple(station["networks"].split(",")),  # type: ignore
+                       a_loc, sefds, station["station"], station["country"], station["diameter"],
+                       does_real_time, amount, max_dt)
+
+    @staticmethod
+    def get_stations_from_configfile(filename: Optional[str] = None, codenames: Optional[list[str]] = None,
+                                     name: str = "network") -> Generator[Station]:
+        """Creates a Stations object (i.e. a network of stations) by reading the station
         information from an input file. Optionally, it allows to select only a subset of
         all stations in the file.
 
@@ -550,8 +799,8 @@ class Network(object):
             Name to assign to the network of stations that will be created.
 
         Returns
-        - network : Network
-            Returns a Network object containing the specified stations.
+        - network : list[Station]
+            Returns a Stations object containing the specified stations.
         """
         config = configparser.ConfigParser()
         if filename is None:
@@ -565,200 +814,6 @@ class Network(object):
             # Otherwise config will run smoothly and provide an empty list.
             config.read(open(filename, "r"))
 
-        temp_network: list[Station] = []
         for stationname in config.sections():
             if (codenames is None) or (config[stationname]["code"] in codenames):
-                temp = [float(i.strip()) for i in config[stationname]["position"].split(",")]
-                a_loc = coord.EarthLocation(
-                    u.Quantity(temp[0], u.m),
-                    u.Quantity(temp[1], u.m),
-                    u.Quantity(temp[2], u.m),
-                )
-                # Getting the SEFD values for the bands
-                does_real_time = True if config[stationname]["real_time"] == "yes" else False
-                sefds = {}
-                max_dt: u.Quantity | dict[str, u.Quantity] | None = None
-                for akey in config[stationname].keys():
-                    if "SEFD_" in akey.upper():
-                        sefds[f"{akey.upper().replace('SEFD_', '').strip()}"] = float(config[stationname][akey])*u.Jy
-                    if "maxdatarate" == akey.lower():
-                        max_dt = int(config[stationname][akey]) * u.Mb / u.s
-                    elif "maxdatarate_" in akey.lower():
-                        if not isinstance(max_dt, dict):
-                            max_dt = {}
-
-                        val = int(akey.removeprefix("maxdatarate_").strip()) * u.Mb / u.s
-                        net = [n.strip() for n in config[stationname][akey].split(",")]
-                        for n in net:
-                            max_dt[n] = val
-
-                if config[stationname]["code"] in [s.codename for s in temp_network]:
-                    raise ValueError(f"The antenna with code {config[stationname]['code']} is "
-                                     "duplicated in the input file.")
-
-                if all([key in config[stationname] for key in ("mount", "ax1rate", "ax2rate", "ax1lim", "ax2lim")]):
-                    configs = {}
-                    try:
-                        for alim in ("ax1lim", "ax2lim"):
-                            # Because they are the cable limits...
-                            lims = [float(i) for i in config[stationname][alim].split(",")]
-                            # easy check, if the range is >360, they can observe all azimuths
-                            if (lims[1] - lims[0]) > 360:
-                                configs[alim] = tuple((-1 * u.deg, 361 * u.deg))
-                            else:
-                                configs[alim] = tuple((lims[0] * u.deg, lims[1] * u.deg))
-
-                        for arate in ("ax1rate", "ax2rate"):
-                            configs[arate] = u.Quantity(float(config[stationname][arate].strip()), u.deg/u.s)
-
-                        if all([key in config[stationname] for key in ("ax1acc", "ax2acc")]):
-                            for aacc in ("ax1acc", "ax2acc"):
-                                configs[aacc] = u.Quantity(float(config[stationname][aacc].strip()), u.deg/u.s/u.s)
-
-                            amount = Mount(MountType[config[stationname]["mount"]], Axis(configs["ax1lim"],
-                                                                                         configs["ax1rate"],
-                                                                                         configs["ax1acc"]),
-                                           Axis(configs["ax2lim"], configs["ax2rate"],
-                                                config[stationname]["ax2acc"]))
-                        else:
-                            amount = Mount(MountType[config[stationname]["mount"]], Axis(configs["ax1lim"],
-                                           config[stationname]["ax1rate"]), Axis(configs["ax2lim"],
-                                           config[stationname]["ax2rate"]))
-                    except ValueError:
-                        raise ValueError(f"when loading the data from antenna {stationname}.")
-
-                else:
-                    amount = None
-
-                new_station = Station(stationname, config[stationname]["code"],
-                                      tuple(config[stationname]["networks"].split(",")),  # type: ignore
-                                      a_loc, sefds, config[stationname]["station"],
-                                      config[stationname]["country"], config[stationname]["diameter"],
-                                      does_real_time, amount, max_dt)
-                temp_network.append(new_station)
-
-        if codenames is not None:
-            for a_codename in codenames:
-                if a_codename not in [s.codename for s in temp_network]:
-                    rprint(f"\n[yellow]WARNING: The antenna {a_codename} was not found in the catalogs.[/yellow]\n")
-
-        return cls(name, temp_network)
-
-    def stations_with_band(self, band: str) -> Generator[Station]:
-        """Returns a the stations in the Network that can observe at the given band.
-        that can observe at the given band.
-
-        Inputs
-        - band : str
-            The observing band.
-
-        Returns
-        - stations : Generator[Station]
-            A list containing only the stations that can observe at the given band.
-        """
-        for station in self.stations:
-            if band in station.bands:
-                yield station
-
-    def sub_network(self, codenames: list[str], name: Optional[str] = None) -> Network:
-        """Returns a new Network object which will only contain the stations
-        defined by the given list of codenames. It will thus be a subset of the current
-        network.
-
-        Input
-        - codenames : list[str]
-            List with the codenames of the stations that should be present in the new
-            network.
-        - name : str [OPTIONAL]
-            Name assigned to the new network. If not provided, it will be the original
-            name with the 'sub' preffix.
-
-        Returns
-        - subnetwork : Network
-            A new Network object containing only the defined stations.
-        Exceptions
-        - It may raise KeyError if one of the given codenames are not present
-          among the current stations.
-        """
-        if not all([codename in self.station_codenames for codename in codenames]):
-            unexpected_ant = set(codenames).difference(set(self.station_codenames))
-            if len(unexpected_ant) == 1:
-                rprint(f"[yellow bold]WARNING: The antenna with codename {unexpected_ant.pop()} is not present "
-                       "in the current network.[/yellow bold]")
-            else:
-                rprint(f"[yellow bold]WARNING: The antennas with codenames {', '.join(list(unexpected_ant))} "
-                       "are not present in the current network.[/yellow bold]")
-
-        subnetwork = Network(name if name is not None else f"sub-{self.name}",
-                             [s for s in self.stations if s.codename in codenames])
-
-        return subnetwork
-
-    @staticmethod
-    def get_network_names_from_configfile(filename: Optional[str] = None) -> dict[str, Network]:
-        """Reads a config file containing the different VLBI networks defined as a config parser file.
-        Returns a dictionary with the nickname of the VLBI network as keys, and the information as
-        keys in a second-order dict.
-
-        Inputs
-        - filename : str  OPTIONAL
-            Path to the text file containing the information from all stations.
-            If not provided, it reads the default station catalog file located in
-                            data/network_catalog.inp
-            Any other file should contain the same format (standard Python input config files),
-            with the following fields per network (whose name would be provided as the name of
-            section).
-            - name - full name of the network.
-            - default_antennas - comma-separated list with the codename of the antennas involved in the network.
-            - max_datarate - integer number with the maximum datarate allowed in the network.
-            - observing_bands - comma-separated list with the bands that can be observed (following
-              the definition done in vlbiplanobs/freqsetups.py; e.g. 21, 18, etc, in cm).
-
-        Returns
-        - networks : dict[str, Network]
-            Returns a dictionary containing the differnet networks.
-        """
-        config = configparser.ConfigParser()
-        if filename is None:
-            with resources.as_file(resources.files("vlbiplanobs.data").joinpath("network_catalog.inp")) \
-                                                                                as networks_catalog_path:
-                config.read(networks_catalog_path)
-        else:
-            # With this approach it raises a FileNotFound exception.
-            # Otherwise config will run smoothly and provide an empty list.
-            config.read(open(filename, "r"))
-
-        all_ants = Network.get_stations_from_configfile()
-        networks: dict[str, Network] = dict()
-        for networkname in config.sections():
-            temp: str = config[networkname]["max_datarate"]
-            if "," in temp:
-                max_dt: list[u.Quantity] | u.Quantity = [int(dt.strip()) * u.Mb / u.s for dt in temp.split(",")]
-            else:
-                max_dt = int(temp) * u.Mb / u.s
-
-            obs_bands = [b.strip() for b in config[networkname]["observing_bands"].split(",")]
-            default_ant = [a.strip() for a in config[networkname]["default_antennas"].split(",")]
-            assert all([ant in all_ants for ant in default_ant]), "The default antenna(s) " \
-                   f"({' ,'.join([ant for ant in default_ant if ant not in all_ants])}) from '{networkname}' " \
-                   "is not present in stations_catalog!"
-
-            assert all([band in freqsetups.bands.keys() for band in obs_bands]), \
-                   f"Observing band ({', '.join([b for b in obs_bands if b not in freqsetups.bands.keys()])}) " \
-                   "not present in freqsetups.py!"
-
-            if isinstance(max_dt, Sequence):
-                assert all([int(dr.value) in freqsetups.data_rates.keys() for dr in max_dt]), \
-                       f"Data rate ({', '.join([d for d in max_dt if int(d.value) not in
-                                               freqsetups.data_rates.keys()])}) not present in freqsetups.py!"
-            else:
-                assert int(max_dt.value) in freqsetups.data_rates.keys(), \
-                       f"Data rate ({max_dt}) not " "present in freqsetups.py!"
-
-            antennas = [all_ants[ant] for ant in default_ant]
-            assert len(antennas) > 0, f"No antennas found for the network {networkname}."
-
-            networks[networkname] = Network(name=networkname, full_name=config[networkname]["name"],
-                                            stations=antennas, observing_bands=obs_bands, max_datarates=max_dt)
-
-        return networks
+                yield Stations._parse_station_from_configfile(config[stationname])  # type: ignore

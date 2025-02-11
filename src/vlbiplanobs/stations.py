@@ -439,25 +439,34 @@ class Stations(object):
         """
         return list(self._bands.keys())
 
-    def max_datarate(self, observing_band: str) -> u.Quantity:
+    def max_datarate(self, observing_band: str) -> Optional[u.Quantity]:
         return self._bands[observing_band]
 
-    def add(self, a_station: Station):
+    def add_station(self, station: Union[Station, Iterable[Station]]):
         """Adds a new station to the network.
         If a station with the same codename is already present, it will do nothing.
 
         Inputs
-        - a_station : Station
+        - station : Station
             Station to be added to the network.
         """
-        assert isinstance(a_station, Station)
-        if a_station.codename in self.station_codenames:
-            rprint(f"[yellow bold]WARNING: {a_station.codename} already in stations. "
-                   "Ignoring addition.[/yellow bold]")
+        assert isinstance(station, Station) or isinstance(station, Iterable), \
+               "station must be a Station object or a Iterable of Station objects."
+        if isinstance(station, Station):
+            if station.codename in self.station_codenames:
+                rprint(f"[yellow bold]WARNING: {station.codename} already in stations. "
+                       "Ignoring addition.[/yellow bold]")
+            else:
+                self._stations[station.codename] = station
         else:
-            self._stations[a_station.codename] = a_station
+            for a_stat in station:
+                if a_stat.codename in self.station_codenames:
+                    rprint(f"[yellow bold]WARNING: {a_stat.codename} already in stations. "
+                           "Ignoring addition.[/yellow bold]")
+                else:
+                    self._stations[a_stat.codename] = a_stat
 
-    def remove(self, a_station: Station):
+    def remove_station(self, a_station: Station):
         """Removes a station from the network.
         If the station is not present, then it will do nothing.
 
@@ -498,6 +507,25 @@ class Stations(object):
     def __contains__(self, item):
         return self._stations.__contains__(item)
 
+    def __add__(self, stations: Stations):
+        if not isinstance(stations, Stations):
+            raise TypeError("The element to add must be a Stations object")
+
+        obs_bands = [b for b in self.observing_bands if b in stations.observing_bands]
+        max_dt = []
+        for b in obs_bands:
+            if self.max_datarate(b) is None:
+                max_dt.append(stations.max_datarate(b))
+            elif stations.max_datarate(b) is None:
+                max_dt.append(self.max_datarate(b))
+            else:
+                max_dt.append(min(self.max_datarate(b), stations.max_datarate(b)))  # type: ignore
+
+        return Stations(stations=self.stations + stations.stations, observing_bands=obs_bands, max_datarates=max_dt)
+
+    def __iadd__(self, stations: Stations):
+        return self.__add__(stations)
+
     def stations_with_band(self, band: str) -> Generator[Station]:
         """Returns a the stations in the Stations that can observe at the given band.
         that can observe at the given band.
@@ -514,13 +542,13 @@ class Stations(object):
             if band in station.bands:
                 yield station
 
-    def filter_networks(self, network: str, only_defaults: bool = False) -> Stations:
+    def filter_networks(self, networks: Union[str, Sequence[str]], only_defaults: bool = False) -> Stations:
         """Returns a new network which only contains the antennas that are part
         of the given network
 
         Input
-            - network : str
-                The name of the network to which all stations need to belong to.
+            - networks : str or Sequence[str]
+                The name of the network or networkds to which all stations need to belong to.
             - only_defaults : bool  [DEFAULT = False]
                 If True, it will only return the antennas that are part of the default
                 network, ignoring all others.
@@ -529,8 +557,19 @@ class Stations(object):
             - Stations
                 A new network object containing only the antennas that can observe in the network.
         """
+        # TODO: change this to network -> networks so it may include multiple!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        if isinstance(networks, str):
+            networks = [networks,]
+
         if only_defaults:
-            the_network = self.get_networks_from_configfile()[network]
+            all_networks = self.get_networks_from_configfile()
+            if len(networks) > 0:
+                the_network = all_networks[networks[0]]
+                for a_network in networks[1:]:
+                    the_network += all_networks[a_network]
+            else:
+                raise ValueError("networks cannot be an empty sequence!")
+
             bands, datarates = None, None
             for aband, adatarate in zip(self.observing_bands, self._bands.values()):
                 if aband in the_network.observing_bands:
@@ -543,11 +582,11 @@ class Stations(object):
                     else:
                         datarates.append(adatarate)
 
-            return Stations(stations=(s for s in self.stations if network in s.networks
+            return Stations(stations=(s for s in self.stations if any(n in s.networks for n in networks)
                                       and s.codename in the_network.station_codenames),
                             observing_bands=bands, max_datarates=datarates)
 
-        return Stations(stations=(s for s in self.stations if network in s.networks),
+        return Stations(stations=(s for s in self.stations if any(n in s.networks for n in networks)),
                         observing_bands=self.observing_bands, max_datarates=self._bands.values())
 
     def filter_band(self, band: str) -> Stations:
@@ -565,13 +604,13 @@ class Stations(object):
         return Stations(stations=(s for s in self.stations if band in s.bands), observing_bands=(band,),
                         max_datarates=self.max_datarate(band))
 
-    def filter_antennas(self, codenames: list[str]) -> Stations:
+    def filter_antennas(self, codenames: Sequence[str]) -> Stations:
         """Returns a new network object which will only contain the stations
         defined by the given list of codenames. It will thus be a subset of the current
         network.
 
         Input
-        - codenames : list[str]
+        - codenames : Sequence[str]
             List with the codenames of the stations that should be present in the new
             network.
 
@@ -707,12 +746,12 @@ class Stations(object):
             if "SEFD_" in akey.upper():
                 sefds[f"{akey.upper().replace('SEFD_', '').strip()}"] = float(station[akey])*u.Jy
             if "maxdatarate" == akey.lower():
-                max_dt = int(station[akey]) * u.Mb / u.s
+                max_dt = int(station[akey])*u.Mb/u.s
             elif "maxdatarate_" in akey.lower():
                 if not isinstance(max_dt, dict):
                     max_dt = {}
 
-                val = int(akey.removeprefix("maxdatarate_").strip()) * u.Mb / u.s
+                val = int(akey.removeprefix("maxdatarate_").strip())*u.Mb/u.s
                 net = [n.strip() for n in station[akey].split(",")]
                 for n in net:
                     max_dt[n] = val
@@ -725,9 +764,9 @@ class Stations(object):
                     lims = [float(i) for i in station[alim].split(",")]
                     # easy check, if the range is >360, they can observe all azimuths
                     if (lims[1] - lims[0]) > 360:
-                        configs[alim] = tuple((-1 * u.deg, 361 * u.deg))
+                        configs[alim] = tuple((-1*u.deg, 361*u.deg))
                     else:
-                        configs[alim] = tuple((lims[0] * u.deg, lims[1] * u.deg))
+                        configs[alim] = tuple((lims[0]*u.deg, lims[1]*u.deg))
 
                 for arate in ("ax1rate", "ax2rate"):
                     configs[arate] = u.Quantity(float(station[arate].strip()), u.deg/u.s)

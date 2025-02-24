@@ -2,6 +2,7 @@ import asyncio
 from typing import Optional, Union, Iterable, Sequence, Self
 from importlib import resources
 from functools import partial
+from itertools import product
 import subprocess
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import numpy as np
@@ -36,6 +37,9 @@ class Polarization(Enum):
     SINGLE = 1
     DUAL = 2
     FULL = 4
+
+    def __str__(self):
+        return self.name.lower()
 
 
 class Observation(object):
@@ -137,7 +141,7 @@ class Observation(object):
         self._uv_array = None
         self._rms = None
         self._synth_beam = None
-        self._is_visible: Optional[dict] = None
+        self._is_visible: Optional[dict[str, dict[str, coord.SkyCoord]]] = None
         self._is_always_visible: Optional[dict] = None
         self._altaz: Optional[dict] = None
         self._elevations: Optional[dict] = None
@@ -429,14 +433,14 @@ class Observation(object):
         self._is_always_visible = None
         self._altaz = None
 
-    def elevations(self) -> dict[str, coord.angles.Latitude]:
+    def elevations(self) -> dict[str, dict[str, coord.angles.Latitude]]:
         """Returns the elevation of the target source for each stations participating in the observation
         for all the given observing times.
 
         Returns
             elevations : dict
                 Dictionary where they keys are the station code names, and the values will be
-                an astropy.coordinates.angles.Latitude object with the elevation at each observing time.
+                 a dictionary with each source name as key and the elevation as value.
         """
         if (self.sources is None) or (self.times is None):
             raise ValueError("The target and/or observing times have not been initialized")
@@ -519,17 +523,18 @@ class Observation(object):
         return asyncio.run(self._elevations_async_launch())
         # return {s.codename: v for s,v in zip(self.stations, asyncio.run(self._elevations_async_launch()))}
 
-    def altaz(self) -> dict[str, coord.SkyCoord]:
+    def altaz(self) -> dict[str, dict[str, coord.SkyCoord]]:
         """Returns the altitude/azimuth of the target source for each stations participating
         in the observation for all the given observing times.
 
         Returns
             altaz : dict
                 Dictionary where they keys are the station code names, and the values will be
+                another dictionary with the source name as keys, and
                 an astropy.coordinates.SkyCoord object with the altitude and azimuth
                 of the source at each observing time.
         """
-        if (self.sources is None) or (self.times is None):
+        if None in (self.sources, self.times):
             raise ValueError("The target and/or observing times have not been initialized")
 
         if self._altaz is None:
@@ -537,61 +542,57 @@ class Observation(object):
 
         return self._altaz
 
-    def _altaz_func(self, a_station: Station) -> list:
-        return a_station.altaz(self.times, self.sources)
-
-    def _altaz_single(self) -> dict:
-        aa = {}
-        for a_station in self.stations:
-            aa[a_station.codename] = a_station.altaz(self.times, self.sources)
-        return aa
-
-    def _altaz_process(self) -> dict:
-        with ProcessPoolExecutor() as pool:
-            results = pool.map(self._altaz_func, self.stations)
-
-        return {s.codename: r for s, r in zip(self.stations, results)}
-
     def _altaz_threads(self) -> dict:
-        with ThreadPoolExecutor() as pool:
-            results = pool.map(self._altaz_func, self.stations)
+        assert self.sources is not None
 
-        return {s.codename: r for s, r in zip(self.stations, results)}
+        def compute_altaz_for_source(station_source: tuple) -> tuple:
+            station, source = station_source[0], station_source[1]
+            return station, source, station.altaz(self.times, source)
 
-    def is_visible_per_antenna(self) -> dict[str, list[bool]]:
-        """Returns whenever the target source is visible for each station for each time
+        with ThreadPoolExecutor() as executor:
+            results = list(executor.map(compute_altaz_for_source, [(station, source)
+                                        for station in self.stations for source in self.sources]))
+
+        temp: dict[str, dict[str, coord.SkyCoord]] = {station.codename: {} for station in self.stations}
+        for (station, source, altaz) in results:
+            temp[station.codename][source.name] = altaz
+
+        return temp
+
+    def is_observable(self) -> dict[str, dict[str, list[bool]]]:
+        """Returns whenever the sources can be observed by each station for each time
         of the observation.
 
         Returns
             is_visible : dict
                 Dictionary where they keys are the station code names, and the values will be
-                a tuple containing a numpy array with the indexes in the `Observation.times`
+                a dictionary with the sources names as keys, and a tuple containing
+                a numpy array with the indexes in the `Observation.times`
                 array with the times where the target source can be observed by the station.
 
                 In this sense, you can e.g. call obs.times[obs.is_visible[a_station_codename]]
                 to get such times.
         """
-        if (self.scans is None) or (self.times is None):
-            raise ValueError("The target and/or observing times have not been initialized")
+        if None in (self.scans, self.times, self.sources):
+            raise ValueError("The target, sources and/or observing times have not been initialized")
 
         if self._is_visible is None:
-            src_blocks = [len(b.sources()) for b in self.scans]
-            src_blocks_cum = [0, *np.cumsum(src_blocks)[:-1]]
-            with ThreadPoolExecutor() as pool:
-                results = pool.map(partial(self._is_visible_func, times=self.times), self.stations)
+            def compute_is_visible_for_source(station_source: tuple) -> tuple:
+                station, source = station_source[0], station_source[1]
+                return station, source, station.is_observable(self.times, source)
 
-            self._is_visible = {s.codename: [all(r[src_blocks_cum[i]:src_blocks_cum[i]+src_blocks[i]])
-                                             for i in range(len(src_blocks))]
-                                for s, r in zip(self.stations, results)}
+            with ThreadPoolExecutor() as executor:
+                results = list(executor.map(compute_is_visible_for_source, [(station, source)
+                                            for station in self.stations for source in self.sources]))  # type: ignore
+
+            self._is_visible = {station.codename: {} for station in self.stations}
+            for (station, source, visible) in results:
+                self._is_visible[station.codename][source.name] = visible
 
         return self._is_visible
 
-    def _is_visible_func(self, a_station: Station, times: Optional[Time] = None) -> list:
-        return a_station.is_observable(self.times if times is None else times, self.sources)
-
-    def is_always_visible(self) -> dict[str, bool]:
-        """Returns whenever the target source is always visible for each station at any time
-        of the observation.
+    def is_always_observable(self) -> dict[str, dict[str, bool]]:
+        """Returns whenever the target source can be observed by each station along the whole observation.
 
         Returns
             is_visible : dict
@@ -599,27 +600,27 @@ class Observation(object):
                 a tuple containing a numpy array with the boolean indicating if the given BlockScan
                 (same order as in Observation.sources) is always visible for the given station.
         """
-        if (self.scans is None) or (self.times is None):
-            raise ValueError("The target and/or observing times have not been initialized")
+        if None in (self.scans, self.times, self.sources):
+            raise ValueError("The target, sources and/or observing times have not been initialized")
 
         if self._is_always_visible is None:
-            src_blocks = [len(b.sources()) for b in self.scans]
-            src_blocks_cum = [0, *np.cumsum(src_blocks)[:-1]]
-            with ThreadPoolExecutor() as pool:
-                results = pool.map(partial(self._is_always_visible_func, times=self.times), self.stations)
+            def compute_is_always_visible_for_source(station_source: tuple) -> tuple:
+                station, source = station_source[0], station_source[1]
+                return station, source, station.is_always_observable(self.times, source)
 
-            self._is_always_visible = {s.codename: [all(r[src_blocks_cum[i]:src_blocks_cum[i]+src_blocks[i]])
-                                                    for i in range(len(src_blocks))]
-                                       for s, r in zip(self.stations, results)}
+            with ThreadPoolExecutor() as executor:
+                results = list(executor.map(compute_is_always_visible_for_source, [(station, source)
+                                            for station in self.stations for source in self.sources]))  # type: ignore
+
+            self._is_always_visible = {station.codename: {} for station in self.stations}
+            for (station, source, visible) in results:
+                self._is_always_visible[station.codename][source.name] = visible
 
         return self._is_always_visible
 
-    def _is_always_visible_func(self, a_station: Station, times: Optional[Time] = None) -> bool:
-        return a_station.is_always_observable(self.times if times is None else times, self.sources)
-
-    def is_visible(self, min_stations: int = 3, mandatory_stations: Optional[list[str]] = None,
-                   stations_all_time: bool = False, times: Optional[Time] = None,
-                   return_gst: bool = False) -> list[tuple]:
+    def when_is_visible(self, min_stations: int = 3, mandatory_stations: Optional[list[str]] = None,
+                        stations_all_time: bool = False, within_time_range: Optional[Time] = None,
+                        return_gst: bool = False) -> list[tuple[Time]]:
         """Returns the time range when the different BlockScans/sources are visible verifying the set requirements.
         If the time of the observation is set, it will check if the source is observable only within that
         time range, otherwise it will check at any possible time.
@@ -634,6 +635,8 @@ class Observation(object):
             the source are allowed.
         - stations_all_time : bool  [default = False]
             If all stations must be observing the source at all times or this is not required.
+        - within_time_range : Time  [default = None]
+            Time range within which the source is observable. Must contain only two times (start and end time).
         - return_gst : bool  [default = True]
             Defines if the returned times for the start and end of the observation should be in GST time
             instead of UTC.
@@ -644,6 +647,7 @@ class Observation(object):
             If there is only one source, then the list will contain one only source.
 
         """
+        # TODO: stopped here!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         if (self.sources is None):
             raise ValueError("The target has not been initialized")
 

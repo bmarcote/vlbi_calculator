@@ -183,6 +183,10 @@ class Source(FixedTarget):
         self._notes = notes
         self._other_names = other_names if other_names is not None else list()
 
+    # @property
+    # def coordinates(self) -> coord.SkyCoord
+    #     return self.
+
     @property
     def other_names(self) -> list[str]:
         """Returns a list of other possible names to refer to this source.

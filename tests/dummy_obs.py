@@ -13,30 +13,48 @@ from vlbiplanobs import stations as stats
 from vlbiplanobs import observation as obs
 from vlbiplanobs import sources as src
 
-print('Getting all stations')
+# print('Getting all stations')
 all_stations = stats.Stations()
 
-print('Selecting EVNs')
-print(f"With only defaults: {all_stations.filter_networks('EVN', only_defaults=True)}")
-print(f"With all: {all_stations.filter_networks('EVN', only_defaults=False)}")
-print(f"With eMERLINs (defaults only): {all_stations.filter_networks(['EVN', 'eMERLIN'], only_defaults=True)}")
-print(f"As string?: {all_stations.filter_networks('EVN,eMERLIN', only_defaults=True)}")
+
+def summarize(o: obs.Observation):
+    """Prints the infromation for the given Observation, for testing purposes
+    """
+    print(f"\nObservation details ({o.band}, {o.datarate} with {o.subbands} x {o.bandwidth/o.subbands} subbands,"
+          f" {o.channels} channels, {o.polarizations} polarization)")
+    print(f"Stations ({len(o.stations)}): {', '.join(o.stations.station_codenames)}")
+    print("Sources:")
+    for ablock in o.scans:
+        print(f"    - {'\n      '.join([s.name + ' (' + s.coord.to_string('hmsdms') + ')' for s in ablock.sources()])}")
+
+
+# print('Selecting EVNs')
+# print(f"With only defaults: {all_stations.filter_networks('EVN', only_defaults=True)}")
+# print(f"With all: {all_stations.filter_networks('EVN', only_defaults=False)}")
+# print(f"With eMERLINs (defaults only): {all_stations.filter_networks(['EVN', 'eMERLIN'], only_defaults=True)}")
+# print(f"As string?: {all_stations.filter_networks('EVN,eMERLIN', only_defaults=True)}")
 
 target = src.Source('Target', '10h58m29.6s +81d33m58.8s')
 pcal = src.Source('PCAL', '10h59m29.6s +81d33m28.8s')
 ccal = src.Source('CHECK', '10h58m00.6s +81d34m28.8s')
+target2 = src.Source('Target2', '10h58m29.6s +81d33m58.8s')
+pcal = src.Source('PCAL', '10h59m29.6s +81d33m28.8s')
 scans = src.ScanBlock([src.Scan(source=target, duration=3.5*u.min), src.Scan(source=pcal, duration=1.5*u.min),
                        src.Scan(source=ccal, every=3)])
+scans2 = src.ScanBlock([src.Scan(source=target2, duration=10*u.min)])
 
-obs = obs.Observation(band='6cm', stations=all_stations.filter_networks(['EVN', 'eMERLIN'], only_defaults=True),
-                      scans=scans, times=Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min,
-                      datarate=1024*u.Mbit/u.s, subbands=8, channels=64, polarizations=4, inttime=2*u.s)
+o = obs.Observation(band='6cm', stations=all_stations.filter_networks(['EVN', 'eMERLIN'], only_defaults=True),
+                    scans=[scans, scans2], times=Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min,
+                    datarate=2048*u.Mbit/u.s, subbands=8, channels=64, polarizations=4, inttime=2*u.s)
 
+summarize(o)
 
 evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc']
 
-# elevs = obs.elevations()
-# srcup = obs.is_visible()
+elevs = o.elevations()
+altaz = o.altaz()
+srcup = o.is_observable()
+srcupalways = o.is_always_observable()
 # beam = obs.synthesized_beam()
 # rms = obs.thermal_noise()
 # uvdata = obs.get_uv_array()

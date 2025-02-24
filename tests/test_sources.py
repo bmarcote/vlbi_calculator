@@ -40,7 +40,7 @@ def test_source():
         s3.coord.to_string('hmsdms')
         assert s3.coord.separation(coord.SkyCoord('19h58m21.6757344s +35d12m05.784516s')) < 0.01*u.arcsec
     except coord.name_resolve.NameResolveError:
-        rprint("[yellow]WARNING: seems like no internet connection is available. " \
+        rprint("[yellow]WARNING: seems like no internet connection is available. "
                "Unable to resolve source names[/yellow]")
 
     assert s1.name == 'a_name'
@@ -67,11 +67,9 @@ def test_source():
     # s1.sun_constraint(20*u.deg)
 
 
-
-
 def test_source_from_names():
     try:
-        assert isinstance(sources.Source.get_source_from_name('Cyg X-1'), sources.Source)
+        assert isinstance(sources.Source.source_from_name('Cyg X-1'), sources.Source)
         assert isinstance(sources.Source.get_coordinates_from_name('Cyg X-1'), coord.SkyCoord)
 
         src_name1 = '2358+390'
@@ -80,14 +78,13 @@ def test_source_from_names():
         cor2 = sources.Source.get_coordinates_from_name(src_name2)
         assert cor1 == cor2
         assert cor1.to_string('hmsdms') == '00h00m41.527583s +39d18m04.14836s'
-        src1 = sources.Source.get_source_from_name(src_name1)
-        src2 = sources.Source.get_source_from_name(src_name2)
+        src1 = sources.Source.source_from_name(src_name1)
+        src2 = sources.Source.source_from_name(src_name2)
         assert src1.coord == src2.coord
         assert src1.coord == cor2
     except coord.name_resolve.NameResolveError:
-        rprint("[yellow]WARNING: seems like no internet connection is available. " \
+        rprint("[yellow]WARNING: seems like no internet connection is available. "
                "Unable to resolve source names[/yellow]")
-
 
 
 def test_scan_block():
@@ -117,8 +114,3 @@ def test_scan_block():
     assert len(scans) == 29
     assert reduce(operator.add, [s.duration for s in scans]) <= 1*u.h
     assert all([scan.source.type is sources.SourceType.CHECKSOURCE for scan in scans[8::9]])
-
-
-
-
-

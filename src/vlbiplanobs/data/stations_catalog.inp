@@ -108,7 +108,7 @@ sefd_3.6 = 4000.0
 [Arecibo]
 station = Arecibo Telescope
 code = Ar
-networks = EVN, HSA
+networks =
 country = Puerto Rico
 diameter = 305 m
 position = 2390486.9, -5564731.44, 1994720.45
@@ -229,7 +229,7 @@ ax2acc = 0.02778
 [Darnhall]
 station = Darnhall
 code = Da
-networks = eMERLIN
+networks = eMERLIN, EVN
 country = United Kingdom
 diameter = 25 m
 position = 3829087.899, -169568.955, 5081082.346

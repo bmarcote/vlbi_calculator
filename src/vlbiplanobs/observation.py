@@ -14,18 +14,17 @@ from dataclasses import dataclass
 from astropy import units as u
 from astropy import coordinates as coord
 from astropy.time import Time, TimeDelta
-from astroplan import FixedTarget
 # TODO: uncomment this and move dependency outside observation.py
 # import plotly.express as px
 # from plotly.subplots import make_subplots
 
-from .stations import Network, Station
+from .stations import Station, Stations
 from .sources import Source, Scan, ScanBlock, SourceType, SourceNotVisible
 from . import freqsetups
 
 
-_NETWORKS = Network.get_network_names_from_configfile()
-_STATIONS = Network.get_stations_from_configfile()
+_NETWORKS = Stations.get_networks_from_configfile()
+_STATIONS = Stations()
 
 
 class Polarization(Enum):
@@ -50,19 +49,27 @@ class Observation(object):
     robust weighting.
     """
 
-    def __init__(self, scans: Optional[Union[ScanBlock, list[ScanBlock]]] = None,
+    def __init__(self, band: str, stations: Stations, scans: Union[ScanBlock, list[ScanBlock]],
                  times: Optional[Time] = None,
-                 band: Optional[str] = None, datarate: Optional[Union[int, u.Quantity]] = None,
+                 datarate: Optional[Union[int, u.Quantity]] = None,
                  subbands: Optional[int] = None, channels: Optional[int] = None,
-                 polarizations: Optional[Union[int, str]] = None, inttime: Optional[Union[float, u.Quantity]] = None,
-                 ontarget: float = 1.0, stations: Optional[Network] = None, bits: int = 2,
-                 fixed_time: bool = True):
+                 polarizations: Optional[Union[int, str]] = None,
+                 inttime: Optional[Union[float, u.Quantity]] = None,
+                 ontarget: float = 1.0, bits: int = 2):
         """Initializes an observation.
         Note that you can initialize an empty observation at this stage and add the
         information for the different attributes later. However, you may raise exception
         if running methods that require some of the unset attributes.
 
         Inputs
+        - band : str
+            Observing band to conduct the observation. Note that while this is a
+            free-format string, it should match the type used when defining the bands
+            at which each station can observe, and the default is the str format `XXcm`
+            where XX represents the wavelength to observe in cm units.
+            You can always check the available bands in `{Stations object}.observing_bands`.
+        - stations : vlbiplanobs.stations.Stations
+            Network of stations that will participate in the given observation.
         - scans : ScanBlock | list[ScanBlock]
             Scans to be observed during the observation. It can specify either:
             A block of scans (ScanBlock), of the observation will iterate through a ScanBlock until filling
@@ -76,12 +83,6 @@ class Observation(object):
             visibility or determination of the rms noise levels. However, that will
             also imply a longer computing time. Steps of ~5-15 min seem appropriate
             for typical VLBI observations.
-        - band : str
-            Observing band to conduct the observation. Note that while this is a
-            free-format string, it should match the type used when defining the bands
-            at which each station can observe, and the default is the str format `XXcm`
-            where XX represents the wavelength to observe in cm units.
-            You can always check the available bands in `{Network object}.observing_bands`.
         - datarate : int or astropy.units.Quantity
             Data rate for each antenna. It assumes that all antennas will run at the same
             data rate, which may not be true. If an int is introduce, it will be assumed to
@@ -104,24 +105,18 @@ class Observation(object):
             spent on the target source. Note that in a typical VLBI observation only a fraction
             of the total observing time will end up in on-target source, commonly between 0.4-0.8
             (~40-80% of the time). This has an effect on the determination of the final rms noise level.
-        - stations : vlbiplanobs.stations.Network
-            Network of stations that will participate in the given observation.
         - bits : int
             Number of bits at which the data have been recorded (sampled). A typical VLBI observation is
             almost always recorded with 2-bit data.
-        - fixed_time : bool [default True]
-            In case the observing time should not be fixed. Only used for internal use when the user does not
-            specify the epoch (but internally a random epoch is set so an estimation of the observation is done).
         """
         if isinstance(scans, ScanBlock):
-            self.scans = [scans]
+            self.scans = [scans,]
         elif isinstance(scans, list):
             self.scans = scans
         else:
-            self.scans = None
+            raise ValueError("Scans needs to be either a ScanBlock or a list of ScanBlocks.")
 
         self._source_list: Optional[set[Source]] = None
-
         # Because otherwise gstimes is not initialized
         if times is None:
             self._times = None
@@ -133,32 +128,9 @@ class Observation(object):
         self.datarate = datarate
         self.subbands = subbands
         self.channels = channels
-
-        # This is just to avoid a mypy error in incompatibility types...
-        # if polarizations is None:
-        #     self.polarizations = Polarization.FULL
-        # elif isinstance(polarizations, Polarization):
-        #     self.polarizations = polarizations
-        # else:
-        #     match polarizations:
-        #         case 1 | 'single':
-        #             self.polarizations = Polarization.SINGLE
-        #         case 2 | 'dual':
-        #             self.polarizations = Polarization.DUAL
-        #         case 4 | 'full':
-        #             self.polarizations = Polarization.FULL
-        #         case _:
-        #             raise ValueError("Polarizations needs to be either a Polarization value, " \
-        #                              "the number 1, 2, or 4, or the strings " \
-        #                              "'single', 'dual' or 'full' (equivalent to the numbers, respectively).")
         self.polarizations = polarizations if polarizations is not None else Polarization.FULL  # type: ignore
-
         self.inttime = inttime
-        if stations is not None:
-            self.stations = stations
-        else:
-            self.stations = Network('empty')
-
+        self.stations = stations
         self.bitsampling = bits
         self.ontarget_fraction = ontarget
         self._uv_baseline = None
@@ -169,7 +141,6 @@ class Observation(object):
         self._is_always_visible: Optional[dict] = None
         self._altaz: Optional[dict] = None
         self._elevations: Optional[dict] = None
-        self._fixed_time = fixed_time
 
     @property
     def scans(self) -> Optional[list[ScanBlock]]:
@@ -241,15 +212,15 @@ class Observation(object):
         return None if self.times is None else (self.times[-1] - self.times[0]).to(u.h)
 
     @property
-    def band(self) -> Optional[str]:
+    def band(self) -> str:
         """Returns the observing band at which the observation will be conducted.
         It can return None if the band has not been set yet, showing a warning.
         """
         return self._band
 
     @band.setter
-    def band(self, new_band: Optional[str]):
-        if (new_band not in freqsetups.bands) and (new_band is not None):
+    def band(self, new_band: str):
+        if (new_band not in freqsetups.bands):
             raise ValueError("'new_band' needs to  match the following bands: "
                              f"{', '.join(freqsetups.bands.keys())} (wavelengths given in cm.)")
 
@@ -260,16 +231,16 @@ class Observation(object):
         self._synth_beam = None
 
     @property
-    def wavelength(self) -> Optional[u.Quantity]:
+    def wavelength(self) -> u.Quantity:
         """Returns the central wavelength of the observation.
         """
-        return None if self.band is None else float(self.band.replace('cm', ''))*u.cm
+        return float(self.band.replace('cm', ''))*u.cm
 
     @property
-    def frequency(self) -> Optional[u.Quantity]:
+    def frequency(self) -> u.Quantity:
         """Returns the central frequency of the observations.
         """
-        return None if self.wavelength is None else 30*u.GHz/self.wavelength.to(u.cm).value
+        return 30*u.GHz/self.wavelength.to(u.cm).value
 
     @property
     def datarate(self) -> Optional[u.Quantity]:
@@ -389,7 +360,8 @@ class Observation(object):
     @property
     def ontarget_fraction(self) -> float:
         """Fraction of the total observing time spent on the target source.
-        It can return None if the ontarget_fraction has not been set yet, showing a warning.
+        If scans include more sources than just the target source, then the fraction will be calculated
+        from these scans, ignoring this fraction.
         """
         return self._ontarget
 
@@ -438,15 +410,15 @@ class Observation(object):
             raise ValueError(f"Unknown type for {new_bitsampling} (int, in bits, expected)")
 
     @property
-    def stations(self) -> Network:
-        """Returns the network of stations 'Network' that will participate in this observation
+    def stations(self) -> Stations:
+        """Returns the network of stations 'Stations' that will participate in this observation
         observing the target source.
         """
         return self._stations
 
     @stations.setter
-    def stations(self, new_stations: Network):
-        assert isinstance(new_stations, Network)
+    def stations(self, new_stations: Stations):
+        assert isinstance(new_stations, Stations)
         self._stations = new_stations
         self._uv_baseline = None
         self._uv_array = None
@@ -456,112 +428,6 @@ class Observation(object):
         self._is_visible = None
         self._is_always_visible = None
         self._altaz = None
-
-    def with_networks(self, networks: Union[str, list[str]]):
-        """Selects the given network(s) to observe in this observation. It can be only one single
-        VLBI network or multiple of them.
-        This function will adjust the setup of the observations to the default setup for the given networks,
-        although this can be later manually adjust again by the user.
-
-        Input
-            networks :  str | list[str]
-                Name fo the network or networks to join the observation.
-        """
-        if isinstance(networks, str):
-            self.stations = _NETWORKS[networks]
-        elif isinstance(networks, list):
-            self.stations = _NETWORKS[networks[0]]
-            self.stations.stations = [s for n in networks for s in _NETWORKS[n].stations]
-        else:
-            raise ValueError(f"The value of 'networks' needs to be a str or a list of str, not '{networks}'.")
-
-    def stations_from_codenames(self, new_stations: list[str]):
-        """Includes the given antennas in the observation, specified by their code names as
-        set in the stations_catalog file.
-        """
-        self.stations = Network.get_stations_from_configfile(codenames=new_stations)
-
-    # TODO: re-run this function if the band changes!
-    def sources_from_catalog(self, path: str):
-        """Reads the yaml file with the information of all sources that may be scheduled.
-        It returns the catalog as a dictionary.
-
-        Input
-            path : str
-                The path to the yaml file with the catalog of sources to be imported.
-        """
-        with open(path, 'r') as sources_yaml:
-            catalog = yaml.safe_load(sources_yaml)
-            scanblocks = []
-            for a_type in catalog:
-                for a_src in catalog[a_type]:
-                    scans = []
-                    src = catalog[a_type][a_src]
-                    if 'phasecal' in src:
-                        scans.append(Scan(Source(name=src['phasecal']['name'],
-                                                 coordinates=src['phasecal']['coordinates'],
-                                                 source_type=SourceType.PHASECAL),
-                                          duration=src['phasecal']['duration']*u.min
-                                          if 'duration' in src['phasecal'] else 2*u.min))
-
-                    if 'checkSource' in src:
-                        scans.append(Scan(Source(name=src['checkSource']['name'],
-                                                 coordinates=src['checkSource']['coordinates'],
-                                                 source_type=SourceType.CHECKSOURCE),
-                                          duration=src['checkSource']['duration']*u.min
-                                          if 'duration' in src['checkSource'] else 3*u.min,
-                                          every=src['checkSource']['repeat']
-                                          if 'repeat' in src['checkSource'] else 3))
-
-                    match a_type:
-                        case 'pulsars':
-                            src_type = SourceType.PULSAR
-                        case 'targets':
-                            src_type = SourceType.TARGET
-                        case 'amplitudecals':
-                            src_type = SourceType.AMPLITUDECAL
-                        case 'checksources':
-                            src_type = SourceType.CHECKSOURCE
-                        case 'phasecals':
-                            src_type = SourceType.PHASECAL
-                        case 'fringefinders':
-                            src_type = SourceType.FRINGEFINDER
-                        case 'polcals':
-                            src_type = SourceType.POLCAL
-                        case _:
-                            src_type = SourceType.UNKNOWN
-
-                    if 'duration' not in src:
-                        if (recomm := self.recommended_phaseref_cycle()) is not None:
-                            src['duration'] = max(recomm - 2*u.min, 1*u.min)
-                        else:
-                            src['duration'] = 3.5*u.min
-                    else:
-                        src['duration'] *= u.min
-
-                    scans.append(Scan(source=Source(name=a_src, coordinates=src['coordinates'],
-                                                    source_type=src_type), duration=src['duration']))
-
-                    scanblocks.append(ScanBlock(scans))
-        self.scans = scanblocks
-        # return scanblocks
-
-    def recommended_phaseref_cycle(self) -> u.Quantity:
-        """Returns the
-        """
-        if self.band is None:
-            rprint("[yellow bold]WARNING: the observing band hasn't been set. "
-                   "A recommended phase-referencing cycle cannot be returned.[/yellow bold]")
-            return None
-
-        if self.wavelength > 15*u.cm:
-            return 7*u.min
-        elif self.wavelength > 2*u.cm:
-            return 5*u.min
-        elif self.wavelength > 1*u.cm:
-            return 2*u.min
-        else:
-            return 0
 
     def elevations(self) -> dict[str, coord.angles.Latitude]:
         """Returns the elevation of the target source for each stations participating in the observation
@@ -692,14 +558,9 @@ class Observation(object):
 
         return {s.codename: r for s, r in zip(self.stations, results)}
 
-    def is_visible_per_antenna(self, times: Optional[Time] = None) -> dict[str, list[bool]]:
+    def is_visible_per_antenna(self) -> dict[str, list[bool]]:
         """Returns whenever the target source is visible for each station for each time
         of the observation.
-
-        Inputs
-            - times : Time  [Optional]
-              Defines the time range to check for the source(s) if visible.
-              If provided, it will overrule the default self.times from the Observation to compute it.
 
         Returns
             is_visible : dict
@@ -709,7 +570,6 @@ class Observation(object):
 
                 In this sense, you can e.g. call obs.times[obs.is_visible[a_station_codename]]
                 to get such times.
-
         """
         if (self.scans is None) or (self.times is None):
             raise ValueError("The target and/or observing times have not been initialized")
@@ -718,7 +578,7 @@ class Observation(object):
             src_blocks = [len(b.sources()) for b in self.scans]
             src_blocks_cum = [0, *np.cumsum(src_blocks)[:-1]]
             with ThreadPoolExecutor() as pool:
-                results = pool.map(partial(self._is_visible_func, times=times), self.stations)
+                results = pool.map(partial(self._is_visible_func, times=self.times), self.stations)
 
             self._is_visible = {s.codename: [all(r[src_blocks_cum[i]:src_blocks_cum[i]+src_blocks[i]])
                                              for i in range(len(src_blocks))]
@@ -729,14 +589,9 @@ class Observation(object):
     def _is_visible_func(self, a_station: Station, times: Optional[Time] = None) -> list:
         return a_station.is_observable(self.times if times is None else times, self.sources)
 
-    def is_always_visible(self, times: Optional[Time] = None) -> dict[str, bool]:
+    def is_always_visible(self) -> dict[str, bool]:
         """Returns whenever the target source is always visible for each station at any time
         of the observation.
-
-        Inputs
-            - times : Time  [Optional]
-              Defines the time range to check for the source(s) if visible.
-              If provided, it will overrule the default self.times from the Observation to compute it.
 
         Returns
             is_visible : dict
@@ -751,7 +606,7 @@ class Observation(object):
             src_blocks = [len(b.sources()) for b in self.scans]
             src_blocks_cum = [0, *np.cumsum(src_blocks)[:-1]]
             with ThreadPoolExecutor() as pool:
-                results = pool.map(partial(self._is_always_visible_func, times=times), self.stations)
+                results = pool.map(partial(self._is_always_visible_func, times=self.times), self.stations)
 
             self._is_always_visible = {s.codename: [all(r[src_blocks_cum[i]:src_blocks_cum[i]+src_blocks[i]])
                                                     for i in range(len(src_blocks))]
@@ -759,7 +614,7 @@ class Observation(object):
 
         return self._is_always_visible
 
-    def _is_always_visible_func(self, a_station: Station, times: Optional[Time] = None) -> list[bool]:
+    def _is_always_visible_func(self, a_station: Station, times: Optional[Time] = None) -> bool:
         return a_station.is_always_observable(self.times if times is None else times, self.sources)
 
     def is_visible(self, min_stations: int = 3, mandatory_stations: Optional[list[str]] = None,
@@ -795,14 +650,9 @@ class Observation(object):
         visibility = self.is_visible(times=times)  # returns a dict{ codename :  array[src, times]}
         return visibility
 
-
-
-
-
-
     @staticmethod
-    def guest_times_for_source(target: Source, stations: Network, date: Time = None, min_stations : int = 3) \
-                                                                                                    -> tuple:
+    def guest_times_for_source(target: Source, stations: Stations, date: Time = None,
+                               min_stations: int = 3) -> tuple:
         """Use this function to discover when your target source can be observed by the given network
         of stations. It will return the start and end time of the possible observation (both in UTC and GST).
         Note that while this gives you specific dates, the main interest would likely be obtaining the
@@ -841,7 +691,7 @@ class Observation(object):
         obstimes = t0 + np.arange(0, 24*60, 10)*u.min
 
         mm = np.zeros((len(stations), len(obstimes)))
-        for s,a_station in enumerate(stations):
+        for s, a_station in enumerate(stations):
             mm[s, a_station.is_visible(obstimes, target)] = 1
 
         n_onsource = mm.sum(0)
@@ -872,7 +722,7 @@ class Observation(object):
                         (vis_ranges[i+indexes]-vis_ranges[i-1+indexes] > n_max[1]-n_max[0]):  # type: ignore
                     n_max = [i-1+indexes, i+indexes, \
                              n_onsource[vis_ranges[i-1+indexes]:vis_ranges[i+indexes]+1].max()]
-        except IndexError: # because vis_ranges is an empty list. Got it in the following
+        except IndexError:  # because vis_ranges is an empty list. Got it in the following
             pass
 
         if None in (n_max[0], n_max[1]):
@@ -880,7 +730,7 @@ class Observation(object):
             if n_onsource[0] >= 3:
                 best_utc = obstimes[0], obstimes[-1]
                 best_gtc = best_utc[0].sidereal_time('mean', 'greenwich'), \
-                           best_utc[1].sidereal_time('mean', 'greenwich')
+                    best_utc[1].sidereal_time('mean', 'greenwich')
             else:
                 raise SourceNotVisible
         else:

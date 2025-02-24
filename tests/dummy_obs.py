@@ -9,47 +9,40 @@ import numpy as np
 # import matplotlib.dates as mdates
 from astropy import units as u
 from astropy.time import Time
-from vlbiplanobs import stations
-from vlbiplanobs import observation
+from vlbiplanobs import stations as stats
+from vlbiplanobs import observation as obs
+from vlbiplanobs import sources as src
+
+print('Getting all stations')
+all_stations = stats.Stations()
+
+print('Selecting EVNs')
+print(f"With only defaults: {all_stations.filter_networks('EVN', only_defaults=True)}")
+print(f"With all: {all_stations.filter_networks('EVN', only_defaults=False)}")
+print(f"With eMERLINs (defaults only): {all_stations.filter_networks(['EVN', 'eMERLIN'], only_defaults=True)}")
+print(f"As string?: {all_stations.filter_networks('EVN,eMERLIN', only_defaults=True)}")
+
+target = src.Source('Target', '10h58m29.6s +81d33m58.8s')
+pcal = src.Source('PCAL', '10h59m29.6s +81d33m28.8s')
+ccal = src.Source('CHECK', '10h58m00.6s +81d34m28.8s')
+scans = src.ScanBlock([src.Scan(source=target, duration=3.5*u.min), src.Scan(source=pcal, duration=1.5*u.min),
+                       src.Scan(source=ccal, every=3)])
+
+obs = obs.Observation(band='6cm', stations=all_stations.filter_networks(['EVN', 'eMERLIN'], only_defaults=True),
+                      scans=scans, times=Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min,
+                      datarate=1024*u.Mbit/u.s, subbands=8, channels=64, polarizations=4, inttime=2*u.s)
 
 
-target = observation.Source('Target', '10h58m29.6s +81d33m58.8s')
+evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc']
 
-obs = observation.Observation(target=target)
-obs.times = Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min
-obs.band = '18cm'
-obs.datarate = 1024
-obs.subbands = 8
-obs.channels = 32
-obs.polarizations = 2
-obs.inttime = 2
-
-all_stations = stations.Stations.get_stations_from_configfile()
-
-
-def get_selected_antennas(list_of_selected_antennas):
-    """Given a list of antenna codenames, it returns a Stations object containing
-    all given antennas.
-    """
-    selected_antennas = stations.Stations('Observation', [])
-    for ant in list_of_selected_antennas:
-        selected_antennas.add(all_stations[ant])
-    return selected_antennas
-
-
-# evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc']
-evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc', 'Pa', 'Mp', 'Ho', 'Nl', 'Pt', 'Sc', 'Kp', 'Hn']
-obs.stations = get_selected_antennas(evn6)
-
-
-elevs = obs.elevations()
-srcup = obs.is_visible()
-beam = obs.synthesized_beam()
-rms = obs.thermal_noise()
-uvdata = obs.get_uv_array()
-dirty_map_natural = obs.get_dirtymap(robust='natural')
-dirty_map_uniform = obs.get_dirtymap(robust='uniform')
-# fig, ax = plt.subplots()
+# elevs = obs.elevations()
+# srcup = obs.is_visible()
+# beam = obs.synthesized_beam()
+# rms = obs.thermal_noise()
+# uvdata = obs.get_uv_array()
+# dirty_map_natural = obs.get_dirtymap(robust='natural')
+# dirty_map_uniform = obs.get_dirtymap(robust='uniform')
+# # fig, ax = plt.subplots()
 
 
 # for ant in elevs:
@@ -67,7 +60,7 @@ def get_decimal_hour(dts):
 def t2gst(t):
     # Expects a float from the input
     # t2 = np.array([tt.hour+tt.minute/60+tt.second/3600 for tt in t])
-    gst_t_slope = 1.00273791 # Is this universal? it is about 16.4 min
+    gst_t_slope = 1.00273791  # Is this universal? it is about 16.4 min
     # get the offset from the first timestamp
     offset = -obs.times.datetime[0].hour-obs.times.datetime[0].minute/60 + obs.gstimes[0].hour
     return (t*gst_t_slope + offset) % 24

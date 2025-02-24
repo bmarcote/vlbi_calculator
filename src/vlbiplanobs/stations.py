@@ -127,9 +127,6 @@ class Station(object):
             assert isinstance(mount, Mount)
             self._mount = mount
 
-        if isinstance(max_datarate, dict):
-            assert all(k in self._networks for k in max_datarate.keys())
-
         self._max_datarate: u.Quantity | dict | None = max_datarate
         if self.mount.mount_type.ALTAZ:
             self._constraints = [constraints.AzimuthConstraint(min=self.mount.ax1.limits[0],
@@ -399,14 +396,14 @@ class Stations(object):
                         self._bands[aband] = None
         else:
             # Read all stations from catalog,
-            for station in self.get_stations_from_configfile(filename):
+            for station in self._get_stations_from_configfile(filename):
                 self._stations[station.codename] = station
                 for aband in station.bands:
                     self._bands[aband] = None
             # I don't think I need to know the networks at this point
             # _all_networks: dict[str, Stations] = self.get_networks_from_configfile(networks_filename)
             # TODO: implement this part!!!!!!!!!!!!
-            raise NotImplementedError
+            # raise NotImplementedError
 
     @property
     def stations(self) -> list[Station]:
@@ -478,14 +475,14 @@ class Stations(object):
             self._stations.__delitem__(a_station.codename)
 
     def __str__(self):
-        return f"<{self.name}: <{self.number_of_stations}><{', '.join(self.codenames)}>>"
+        return f"<Stations ({self.number_of_stations}): <{', '.join(self.station_codenames)}>>"
 
     def __len__(self):
         return self._stations.__len__()
 
     def __getitem__(self, key):
         if isinstance(key, int):
-            return self._stations[self.codenames[key]]
+            return self._stations[self.station_codenames[key]]
         else:
             return self._stations[key]
 
@@ -521,7 +518,8 @@ class Stations(object):
             else:
                 max_dt.append(min(self.max_datarate(b), stations.max_datarate(b)))  # type: ignore
 
-        return Stations(stations=self.stations + stations.stations, observing_bands=obs_bands, max_datarates=max_dt)
+        return Stations(stations=set(self.stations + stations.stations),
+                        observing_bands=obs_bands, max_datarates=max_dt)
 
     def __iadd__(self, stations: Stations):
         return self.__add__(stations)
@@ -548,7 +546,7 @@ class Stations(object):
 
         Input
             - networks : str or Sequence[str]
-                The name of the network or networkds to which all stations need to belong to.
+                The name of the network or networks to which all stations need to belong to.
             - only_defaults : bool  [DEFAULT = False]
                 If True, it will only return the antennas that are part of the default
                 network, ignoring all others.
@@ -559,7 +557,7 @@ class Stations(object):
         """
         # TODO: change this to network -> networks so it may include multiple!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         if isinstance(networks, str):
-            networks = [networks,]
+            networks = [n.strip() for n in networks.split(',')]
 
         if only_defaults:
             all_networks = self.get_networks_from_configfile()
@@ -667,7 +665,7 @@ class Stations(object):
             # Otherwise config will run smoothly and provide an empty list.
             config.read(open(filename, "r"))
 
-        all_ants = list(Stations.get_stations_from_configfile())
+        all_ants: Stations = Stations()
         networks: dict[str, Stations] = dict()
         for networkname in config.sections():
             temp: str = config[networkname]["max_datarate"]
@@ -678,8 +676,8 @@ class Stations(object):
 
             obs_bands = [b.strip() for b in config[networkname]["observing_bands"].split(",")]
             default_ant = [a.strip() for a in config[networkname]["default_antennas"].split(",")]
-            assert all([ant in all_ants for ant in default_ant]), "The default antenna(s) " \
-                   f"({' ,'.join([ant for ant in default_ant if ant not in all_ants])}) from '{networkname}' " \
+            assert all([ant in all_ants.station_codenames for ant in default_ant]), "The default antenna(s) " \
+                   f"({', '.join([ant for ant in default_ant if ant not in all_ants])}) from '{networkname}' " \
                    "is not present in stations_catalog!"
 
             assert all([band in freqsetups.bands.keys() for band in obs_bands]), \
@@ -702,10 +700,12 @@ class Stations(object):
         return networks
 
     @staticmethod
-    def _parse_station_from_configfile(station: dict) -> Station:
+    def _parse_station_from_configfile(stationname: str, station: dict) -> Station:
         """Parses the entry of a station from the config file and returns a Station object.
 
         Inputs
+        - stationname : str
+            The name of the station as defined in the header of the entry for
         - station : dict
             A dictionary containing the different information from a station, with the following
             fields per station (whose name would be provided as the name of section):
@@ -794,8 +794,8 @@ class Stations(object):
                        does_real_time, amount, max_dt)
 
     @staticmethod
-    def get_stations_from_configfile(filename: Optional[str] = None, codenames: Optional[list[str]] = None,
-                                     name: str = "network") -> Generator[Station]:
+    def _get_stations_from_configfile(filename: Optional[str] = None,
+                                      codenames: Optional[list[str]] = None) -> Generator[Station]:
         """Creates a Stations object (i.e. a network of stations) by reading the station
         information from an input file. Optionally, it allows to select only a subset of
         all stations in the file.
@@ -834,11 +834,9 @@ class Stations(object):
         - codenames : list
             If you only want to select a subset of all stations available in the input file,
             here you can pass a list with the codenames of the stations that should be imported.
-        - name : str
-            Name to assign to the network of stations that will be created.
 
         Returns
-        - network : list[Station]
+        - network : Generator[Station]
             Returns a Stations object containing the specified stations.
         """
         config = configparser.ConfigParser()
@@ -855,4 +853,4 @@ class Stations(object):
 
         for stationname in config.sections():
             if (codenames is None) or (config[stationname]["code"] in codenames):
-                yield Stations._parse_station_from_configfile(config[stationname])  # type: ignore
+                yield Stations._parse_station_from_configfile(stationname, config[stationname])  # type: ignore

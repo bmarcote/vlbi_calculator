@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from astropy import units as u
 from astropy.time import Time
 from astropy import coordinates as coord
+import polars as pl
 from astroplan import FixedTarget
 
 
@@ -31,71 +32,88 @@ class SourceNotVisible(Exception):
     pass
 
 
+@dataclass
+class FluxMeasurement:
+    """Stores the fluxes related to the given source at a particular band (or frequency).
+
+    - peak_flux : u.Quantity
+        Refers to the peak brightness of the source. Meaning the peak expected in a map for the source in
+        a VLBI map, i.e. the unresolved flux of the source.
+
+    - flux_density : u.Quantity
+        Refers to the total flux density of the source. Meaning the observed flux on the shortest baselines.
+    """
+    peak_flux: u.Quantity
+    flux_density: u.Quantity
+
+
 class SourceFlux(object):
     """Fluxes attributed to a given source.
     It provides the flux density (total flux) and peak flux (flux on the longest baselines)
     for a particular frequency.
     """
 
-    def __init__(self, band: Union[str, list[str]], flux_density: Union[u.Quantity, list[u.Quantity]],
-                 peak_flux: Union[u.Quantity, list[u.Quantity]]):
-        if isinstance(band, list):
-            if (not isinstance(flux_density, list)) or (not isinstance(peak_flux, list)):
-                raise TypeError("'flux_density' and 'peak_flux' need to be a list if 'band' is a list.")
+    def __init__(self, band_flux: dict[str, FluxMeasurement]):
+        """Initializes a SourceFlux, which contains the peak flux and flux density of a given source at the
+        given band.
 
-            if (len(flux_density) != len(peak_flux)) or (len(flux_density) != len(band)):
-                raise IndexError("'flux_density' and 'peak_flux' need to have the same dimensions as 'band'.")
+        Input
+            - band_flux : dict[str, FluxDensity]
+                Dictionary of the form {band: FluxDensity}, with 'band' the different bands at which the
+                flux measurements are referring to, and the corresponding FluxDensity object.
+        """
+        self._data: dict[str, FluxMeasurement] = band_flux
 
-            self._band = band
-            self._flux = flux_density
-            self._peak = peak_flux
-        else:
-            if isinstance(flux_density, list) or isinstance(peak_flux, list):
-                raise TypeError("'flux_density' and 'peak_flux' cannot be a list if 'band' is not a list.")
-
-            self._band = [band]
-            self._flux = [flux_density]
-            self._peak = [peak_flux]
-
-    @property
-    def bands(self) -> list[str]:
+    def bands(self) -> tuple[str]:
         """Returns the bands at which there is flux information.
         """
-        return self._band
+        return tuple(self._data.keys())  # type: ignore
 
-    @property
-    def flux_density(self) -> list[u.Quantity]:
-        """Returns all flux density measurements associated to the source.
+    def flux_density(self, band: str) -> FluxMeasurement:
+        """Returns the flux density measurements associated to the source at the given band.
+
+        Input
+        - band : str
+            The band at which the flux density measurements are referring to.
+
+        Raises
+            KeyError : if band is not available.
         """
-        return self._flux
+        return self._data[band].flux_density
 
-    @property
-    def peak_flux(self) -> list[u.Quantity]:
-        """Returns all peak flux (brightness) measurements associated to the source.
+    def peak_flux(self, band: str) -> FluxMeasurement:
+        """Returns the peak flux (brightness) measurements associated to the source at the given band.
+
+        Input
+        - band : str
+            The band at which the flux density measurements are referring to.
+
+        Raises
+            KeyError : if band is not available.
         """
-        return self._peak
+        return self._data[band].peak_flux
 
-    def add_band(self, band: str, flux_density: u.Quantity, peak_flux: u.Quantity):
+    def has_band(self, band: str) -> bool:
+        """Returns if the band is present in the FluxMeasurement.
+        """
+        return band in self._data
+
+    def __containts__(self, band: str) -> bool:
+        return band in self._data
+
+    def __getitem__(self, band: str) -> FluxMeasurement:
+        return self._data[band]
+
+    def __setitem__(self, band: str, flux: FluxMeasurement):
+        self._data[band] = flux
+
+    def add_band(self, band: str, flux: FluxMeasurement):
         """Adds a new measurement of the flux at a new frequency, or overwrites a previous one if the band exists.
         """
-        if band in self._band:
-            index = self._band.index(band)
-            self._flux[index] = flux_density
-            self._peak[index] = peak_flux
-        else:
-            self._band.append(band)
-            self._flux.append(flux_density)
-            self._peak.append(peak_flux)
+        if (not isinstance(band, str)) or (not isinstance(flux, FluxMeasurement)):
+            raise TypeError("Expected 'band' to be a str and 'flux' to be a FluxMeasurement.")
 
-    def flux_density_at(self, band: str) -> u.Quantity:
-        """Returns the flux density at the given band.
-        """
-        return self._flux[self._band.index(band)]
-
-    def peak_flux_at(self, band: str) -> u.Quantity:
-        """Returns the peak flux (brightness) at the given band.
-        """
-        return self._peak[self._band.index(band)]
+        self._data[band] = flux
 
 
 class SourceType(Enum):
@@ -215,7 +233,7 @@ class Source(FixedTarget):
             return coord.get_icrs_coordinates(src_name)
 
     @classmethod
-    def get_source_from_name(cls, src_name: str) -> Self:
+    def source_from_name(cls, src_name: str) -> Self:
         """Returns a Source object by finding the coordinates from its name.
         It first searches wihtin the RFC catalog, and if not found, through the
         'astropy.coordinates.get_icrs_coordinates' function through the RFC catalogs.
@@ -244,7 +262,7 @@ class Source(FixedTarget):
         temp = process.stdout.split()  # Fields:  IVS  name  J2000name  h m s d m s
         return coord.SkyCoord(f"{temp[3]}h{temp[4]}m{temp[5]}s {temp[6]}d{temp[7]}m{temp[8]}s")
 
-    def sun_separation(self, times: Time) -> Union[list, Sequence]:
+    def sun_separation(self, times: Time) -> Sequence[u.Quantity]:
         """Returns the separation of the source to the Sun at the given epoch(s).
 
         Inputs
@@ -255,14 +273,14 @@ class Source(FixedTarget):
             in `times` the more precise values you will obtain for antenna source
             visibility or determination of the rms noise levels. However, that will
             also imply a longer computing time.
-        """
-        if len(self.coord.shape) > 0:
-            return [c.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
-                    for c in self.coord]
-        else:
-            return self.coord.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
 
-    def sun_constraint(self, min_separation: u.Quantity, times: Optional[Time] = None) -> Union[list, np.ndarray]:
+        Return
+        - astropy.units.Quantity
+            The separation between the source and the Sun at the given times.
+        """
+        return self.coord.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
+
+    def sun_constraint(self, min_separation: u.Quantity, times: Optional[Time] = None) -> Time:
         """Checks if the Sun can be a restriction to observe the given source.
         This is defined as if the Sun is at a separation lower than 'min_separation' from the
         target in the sky at a given moment.

@@ -20,7 +20,7 @@ def test_stations_catalog():
 
     codenames = set()
     for stationname in config.sections():
-        for a_key in ('station', 'code', 'network', 'possible_networks', 'country', 'diameter',
+        for a_key in ('station', 'code', 'networks', 'country', 'diameter',
                       'real_time', 'position'):
             assert a_key in config[stationname], \
                    f"'{a_key}' is not present in the stations_catalog.inp for {stationname}"
@@ -51,7 +51,7 @@ def test_network_catalog():
         config.read(net_cat_path)
 
     # To verify that all stations (codenames) defined in the network file as defined in the stations_catalog
-    all_stations = stations.Network.get_stations_from_configfile().codenames
+    all_stations = stations.Stations().station_codenames
     for networkname in config.sections():
         for a_key in ('name', 'default_antennas', 'max_datarate', 'observing_bands'):
             assert a_key in config[networkname], \
@@ -125,12 +125,12 @@ def test_station_file():
     Mainly:  no duplicated antenna code names, all antennas in the networks need to be defined, and all
     setups in the antennas need to be defined in the freqsetup.py
     """
-    all_stations = stations.Network.get_stations_from_configfile(name='all stations')
-    assert all_stations.name == 'all stations'
+    # all_stations = list(stations.Stations.get_stations_from_configfile())
+    all_stations = stations.Stations()
     assert len(all_stations) > 0
 
     # Verifying networks - it would raise issues if inconsistenties
-    all_networks = stations.Network.get_network_names_from_configfile()
+    all_networks = stations.Stations.get_networks_from_configfile()
 
     # double checking with one Station in particular
     with open(resources.files("vlbiplanobs.data").joinpath("stations_catalog.inp")) as afile:

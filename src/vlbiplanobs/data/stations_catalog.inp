@@ -1400,7 +1400,7 @@ ax2acc = 3
 [THERMOpYlae]
 station = THERMOpYlae
 code = Th
-networks = EVN
+networks =
 country = Greece
 diameter = 32 m
 position = 4590591.793, 1919092.551, 3977132.112
@@ -1657,6 +1657,27 @@ sefd_13 = 224.5
 sefd_6 = 449.0
 sefd_5 = 427.6
 sefd_3.6 = 449.0
+
+[WMT]
+station = Wetterstein Milimeter Telescope
+code = WMT
+networks =
+country = Germany
+diameter = 18 m
+position = 4246522.03775704, 823870.00354748, 4675410.17120978
+real_time = no
+mount = ALTAZ
+sefd_21 = 372.3
+sefd_18 = 372.3
+sefd_13 = 372.3
+sefd_6 = 372.3
+sefd_5 = 372.3
+sefd_3.6 = 419.1
+sefd_2.5 = 419.1
+sefd_2 = 372.1
+sefd_1.3 = 485.1
+sefd_0.7 = 809.0
+sefd_0.348 = 2080.5
 
 [Wettzell]
 station = Wettzell

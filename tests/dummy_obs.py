@@ -5,6 +5,7 @@ By running it in an interactive mode it allows me to test all parts.
 Note that this is not a full test...
 """
 import numpy as np
+from rich import print as rprint
 # import matplotlib.pyplot as plt
 # import matplotlib.dates as mdates
 from astropy import units as u
@@ -20,12 +21,18 @@ all_stations = stats.Stations()
 def summarize(o: obs.Observation):
     """Prints the infromation for the given Observation, for testing purposes
     """
-    print(f"\nObservation details ({o.band}, {o.datarate} with {o.subbands} x {o.bandwidth/o.subbands} subbands,"
-          f" {o.channels} channels, {o.polarizations} polarization)")
-    print(f"Stations ({len(o.stations)}): {', '.join(o.stations.station_codenames)}")
-    print("Sources:")
-    for ablock in o.scans:
-        print(f"    - {'\n      '.join([s.name + ' (' + s.coord.to_string('hmsdms') + ')' for s in ablock.sources()])}")
+    rprint(f"\n[bold]Observation at {o.band}[/bold] from {o.times[0].strftime('%d %b %Y %H:%M')}--"
+           f"{o.times[-1].strftime('%H:%M')} UTC\nAt {o.datarate} with {o.subbands} x "
+           f"{int(o.bandwidth.value/o.subbands)} {o.bandwidth.unit} subbands, "
+           f"{o.channels} channels, {o.polarizations} polarization.")
+    rprint(f"[bold]Stations ({len(o.stations)})[/bold]: {', '.join(o.stations.station_codenames)}")
+    rprint("[bold]Sources[/bold]:")
+    for ablockname, ablock in o.scans.items():
+        rprint(f"    - [dim]ScanBlock[/dim] '{ablockname}'\n      "
+               f"{'\n      '.join([s.name + ' [dim](' + s.coord.to_string('hmsdms') + ')[/dim]'
+                                   for s in ablock.sources()])}")
+
+    print('\n')
 
 
 # print('Selecting EVNs')
@@ -34,17 +41,20 @@ def summarize(o: obs.Observation):
 # print(f"With eMERLINs (defaults only): {all_stations.filter_networks(['EVN', 'eMERLIN'], only_defaults=True)}")
 # print(f"As string?: {all_stations.filter_networks('EVN,eMERLIN', only_defaults=True)}")
 
+
+ef = all_stations['Ef']
 target = src.Source('Target', '10h58m29.6s +81d33m58.8s')
 pcal = src.Source('PCAL', '10h59m29.6s +81d33m28.8s')
 ccal = src.Source('CHECK', '10h58m00.6s +81d34m28.8s')
-target2 = src.Source('Target2', '10h58m29.6s +81d33m58.8s')
+target2 = src.Source('Target2', '1h58m29.6s +8d33m58.8s')
 pcal = src.Source('PCAL', '10h59m29.6s +81d33m28.8s')
 scans = src.ScanBlock([src.Scan(source=target, duration=3.5*u.min), src.Scan(source=pcal, duration=1.5*u.min),
                        src.Scan(source=ccal, every=3)])
 scans2 = src.ScanBlock([src.Scan(source=target2, duration=10*u.min)])
 
 o = obs.Observation(band='6cm', stations=all_stations.filter_networks(['EVN', 'eMERLIN'], only_defaults=True),
-                    scans=[scans, scans2], times=Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min,
+                    scans={'1': scans, '2': scans2},
+                    times=Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min,
                     datarate=2048*u.Mbit/u.s, subbands=8, channels=64, polarizations=4, inttime=2*u.s)
 
 summarize(o)
@@ -55,6 +65,27 @@ elevs = o.elevations()
 altaz = o.altaz()
 srcup = o.is_observable()
 srcupalways = o.is_always_observable()
+when = o.when_is_observable()
+rprint(f"[bold]The blocks are observable for:[/bold]")
+for ablockname, antbool in srcup.items():
+    rprint(f"    - '{ablockname}':", end='')
+    if any(srcupalways[ablockname].values()):
+        ant_can = [ant for ant, b in srcupalways[ablockname].items() if b]
+        if len(ant_can) >= len(o.stations):
+            rprint(f" [dim](always observable by {','.join(ant_can)})[/dim]")
+        else:
+            rprint(f" [dim](always observable by everyone but {','.join([ant for ant in o.stations.station_codenames
+                                                                         if ant not in ant_can])})[/dim]")
+    else:
+        rprint(' [dim](nobody can observed it all the time)[/dim]')
+
+    for ant in antbool:
+        rprint(f"        {ant:3}: {''.join(['◼︎' if b else ' ' for b in antbool[ant]])}")
+
+    rprint(f"[bold]Optimal visibility range:[/bold] {', '.join([t1.strftime('%d %b %Y %H:%M')+'--'+t2.strftime('%H:%M')
+                                                                + ' UTC'
+                                                                for t1, t2 in when[ablockname]])}", end='\n\n')
+
 # beam = obs.synthesized_beam()
 # rms = obs.thermal_noise()
 # uvdata = obs.get_uv_array()

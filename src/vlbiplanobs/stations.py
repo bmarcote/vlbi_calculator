@@ -10,7 +10,7 @@ from rich import print as rprint
 from astropy import units as u
 from astropy import coordinates as coord
 from astropy.time import Time
-from astroplan import Observer, FixedTarget, is_observable, is_always_observable
+from astroplan import Observer, FixedTarget, is_observable, is_event_observable, is_always_observable
 from dataclasses import dataclass
 from enum import Enum, auto
 from . import constraints
@@ -268,6 +268,23 @@ class Station(object):
              Target coordinates to observe. If None, the target would be assumed to be visible at all times.
 
         Output
+        - visible : list[list[bool]]
+            List of booleans of same length as targets for whether or not each target is ever
+            observable in the time range given the constraints.
+        """
+        return is_event_observable(self.constraints, self.observer, target, times=obs_times)[0, :]
+
+    def is_ever_observable(self, obs_times: Time, target: FixedTarget) -> list[bool]:
+        """Returns if the target source is observable for this station at least for part of the times.
+
+        Inputs
+        - obs_times : astropy.time.Time
+            Time to compute the elevation of the source
+            (either a single timestamp or an array of times).
+        - target : astroplan.FixedTarget
+             Target coordinates to observe. If None, the target would be assumed to be visible at all times.
+
+        Output
         - visible : list[bool]
             List of booleans of same length as targets for whether or not each target is ever
             observable in the time range given the constraints.
@@ -323,6 +340,25 @@ class Station(object):
 
         """
         return self._freqs_sefds[band]
+
+    def slewing(self, coordinates1: coord.AltAz, coordinates2: coord.AltAz) -> u.Quantity:
+        """Returns the expected slewing time to move from coordinates1 to coordinates2 according to
+        the known velocity and acceleration from the mount.
+
+        Args
+        - coordinates1 : astropy.coordinates.AltAz
+            AltAz object with the coordinates of the first point. Must be in altaz coordinates.
+        - coordinates2 : astropy.coordinates.AltAz
+            AltAz object with the coordinates of the second point. Must be in altaz coordinates.
+
+        Returns
+        - slewing_time : astropy.time.TimeDelta
+            TimeDelta object with the slewing time.
+        """
+        assert isinstance(coordinates1, coord.AltAz) and isinstance(coordinates2, coord.AltAz)
+        # TODO: do the maths!!!!
+        raise NotImplementedError
+        return np.sqrt(()**2 + ()**2)
 
     def __str__(self):
         return f"<{self.codename}>"

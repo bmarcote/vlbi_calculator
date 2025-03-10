@@ -563,6 +563,14 @@ class ScanBlock:
 
         return [s.source for s in self.scans if s.source.type is source_type]
 
+    def sourcenames(self, source_type: Optional[SourceType] = None) -> list[str]:
+        """Returns the source names with the given source types in this block.
+        """
+        if source_type is None:
+            return [s.source.name for s in self.scans]
+
+        return [s.source.name for s in self.scans if s.source.type is source_type]
+
     def scans_with_sources(self, source_type: SourceType) -> list[Scan]:
         """Returns the scans with the given source types in this block.
         """

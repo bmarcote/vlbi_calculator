@@ -1,0 +1,4 @@
+site_name: EVN Observation Planner
+site_url: https://vlbiplanobs.github.io
+theme:
+  name: material

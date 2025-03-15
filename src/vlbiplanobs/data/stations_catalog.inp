@@ -1058,12 +1058,12 @@ ax2rate = 28.7
 ax1acc = 0.75
 ax2acc = 0.25
 
-[Onsala]
+[Onsala85]
 station = Onsala
-code = On
-networks = EVN, GMVA
+code = O8
+networks = EVN
 country = Sweden
-diameter = 25/20 m
+diameter = 25 m
 position = 3370965.8787, 711466.1978, 5349664.2006
 real_time = yes
 sefd_30 = 900
@@ -1072,10 +1072,6 @@ sefd_18 = 310.0
 sefd_13 = 1110.0
 sefd_6 = 480.0
 sefd_5 = 850.0
-sefd_3.6 = 785.0
-sefd_1.3 = 1200
-sefd_0.7 = 1310.0
-sefd_0.348 = 2653.1
 mount = EQUAT
 ax1lim = -12,12
 ax2lim = -30,84
@@ -1083,6 +1079,26 @@ ax1rate = 17.6
 ax2rate = 14.7
 ax1acc = 0.070
 ax2acc = 0.052
+
+[Onsala60]
+station = Onsala
+code = O6
+networks = EVN, GMVA
+country = Sweden
+diameter = 20 m
+position = 3370965.8787, 711466.1978, 5349664.2006
+real_time = yes
+sefd_3.6 = 785.0
+sefd_1.3 = 1200
+sefd_0.7 = 1310.0
+sefd_0.348 = 2653.1
+mount = ALTAZ
+ax1lim = -20,380
+ax2lim = 5,87
+ax1rate = 180.0
+ax2rate = 57.0
+ax1acc = 0.3
+ax2acc = 0.4
 
 [NOEMA]
 station = NOEMA (Plateau de Bure Interferometer)

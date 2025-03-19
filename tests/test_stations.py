@@ -82,6 +82,9 @@ def test_station_init():
         _ = stations.Station('name', 'Nm', 'VLBI', coord.EarthLocation(0., 0., 0.), {}, 10*u.m)
 
 
+# TODO: add tests on: check Mount type is what is written in the file, and depending on that, if it got the
+# correct constraints (e.g. HourAngle for EQUAT, etc)
+
 def test_station_functions():
     """Tests the Station functions.
     """

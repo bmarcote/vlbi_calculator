@@ -6,6 +6,7 @@ Note that this is not a full test...
 """
 import numpy as np
 from rich import print as rprint
+import plotext as plt
 # import matplotlib.pyplot as plt
 # import matplotlib.dates as mdates
 from astropy import units as u
@@ -13,6 +14,10 @@ from astropy.time import Time
 from vlbiplanobs import stations as stats
 from vlbiplanobs import observation as obs
 from vlbiplanobs import sources as src
+from vlbiplanobs import scheduler
+
+import polars as pl
+import pandas as pd
 
 # print('Getting all stations')
 all_stations = stats.Stations()
@@ -43,29 +48,31 @@ def summarize(o: obs.Observation):
 
 
 ef = all_stations['Ef']
-target = src.Source('Target', '10h58m29.6s +81d33m58.8s')
-pcal = src.Source('PCAL', '10h59m29.6s +81d33m28.8s')
-ccal = src.Source('CHECK', '10h58m00.6s +81d34m28.8s')
-target2 = src.Source('Target2', '1h58m29.6s +8d33m58.8s')
-pcal = src.Source('PCAL', '10h59m29.6s +81d33m28.8s')
+wb = all_stations['Wb']
+target = src.Source('R1_D', '10h58m29.6s +81d33m58.8s', source_type=src.SourceType.TARGET)
+pcal = src.Source('PCAL', '10h59m29.6s +81d33m28.8s', source_type=src.SourceType.PHASECAL)
+ccal = src.Source('CHECK', '10h58m00.6s +81d34m28.8s', source_type=src.SourceType.CHECKSOURCE)
+target2 = src.Source('R2_D', '1h58m29.6s +8d33m58.8s', source_type=src.SourceType.TARGET)
+pcal = src.Source('PCAL', '10h59m29.6s +81d33m28.8s', source_type=src.SourceType.PHASECAL)
 scans = src.ScanBlock([src.Scan(source=target, duration=3.5*u.min), src.Scan(source=pcal, duration=1.5*u.min),
                        src.Scan(source=ccal, every=3)])
 scans2 = src.ScanBlock([src.Scan(source=target2, duration=10*u.min)])
-
-o = obs.Observation(band='6cm', stations=all_stations.filter_networks(['EVN', 'eMERLIN'], only_defaults=True),
-                    scans={'1': scans, '2': scans2},
+evn6 = ['Cm', 'Da', 'De', 'Ef', 'Ir', 'Jb2', 'Kn', 'Mc', 'Nt', 'O8', 'Pi', 'Sr', 'T6', 'Tr', 'Ur', 'Wb', 'Hh']
+o = obs.Observation(band='6cm',  # stations=all_stations.filter_networks(['EVN', 'eMERLIN'],
+                    # only_defaults=True),
+                    stations=all_stations.filter_antennas(evn6),
+                    scans={'R1': scans, 'R2': scans2},
                     times=Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min,
                     datarate=2048*u.Mbit/u.s, subbands=8, channels=64, polarizations=4, inttime=2*u.s)
 
 summarize(o)
 
-evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc']
 
 elevs = o.elevations()
 altaz = o.altaz()
 srcup = o.is_observable()
 srcupalways = o.is_always_observable()
-when = o.when_is_observable()
+when = o.when_is_observable(min_stations=5)  # mandatory_stations='all')
 rprint(f"[bold]The blocks are observable for:[/bold]")
 for ablockname, antbool in srcup.items():
     rprint(f"    - '{ablockname}':", end='')
@@ -74,17 +81,34 @@ for ablockname, antbool in srcup.items():
         if len(ant_can) >= len(o.stations):
             rprint(f" [dim](always observable by {','.join(ant_can)})[/dim]")
         else:
-            rprint(f" [dim](always observable by everyone but {','.join([ant for ant in o.stations.station_codenames
-                                                                         if ant not in ant_can])})[/dim]")
+            rprint(" [dim](always observable by everyone but "
+                   f"{','.join([ant for ant in o.stations.station_codenames
+                                if ant not in ant_can])})[/dim]")
     else:
-        rprint(' [dim](nobody can observed it all the time)[/dim]')
+        rprint(' [dim](nobody can observe it all the time)[/dim]')
 
-    for ant in antbool:
-        rprint(f"        {ant:3}: {''.join(['◼︎' if b else ' ' for b in antbool[ant]])}")
+    for anti, ant in enumerate(antbool):
+        rprint(f"        {ant:3}| {''.join(['◼︎' if b else ' ' for b in antbool[ant]])}")
 
-    rprint(f"[bold]Optimal visibility range:[/bold] {', '.join([t1.strftime('%d %b %Y %H:%M')+'--'+t2.strftime('%H:%M')
-                                                                + ' UTC'
-                                                                for t1, t2 in when[ablockname]])}", end='\n\n')
+    rprint(f"           |-{''.join(['-' for b in antbool[ant]])}|")
+    rprint(f"           {o.times.datetime[0].strftime('%H:%M'):05}"
+           f"{''.join([' ' for b in antbool[ant]][:-7])}"
+           f"{o.times.datetime[-1].strftime('%H:%M'):05}")
+
+    rprint("[bold]Optimal visibility range:[/bold] "
+           f"{', '.join([t1.strftime('%d %b %Y %H:%M')+'--'+t2.strftime('%H:%M')
+                         + ' UTC' for t1, t2 in o.when_is_observable(min_stations=5)[ablockname]])}")
+    when_everyone = o.when_is_observable(mandatory_stations='all')[ablockname]
+    rprint("[bold]Everyone in at:           [/bold]"
+           f"{', '.join([t1.strftime('%d %b %Y %H:%M')+'--'+t2.strftime('%H:%M') + ' UTC'
+              for t1, t2 in when_everyone]) if len(when_everyone) > 0 else 'None'}",
+           end='\n\n')
+
+
+sch = scheduler.ScanBlockScheduler(o)
+sch.solve()
+
+rprint(f"[green bold]The Schedule[/green bold]:\n{sch.print_schedule()}")
 
 # beam = obs.synthesized_beam()
 # rms = obs.thermal_noise()

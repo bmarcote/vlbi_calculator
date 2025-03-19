@@ -64,7 +64,8 @@ class HourAngleConstraint(Constraint):
     def compute_constraint(self, times: Time, observer: Observer, targets: FixedTarget):
         hour_angles = observer.target_hour_angle(times, targets)
         if self.boolean_constraint:
-            return ((self.min < hour_angles) & (hour_angles < self.max))
+            return ((self.min < hour_angles) & (hour_angles < self.max)) | \
+                   (((self.min + 24*u.hourangle) < hour_angles) & (hour_angles < (self.max + 24.0*u.hourangle)))
         else:
             rescale = min_best_rescale(hour_angles, self.min, self.max, less_than_min=0)
             return rescale
@@ -87,7 +88,7 @@ class DeclinationConstraint(Constraint):
         self.boolean_constraint = boolean_constraint
 
     def compute_constraint(self, times: Time, observer: Observer, targets: FixedTarget):
-        target_declination = targets.coord.dec
+        target_declination = targets.dec
         if self.boolean_constraint:
             return ((self.min < target_declination) & (target_declination < self.max))
         else:

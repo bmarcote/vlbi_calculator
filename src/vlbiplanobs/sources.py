@@ -1,6 +1,7 @@
 from typing import Optional, Union, Self, Sequence
 from importlib import resources
 import subprocess
+import functools
 # from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import numpy as np
 import yaml                # type: ignore
@@ -244,6 +245,22 @@ class Source(FixedTarget):
         """
         return cls(src_name, coordinates=Source.get_coordinates_from_name(src_name))
 
+    @classmethod
+    def source_from_str(cls, src: str) -> Self:
+        """Returns a Source object from the given string. This can be either the source name, and then it
+        will retrieve the coordinates from the SIMBAD/NED/VizieR databases, if it's known, or the source
+        coordinates (in either 'XXhXXmXXs XXdXXmXXs' or 'HH:MM:SS DD:MM:SS' formats).
+        """
+        if all([char in src for char in ('h', 'm', 'd', 's')]):
+            return cls('target', coordinates=coord.SkyCoord(src), source_type=SourceType.TARGET)
+        elif ':' in src:
+            for char in ('h', 'm', 'd', 'm'):
+                src = src.replace(':', char, 1)
+
+            return cls('target', coordinates=coord.SkyCoord(src), source_type=SourceType.TARGET)
+        else:
+            return cls.source_from_name(src)
+
     @staticmethod
     def get_rfc_coordinates(src_name: str) -> coord.SkyCoord:
         """Returns the coordinates of the object by searching the provided name through the RFC catalog.
@@ -314,101 +331,71 @@ class Source(FixedTarget):
             return times[sun_separation < min_separation]
 
 
-# TODO: this part may go away or as a Catalog class (see freeform notes).
-class Sources:
+class SourceCatalog:
     def __init__(self, personal_catalog: Optional[str] = None):
-        self._sources: dict[str, Source] = dict()
-        self._all_names: dict[str, str] = dict()
-        self._personal: set[str] = set()
-        self._catalog: set[str] = set()
-        # self.read_rfc_catalog()
+        self._blocks: dict[str, dict[str, ScanBlock]] = dict()
+        # self._sources: dict[str, Source] = dict()
+        # self._all_names: dict[str, str] = dict()
+        # self._personal: set[str] = set()
+        # self._catalog: set[str] = set()
         if personal_catalog is not None:
             self.read_personal_catalog(personal_catalog)
 
     @property
-    def source_names(self) -> list:
-        """Returns the names of the sources in the database.
-        """
-        return list(self._sources.keys())
+    def blocknames(self):
+        return [bb for b in self._blocks.values() for bb in b.keys()]
 
     @property
-    def source_names_all(self) -> list:
-        """Returns all available names for the sources.
-        Note that this will display different names that belong to the same source.
-        """
-        return list(self._all_names.keys())
+    def blocks(self):
+        return {bb_key: bb_value for b in self._blocks.values() for bb_key, bb_value in b.items()}
 
     @property
-    def sources(self) -> dict[str, Source]:
+    def targets(self):
+        return self._blocks['targets']
+
+    @property
+    def pulsars(self):
+        return self._blocks['pulsars'] if 'pulsars' in self._blocks else None
+
+    @property
+    def ampcals(self):
+        return self._blocks['ampcals'] if 'ampcals' in self._blocks else None
+
+    @property
+    def fringefinders(self):
+        return self._blocks['fringefinders'] if 'fringefinders' in self._blocks else None
+
+    @property
+    def polcals(self):
+        return self._blocks['polcals'] if 'polcals' in self._blocks else None
+
+    @functools.cache
+    def source_names(self, include_calibrators: bool = False) -> list[str]:
+        """Returns the names of all sources in the database.
+        """
+        if include_calibrators:
+            return list([s.name for b in self._blocks.values() for bs in b.values() for s in bs.sources()])
+
+        return list([s.name for b in self._blocks['targets'].values() for s in b.sources()])
+
+    @functools.cache
+    def sources(self, include_calibrators: bool = False) -> dict[str, Source]:
         """Returns all sources.
         """
-        return self._sources
+        if include_calibrators:
+            return {s.name: s for b in self._blocks.values() for bs in b.values() for s in bs.sources()}
 
-    @property
-    def personal(self) -> dict[str, Source]:
-        """Returns only the sources that belong to the personal database (if any have been imported).
-        """
-        return {src_name: self._sources[src_name] for src_name in self._personal}
+        return {s.name: s for b in self._blocks['targets'].values() for s in b.sources()}
 
-    @property
-    def catalog(self) -> dict[str, Source]:
-        """Returns only the sources that belong to the catalogs that have been automatically imported
-        from PlanObs, which are from the RFC.
-        """
-        return {src_name: self._sources[src_name] for src_name in self._catalog}
+    def __contains__(self, item: str):
+        return item in self.blocknames
 
-    def add(self, a_src: Source, label: str = 'personal'):
-        """Adds a new source to the catalog
+    def __getitem__(self, item: str):
+        for key in self._blocks:
+            if item in self._blocks[key]:
+                return self._blocks[key][item]
 
-        Inputs
-            a_src : Source
-                The new source (Source type) to add to the database.
-            label : str  (default 'personal')
-                In which category this source will be added. It can be either 'personal' or 'catalog'.
-        """
-        if a_src.name in self._sources:
-            prev_other_names = self._sources[a_src.name].other_names
-            a_src.other_names += [o for o in prev_other_names if o not in a_src.other_names]
-            self._sources[a_src.name] = a_src
-            for another_name in a_src.other_names:
-                self._all_names[another_name] = a_src.name
-        elif a_src.name in self._all_names:
-            other_names = self._sources[self._all_names[a_src.name]].other_names + [self._all_names[a_src.name]]
-            a_src.other_names += [o for o in other_names if o not in a_src.other_names and o != a_src.name]
-            self._personal.discard(self._all_names[a_src.name])
-            self._catalog.discard(self._all_names[a_src.name])
-            del self._sources[self._all_names[a_src.name]]
-            for another_name in other_names:
-                del self._all_names[another_name]
-
-            self._sources[a_src.name] = a_src
-            for another_name in a_src.other_names:
-                self._all_names[another_name] = a_src.name
-        elif any([s in self._all_names for s in a_src.other_names]):
-            for s in a_src.other_names:
-                if s in self._all_names:
-                    prev_name = self._all_names[s]
-
-            a_src.other_names += [o for o in self._sources[prev_name].other_names
-                                  if o not in a_src.other_names and o != a_src.name]
-            if prev_name not in a_src.other_names:
-                a_src.other_names.append(prev_name)
-
-            del self._sources[prev_name]
-            self._personal.discard(prev_name)
-            self._catalog.discard(prev_name)
-            self._sources[a_src.name] = a_src
-            for another_name in a_src.other_names:
-                self._all_names[another_name] = a_src.name
-        else:
-            self._sources[a_src.name] = a_src
-            for another_name in a_src.other_names:
-                self._all_names[another_name] = a_src.name
-
-        if label == 'personal':
-            self._personal.add(a_src.name)
-        else:
-            self._catalog.add(a_src.name)
+        raise KeyError(f"The item {item} is not in the catalog.")
 
     def read_personal_catalog(self, path: str):
         """Reads the yaml file with the information of all sources that may be scheduled.
@@ -420,48 +407,55 @@ class Sources:
         """
         with open(path, 'r') as sources_yaml:
             catalog = yaml.safe_load(sources_yaml)
-            for a_type in catalog:
-                for a_src in catalog[a_type]:
-                    src = catalog[a_type][a_src]
+            for a_entry in catalog:
+                if a_entry not in self._blocks:
+                    self._blocks[a_entry] = dict()
+
+                match a_entry:
+                    case 'pulsars':
+                        src_type = SourceType.PULSAR
+                    case 'targets':
+                        src_type = SourceType.TARGET
+                    case 'ampcals':
+                        src_type = SourceType.AMPLITUDECAL
+                    # case 'checksources':
+                    #     src_type = SourceType.CHECKSOURCE
+                    # case 'phasecals':
+                    #     src_type = SourceType.PHASECAL
+                    case 'fringefinders':
+                        src_type = SourceType.FRINGEFINDER
+                    case 'polcals':
+                        src_type = SourceType.POLCAL
+                    case _:
+                        src_type = SourceType.UNKNOWN
+
+                for a_src in catalog[a_entry]:
+                    src = catalog[a_entry][a_src]
+                    scans = []
                     if 'phasecal' in src:
-                        self.add(Source(name=src['phasecal']['name'],
-                                        coordinates=src['phasecal']['coordinates'],
-                                        source_type=SourceType.PHASECAL,
-                                        grade=src['phasecal']['grade'] if 'grade' in src['phasecal']
-                                        else 5), label='personal')
+                        scans.append(Scan(source=Source(name=src['phasecal']['name'],
+                                                        coordinates=src['phasecal']['coordinates'],
+                                                        source_type=SourceType.PHASECAL),
+                                          duration=float(src['phasecal']['duration'])*u.min
+                                          if 'duration' in src['phasecal'] else None,
+                                          every=int(src['phasecal']['every']) if 'every' in src['phasecal'] else -1))
 
                     if 'checkSource' in src:
-                        self.add(Source(name=src['checkSource']['name'],
-                                 coordinates=src['checkSource']['coordinates'],
-                                 source_type=SourceType.CHECKSOURCE,
-                                 grade=src['checkSource']['grade'] if 'grade' in src['checkSource']
-                                 else 5), label='personal')
+                        scans.append(Scan(source=Source(name=src['checkSource']['name'],
+                                                        coordinates=src['checkSource']['coordinates'],
+                                                        source_type=SourceType.CHECKSOURCE),
+                                          duration=float(src['checkSource']['duration'])*u.min
+                                          if 'duration' in src['checkSource'] else None,
+                                          every=int(src['checkSource']['every'])
+                                          if 'every' in src['checkSource'] else -1))
 
-                    match a_type:
-                        case 'pulsars':
-                            src_type = SourceType.PULSAR
-                        case 'targets':
-                            src_type = SourceType.TARGET
-                        case 'amplitudecals':
-                            src_type = SourceType.AMPLITUDECAL
-                        case 'checksources':
-                            src_type = SourceType.CHECKSOURCE
-                        case 'phasecals':
-                            src_type = SourceType.PHASECAL
-                        case 'fringefinders':
-                            src_type = SourceType.FRINGEFINDER
-                        case 'polcals':
-                            src_type = SourceType.POLCAL
-                        case _:
-                            src_type = SourceType.UNKNOWN
+                    scans.append(Scan(source=Source(name=src['name'] if 'name' in src else a_src,
+                                                    coordinates=src['coordinates'],
+                                                    source_type=src_type),
+                                      duration=float(src['duration'])*u.min if 'duration' in src else None,
+                                      every=int(src['every']) if 'every' in src else -1))
 
-                    self.add(Source(name=a_src,
-                                    coordinates=src['coordinates'],
-                                    source_type=src_type,
-                                    phasecal=self._sources[src['phasecal']['name']]
-                                    if 'phasecal' in src else None,
-                                    checksource=self._sources[src['checkSource']['name']]
-                                    if 'checkSource' in src else None), label='personal')
+                    self._blocks[a_entry][a_src] = ScanBlock(scans)
 
     def read_rfc_catalog(self, path: Optional[Union[str, Path]] = None):
         """Reads the catalog yaml file with the information of all sources that may be scheduled.

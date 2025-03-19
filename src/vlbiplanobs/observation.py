@@ -54,7 +54,7 @@ class Observation(object):
     """
 
     def __init__(self, band: str, stations: Stations, scans: dict[str, ScanBlock],
-                 times: Optional[Time] = None,
+                 times: Optional[Time] = None, duration: Optional[u.Quantity] = None,
                  datarate: Optional[Union[int, u.Quantity]] = None,
                  subbands: Optional[int] = None, channels: Optional[int] = None,
                  polarizations: Optional[Union[int, str]] = None,
@@ -85,6 +85,10 @@ class Observation(object):
             visibility or determination of the rms noise levels. However, that will
             also imply a longer computing time. Steps of ~5-15 min seem appropriate
             for typical VLBI observations.
+        - duration : astropy.units.Quantity
+            Total duration of the observation. If 'times' provided, it will automatically be calculated
+            from them. Otherwise it will be set from this value (e.g. for observations where the start
+            time is not known).
         - datarate : int or astropy.units.Quantity
             Data rate for each antenna. It assumes that all antennas will run at the same
             data rate, which may not be true. If an int is introduce, it will be assumed to
@@ -116,7 +120,7 @@ class Observation(object):
         else:
             raise ValueError("Scans needs to be either a ScanBlock or a list of ScanBlocks.")
 
-        self._source_list: Optional[set[Source]] = None
+        self._source_list: Optional[dict[str, Source]] = None
         # Because otherwise gstimes is not initialized
         if times is None:
             self._times = None
@@ -130,6 +134,7 @@ class Observation(object):
         self.channels = channels
         self.polarizations = polarizations if polarizations is not None else Polarization.FULL  # type: ignore
         self.inttime = inttime
+        self._duration = duration
         self.stations = stations
         self.bitsampling = bits
         self.ontarget_fraction = ontarget
@@ -154,7 +159,7 @@ class Observation(object):
         self._scans = scans
 
     @property
-    def sources(self) -> Optional[list[Source]]:
+    def sources(self) -> Optional[dict[str, Source]]:
         """Returns the sources included during the observation.
         It can return None if the target has not been set yet, showing a warning.
         """
@@ -162,21 +167,21 @@ class Observation(object):
             return None
 
         if self._source_list is not None:
-            return list(self._source_list)
+            return self._source_list
 
-        self._source_list = set()
+        self._source_list = {}
         for a_scanblock in self._scans.values():
             for a_src in a_scanblock.sources():
-                self._source_list.add(a_src)
+                self._source_list[a_src.name] = a_src
 
-        return list(self._source_list)
+        return self._source_list
 
     @property
     def sourcenames(self) -> Optional[list[str]]:
         """Returns the source names included during the observation
         It can return None if the target has not been set yet, showing a warning.
         """
-        return [a_source.name for a_source in self.sources] if self.sources is not None else None
+        return [a_source.name for a_source in self.sources.values()] if self.sources is not None else None
 
     @property
     def times(self) -> Optional[Time]:
@@ -217,7 +222,7 @@ class Observation(object):
     def duration(self) -> Optional[u.Quantity]:
         """Returns the total duration of the observation.
         """
-        return None if self.times is None else (self.times[-1] - self.times[0]).to(u.h)
+        return self._duration if self.times is None else (self.times[-1] - self.times[0]).to(u.h)
 
     @property
     def band(self) -> str:
@@ -459,8 +464,8 @@ class Observation(object):
 
         Returns
             elevations : dict
-                Dictionary where they keys are: the ScanBlock name, the source name, and then the station code names,
-                and the values are the elevations at each time stamp.
+                Dictionary where they keys are: the ScanBlock name, the source name,
+                and then the station code names, and the values are the elevations at each time stamp.
         """
         if (self.sources is None) or (self.times is None):
             raise ValueError("The target and/or observing times have not been initialized")
@@ -480,7 +485,7 @@ class Observation(object):
 
         # TODO: check if doing a multi-thread here will improve performance or not
 
-        return {src.name: {a_station: a_station.elevation(self.times, src) for a_station in self.stations}
+        return {src: {a_station.codename: a_station.elevation(self.times, self.sources[src]) for a_station in self.stations}
                 for src in self.sources}
 
     def _elevations_process(self) -> dict:
@@ -679,10 +684,12 @@ class Observation(object):
 
         return self._is_always_visible
 
-    def when_is_observable(self, min_stations: int = 3, mandatory_stations: Optional[str | list[str]] = None,
+    def when_is_observable(self, min_stations: int = 3,
+                           mandatory_stations: Optional[str | list[str]] = None,
                            stations_all_time: bool = False, within_time_range: Optional[Time] = None,
                            return_gst: bool = False) -> dict[str, list[Time | u.Quantity]]:
-        """Returns the time range when the different BlockScans/sources are visible verifying the set requirements.
+        """Returns the time range when the different BlockScans/sources are visible verifying the set
+        requirements.
         If the time of the observation is set, it will check if the source is observable only within that
         time range, otherwise it will check at any possible time.
 
@@ -697,19 +704,21 @@ class Observation(object):
         - stations_all_time : bool  [default = False]
             If all stations must be observing the source at all times or this is not required.
         - within_time_range : Time  [default = None]
-            Time range within which the source is observable. Must contain only two times (start and end time).
+            Time range within which the source is observable.
+            Must contain only two times (start and end time).
         - return_gst : bool  [default = False]
             Defines if the returned times for the start and end of the observation should be in GST time
             instead of UTC.
 
         Returns
             - (t0, t1, ...)  : tuple with two astropy.units.Quantity[Longitude] objects.
-                The start and end (GST) time of the same period of time when the source is visible by enough stations.
-                If 'return_gst' is False, the tuple will contain two astropy.time.Time objects instead, with the
-                UTC times for the start and end times.
-                It will be always an even number of entries. If more than two, means that there are multiple
-                time ranges where it can be observed following t0, t1, t2, t3, ... so the source can be observed
-                between t0 and t1, t2 and t3, etc.
+                The start and end (GST) time of the same period of time when the source is visible by
+                enough stations.
+                If 'return_gst' is False, the tuple will contain two astropy.time.Time objects instead,
+                with the UTC times for the start and end times.
+                It will be always an even number of entries. If more than two, means that there are
+                multiple time ranges where it can be observed following t0, t1, t2, t3, ...
+                so the source can be observed between t0 and t1, t2 and t3, etc.
 
         Exceptions
         - It may raise the exception SourceNotVisible if the target source is not visible by
@@ -718,12 +727,12 @@ class Observation(object):
         if self.sources is None or self._is_visible is None:
             raise ValueError("The sources have not been initialized")
 
-        if self._when_visible is not None:
-            if return_gst:
-                return {s: list([t.sidereal_time('mean', 'greenwich') for t in self._when_visible[s]])
-                        for s in self._when_visible}
-
-            return self._when_visible
+        # if self._when_visible is not None:
+        #     if return_gst:
+        #         return {s: list([t.sidereal_time('mean', 'greenwich') for t in self._when_visible[s]])
+        #                 for s in self._when_visible}
+        #
+        #     return self._when_visible
 
         if within_time_range is None:
             if self.times is None:
@@ -732,8 +741,10 @@ class Observation(object):
             else:
                 within_time_range = self.times
         else:
-            assert len(within_time_range) == 2, "The time range must contain only two times (start and end time)"
-            assert within_time_range[1] <= within_time_range[0], "The end time must be larger than the start time"
+            assert len(within_time_range) == 2, \
+                "The time range must contain only two times (start and end time)"
+            assert within_time_range[1] <= within_time_range[0], \
+                "The end time must be larger than the start time"
             within_time_range = within_time_range[0] + \
                 np.arange((within_time_range[1] - within_time_range[0]).to(u.day).value, 0.01)*u.day
 

@@ -80,7 +80,8 @@ class Station(object):
             the values representing the system equivalent flux density (SEFD; in Jansky units)
             at each frequency.
             Although the key format is in principle free, we recommend to use the syntax 'XXcm' (str type).
-            This will be then consistent with the default station catalog and will avoid issues for some functions.
+            This will be then consistent with the default station catalog and will avoid issues for some
+            functions.
         - fullname : str [OPTIONAL]
             Full name of the station. If not given, same as `name` is assumed.
             It can be used to expand the full name if an abbreviation is typically used for the name.
@@ -94,16 +95,18 @@ class Station(object):
         - real_time : bool [OPTIONAL]
             If the station can participate in real-time observations (e.g. e-EVN), False by default.
         - mount : Mount [OPTIONAL]
-            The mount of the station, including the type of mount and the slewing limits, speed, and acceleration.
-            If not provided, it will assume an ALTAZ mount with no pointing limits and very high slewing speed.
+            The mount of the station, including the type of mount and the slewing limits, speed,
+            and acceleration.
+            If not provided, it will assume an ALTAZ mount with no pointing limits and very high
+            slewing speed.
         - max_datarate : u.Quantity or dict[str, u.Quantity]  [OPTIONAL]
             Specifies the maximum data rate that the station can record. If not provided, it will use the
             data rate assumed in the observation. It can be either a astropy.unit.Quantity value
             (equivalent to Mb/s), or a dictionary in the case that the antenna can show different data rates
-            when it is participating in different networks. In that case, the abbreviation of the network will
-            be the key of the dictionary, with the quantity as value. For example, Darnhall can record at 4 Gbps
-            when participating within e-MERLIN observations, but their data rate is limited to 512 Mbps when
-            participating within the EVN.
+            when it is participating in different networks. In that case, the abbreviation of the
+            network will be the key of the dictionary, with the quantity as value.
+            For example, Darnhall can record at 4 Gbps when participating within e-MERLIN observations,
+            but their data rate is limited to 512 Mbps when participating within the EVN.
         """
         for a_var, a_var_name in zip((name, codename, country, diameter),
                                      ("name", "codename", "country", "diameter")):
@@ -114,7 +117,8 @@ class Station(object):
         self.observer: Observer = Observer(name=name.replace("_", " "), location=location)
         self._codename: str = codename
         self._networks: tuple[str] = networks if isinstance(networks, tuple) else (networks,)
-        self._freqs_sefds: dict[str, float] = {f if "cm" in f else f"{f}cm": v for f, v in freqs_sefds.items()}
+        self._freqs_sefds: dict[str, float] = {f if "cm" in f else f"{f}cm": v
+                                               for f, v in freqs_sefds.items()}
         self._fullname: str = name if fullname is None else fullname
         self._country: str = country
         self._diameter: str = diameter
@@ -128,7 +132,7 @@ class Station(object):
             self._mount = mount
 
         self._max_datarate: u.Quantity | dict | None = max_datarate
-        if self.mount.mount_type.ALTAZ:
+        if self.mount.mount_type == MountType.ALTAZ:
             self._constraints = [constraints.AzimuthConstraint(min=self.mount.ax1.limits[0],
                                                                max=self.mount.ax1.limits[1]),
                                  constraints.ElevationConstraint(min=self.mount.ax2.limits[0],
@@ -137,7 +141,8 @@ class Station(object):
             self._constraints = [constraints.HourAngleConstraint(min=self.mount.ax1.limits[0],
                                                                  max=self.mount.ax1.limits[1]),
                                  constraints.DeclinationConstraint(min=self.mount.ax2.limits[0],
-                                                                   max=self.mount.ax2.limits[1])]
+                                                                   max=self.mount.ax2.limits[1]),
+                                 constraints.ElevationConstraint(min=5*u.deg)]
 
     @property
     def name(self) -> str:
@@ -341,7 +346,8 @@ class Station(object):
         """
         return self._freqs_sefds[band]
 
-    def slewing(self, coordinates1: coord.AltAz, coordinates2: coord.AltAz) -> u.Quantity:
+    def slewing_time(self, coordinates1: coord.AltAz, coordinates2: coord.AltAz, time: Time) -> u.Quantity:
+        # TODO: this is not the best implementation (asking for a time). Check later.
         """Returns the expected slewing time to move from coordinates1 to coordinates2 according to
         the known velocity and acceleration from the mount.
 
@@ -356,9 +362,25 @@ class Station(object):
             TimeDelta object with the slewing time.
         """
         assert isinstance(coordinates1, coord.AltAz) and isinstance(coordinates2, coord.AltAz)
-        # TODO: do the maths!!!!
-        raise NotImplementedError
-        return np.sqrt(()**2 + ()**2)
+        # If the antenna mount is AltAz, then all the same; but if it's equatorial, then it needs to be RA/DEC.
+        separation = coordinates1.spherical_offset_to(coordinates2)
+        if self.mount.mount_type == MountType.ALTAZ:
+            altaz1 = self.altaz(time, coordinates1)
+            altaz2 = self.altaz(time, coordinates2)
+            separation = (altaz1.az - altaz2.az, altaz1.alt - altaz2.alt)
+        else:
+            separation = coordinates1.spherical_offset_to(coordinates2)
+
+        t = [0, 0]
+        for i, axis in enumerate([self.mount.ax1, self.mount.ax2]):
+            if axis.acceleration == 0.0:
+                t[i] = separation[i]/axis.speed
+            elif separation[i] <= 0.5*axis.speed**2/axis.acceleration:
+                t[i] = np.sqrt(2*separation[i]/axis.acceleration)
+            else:
+                t[i] = separation[i]/axis.speed + 0.5*axis.speed/axis.acceleration
+
+        return max(t)
 
     def __str__(self):
         return f"<{self.codename}>"
@@ -519,8 +541,12 @@ class Stations(object):
     def __getitem__(self, key):
         if isinstance(key, int):
             return self._stations[self.station_codenames[key]]
-        else:
+        elif key in self._stations.keys():
             return self._stations[key]
+        elif key in self.station_names:
+            return self._stations[self.station_codenames[self.station_names.index(key)]]
+        else:
+            raise KeyError(f"Key {key} is not in the network.")
 
     def __setitem__(self, key, value):
         self._stations[key] = value
@@ -803,6 +829,9 @@ class Stations(object):
                         configs[alim] = tuple((-1*u.deg, 361*u.deg))
                     else:
                         configs[alim] = tuple((lims[0]*u.deg, lims[1]*u.deg))
+
+                if station["mount"] == 'EQUAT':
+                    configs["ax1lim"] = tuple((ax1lim.value*u.hourangle for ax1lim in configs["ax1lim"]))
 
                 for arate in ("ax1rate", "ax2rate"):
                     configs[arate] = u.Quantity(float(station[arate].strip()), u.deg/u.s)

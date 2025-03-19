@@ -27,6 +27,12 @@ def _t2mjd10(time: Time) -> int:
     return int(time.mjd * 10)
 
 
+def _t2time(time: int) -> Time:
+    """Converts back a int(MJD*10) time stampt into a astropy.time.Time object.
+    """
+    return Time(time/10.0, format='mjd').datetime
+
+
 class ScanBlockScheduler:
     def __init__(self, observation: Observation):
         """
@@ -39,6 +45,7 @@ class ScanBlockScheduler:
         self.max_duration = self.endtime - self.starttime
         self.model = cp_model.CpModel()
         self.solver = cp_model.CpSolver()
+        self.solution = None
 
     def create_variables(self):
         self.start_times = {}
@@ -48,7 +55,7 @@ class ScanBlockScheduler:
         for i, block in self.observation.scans.items():
             self.start_times[i] = self.model.NewIntVar(self.starttime, self.endtime,
                                                        f'start_time_{i}')
-            self.durations[i] = self.model.NewIntVar(int(10*np.add([s.duration for s in block.scans])),
+            self.durations[i] = self.model.NewIntVar(int(10*np.sum([s.duration.to(u.h).value for s in block.scans])),
                                                      self.max_duration, f'duration_{i}')
             self.end_times[i] = self.model.NewIntVar(self.starttime, self.endtime,
                                                      f'end_time_{i}')
@@ -63,8 +70,8 @@ class ScanBlockScheduler:
             self.model.Add(self.end_times[i] <= self.endtime)
 
         # Non-overlapping constraint
-        for i in self.observation.scans.keys():
-            for j in list(self.observation.scans.keys())[i+1:]:
+        for ii, i in enumerate(self.observation.scans.keys()):
+            for j in list(self.observation.scans.keys())[ii+1:]:
                 self.model.AddNoOverlap([
                     self.model.NewIntervalVar(self.start_times[i], self.durations[i], self.end_times[i],
                                               f'interval_{i}'),
@@ -92,12 +99,12 @@ class ScanBlockScheduler:
             self.model.Minimize(separation)
 
     def optimize_elevation(self):
-        time_index = np.where(self.observation.times.mjd == min(self.observation.times.mjd,
-                                                                key=lambda x: abs(x-self.start_times[i]/10)))
-        for i, elevations in self.observation.elevations():
-            for station, elev in elevations:
+        time_index = lambda i: np.where(self.observation.times.mjd == min(self.observation.times.mjd,
+                                        key=lambda x: abs(x-self.start_times[i]/10)))
+        for i, elevations in enumerate(self.observation.elevations()):
+            for station, elev in self.observation.elevations()[elevations].items():
                 elevation = self.model.NewIntVar(0, 90, f'elevation_{i}_{station}')
-                self.model.Add(elevation == elev[time_index])
+                self.model.Add(elevation == elev[time_index(i)])
                 self.model.Add(elevation >= 20)
                 self.model.Add(elevation <= 82)
 
@@ -105,34 +112,32 @@ class ScanBlockScheduler:
         self.create_variables()
         self.add_constraints()
         # self.optimize_station_participation()
-        self.optimize_elevation()
+        # self.optimize_elevation()
         # self.optimize_coordinate_separation()
 
         status = self.solver.Solve(self.model)
 
         if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
             schedule = []
-            for i, block in enumerate(self.scan_blocks):
+            for i, block in self.observation.scans.items():
                 start = self.solver.Value(self.start_times[i])
                 duration = self.solver.Value(self.durations[i])
-                schedule.append((block, start, duration))
-            return schedule
+                schedule.append((i, start, duration))
+
+            self.solution = schedule
         else:
-            return None
+            self.solution = None
+
+    def print_schedule(self):
+        for block, start, duration in self.solution:
+            print(f"ScanBlock {block}: Start={_t2time(start)}, Duration={duration}")
 
 
-# Usage example
-scan_blocks = [...]  # List of ScanBlock objects
-stations = [...]  # List of Station objects
-observation_start = 0
-observation_end = 24 * 60 * 60  # 24 hours in seconds
-
-scheduler = ScanBlockScheduler(scan_blocks, stations, observation_start, observation_end)
-optimal_schedule = scheduler.solve()
-
-if optimal_schedule:
-    for block, start, duration in optimal_schedule:
-        print(f"ScanBlock {block.id}: Start={start}, Duration={duration}")
-else:
-    print("No feasible schedule found.")
-
+# scheduler = ScanBlockScheduler(scan_blocks, stations, observation_start, observation_end)
+# optimal_schedule = scheduler.solve()
+#
+# if optimal_schedule:
+#     for block, start, duration in optimal_schedule:
+#         print(f"ScanBlock {block.id}: Start={start}, Duration={duration}")
+# else:
+#     print("No feasible schedule found.")

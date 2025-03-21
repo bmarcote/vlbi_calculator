@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from astropy import units as u
 from astropy.time import Time
 from astropy import coordinates as coord
-import polars as pl
+# import polars as pl
 from astroplan import FixedTarget
 
 

@@ -9,8 +9,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vlbiplanobs"
-version = "3.0a2"
+version = "3.0a9"
 description = "Observaiton Planner for VLBI observations"
+license = "GPL-3.0-or-later"
 readme = "README.md"
 requires-python = ">=3.11"
 keywords = ["astronomy", "astrophysics", "cosmology", "radio", "science", "observations", "planner", "coordinate"]
@@ -20,10 +21,9 @@ authors = [
 ]
 
 classifiers = [
-    "Development Status :: 4 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Astronomy",
-    "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
@@ -37,6 +37,7 @@ dependencies = [
     "rich",
     "rich_argparse",
     "plotext",
+    "matplotlib",
     "ortools"
 ]
 

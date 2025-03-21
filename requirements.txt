@@ -28,3 +28,7 @@ Werkzeug
 gunicorn
 pytest
 fpdf
+rich
+rich_argparse
+plotext
+ortools

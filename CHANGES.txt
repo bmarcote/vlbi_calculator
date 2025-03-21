@@ -1,4 +1,6 @@
-v2.0.3  2020-12-XX -- Bug fix: The option of only one subband is back.
+v3.0a2  2025-03-21 -- First (partial) implementation of a planobs CLI.
+                   -- Multiple sources, with associated calibrators are possible now.
+v2.0.3  2020-12-10 -- Bug fix: The option of only one subband is back.
                    -- Minor wording updates.
                    -- Velocity information added to the summary (vel. resolution in full bandwidth and per channel).
                    -- Kunming added as a possible e-EVN station.

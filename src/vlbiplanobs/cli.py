@@ -1,23 +1,25 @@
 import sys
 import argparse
-from typing import Optional
+from typing import Optional, Union
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 from astropy import units as u
 from astropy.time import Time
 from rich import print as rprint
 from rich_argparse import RawTextRichHelpFormatter
 import plotext as pltt
-from vlbiplanobs import stations as stats
+from vlbiplanobs import stations
 from vlbiplanobs import observation as obs
-from vlbiplanobs import sources as src
+from vlbiplanobs import sources
 # from vlbiplanobs import scheduler
 
-_STATIONS = stats.Stations()
+_STATIONS = stations.Stations()
 _NETWORKS = _STATIONS.get_networks_from_configfile()
 
 
 def get_stations(list_networks: Optional[list[str]] = None,
-                 list_stations: Optional[list[str]] = None) -> stats.Stations:
+                 list_stations: Optional[list[str]] = None) -> stations.Stations:
     """Returns a VLBI array including the required stations.
     Each argument is a comma-separated list of names.
 
@@ -40,10 +42,10 @@ def get_stations(list_networks: Optional[list[str]] = None,
                     if s not in stations:
                         stations.append(s)
     except KeyError:
-        unknown_networks: list = [n for n in list_networks if n not in _NETWORKS]
-        n = len(unknown_networks)
-        rprint(f"[bold red]The network{'s' if n > 1 else ''} {', '.join(unknown_networks)}"
-               f" {'are' if n > 1 else 'is'} not known.[/bold red]")
+        unknown_networks: list = [n for n in list_networks if n not in _NETWORKS]  # type: ignore
+        n_networks = len(unknown_networks)  # type: ignore
+        rprint(f"[bold red]The network{'s' if n_networks > 1 else ''} {', '.join(unknown_networks)}"
+               f" {'are' if n_networks > 1 else 'is'} not known.[/bold red]")
         sys.exit(1)
 
     try:
@@ -71,13 +73,13 @@ def summary(o: obs.Observation):
         rprint("at unspecified times.")
 
     if o.duration is not None:
-        rprint(f"With a total duration of {o.duration.to(u.h)}.")
+        rprint(f"With a total duration of {o.duration.to(u.h):.1}.")
 
     rprint(f"\n[bold green]Setup[/bold green]")
     if None not in (o.datarate, o.bandwidth, o.subbands):
         rprint(f"\nData rate of {o.datarate}, "
-               f"{o.subbands} x {int(o.bandwidth.value/o.subbands)} "
-               f"{o.bandwidth.unit} subbands, with {o.channels} channels each, "
+               f"{o.subbands} x {int(o.bandwidth.value/o.subbands)} "  # type: ignore
+               f"{o.bandwidth.unit} subbands, with {o.channels} channels each, "  # type: ignore
                f"{o.polarizations} polarization.")
     else:
         rprint("[dim]No setup (data rate, bandwidth, number of subbands) specified[/dim]")
@@ -95,14 +97,97 @@ def summary(o: obs.Observation):
     print('\n')
 
 
-def plot_visibility(o: Observation, min_stations: int = 5):
+def plot_visibility_tui(o: obs.Observation):
+    """Show plots on the Terminal User Interface with the different sources and
+    when they are visible within the observation.
+    """
+    if len(o.stations) == 0:
+        rprint("[bold red]You need at least one station to observe![/bold red]")
+        sys.exit(1)
+
+    if o.times is None:
+        rprint("[bold red]Searching for suitable GST range (with no defined observing time) not implemented yet[/bold red]")
+        sys.exit(1)
+
+    elevs = o.elevations()
+    altaz = o.altaz()
+    srcup = o.is_observable()
+    srcupalways = o.is_always_observable()
+    rprint(f"[bold]The blocks are observable for:[/bold]")
+    for ablockname, antbool in srcup.items():
+        rprint(f"    - '{ablockname}':", end='')
+        if any(srcupalways[ablockname].values()):
+            ant_can = [ant for ant, b in srcupalways[ablockname].items() if b]
+            if len(ant_can) >= len(o.stations):
+                rprint(f" [dim](always observable by {','.join(ant_can)})[/dim]")
+            else:
+                rprint(" [dim](always observable by everyone but "
+                       f"{','.join([ant for ant in o.stations.station_codenames
+                                    if ant not in ant_can])})[/dim]")
+        else:
+            rprint(' [dim](nobody can observe it all the time)[/dim]')
+
+        for anti, ant in enumerate(antbool):
+            rprint(f"        {ant:3}| {''.join(['◼︎' if b else ' ' for b in antbool[ant]])}")
+
+        rprint(f"           |-{''.join(['-' for b in antbool[ant]])}|")
+        rprint(f"           {o.times.datetime[0].strftime('%H:%M'):05}"
+               f"{''.join([' ' for b in antbool[ant]][:-7])}"
+               f"{o.times.datetime[-1].strftime('%H:%M'):05}")
+
+        when_everyone = o.when_is_observable(mandatory_stations='all')[ablockname]
+        if len(when_everyone) > 0:
+            rprint("\n[bold]Everyone can observe the source at: [/bold]"
+                   f"{', '.join([t1.strftime('%d %b %Y %H:%M')+'--'+t2.strftime('%H:%M')
+                                 + ' UTC' for t1, t2 in when_everyone])}")
+        else:
+            rprint("\nThe source cannot be observed by all stations at the same time.")
+
+        min_stat = 3 if len(o.stations) > 3 else min(2, len(o.stations))
+        rprint(f"[bold]Optimal visibility range (> {min_stat} antennas):[/bold] "
+               f"{', '.join([t1.strftime('%d %b %Y %H:%M')+'--'+t2.strftime('%H:%M')
+                             + ' UTC' for t1, t2
+                             in o.when_is_observable(min_stations=min_stat)[ablockname]])}\n")
+
+
+def plot_visibility(o: obs.Observation, min_stations: Union[int, str] = 5):
     """Show plots with the different sources and when they are visible within the
     observation
+
+    min_stations : int | str  (default = 5)
+        Minimum number of stations required to say that the source is observable.
+        It can be the str 'all', indicating that all antennas must participate.
     """
+    if min_stations == 'all':
+        min_stations = len(o.stations)
+
     elevs = o.elevations()
     srcup = o.is_observable()
     srcupalways = o.is_always_observable()
-    when = o.when_is_observable(min_stations=5)
+    when = o.when_is_observable(min_stations=min_stations)
+    for src in srcup:
+        fig, ax = plt.subplots()
+        for anti, ant in enumerate(srcup[src]):
+            xs = o.times.mjd[srcup[src][ant]]
+            ys = np.ones_like(xs) * anti
+            targets = o.scans[src].sources(sources.SourceType.TARGET)
+            if len(targets) > 0:
+                colors = elevs[src][targets[0].name][ant][srcup[src][ant]]
+            else:
+                colors = elevs[src][o.scans[src].sources()[0].name][ant][srcup[src][ant]]
+
+            points = np.array([xs, ys]).T.reshape(-1, 1, 2)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
+            cmap = plt.cm.get_cmap('viridis')
+            lc = LineCollection(segments, cmap=cmap, norm=plt.Normalize(0, 90))
+            lc.set_array(colors)
+            lc.set_linewidth(3)
+            ax.add_collection(lc)
+            # ax.set_yticks(np.arange(len(elevs[src])), labels=[ant for ant in elevs[src]])
+
+        plt.colorbar(lc)
+        plt.show()
+
 
 def main(band: str, networks: Optional[list[str]] = None,
          stations: Optional[list[str]] = None,
@@ -135,16 +220,16 @@ def main(band: str, networks: Optional[list[str]] = None,
         sys.exit(1)
 
     if src_catalog is not None:
-        source_catalog = src.SourceCatalog(src_catalog)
+        source_catalog = sources.SourceCatalog(src_catalog)
 
-    src2observe: dict[str, src.ScanBlock] = {}
+    src2observe: dict[str, sources.ScanBlock] = {}
     if targets is not None:
         for target in targets:
             if target in source_catalog.blocknames:
                 src2observe[target] = source_catalog[target]
             else:
-                a_source = src.Source.source_from_str(target)
-                src2observe[a_source.name] = src.ScanBlock([src.Scan(a_source)])
+                a_source = sources.Source.source_from_str(target)
+                src2observe[a_source.name] = sources.ScanBlock([sources.Scan(a_source)])
     elif src_catalog is None:
         rprint("[bold red]Either a source catalog file or a list of targets must be "
                "provided (or both).[/bold red]")
@@ -152,42 +237,55 @@ def main(band: str, networks: Optional[list[str]] = None,
     else:
         src2observe = source_catalog.blocks
 
+    # I see a difference between different versions of Python (maybe astropy)?!!
+    if isinstance(duration.to(u.min), float):
+        duration_val = duration.to(u.min)
+    else:
+        duration_val = duration.to(u.min).value
+
     o = obs.Observation(band, get_stations(networks, stations), scans=src2observe,
-                        times=start_time + np.arange(0, duration.to(u.min).value, 10)*u.min
+                        times=start_time + np.arange(0, duration_val + 5, 10)*u.min
                         if start_time is not None else None, duration=duration,
                         # datarate=, subbands=, channels=, polarizations=, inttime=)
                         ontarget=0.6)
     summary(o)
+    plot_visibility_tui(o)
+    # plot_visibility(o)
+    return o
 
 
-if __name__ == '__main__':
+def cli():
     usage = "%(prog)s [-h]  XXX"
     description = "EVN Observation Planner"
     parser = argparse.ArgumentParser(description=description, prog="planobs", usage=usage,
                                      formatter_class=RawTextRichHelpFormatter)
     parser.add_argument('-t', '--targets', type=str, default=None,
-                        help="Source(s) to be observed.")
+                        help="Source(s) to be observed. It can be either the coordinates of the source\n"
+                        "(in 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs' format), or the name of\nthe source, "
+                        "if it is a known source in SIMBAD/NED/VizieR databases.\nOr if the personal source "
+                        "catalog is defined by '--input', then this\nselects the block(s) defined in the file to use, "
+                        "ignoring the rest of\nsources.")
     parser.add_argument('-i', '--input', type=str, default=None,
-                        help="Input file containing the personal source catalog. "
+                        help="Input file containing the personal source catalog.\n"
                         "If provided, then the '--targets' will select the block(s) "
-                        "defined in this file.")
+                        "defined in\nthis file.")
     parser.add_argument('-t1', '--starttime', type=str, default=None,
-                        help="Start of the observation, with the shape YYYY/MM/DD/HH:MM "
+                        help="Start of the observation, with the foramt 'YYYY-MM-DD HH:MM' "
                         "in UTC.")
     parser.add_argument('-d', '--duration', type=str, default=None,
                         help="Total duration of the observation, in hours.")
     parser.add_argument('-n', '--network', type=str, help="Comma-separated list "
-                        "of the VLBI network(s) that will participate in the observation. "
-                        "It will take the default stations in each network. If 'stations' "
-                        "is provided, then it will take both the default stations plus "
-                        "the ones given in stations.")
+                        "of the VLBI network(s) that will participate in\nthe observation. "
+                        "It will take the default stations in each network.\nIf 'stations' "
+                        "is provided, then it will take both the default stations\nplus "
+                        "the ones given in stations. [green]See '--list-antennas' to get a list.[/green]")
     parser.add_argument('-s', '--stations', type=str, help="Comma-separated list "
-                        "of the antennas that will participate in the observation. "
-                        "You can use either antenna codenames or the standard name "
-                        "as given in the catalogs. See '--list-stations' to get a list.")
-    parser.add_argument('-b', '--band', type=str, help="Observing band, as defined"
-                        "in the catalogs as 'XXcm', with 'XX' the wavelegnth in cm. "
-                        "See '--list-bands' to get a list.")
+                        "of the antennas that will participate in the\nobservation. "
+                        "You can use either antenna codenames or the standard name\n"
+                        "as given in the catalogs. [green]See '--list-antennas' to get a list.[/green]")
+    parser.add_argument('-b', '--band', type=str, help="Observing band, as defined "
+                        "in the catalogs as 'XXcm', with 'XX' being\nthe wavelegnth in cm. "
+                        "[green]See '--list-bands' to get a list.[/green]")
     # parser.add_argument('', type=, default=, help='')
     parser.add_argument('--list-antennas', action="store_true", default=False,
                         help="Writes the list of all antennas defined in PlanObs.")
@@ -197,19 +295,19 @@ if __name__ == '__main__':
     subparser = parser.add_subparsers(dest='subparser', help="")
     parser.add_argument('--sched', default=None, type=str,
                         help="Produces a (SCHED) .key schedule file for "
-                        "the observation with the given name.")
+                        "the observation with the\ngiven name.")
     parser.add_argument('--fringefinders', default='2', type=str,
                         help="Defines the fringe finder sources to be scheduled "
-                        "in the observation. It can be either a comma-separated "
-                        "list of source names (as long as they appear in AstroGeo) "
-                        "or a number, meaning how many scans should go on fringe "
+                        "in the observation.\nIt can be either a comma-separated "
+                        "list of source names (as long as they\nappear in AstroGeo) "
+                        "or a number, meaning how many scans should go on\nfringe "
                         "finders, and it will select the most suitable sources.")
     parser.add_argument('--polcal', action="store_true", default=False,
-                        help="Requires polarization calibration for the observation")
+                        help="Requires polarization calibration for the observation.")
     parser.add_argument('--pulsar', default=None, type=str,
                         help="Sets to schedule at least a scan on a pulsar source. "
-                        "If a number, it will select a pulsar from the personal "
-                        "input source file (must be provided!). If a name, "
+                        "If a number,\nit will select a pulsar from the personal "
+                        "input source file (must be\nprovided!). If a name, "
                         "it will pick such pulsar.")
 
     args = parser.parse_args()
@@ -235,6 +333,11 @@ if __name__ == '__main__':
     if args.list_antennas or args.list_bands:
         sys.exit(0)
 
+    if args.band is None:
+        parser.print_help()
+        rprint("\n\n[bold red]The observing band (-b/--band) and --network and/or --stations are required.[/bold red]")
+        exit(1)
+
     if args.band not in obs.freqsetups.bands:
         rprint(f"[bold red]The provided band ({args.band}) is not available"
                "[/bold red]\n[dim]Available values are: "
@@ -253,3 +356,7 @@ if __name__ == '__main__':
          targets=args.targets.split(','), start_time=Time(args.starttime, scale='utc')
          if args.starttime else None, duration=args.duration*u.hour if args.duration else None)
     # o = obs.Observation(band=args.band, stations=get_stations(args.network, args.stations))
+
+
+if __name__ == '__main__':
+    cli()

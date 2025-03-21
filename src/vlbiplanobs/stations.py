@@ -747,12 +747,12 @@ class Stations(object):
                    "not present in freqsetups.py!"
 
             if isinstance(max_dt, Sequence):
+                temp = ', '.join([d for d in max_dt if int(d.value) not in freqsetups.data_rates.keys()])
                 assert all([int(dr.value) in freqsetups.data_rates.keys() for dr in max_dt]), \
-                       f"Data rate ({', '.join([d for d in max_dt if int(d.value) not in
-                                               freqsetups.data_rates.keys()])}) not present in freqsetups.py!"
+                       f"Data rate ({temp}) not present in freqsetups.py!"
             else:
                 assert int(max_dt.value) in freqsetups.data_rates.keys(), \
-                       f"Data rate ({max_dt}) not " "present in freqsetups.py!"
+                       f"Data rate ({max_dt}) not present in freqsetups.py!"
 
             antennas = [all_ants[[a.codename for a in all_ants].index(ant)] for ant in default_ant]
             assert len(antennas) > 0, f"No antennas found for the network {networkname}."

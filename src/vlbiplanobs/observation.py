@@ -631,18 +631,18 @@ class Observation(object):
             station, source = station_source[0], station_source[1]
             return station, source, station.is_observable(time, source)
 
-        self._is_visible = {}
+        _is_visible_at = {}
         for ablockname, ablock in self.scans.items():  # type: ignore
             with ThreadPoolExecutor() as executor:
                 results = list(executor.map(compute_is_visible_for_source, [(station, source)
                                             for station in self.stations
                                             for source in ablock.sources]))  # type: ignore
 
-            self._is_visible[ablockname] = {}
+            _is_visible_at[ablockname] = {}
             for (station, source, visible) in results:
-                self._is_visible[ablockname][station.codename] = visible
+                _is_visible_at[ablockname][station.codename] = visible
 
-        return self._is_visible
+        return _is_visible_at
 
     def can_be_observed(self) -> dict[str, dict[str, bool]]:
         """Returns whenever the sources can be observed by each station at least during part of the observation.
@@ -724,9 +724,11 @@ class Observation(object):
         - It may raise the exception SourceNotVisible if the target source is not visible by
           enough stations.
         """
-        if self.sources is None or self._is_visible is None:
+        if self.sources is None:
             raise ValueError("The sources have not been initialized")
 
+        if self._is_visible is None:
+            _ = self.is_observable()
         # if self._when_visible is not None:
         #     if return_gst:
         #         return {s: list([t.sidereal_time('mean', 'greenwich') for t in self._when_visible[s]])

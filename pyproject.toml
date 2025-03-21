@@ -1,5 +1,5 @@
 [tool.pytest.ini_options]
-pythonpath = "src/"
+pythonpath = "src"
 
 
 [build-system]
@@ -9,8 +9,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vlbiplanobs"
-version = "2.0a1"
-description = "Planner for VLBI observations"
+version = "3.0a2"
+description = "Observaiton Planner for VLBI observations"
 readme = "README.md"
 requires-python = ">=3.11"
 keywords = ["astronomy", "astrophysics", "cosmology", "radio", "science", "observations", "planner", "coordinate"]
@@ -33,7 +33,11 @@ classifiers = [
 dependencies = [
     "numpy",
     "astropy>=4.0.2",
-    "astroplan>=0.7"
+    "astroplan>=0.7",
+    "rich",
+    "rich_argparse",
+    "plotext",
+    "ortools"
 ]
 
 
@@ -51,3 +55,8 @@ include-package-data = true
 "stations" = ["data/stations_catalog.inp"]
 "networks" = ["data/network_catalog.inp"]
 "vlbiplanobs.gui.assets" = ["gui/assets/*"]
+
+
+[project.scripts]
+planobs = "vlbiplanobs.cli:cli"
+

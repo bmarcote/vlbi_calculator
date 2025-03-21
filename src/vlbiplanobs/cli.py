@@ -89,10 +89,9 @@ def summary(o: obs.Observation):
     rprint("\n[bold green]Sources[/bold green]:")
     if o.scans is not None:
         for ablockname, ablock in o.scans.items():
-            rprint(f"    - [dim]ScanBlock[/dim] '{ablockname}'\n      "
-                   f"{'\n      '.join([s.name + ' [dim](' +
-                      s.coord.to_string('hmsdms') + ')[/dim]'
-                      for s in ablock.sources()])}")
+            rprint(f"    - [dim]ScanBlock[/dim] '{ablockname}'")
+            rprint('      ' + '\n      '.join([s.name + ' [dim](' + s.coord.to_string('hmsdms') + ')[/dim]'
+                                               for s in ablock.sources()]))
 
     print('\n')
 
@@ -121,9 +120,8 @@ def plot_visibility_tui(o: obs.Observation):
             if len(ant_can) >= len(o.stations):
                 rprint(f" [dim](always observable by {','.join(ant_can)})[/dim]")
             else:
-                rprint(" [dim](always observable by everyone but "
-                       f"{','.join([ant for ant in o.stations.station_codenames
-                                    if ant not in ant_can])})[/dim]")
+                rprint(" [dim](always observable by everyone but [/dim]", end='')
+                rprint('[dim]' + ','.join([ant for ant in o.stations.station_codenames if ant not in ant_can]) + '[/dim]')
         else:
             rprint(' [dim](nobody can observe it all the time)[/dim]')
 
@@ -137,34 +135,37 @@ def plot_visibility_tui(o: obs.Observation):
 
         when_everyone = o.when_is_observable(mandatory_stations='all')[ablockname]
         if len(when_everyone) > 0:
-            rprint("\n[bold]Everyone can observe the source at: [/bold]"
-                   f"{', '.join([t1.strftime('%d %b %Y %H:%M')+'--'+t2.strftime('%H:%M')
-                                 + ' UTC' for t1, t2 in when_everyone])}")
+            rprint("\n[bold]Everyone can observe the source at: [/bold]", end='')
+            rprint(', '.join([t1.strftime('%d %b %Y %H:%M')+'--'+t2.strftime('%H:%M') + ' UTC' for t1, t2 in when_everyone]))
         else:
             rprint("\nThe source cannot be observed by all stations at the same time.")
 
         min_stat = 3 if len(o.stations) > 3 else min(2, len(o.stations))
-        rprint(f"[bold]Optimal visibility range (> {min_stat} antennas):[/bold] "
-               f"{', '.join([t1.strftime('%d %b %Y %H:%M')+'--'+t2.strftime('%H:%M')
-                             + ' UTC' for t1, t2
-                             in o.when_is_observable(min_stations=min_stat)[ablockname]])}\n")
+        if len(o.stations) > 2:
+            rprint(f"[bold]Optimal visibility range (> {min_stat} antennas):[/bold] ", end='')
+            rprint(', '.join([t1.strftime('%d %b %Y %H:%M')+'--'+t2.strftime('%H:%M') \
+                              + ' UTC' for t1, t2 in o.when_is_observable(min_stations=min_stat)[ablockname]]))
+
+        print('\n')
 
 
-def plot_visibility(o: obs.Observation, min_stations: Union[int, str] = 5):
+def plot_visibility(o: obs.Observation):
     """Show plots with the different sources and when they are visible within the
     observation
-
-    min_stations : int | str  (default = 5)
-        Minimum number of stations required to say that the source is observable.
-        It can be the str 'all', indicating that all antennas must participate.
     """
-    if min_stations == 'all':
-        min_stations = len(o.stations)
+    if o.times is None:
+        rprint("[bold red]Searching for suitable GST range (with no defined observing time) "
+               "not implemented yet[/bold red]")
+        sys.exit(1)
+
+    if o.scans is None:
+        # rprint("No scans have been defined.")
+        sys.exit(0)
 
     elevs = o.elevations()
     srcup = o.is_observable()
     srcupalways = o.is_always_observable()
-    when = o.when_is_observable(min_stations=min_stations)
+    when = o.when_is_observable()
     for src in srcup:
         fig, ax = plt.subplots()
         for anti, ant in enumerate(srcup[src]):
@@ -172,9 +173,9 @@ def plot_visibility(o: obs.Observation, min_stations: Union[int, str] = 5):
             ys = np.ones_like(xs) * anti
             targets = o.scans[src].sources(sources.SourceType.TARGET)
             if len(targets) > 0:
-                colors = elevs[src][targets[0].name][ant][srcup[src][ant]]
+                colors = elevs[src][targets[0].name][ant][srcup[src][ant]].value
             else:
-                colors = elevs[src][o.scans[src].sources()[0].name][ant][srcup[src][ant]]
+                colors = elevs[src][o.scans[src].sources()[0].name][ant][srcup[src][ant]].value
 
             points = np.array([xs, ys]).T.reshape(-1, 1, 2)
             segments = np.concatenate([points[:-1], points[1:]], axis=1)
@@ -221,16 +222,18 @@ def main(band: str, networks: Optional[list[str]] = None,
 
     if src_catalog is not None:
         source_catalog = sources.SourceCatalog(src_catalog)
+    else:
+        source_catalog = None
 
     src2observe: dict[str, sources.ScanBlock] = {}
     if targets is not None:
         for target in targets:
-            if target in source_catalog.blocknames:
+            if (source_catalog is not None) and (target in source_catalog.blocknames):
                 src2observe[target] = source_catalog[target]
             else:
                 a_source = sources.Source.source_from_str(target)
                 src2observe[a_source.name] = sources.ScanBlock([sources.Scan(a_source)])
-    elif src_catalog is None:
+    elif source_catalog is None:
         rprint("[bold red]Either a source catalog file or a list of targets must be "
                "provided (or both).[/bold red]")
         sys.exit(1)
@@ -327,8 +330,8 @@ def cli():
         rprint("\n[bold]Available observing bands:[/bold]")
         for aband in obs.freqsetups.bands:
             rprint(f"[bold]{aband}[/bold] [dim]({obs.freqsetups.bands[aband]})[/dim]")
-            rprint(f"[dim]  Observable with {', '.join([nn for nn, n in _NETWORKS.items()
-                                             if aband in n.observing_bands])}[/dim]")
+            rprint("[dim]  Observable with [/dim]", end='')
+            rprint(f"[dim]{', '.join([nn for nn, n in _NETWORKS.items() if aband in n.observing_bands])}[/dim]")
 
     if args.list_antennas or args.list_bands:
         sys.exit(0)

@@ -1469,6 +1469,20 @@ ax2rate = 48
 ax1acc = 0.4
 ax2acc = 0.4
 
+[TNRT]
+station = 40-m Thai National Radio Telescope
+code = Tn
+country = Thailand
+diameter = 40 m
+position = -967128.775, 5960055.199, 2049264.045
+real_time = no
+sefd_18 100
+mount = ALTAZ
+ax1lim = -90, 450
+ax2lim = 3.5, 90
+ax1rate = 180
+ax2rate = 60
+
 [Torun]
 station = Torun
 code = Tr

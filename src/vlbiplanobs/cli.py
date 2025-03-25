@@ -12,6 +12,7 @@ import plotext as pltt
 from vlbiplanobs import stations
 from vlbiplanobs import observation as obs
 from vlbiplanobs import sources
+from vlbiplanobs.gui import plots
 # from vlbiplanobs import scheduler
 
 _STATIONS = stations.Stations()
@@ -162,32 +163,9 @@ def plot_visibility(o: obs.Observation):
         # rprint("No scans have been defined.")
         sys.exit(0)
 
-    elevs = o.elevations()
-    srcup = o.is_observable()
-    srcupalways = o.is_always_observable()
-    when = o.when_is_observable()
-    for src in srcup:
-        fig, ax = plt.subplots()
-        for anti, ant in enumerate(srcup[src]):
-            xs = o.times.mjd[srcup[src][ant]]
-            ys = np.ones_like(xs) * anti
-            targets = o.scans[src].sources(sources.SourceType.TARGET)
-            if len(targets) > 0:
-                colors = elevs[src][targets[0].name][ant][srcup[src][ant]].value
-            else:
-                colors = elevs[src][o.scans[src].sources()[0].name][ant][srcup[src][ant]].value
-
-            points = np.array([xs, ys]).T.reshape(-1, 1, 2)
-            segments = np.concatenate([points[:-1], points[1:]], axis=1)
-            cmap = plt.cm.get_cmap('viridis')
-            lc = LineCollection(segments, cmap=cmap, norm=plt.Normalize(0, 90))
-            lc.set_array(colors)
-            lc.set_linewidth(3)
-            ax.add_collection(lc)
-            # ax.set_yticks(np.arange(len(elevs[src])), labels=[ant for ant in elevs[src]])
-
-        plt.colorbar(lc)
-        plt.show()
+    figs = plots.elevation_plot(o)
+    for src_block in figs:
+        figs[src_block].show()
 
 
 def main(band: str, networks: Optional[list[str]] = None,
@@ -253,7 +231,7 @@ def main(band: str, networks: Optional[list[str]] = None,
                         ontarget=0.6)
     summary(o)
     plot_visibility_tui(o)
-    # plot_visibility(o)
+    plot_visibility(o)
     return o
 
 

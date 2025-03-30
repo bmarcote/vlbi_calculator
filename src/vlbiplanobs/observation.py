@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Union, Iterable, Sequence, Self
+from typing import Optional, Union, Iterable, Sequence, Self, Tuple
 from importlib import resources
 from functools import partial
 from itertools import product
@@ -120,7 +120,7 @@ class Observation(object):
         else:
             raise ValueError("Scans needs to be either a ScanBlock or a list of ScanBlocks.")
 
-        self._source_list: Optional[dict[str, Source]] = None
+        self._source_list: Optional[list[Source]] = None
         # Because otherwise gstimes is not initialized
         if times is None:
             self._times = None
@@ -138,8 +138,8 @@ class Observation(object):
         self.stations = stations
         self.bitsampling = bits
         self.ontarget_fraction = ontarget
-        self._uv_baseline = None
-        self._uv_array = None
+        self._uv_baseline: Optional[dict[str, dict[str, u.Quantity]]] = None
+        self._uv_array: Optional[dict[str, np.ndarray]] = None
         self._rms = None
         self._synth_beam = None
         self._is_visible: Optional[dict[str, dict[str, coord.SkyCoord]]] = None
@@ -158,38 +158,45 @@ class Observation(object):
     def scans(self, scans: Optional[dict[str, ScanBlock]]):
         self._scans = scans
 
-    @property
-    def sources(self) -> Optional[dict[str, Source]]:
+    def sources(self, source_type: Optional[SourceType] = None) -> list[Source]:
         """Returns the sources included during the observation.
         It can return None if the target has not been set yet, showing a warning.
+
+        Inputs
+            source_type  : SourceType  (default = None)
+                If set, it will only return the sources of type source_type.
+                Otherwise, it returns all existing sources.
+
+        Returns
+            list[Source]
+                List containing all existing sources matching the set criteria.
         """
         if self._scans is None:
-            return None
+            return []
 
         if self._source_list is not None:
             return self._source_list
 
-        self._source_list = {}
+        self._source_list = []
         for a_scanblock in self._scans.values():
             for a_src in a_scanblock.sources():
-                self._source_list[a_src.name] = a_src
+                if (source_type is None) or (a_src.type == source_type):
+                    self._source_list.append(a_src)
 
         return self._source_list
 
     @property
-    def sourcenames(self) -> Optional[list[str]]:
+    def sourcenames(self) -> list[str]:
         """Returns the source names included during the observation
         It can return None if the target has not been set yet, showing a warning.
         """
-        return [a_source.name for a_source in self.sources.values()] if self.sources is not None else None
+        return [a_source.name for a_source in self.sources()]
 
     @property
     def times(self) -> Optional[Time]:
         """Returns the times when the observation runs as an astropy.time.Time object.
         It can return None if the times have not been set yet, showing a warning.
         """
-        # if self._times is None:
-        #     print("WARNING: 'times' not set yet but used in 'Observation'.")
         return self._times
 
     @times.setter
@@ -197,7 +204,8 @@ class Observation(object):
         if (new_times is not None) and (not isinstance(new_times, Time)):
             raise ValueError("'times' must be an astropy.time.Time instance or be None")
         elif isinstance(new_times, Time) and new_times.size < 2:
-            raise ValueError("'times' must have at least two time values (start and end of the observation).")
+            raise ValueError("'times' must have at least two time values: "
+                             "start and end of the observation.")
 
         self._times = new_times
         if self._times is None:
@@ -368,7 +376,8 @@ class Observation(object):
 
             self._inttime = new_inttime.to(u.s)
         else:
-            raise ValueError(f"Unknown type for 'inttime' {new_inttime} (float/int/Quantity(~seconds) expected)")
+            raise ValueError(f"Unknown type for 'inttime' {new_inttime} "
+                             "(float/int/Quantity(~seconds) expected)")
 
     @property
     def ontarget_fraction(self) -> float:
@@ -478,15 +487,17 @@ class Observation(object):
 
         return self._elevations
 
-    # INFO: this code in the following was meant to test how the computation runs faster (process, threads, etc)
+    # INFO: this code in the following was meant to test how the computation runs faster
+    # (process, threads, etc)
     def _elevation_func(self, a_scanblock: ScanBlock) -> dict[str, dict[str, Iterable]]:
         if (self.sources is None) or (self.times is None):
             raise ValueError("The target and/or observing times have not been initialized")
 
         # TODO: check if doing a multi-thread here will improve performance or not
 
-        return {src: {a_station.codename: a_station.elevation(self.times, self.sources[src]) for a_station in self.stations}
-                for src in self.sources}
+        return {src.name: {a_station.codename: a_station.elevation(self.times, src)
+                for a_station in self.stations}
+                for src in self.sources()}
 
     def _elevations_process(self) -> dict:
         """Returns the elevation of the target source for each stations participating in the observation
@@ -631,7 +642,7 @@ class Observation(object):
             station, source = station_source[0], station_source[1]
             return station, source, station.is_observable(time, source)
 
-        _is_visible_at = {}
+        _is_visible_at: dict[str, dict[str, bool]] = {}
         for ablockname, ablock in self.scans.items():  # type: ignore
             with ThreadPoolExecutor() as executor:
                 results = list(executor.map(compute_is_visible_for_source, [(station, source)
@@ -645,7 +656,8 @@ class Observation(object):
         return _is_visible_at
 
     def can_be_observed(self) -> dict[str, dict[str, bool]]:
-        """Returns whenever the sources can be observed by each station at least during part of the observation.
+        """Returns whenever the sources can be observed by each station at least during part
+        of the observation.
 
         Returns
             is_observable : dict
@@ -729,12 +741,6 @@ class Observation(object):
 
         if self._is_visible is None:
             _ = self.is_observable()
-        # if self._when_visible is not None:
-        #     if return_gst:
-        #         return {s: list([t.sidereal_time('mean', 'greenwich') for t in self._when_visible[s]])
-        #                 for s in self._when_visible}
-        #
-        #     return self._when_visible
 
         if within_time_range is None:
             if self.times is None:
@@ -754,14 +760,8 @@ class Observation(object):
             mandatory_stations = self.stations.station_codenames
             min_stations = len(mandatory_stations)
 
-        # print(f"times: {within_time_range}\nmandatory: {mandatory_stations}")
-
         result: dict[str, list[Time | u.Quantity]] = {}
-        for blockname, station_visibility in self._is_visible.items():
-            # visible_times = [time for i, time in enumerate(within_time_range)
-            #                  if ((sum(visibility[station][i] for station in visibility) >= min_stations)
-            #                      and ((mandatory_stations is None)
-            #                           or all(visibility[station][i] for station in mandatory_stations)))]
+        for blockname, station_visibility in self._is_visible.items():  # type: ignore
             visible_times = [False for i in range(len(within_time_range))]
             for i, time in enumerate(within_time_range):
                 if ((sum(vis[i] for vis in station_visibility.values()) >= min_stations)
@@ -769,13 +769,9 @@ class Observation(object):
                          or all(station_visibility[station][i] for station in mandatory_stations))):
                     visible_times[i] = True
 
-            # print(f"{visible_times=}  (total of {len(visible_times)} timestamps)")
-            # print(f"True values at {', '.join([str(i) for i, v in enumerate(visible_times) if v])}")
             diff = [i + 1*(not value) for i, value in enumerate(visible_times)
                     if value != (visible_times + [False])[i+1] or (i == 0 and value)]
-            # print(f"{diff=}")
             result[blockname] = list(zip(within_time_range[diff[::2]], within_time_range[diff[1::2]]))
-            # print(f"{result=}")
 
         self._when_visible = result
         if return_gst:
@@ -789,9 +785,7 @@ class Observation(object):
         """
         raise NotImplementedError
 
-
-
-    def longest_baseline(self) -> tuple[str, u.Quantity]:
+    def longest_baseline(self) -> dict[str, Tuple[str, u.Quantity]]:
         """Returns the longest baseline in the observation for each source.
 
         Returns
@@ -801,35 +795,39 @@ class Observation(object):
             - length : astropy.units.Quantity
                 The projected length of the baseline as seen from the target source position.
         """
-        uv = self.get_uv_baseline()
-        longest_bl = {'bl': '', 'value': 0.0*u.m}
-        for a_bl in uv:
-            bl_length = np.sqrt(np.max((uv[a_bl]**2).sum(axis=1)))
-            if bl_length > longest_bl['value']:
-                longest_bl['bl'] = a_bl
-                longest_bl['value'] = bl_length
+        uv_data = self.get_uv_data()
+        longest_bl: dict[str, Tuple[str, u.Quantity]] = {}
+        for src, src_uv in uv_data.items():
+            max_temp = -1.0*u.m
+            for a_bl, uv in src_uv.items():
+                bl_length = np.sqrt(np.max((uv**2).sum(axis=1)))
+                if bl_length > max_temp:
+                    longest_bl[src] = (a_bl, bl_length*self.wavelength)
+                    max_temp = bl_length
 
-        return longest_bl['bl'], longest_bl['value']*self.wavelength
+        return longest_bl
 
-    def shortest_baseline(self) -> tuple:
+    def shortest_baseline(self) -> dict[str, Tuple[str, u.Quantity]]:
         """Returns the shortest baseline in the observation.
 
         Returns
-        - ('{ant1}-{ant2}', length) : tuple
+        - 'source name': ('{ant1}-{ant2}', length) : tuple
             - '{ant1}-{ant2}' : str
                 Composed by the codenames of the two antennas (ant1, ant2) conforming the shortest baseline.
             - length : astropy.units.Quantity
                 The projected length of the baseline as seen from the target source position.
         """
-        uv = self.get_uv_baseline()
-        shortest_bl = {'bl': '', 'value': 0.0*u.m}
-        for a_bl in uv:
-            bl_length = np.sqrt(np.max((uv[a_bl]**2).sum(axis=1)))
-            if (shortest_bl['value'] == 0.0*u.m) or (bl_length < shortest_bl['value']):
-                shortest_bl['bl'] = a_bl
-                shortest_bl['value'] = bl_length
+        uv_data = self.get_uv_data()
+        shortest_bl: dict[str, Tuple[str, u.Quantity]] = {}
+        for src, src_uv in uv_data.items():
+            min_temp = -1.0*u.m
+            for a_bl, uv in src_uv.items():
+                bl_length = np.sqrt(np.min((uv**2).sum(axis=1)))
+                if bl_length < min_temp or min_temp < 0.0*u.m:
+                    shortest_bl[src] = (a_bl, bl_length*self.wavelength)
+                    min_temp = bl_length
 
-        return shortest_bl['bl'], shortest_bl['value']*self.wavelength
+        return shortest_bl
 
     def bandwidth_smearing(self) -> u.Quantity:
         """Returns the bandwidth smearing expected for the given observation.
@@ -923,7 +921,59 @@ class Observation(object):
 
         return self._rms
 
-    def get_uv_baseline(self) -> dict[str, dict[str, u.Quantity]]:
+    def _compute_uv_per_source(self, source: Optional[Source] = None) -> dict[str, u.Quantity]:
+        nstat = len(self.stations)
+        # Determines the xyz of all baselines. Time independent
+        bl_xyz = np.empty(((nstat*(nstat-1))//2, 3))
+        bl_names = []
+        s = [ant.location for ant in self.stations]
+        for i in range(nstat):
+            for j in range(i+1, nstat):
+                # An unique number defining a baseline
+                k = int(i*(nstat-1) - sum(range(i)) + j-i)
+                bl_xyz[k-1, :] = np.array([ii.value for ii in s[i].to_geocentric()]) - \
+                    np.array([ii.value for ii in s[j].to_geocentric()])
+                bl_names.append("{}-{}".format(self.stations[i].codename,
+                                               self.stations[j].codename))
+
+        if source is None:
+            hourangle: coord.Angle = self.gstimes
+            print("WARNING: 'target' is not set, thus we assume a source at +/- 45º declination"
+                  " to estimate the (u, v) values.'")
+            m = np.array([[np.sin(hourangle), np.cos(hourangle), np.zeros(len(hourangle))],
+                          [-np.sin(45*u.deg)*np.cos(hourangle),
+                           np.sin(45*u.deg)*np.sin(hourangle),
+                           np.cos(45*u.deg)*np.ones(len(hourangle))]])
+        else:
+            hourangle = (self.gstimes - source.ra.to(u.hourangle)).value % 24*u.hourangle
+            m = np.array([[np.sin(hourangle), np.cos(hourangle), np.zeros(len(hourangle))],
+                          [-np.sin(source.dec)*np.cos(hourangle),
+                           np.sin(source.dec)*np.sin(hourangle),
+                           np.cos(source.dec)*np.ones(len(hourangle))]])
+
+        bl_uv = np.array([m[:, :, i] @ bl_xyz.T for i in range(m.shape[-1])])*u.m
+        bl_uv_up: dict[str, u.Quantity] = {}
+        if source is None:
+            for i, bl_name in enumerate(bl_names):
+                ant1, ant2 = bl_name.split('-')
+                bl_uv_up[bl_name] = (bl_uv[:, :, i] / self.wavelength).decompose()
+
+            return bl_uv_up
+        else:
+            ants_up = self.is_observable()
+            for i, bl_name in enumerate(bl_names):
+                ant1, ant2 = bl_name.split('-')
+                bl_up = (np.array([a for a in ants_up[ant1][source.name]
+                                   if a in ants_up[ant2][source.name]]), )
+                if len(bl_up[0]) > 0:
+                    bl_uv_up[bl_name] = (bl_uv[:, :, i][bl_up] / self.wavelength).decompose()
+
+            if len(bl_uv_up.keys()) == 0:
+                raise SourceNotVisible
+
+        return bl_uv_up
+
+    def get_uv_data(self) -> dict[str, dict[str, u.Quantity]]:
         """Returns the (u, v) values for each baseline and each timestamp for which the source
         is visible.
 
@@ -944,125 +994,25 @@ class Observation(object):
         if self._uv_baseline is not None:
             return self._uv_baseline
 
-        bl_uv_up = {}
+        with ThreadPoolExecutor() as executor:
+            self._uv_baseline = dict(zip([src.name for src in self.sources()],
+                                         executor.map(self._compute_uv_per_source, self.sources())))
 
-        def compute_per_source(hourangles, target):
-            nstat = len(self.stations)
-            # Determines the xyz of all baselines. Time independent
-            bl_xyz = np.empty(((nstat*(nstat-1))//2, 3))
-            bl_names = []
-            s = [ant.location for ant in self.stations]
-            for i in range(nstat):
-                for j in range(i+1, nstat):
-                    # An unique number defining a baseline
-                    k = int(i*(nstat-1) - sum(range(i)) + j-i)
-                    bl_xyz[k-1, :] = np.array([ii.value for ii in s[i].to_geocentric()]) - \
-                        np.array([ii.value for ii in s[j].to_geocentric()])
-                    bl_names.append("{}-{}".format(self.stations[i].codename,
-                                                   self.stations[j].codename))
+        return self._uv_baseline
 
-            # Matrix to convert xyz to uvw for each timestamp (but w is not considered)
-            if self.target is None:
-                m = np.array([[np.sin(hourangle), np.cos(hourangle), np.zeros(len(hourangle))],
-                              [-np.sin(45*u.deg)*np.cos(hourangle),
-                               np.sin(45*u.deg)*np.sin(hourangle),
-                               np.cos(45*u.deg)*np.ones(len(hourangle))]])
-            else:
-                m = np.array([[np.sin(hourangle), np.cos(hourangle), np.zeros(len(hourangle))],
-                              [-np.sin(self.target.dec)*np.cos(hourangle),
-                               np.sin(self.target.dec)*np.sin(hourangle),
-                               np.cos(self.target.dec)*np.ones(len(hourangle))]])
-
-            bl_uv = np.array([m[:, :, i] @ bl_xyz.T for i in range(m.shape[-1])])*u.m
-
-            if self.target is None:
-                for i, bl_name in enumerate(bl_names):
-                    ant1, ant2 = bl_name.split('-')
-                    bl_uv_up[bl_name] = (bl_uv[:, :, i] / self.wavelength).decompose()
-
-                self._uv_baseline = bl_uv_up
-                return bl_uv_up
-            else:
-                ants_up = self.is_visible()
-                for i, bl_name in enumerate(bl_names):
-                    ant1, ant2 = bl_name.split('-')
-                    bl_up = (np.array([a for a in ants_up[ant1][0] if a in ants_up[ant2][0]]), )
-                    if len(bl_up[0]) > 0:
-                        bl_uv_up[bl_name] = (bl_uv[:, :, i][bl_up] / self.wavelength).decompose()
-
-                if len(bl_uv_up.keys()) == 0:
-                    raise SourceNotVisible
-
-                self._uv_baseline = bl_uv_up
-
-
-        if self.sources is None:
-            # Just assumes a source at +/-45 deg elevation without taking into account the Earth
-            hourangle = self.gstimes
-            # print("WARNING: 'target' is not set yet but used in 'Observation'")
-        else:
-            hourangle = (self.gstimes - self.target.ra.to(u.hourangle)).value % 24*u.hourangle
-
-        nstat = len(self.stations)
-        # Determines the xyz of all baselines. Time independent
-        bl_xyz = np.empty(((nstat*(nstat-1))//2, 3))
-        bl_names = []
-        s = [ant.location for ant in self.stations]
-        for i in range(nstat):
-            for j in range(i+1, nstat):
-                # An unique number defining a baseline
-                k = int( i*(nstat-1) - sum(range(i)) + j-i )
-                bl_xyz[k-1,:] = np.array([ii.value for ii in s[i].to_geocentric()]) - \
-                             np.array([ii.value for ii in s[j].to_geocentric()])
-                bl_names.append("{}-{}".format(self.stations[i].codename,
-                                               self.stations[j].codename))
-
-        # Matrix to convert xyz to uvw for each timestamp (but w is not considered)
-        if self.target is None:
-            m = np.array([[np.sin(hourangle), np.cos(hourangle), np.zeros(len(hourangle))],
-                      [-np.sin(45*u.deg)*np.cos(hourangle),
-                      np.sin(45*u.deg)*np.sin(hourangle),
-                      np.cos(45*u.deg)*np.ones(len(hourangle))]])
-        else:
-            m = np.array([[np.sin(hourangle), np.cos(hourangle), np.zeros(len(hourangle))],
-                      [-np.sin(self.target.dec)*np.cos(hourangle),
-                      np.sin(self.target.dec)*np.sin(hourangle),
-                      np.cos(self.target.dec)*np.ones(len(hourangle))]])
-
-        bl_uv = np.array([m[:,:,i] @ bl_xyz.T  for i in range(m.shape[-1])])*u.m
-
-        if self.target is None:
-            for i,bl_name in enumerate(bl_names):
-                ant1, ant2 = bl_name.split('-')
-                bl_uv_up[bl_name] = (bl_uv[:,:,i]/self.wavelength).decompose()
-
-            self._uv_baseline = bl_uv_up
-            return bl_uv_up
-        else:
-            ants_up = self.is_visible()
-            for i,bl_name in enumerate(bl_names):
-                ant1, ant2 = bl_name.split('-')
-                bl_up = (np.array([a for a in ants_up[ant1][0] if a in ants_up[ant2][0]]), )
-                if len(bl_up[0]) > 0:
-                    bl_uv_up[bl_name] = (bl_uv[:,:,i][bl_up]/self.wavelength).decompose()
-
-            if len(bl_uv_up.keys()) == 0:
-                raise SourceNotVisible
-
-            self._uv_baseline = bl_uv_up
-            return bl_uv_up
-
-
-    def get_uv_array(self) -> np.ndarray:
+    def get_uv_values(self) -> dict[str, np.ndarray]:
         """Returns the (u, v) values for each baseline and each timestamp for which the source
         is visible.
 
         The difference with `get_uv_baseline` is that `get_uv_array` only returns the (u,v)
         values, dropping the information of baselines and times to which these values belong to.
 
-        Returns a (N, 2)-dimensional numpy.ndarray containing all N (u,v) points resulting for
-        each timestamp and baseline. The (u,v) values are given in lambda units.
-        Note that complex conjugate values are not provided.
+        Returns
+            uv_values : dict[str, np.ndarray]
+            The dict keys are the source names, and the values a (N, 2)-dimensional
+            numpy.ndarray containing all N (u,v) points resulting for
+            each timestamp and baseline. The (u,v) values are given in lambda units.
+            Note that complex conjugate values are not provided.
 
         Exceptions
         - It may raise the exception SourceNotVisible if no baselines can observe the source
@@ -1071,19 +1021,16 @@ class Observation(object):
         if self._uv_array is not None:
             return self._uv_array
 
-        bl_uv_up = self.get_uv_baseline()
-        tot_length = 0
-        for bl_name in bl_uv_up:
-            tot_length += bl_uv_up[bl_name].shape[0]
+        self._uv_array = {}
+        bl_uv_up = self.get_uv_data()
+        for src, bl_uv in bl_uv_up.items():
+            self._uv_array[src] = np.empty((np.sum([bl_uv[bl_name].shape[0] for bl_name in bl_uv]), 2))
+            last_i = 0
+            for bl_name in bl_uv:
+                self._uv_array[src][last_i:last_i+bl_uv[bl_name].shape[0], :] = bl_uv[bl_name]
+                last_i += bl_uv[bl_name].shape[0]
 
-        uvvis = np.empty((tot_length, 2))
-        i = 0
-        for bl_name in bl_uv_up:
-            uvvis[i:i+bl_uv_up[bl_name].shape[0],:] = bl_uv_up[bl_name]
-            i += bl_uv_up[bl_name].shape[0]
-        self._uv_array = uvvis
         return self._uv_array
-
 
     def synthesized_beam(self) -> dict:
         """Estimates the resulting synthesized beam of the observations based on

@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import Normalize
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from vlbiplanobs import observation as obs
 from vlbiplanobs import sources
@@ -28,13 +29,15 @@ def elevation_plot(o: obs.Observation):
     viridis = cm.get_cmap('viridis')
 
     # Create figure
-    fig: dict[str, go.Figure] = {}
+    # fig: dict[str, go.Figure] = {}
 
     srcup = o.is_observable()
     elevs = o.elevations()
+    fig = make_subplots(rows=min([len(srcup), 4]), cols=len(srcup) // 4 + 1,
+                        subplot_titles=[f"Elevations for {src_block}" for src_block in srcup])
     # Break the line into segments for color changes
-    for src_block in srcup:
-        fig[src_block] = go.Figure()
+    for src_i, src_block in enumerate(srcup):
+        # fig[src_block] = go.Figure()
         for anti, ant in enumerate(srcup[src_block]):
             targets = o.scans[src_block].sources(sources.SourceType.TARGET)
             if len(targets) > 0:
@@ -50,7 +53,8 @@ def elevation_plot(o: obs.Observation):
 
             y_value = np.ones(2) * anti
             for i in range(len(srcup[src_block][ant][srcup[src_block][ant]]) - 1):
-                fig[src_block].add_trace(
+                # fig[src_block].add_trace(
+                fig.add_trace(
                     go.Scatter(
                         x=o.times.datetime[srcup[src_block][ant]][i:i+2],
                         y=y_value,
@@ -58,17 +62,19 @@ def elevation_plot(o: obs.Observation):
                         line=dict(color=color_str[i], width=10),
                         showlegend=False,
                         hovertemplate=f"Elevation: {colors[i]:.0f}º<extra></extra>"
-                    )
+                    ),
+                    row=src_i % 4 + 1,
+                    col=src_i // 4 + 1
                 )
 
         # Update layout
-        fig[src_block].update_layout(
+        fig.update_layout(
             xaxis_title="Time",
             yaxis_title="Antennas",
             xaxis=dict(type="date"),
-            title=f"Elevations for {src_block}"
+            # title=f"Elevations for {src_block}"
         )
-        fig[src_block].update_yaxes(
+        fig.update_yaxes(
             tickvals=list(range(len(srcup[src_block].keys()))),  # Positions on the y-axis
             ticktext=list(srcup[src_block].keys()),   # Corresponding labels (names)
             title="Antennas"

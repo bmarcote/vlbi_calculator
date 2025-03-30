@@ -74,7 +74,7 @@ def summary(o: obs.Observation):
         rprint("at unspecified times.")
 
     if o.duration is not None:
-        rprint(f"With a total duration of {o.duration.to(u.h):.1}.")
+        rprint(f"With a total duration of {o.duration.to(u.h):.01f}.")
 
     rprint(f"\n[bold green]Setup[/bold green]")
     if None not in (o.datarate, o.bandwidth, o.subbands):
@@ -164,8 +164,9 @@ def plot_visibility(o: obs.Observation):
         sys.exit(0)
 
     figs = plots.elevation_plot(o)
-    for src_block in figs:
-        figs[src_block].show()
+    # for src_block in figs:
+        # figs[src_block].show()
+    figs.show()
 
 
 def main(band: str, networks: Optional[list[str]] = None,

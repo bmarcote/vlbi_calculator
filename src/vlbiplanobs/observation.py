@@ -141,7 +141,7 @@ class Observation(object):
         self._uv_baseline: Optional[dict[str, dict[str, u.Quantity]]] = None
         self._uv_array: Optional[dict[str, np.ndarray]] = None
         self._rms: Optional[Union[u.Quantity, dict[str, u.Quantity]]] = None
-        self._synth_beam = None
+        self._synth_beam: Optional[dict[str, dict[str, u.Quantity]]] = None
         self._is_visible: Optional[dict[str, dict[str, coord.SkyCoord]]] = None
         self._is_always_visible: Optional[dict] = None
         self._when_visible: Optional[dict[str, list[Time | u.Quantity]]] = None
@@ -1058,9 +1058,9 @@ class Observation(object):
 
         return self._uv_array
 
-    def synthesized_beam(self) -> dict:
+    def synthesized_beam(self) -> dict[str, dict[str, u.Quantity]]:
         """Estimates the resulting synthesized beam of the observations based on
-        the expected (u,v) coverage.
+        the expected (u,v) coverage per source.
 
         This is just an estimation made by a ellipse fitting to the (u, v) coverage,
         from which we obtain the resolution on the two axes following
@@ -1079,22 +1079,26 @@ class Observation(object):
         if self._synth_beam is not None:
             return self._synth_beam
 
-        resolution = lambda bl : ((2.063e8*u.mas)/bl).to(u.mas)
-        uvvis = self.get_uv_array()
-        # Transform the uv points into r,theta (polar) points
-        uvvis_polar = np.empty_like(uvvis)
-        uvvis_polar[:,0] = np.sqrt((uvvis**2).sum(axis=1)) # radius
-        uvvis_polar[:,1] = np.arctan2(uvvis[:,1], uvvis[:,0]) # theta
-        # Defines the BMAJ and PA
-        bl_bmaj = np.max(uvvis_polar[:,0])
-        bl_bmaj_theta = uvvis_polar[:,1][np.where(uvvis_polar[:,0] == bl_bmaj)][0]
-        # Gets the BMIN and an orthogonal projection
-        bl_bmin_theta = ( bl_bmaj_theta + np.pi/2 ) % (2*np.pi)
-        bl_bmin = np.max(np.abs(uvvis.dot(np.array([np.cos(bl_bmin_theta),
-                                                    np.sin(bl_bmin_theta)]))))
+        self._synth_beam = {}
 
-        self._synth_beam = {'bmaj': resolution(bl_bmin), 'bmin': resolution(bl_bmaj),
-                            'pa': (bl_bmaj_theta*u.rad).to(u.deg)}
+        resolution = lambda bl : ((2.063e8*u.mas)/bl).to(u.mas)
+        uvvis = self.get_uv_values()
+        for src, uv in uvvis.items():
+            # Transform the uv points into r,theta (polar) points
+            uvvis_polar = np.empty_like(uv)
+            uvvis_polar[:,0] = np.sqrt((uv**2).sum(axis=1)) # radius
+            uvvis_polar[:,1] = np.arctan2(uv[:,1], uv[:,0]) # theta
+            # Defines the BMAJ and PA
+            bl_bmaj = np.max(uvvis_polar[:,0])
+            bl_bmaj_theta = uvvis_polar[:,1][np.where(uvvis_polar[:,0] == bl_bmaj)][0]
+            # Gets the BMIN and an orthogonal projection
+            bl_bmin_theta = ( bl_bmaj_theta + np.pi/2 ) % (2*np.pi)
+            bl_bmin = np.max(np.abs(uv.dot(np.array([np.cos(bl_bmin_theta),
+                                                     np.sin(bl_bmin_theta)]))))
+
+            self._synth_beam[src] = {'bmaj': resolution(bl_bmin), 'bmin': resolution(bl_bmaj),
+                                      'pa': (bl_bmaj_theta*u.rad).to(u.deg)}
+
         return self._synth_beam
 
 

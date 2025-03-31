@@ -140,7 +140,7 @@ class Observation(object):
         self.ontarget_fraction = ontarget
         self._uv_baseline: Optional[dict[str, dict[str, u.Quantity]]] = None
         self._uv_array: Optional[dict[str, np.ndarray]] = None
-        self._rms = None
+        self._rms: Optional[Union[u.Quantity, dict[str, u.Quantity]]] = None
         self._synth_beam = None
         self._is_visible: Optional[dict[str, dict[str, coord.SkyCoord]]] = None
         self._is_always_visible: Optional[dict] = None
@@ -631,7 +631,10 @@ class Observation(object):
 
                 self._is_visible[ablockname] = {}
                 for (station, source, visible) in results:
-                    self._is_visible[ablockname][station.codename] = visible
+                    if station.codename in self._is_visible[ablockname]:
+                        self._is_visible[ablockname][station.codename] *= visible
+                    else:
+                        self._is_visible[ablockname][station.codename] = visible
 
         return self._is_visible
 
@@ -798,12 +801,13 @@ class Observation(object):
         uv_data = self.get_uv_data()
         longest_bl: dict[str, Tuple[str, u.Quantity]] = {}
         for src, src_uv in uv_data.items():
-            max_temp = -1.0*u.m
+            max_temp = -1.0
             for a_bl, uv in src_uv.items():
-                bl_length = np.sqrt(np.max((uv**2).sum(axis=1)))
-                if bl_length > max_temp:
-                    longest_bl[src] = (a_bl, bl_length*self.wavelength)
-                    max_temp = bl_length
+                if len(uv) > 0:
+                    bl_length = np.sqrt(np.max((uv**2).sum(axis=1)))
+                    if bl_length > max_temp:
+                        longest_bl[src] = (a_bl, (bl_length*self.wavelength).to(u.km))
+                        max_temp = bl_length
 
         return longest_bl
 
@@ -820,12 +824,13 @@ class Observation(object):
         uv_data = self.get_uv_data()
         shortest_bl: dict[str, Tuple[str, u.Quantity]] = {}
         for src, src_uv in uv_data.items():
-            min_temp = -1.0*u.m
+            min_temp = -1
             for a_bl, uv in src_uv.items():
-                bl_length = np.sqrt(np.min((uv**2).sum(axis=1)))
-                if bl_length < min_temp or min_temp < 0.0*u.m:
-                    shortest_bl[src] = (a_bl, bl_length*self.wavelength)
-                    min_temp = bl_length
+                if len(uv) > 0:
+                    bl_length = np.sqrt(np.min((uv**2).sum(axis=1)))
+                    if bl_length < min_temp or min_temp < 0:
+                        shortest_bl[src] = (a_bl, (bl_length*self.wavelength).to(u.km))
+                        min_temp = bl_length
 
         return shortest_bl
 
@@ -840,7 +845,8 @@ class Observation(object):
         be limited to this range to avoid significant loses.
         """
         return ((49500*u.arcsec*u.MHz*u.km)*self.channels /
-                (self.longest_baseline()[1]*self.bandwidth/self.subbands)).to(u.arcsec)
+                (np.max([lb[1] for lb in self.longest_baseline().values()]) *
+                 self.bandwidth/self.subbands)).to(u.arcsec)
 
     def time_smearing(self) -> u.Quantity:
         """Returns the time smearing expected for the given observation.
@@ -853,7 +859,8 @@ class Observation(object):
         be limited to this range to avoid significant loses.
         """
         return ((18560*u.arcsec*u.km*u.s/u.cm) *
-                (self.wavelength/(self.longest_baseline()[1]*self.inttime))).to(u.arcsec)
+                (self.wavelength / (np.max([lb[1]
+                 for lb in self.longest_baseline()])*self.inttime))).to(u.arcsec)
 
     def datasize(self) -> Optional[u.Quantity]:
         """Returns the expected size for the output FITS IDI files.
@@ -872,8 +879,7 @@ class Observation(object):
         temp *= self.polarizations.value*self.subbands*self.channels  # type: ignore
         return temp*1.75*u.GB/(131072*3600)
 
-    # TODO: re-write this function assuming all sources, and after the observation has been set
-    def thermal_noise(self) -> u.Quantity:
+    def thermal_noise(self) -> Optional[Union[u.Quantity, dict[str, u.Quantity]]]:
         """Returns the expected rms thermal noise for the given observation.
 
         Each antenna has a different sensitivity for the observing band (established from
@@ -888,22 +894,40 @@ class Observation(object):
 
         If the source has not been set, it will assume that all antennas observe all time.
         """
-        raise NotImplementedError
         if self._rms is not None:
             return self._rms
 
-        if self.target is None:
+        if self.datarate is None:
+            raise ValueError("The data rate must be defined to estimate thermal noise.")
+
+        if len(self.sources()) == 0 or self.times is None:
             sefds = [stat.sefd(self.band) for stat in self.stations]
-            dt = (self.times[-1]-self.times[0]).to(u.s).value
+            if self.times is not None:
+                dt = (self.times[-1]-self.times[0]).to(u.s).value
+            elif self.duration is not None:
+                dt = self.duration.to(u.s).value
+            else:
+                raise ValueError("Times or duration must be defined to estimate thermal noise.")
+
             temp = 0.0
             for j in range(len(sefds)):
                 for k in range(j+1, len(sefds)):
                     temp += dt/(sefds[j]*sefds[k])
-        else:
+
+            temp = 1.0/np.sqrt(temp*self.ontarget_fraction)
+            self._rms = ((1.0/0.7)*temp/np.sqrt(self.datarate.to(u.bit/u.s).value/2))*u.Jy
+            return self._rms
+
+        self._rms = {}
+        for source in self.sources():
+            assert self.scans is not None
             main_matrix = np.zeros((len(self.times), len(self.stations)))
-            visible = self.is_visible()
+            visible = self.is_observable()
             for i, stat in enumerate(self.stations):
-                main_matrix[:, i][visible[stat.codename]] = stat.sefd(self.band)
+                # print([self.scans[bname].sources() for bname in self.scans])
+                main_matrix[:, i][visible[[bname for bname in self.scans
+                                           if source in self.scans[bname].sources()][0]
+                                          ][stat.codename]] = stat.sefd(self.band)
             # Determines the noise level for each time stamp.
             temp = 0.0
             for i, ti in enumerate(main_matrix[:-1]):
@@ -916,8 +940,8 @@ class Observation(object):
                 # No sources visible
                 raise SourceNotVisible('No single baseline can observe the source.')
 
-        temp = 1.0/np.sqrt(temp*self.ontarget_fraction)
-        self._rms = ((1.0/0.7)*temp/np.sqrt(self.datarate.to(u.bit/u.s).value/2))*u.Jy
+            temp = 1.0/np.sqrt(temp*self.ontarget_fraction)
+            self._rms[source.name] = ((1.0/0.7)*temp/np.sqrt(self.datarate.to(u.bit/u.s).value/2))*u.Jy
 
         return self._rms
 
@@ -961,10 +985,12 @@ class Observation(object):
             return bl_uv_up
         else:
             ants_up = self.is_observable()
+            blockname = [ablock for ablock in self.scans
+                         if source.name in self.scans[ablock].sourcenames()][0]
             for i, bl_name in enumerate(bl_names):
                 ant1, ant2 = bl_name.split('-')
-                bl_up = (np.array([a for a in ants_up[ant1][source.name]
-                                   if a in ants_up[ant2][source.name]]), )
+                bl_up = (np.array([a for a in ants_up[blockname][ant1]
+                                   if a in ants_up[blockname][ant2]]), )
                 if len(bl_up[0]) > 0:
                     bl_uv_up[bl_name] = (bl_uv[:, :, i][bl_up] / self.wavelength).decompose()
 

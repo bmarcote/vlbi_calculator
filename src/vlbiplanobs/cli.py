@@ -19,12 +19,14 @@ _STATIONS = stations.Stations()
 _NETWORKS = _STATIONS.get_networks_from_configfile()
 
 
-def get_stations(list_networks: Optional[list[str]] = None,
+def get_stations(band: str, list_networks: Optional[list[str]] = None,
                  list_stations: Optional[list[str]] = None) -> stations.Stations:
     """Returns a VLBI array including the required stations.
     Each argument is a comma-separated list of names.
 
     Inputs
+        band : str
+            The observing band. It will drop the stations that do not observe at such band.
         list_networks : list[str] | None
             If you want to pick the default antennas participating in one of the
             known VLBI networks, then you can include directly the network name
@@ -40,7 +42,7 @@ def get_stations(list_networks: Optional[list[str]] = None,
             networks = [_NETWORKS[n] for n in list_networks]
             for n in networks:
                 for s in n.station_codenames:
-                    if s not in stations:
+                    if s not in stations and band in s.bands:
                         stations.append(s)
     except KeyError:
         unknown_networks: list = [n for n in list_networks if n not in _NETWORKS]  # type: ignore
@@ -53,11 +55,16 @@ def get_stations(list_networks: Optional[list[str]] = None,
         if list_stations is not None:
             for s in list_stations:
                 a_station = _STATIONS[s.strip()].codename
-                if a_station not in stations:
+                if a_station not in stations and band in _STATIONS[a_station].bands:
                     stations.append(a_station)
     except KeyError:
         rprint(f"[bold red]The station {a_station} is not known.[/bold red]")
         sys.exit(1)
+
+    dropped_stations = [s for s in stations if band not in _STATIONS[s].bands]
+    if len(dropped_stations) > 0:
+        rprint("[bold yellow]WARNING:[/bold yellow] [yellow]The following antennas were ignored "
+               f"because they cannot observe at {band}: {', '.join(dropped_stations)}[/yellow]")
 
     return _STATIONS.filter_antennas(stations)
 
@@ -173,7 +180,7 @@ def main(band: str, networks: Optional[list[str]] = None,
          stations: Optional[list[str]] = None,
          src_catalog: Optional[str] = None, targets: Optional[list[str]] = None,
          start_time: Optional[Time] = None,
-         duration: Optional[u.Quantity | float] = None):
+         duration: Optional[u.Quantity | float] = None, datarate: Optional[u.Quantity] = None):
     """Planner for VLBI observations.
 
     Inputs
@@ -225,14 +232,23 @@ def main(band: str, networks: Optional[list[str]] = None,
     else:
         duration_val = duration.to(u.min).value
 
-    o = obs.Observation(band, get_stations(networks, stations), scans=src2observe,
+    if datarate is None:
+        if networks is not None:
+            for a_network in _NETWORKS:
+                if a_network in networks:
+                    datarate = _NETWORKS[a_network].max_datarate(band)
+                    break
+        else:
+            datarate = 2048*u.Mb/u.s
+
+    o = obs.Observation(band, get_stations(band, networks, stations), scans=src2observe,
                         times=start_time + np.arange(0, duration_val + 5, 10)*u.min
                         if start_time is not None else None, duration=duration,
-                        # datarate=, subbands=, channels=, polarizations=, inttime=)
+                        datarate=datarate,  # subbands=, channels=, polarizations=, inttime=)
                         ontarget=0.6)
     summary(o)
     plot_visibility_tui(o)
-    plot_visibility(o)
+    # plot_visibility(o)
     return o
 
 
@@ -291,6 +307,8 @@ def cli():
                         "If a number,\nit will select a pulsar from the personal "
                         "input source file (must be\nprovided!). If a name, "
                         "it will pick such pulsar.")
+    parser.add_argument('--datarate', type=float, default=None,
+                        help="Maximum data rate of the observation, in Mb/s.")
 
     args = parser.parse_args()
 
@@ -336,7 +354,8 @@ def cli():
          stations=[s.strip() for s in args.stations.split(',')] if args.stations else None,
          src_catalog=args.input,
          targets=args.targets.split(','), start_time=Time(args.starttime, scale='utc')
-         if args.starttime else None, duration=args.duration*u.hour if args.duration else None)
+         if args.starttime else None, duration=args.duration*u.hour if args.duration else None,
+         datarate=args.datarate*u.Mbit/u.s if args.datarate else None)
     # o = obs.Observation(band=args.band, stations=get_stations(args.network, args.stations))
 
 

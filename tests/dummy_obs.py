@@ -27,7 +27,7 @@ from vlbiplanobs import cli
 evn6 = ['Cm', 'Da', 'De', 'Ef', 'Ir', 'Jb2', 'Kn', 'Mc', 'Nt', 'O8', 'Pi', 'Sr', 'T6', 'Tr', 'Ur', 'Wb', 'Hh']
 
 o = cli.main(band='21cm', stations=evn6, src_catalog='precise/sources.yaml',
-         targets=['R1', 'R2'], start_time=Time('2020-06-15 20:00', scale='utc'), duration=12*u.h)
+             targets=['R1', 'R2'], start_time=Time('2020-06-15 20:00', scale='utc'), duration=12*u.h)
 
 
 # print('Selecting EVNs')
@@ -65,7 +65,13 @@ o = cli.main(band='21cm', stations=evn6, src_catalog='precise/sources.yaml',
 # rprint(f"[green bold]The Schedule[/green bold]:\n{sch.print_schedule()}")
 
 # beam = obs.synthesized_beam()
-# rms = obs.thermal_noise()
+rprint("Longest and shortest baselines:")
+rprint('    ' + '\n    '.join([f'{k:10} ({v[0]}) {v[1]:.1f} - ({w[0]}) {w[1]:.1f}' for (k, v), w
+                               in zip(o.longest_baseline().items(), o.shortest_baseline().values())]))
+# rprint(f"Longest baseline: {'\n'.join([f'{k} ({v[0]}) {v[1]}' for k, v in o.longest_baseline().items()])}")
+# rprint('    ' + '\n    '.join([f'{k} ({v[0]}) {v[1]:.1f}' for k, v in o.shortest_baseline().items()]))
+rprint("\nThermal rms noise:")
+rprint('    ' + '\n    '.join([f'{k}: {v.to(u.mJy):.2}' for k, v in o.thermal_noise().items()]))
 # uvdata = obs.get_uv_array()
 # dirty_map_natural = obs.get_dirtymap(robust='natural')
 # dirty_map_uniform = obs.get_dirtymap(robust='uniform')

@@ -364,7 +364,7 @@ def cli():
          src_catalog=args.input,
          targets=args.targets.split(','), start_time=Time(args.starttime, scale='utc')
          if args.starttime else None, duration=args.duration*u.hour if args.duration else None,
-         datarate=args.datarate*u.Mbit/u.s if args.datarate else None, gui=not args.no_gui)
+         datarate=args.datarate*u.Mbit/u.s if args.datarate else None, gui=args.no_gui)
     # o = obs.Observation(band=args.band, stations=get_stations(args.network, args.stations))
 
 

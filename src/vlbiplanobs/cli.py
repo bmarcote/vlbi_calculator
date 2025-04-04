@@ -180,7 +180,8 @@ def main(band: str, networks: Optional[list[str]] = None,
          stations: Optional[list[str]] = None,
          src_catalog: Optional[str] = None, targets: Optional[list[str]] = None,
          start_time: Optional[Time] = None,
-         duration: Optional[u.Quantity | float] = None, datarate: Optional[u.Quantity] = None):
+         duration: Optional[u.Quantity | float] = None, datarate: Optional[u.Quantity] = None,
+         gui: bool = True):
     """Planner for VLBI observations.
 
     Inputs
@@ -192,6 +193,9 @@ def main(band: str, networks: Optional[list[str]] = None,
             c) the name of the source, if it is a known one so it can be found in the
                SIMBAD/NEW/VizieR databases.
             A mix of the previous ones can also be used for each entry.
+        gui : bool  (default True)
+            Create plots in Plotly and show them in a browser page. If False, it will only
+            print some quick plots within the terminal instead.
     """
     if networks is None and stations is None:
         rprint("[bold red]You need to provide at least a VLBI network "
@@ -248,7 +252,9 @@ def main(band: str, networks: Optional[list[str]] = None,
                         ontarget=0.6)
     summary(o)
     plot_visibility_tui(o)
-    # plot_visibility(o)
+    if gui:
+        plot_visibility(o)
+
     return o
 
 
@@ -309,6 +315,9 @@ def cli():
                         "it will pick such pulsar.")
     parser.add_argument('--datarate', type=float, default=None,
                         help="Maximum data rate of the observation, in Mb/s.")
+    parser.add_argument('--no-gui', action="store_false", default=True,
+                        help="If set, then it will not open graphical plots, but it will only "
+                        "show the quick plots through terminal.")
 
     args = parser.parse_args()
 
@@ -355,7 +364,7 @@ def cli():
          src_catalog=args.input,
          targets=args.targets.split(','), start_time=Time(args.starttime, scale='utc')
          if args.starttime else None, duration=args.duration*u.hour if args.duration else None,
-         datarate=args.datarate*u.Mbit/u.s if args.datarate else None)
+         datarate=args.datarate*u.Mbit/u.s if args.datarate else None, gui=not args.no_gui)
     # o = obs.Observation(band=args.band, stations=get_stations(args.network, args.stations))
 
 

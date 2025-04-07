@@ -251,9 +251,10 @@ def main(band: str, networks: Optional[list[str]] = None,
                         datarate=datarate,  # subbands=, channels=, polarizations=, inttime=)
                         ontarget=0.6)
     summary(o)
-    plot_visibility_tui(o)
     if gui:
         plot_visibility(o)
+    else:
+        plot_visibility_tui(o)
 
     return o
 

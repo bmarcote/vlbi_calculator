@@ -3,6 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import Normalize
+from astropy.time import Time
+from astropy import units as u
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -23,7 +25,6 @@ def elevation_plot(o: obs.Observation):
     source,
     """
     assert o.scans is not None
-    assert o.times is not None
     # Normalize the color array to [0, 1] and map it to the viridis colormap
     norm = Normalize(vmin=0, vmax=90)  # Normalize values between 0 and 90
     viridis = cm.get_cmap('viridis')
@@ -31,8 +32,19 @@ def elevation_plot(o: obs.Observation):
     # Create figure
     # fig: dict[str, go.Figure] = {}
 
+    if o.times is None:
+        # Let's calculate the visibility GST ranges
+        localtimes = Time('2025-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01)*u.day
+        o.times = localtimes
+        doing_gst = True
+    else:
+        doing_gst = False
+
     srcup = o.is_observable()
     elevs = o.elevations()
+    if doing_gst:
+        o.times = None
+
     fig = make_subplots(rows=min([len(srcup), 4]), cols=len(srcup) // 4 + 1,
                         subplot_titles=[f"Elevations for {src_block}" for src_block in srcup])
     # Break the line into segments for color changes
@@ -56,12 +68,15 @@ def elevation_plot(o: obs.Observation):
                 # fig[src_block].add_trace(
                 fig.add_trace(
                     go.Scatter(
-                        x=o.times.datetime[srcup[src_block][ant]][i:i+2],
+                        x=o.times.datetime[srcup[src_block][ant]][i:i+2] if o.times is not None else
+                                                  localtimes.datetime[srcup[src_block][ant]][i:i+2],
                         y=y_value,
                         mode="lines",
                         line=dict(color=color_str[i], width=10),
                         showlegend=False,
-                        hovertemplate=f"Elevation: {colors[i]:.0f}º<extra></extra>"
+                        hovertemplate=f"<b>Elevation</b>: {colors[i]:.0f}º<extra></extra><br>"
+                                      f"<b>Time</b>: {o.times[i].strftime('%H:%M') if o.times is not None
+                                                      else localtimes[i].strftime('%H:%M')}",
                     ),
                     row=src_i % 4 + 1,
                     col=src_i // 4 + 1
@@ -69,9 +84,9 @@ def elevation_plot(o: obs.Observation):
 
         # Update layout
         fig.update_layout(
-            xaxis_title="Time",
+            xaxis_title="Time (GST)" if doing_gst else "Time (UTC)",
             yaxis_title="Antennas",
-            xaxis=dict(type="date"),
+            xaxis=dict(type="date", tickformat="%H:%M"),
             # title=f"Elevations for {src_block}"
         )
         fig.update_yaxes(

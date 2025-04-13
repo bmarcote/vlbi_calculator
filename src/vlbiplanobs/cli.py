@@ -52,7 +52,8 @@ class VLBIObs(obs.Observation):
         return self._summary_tui()
 
     def _summary_gui(self):
-        pass
+        self._summary_tui()
+        # TODO: for now it just calls the TUI
 
     def _summary_tui(self):
         """Prints the infromation for the given Observation, for testing purposes
@@ -129,6 +130,14 @@ class VLBIObs(obs.Observation):
         altaz = self.altaz()
         srcup = self.is_observable()
         srcupalways = self.is_always_observable()
+        rms_noise = self.thermal_noise()
+        ontarget_time = self.ontarget_time
+        if doing_gst:
+            # Let's put it back to the original values
+            gstimes = self.gstimes
+            localtimes = self.times[:]
+            self.times = None
+
         rprint(f"[bold]The blocks are observable for:[/bold]")
         for ablockname, antbool in srcup.items():
             rprint(f"    - '{ablockname}':", end='')
@@ -148,13 +157,13 @@ class VLBIObs(obs.Observation):
 
             rprint(f"           |-{''.join(['-' for b in antbool[ant]])}|")
             if doing_gst:
-                rprint(f"           {self.gstimes[0].to_string(sep=':', fields=2, pad=True)} GST"
+                rprint(f"           {gstimes[0].to_string(sep=':', fields=2, pad=True)} GST"
                        f"{''.join([' ' for b in antbool[ant]][:-11])}"
-                       f"{(self.gstimes[-1] + (24*u.hourangle
-                                               if np.abs(self.times[-1].mjd - self.times[0].mjd - 1) < 0.1
-                                               else 0.0*u.hourangle)).to_string(sep=':', fields=2, pad=True)}")
+                       f"{(gstimes[-1] + (24*u.hourangle
+                                          if np.abs(localtimes[-1].mjd - localtimes[0].mjd - 1) < 0.1
+                                          else 0.0*u.hourangle)).to_string(sep=':', fields=2, pad=True)}")
             else:
-                rprint(f"           {self.times.datetime[0].strftime('%H:%M'):05} UTC"
+                rprint(f"           {times.datetime[0].strftime('%H:%M'):05} UTC"
                        f"{''.join([' ' for b in antbool[ant]][:-7])}"
                        f"{self.times.datetime[-1].strftime('%H:%M'):05}")
 
@@ -192,12 +201,12 @@ class VLBIObs(obs.Observation):
                                       in self.when_is_observable(min_stations=min_stat)[ablockname]]))
 
             rprint("[bold]Expected rms thermal noise for the target source: [/bold]", end='')
-            for src, rms in self.thermal_noise().items():
+            for src, rms in rms_noise.items():
                 if any([s.type is sources.SourceType.TARGET for s in self.sources()]):
                     if src in self.sourcenames_in_block(ablockname, sources.SourceType.TARGET):
                         val = _optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
                         rprint(f"{src}: {val.value:.02f} {val.unit.to_string("unicode")}")
-                        val = _optimal_units(self.ontarget_time[src], [u.h, u.min, u.s, u.ms])
+                        val = _optimal_units(ontarget_time[src], [u.h, u.min, u.s, u.ms])
                         rprint("[dim]for a total on-source time of ~ "
                                f"{val.value:.2f} {val.unit.to_string("unicode")} "
                                f"(assuming the total observing time).[/dim]")
@@ -211,12 +220,6 @@ class VLBIObs(obs.Observation):
         """Show plots with the different sources and when they are visible within the
         observation
         """
-        if self.times is None:
-            rprint("[bold red]Searching for suitable GST range (with no defined observing time) "
-                   "not implemented yet[/bold red]")
-            return
-            sys.exit(1)
-
         if self.scans is None:
             # rprint("No scans have been defined.")
             sys.exit(0)

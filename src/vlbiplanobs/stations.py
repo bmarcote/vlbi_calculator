@@ -711,8 +711,9 @@ class Stations(object):
             else:
                 rprint(f"[yellow bold]WARNING: The antennas with codenames {', '.join(list(unexpected_ant))} "
                        "are not present in the current network.[/yellow bold]")
-
-        return Stations(stations=[s for s in self.stations if s.codename in codenames],
+        codename_indices = {codename: i for i, codename in enumerate(codenames)}
+        return Stations(stations=sorted([s for s in self.stations if s.codename in codenames],
+                                        key=lambda x: codename_indices[x.codename]),
                         observing_bands=self.observing_bands, max_datarates=self._bands.values())
 
     @staticmethod

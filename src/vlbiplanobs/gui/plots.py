@@ -63,7 +63,7 @@ def elevation_plot(o: obs.Observation):
             # color_str = colors #.apply(lambda c: f"rgba({int(c[0]*255)}, {int(c[1]*255)}, {int(c[2]*255)}, {c[3]})")
             color_str = [f"rgba({r}, {g}, {b}, {a})" for r, g, b, a in colors_cm]
 
-            y_value = np.ones(2) * anti
+            y_value = np.zeros(2) + (len(o.stations) - anti)
             for i in range(len(srcup[src_block][ant][srcup[src_block][ant]]) - 1):
                 # fig[src_block].add_trace(
                 fig.add_trace(
@@ -90,7 +90,8 @@ def elevation_plot(o: obs.Observation):
             # title=f"Elevations for {src_block}"
         )
         fig.update_yaxes(
-            tickvals=list(range(len(srcup[src_block].keys()))),  # Positions on the y-axis
+            tickvals=len(o.stations) - np.array(range(len(srcup[src_block].keys()))),  # Positions on the y-axis
+            # tickvals=list(range(len(srcup[src_block].keys()))),  # Positions on the y-axis
             ticktext=list(srcup[src_block].keys()),   # Corresponding labels (names)
             title="Antennas"
         )

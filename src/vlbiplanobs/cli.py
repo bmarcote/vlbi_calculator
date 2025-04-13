@@ -163,7 +163,7 @@ class VLBIObs(obs.Observation):
                                           if np.abs(localtimes[-1].mjd - localtimes[0].mjd - 1) < 0.1
                                           else 0.0*u.hourangle)).to_string(sep=':', fields=2, pad=True)}")
             else:
-                rprint(f"           {times.datetime[0].strftime('%H:%M'):05} UTC"
+                rprint(f"           {self.times.datetime[0].strftime('%H:%M'):05} UTC"
                        f"{''.join([' ' for b in antbool[ant]][:-7])}"
                        f"{self.times.datetime[-1].strftime('%H:%M'):05}")
 
@@ -373,7 +373,11 @@ def main(band: str, networks: Optional[list[str]] = None,
                 ontarget=0.6)
     o.summary(gui)
     if targets is not None or source_catalog is not None:
-        o.plot_visibility(gui)
+        if gui:
+            o.plot_visibility(gui)
+
+        # TODO: for now I keep this so it shows the ranges in times and thermal noises
+        o.plot_visibility(False)
     return o
 
 

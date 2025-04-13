@@ -144,6 +144,7 @@ class Observation(object):
         self._is_always_visible: Optional[dict] = None
         self._altaz: Optional[dict] = None
         self._elevations: Optional[dict] = None
+        self._baseline_sensitivity: Optional[dict[str, u.Quantity]] = None
 
     @property
     def scans(self) -> Optional[dict[str, ScanBlock]]:
@@ -966,6 +967,7 @@ class Observation(object):
         if self.datarate is None:
             raise ValueError("The data rate must be defined to estimate thermal noise.")
 
+        # TODO: I think the n_stations = 1 may be a special case, where it requires k=0, not k=1
         sefds = np.array([stat.sefd(self.band).to(u.Jy).value for stat in self.stations])
         bandwidths = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
                               else self.datarate.to(u.bit/u.s).value for s in self.stations]) * \
@@ -989,17 +991,6 @@ class Observation(object):
             # temp = (np.sum(((bandwidth_min/np.outer(sefds, sefds)) *
             #                 np.triu(np.ones_like(bandwidth_min), k=1)) *
             #                (1/(sefds[:, None]*sefds[None, :]) - 1/(sefds*sefds)))) / 2
-            # OLD IMPLEMENTATION
-            # temp = 0.0
-            # for j in range(len(sefds)):
-            #     for k in range(j+1, len(sefds)):
-            #         temp += dt/(sefds[j]*sefds[k])
-
-            # Quicker:  sefds = np.array(..)
-            # return (np.sum(1/sefds[:, None] * 1/sefds[None, :]) - np.sum(1/sefds ** 2)) / 2
-            # This runs much faster: 46 us versus 24 ms.
-
-            # temp = 1.0/np.sqrt(temp*self.ontarget_fraction)
             self._rms = ((np.sqrt(2)/0.7)/np.sqrt(temp*dt))*u.Jy/u.beam
             return self._rms
         else:
@@ -1015,6 +1006,83 @@ class Observation(object):
                 self._rms[sourcename] = ((np.sqrt(2)/0.7)/np.sqrt(temp))*u.Jy/u.beam
 
             return self._rms
+
+    def baseline_sensitivity(self, antenna1: str, antenna2: str,
+                             integration_time: u.Quantity = u.Quantity(1, u.min)) -> u.Quantity:
+        """Returns the sensitivity of a given baseline in the observation for
+        the expecifiedintegration time.
+
+        Inputs
+            - antenna1: str
+                Codename or antenna name of one of the antennas composing the baseline.
+            - antenna2: str
+                Codename or antenna name of the other antennas composing the baseline.
+            - integration_time: astropy.units.Quantity  [OPTIONAL]
+                Integration time to compute the sensitivity. By default, one minute.
+        Returns
+            - sensitivity: astropy.units.Quantity
+                The sensitivity of the baseline in the observation, in Jy/beam units.
+        """
+        ant1 = self.stations[antenna1]
+        ant2 = self.stations[antenna2]
+        if self._baseline_sensitivity is None:
+            # Better to calculate all at once, and cache them
+            # def timeit(func):
+            #     t0 = Time.now()
+            #     temp = func()
+            #     t1 = Time.now()
+            #     rprint(f"{func.__name__} took {((t1-t0)*3600e3).value} ms")
+            #     return temp
+
+            # self._baseline_sensitivity = timeit(self._baseline_sensitivity_numpy)
+            # self._baseline_sensitivity = timeit(self._baseline_sensitivity_threads)
+            self._baseline_sensitivity = self._baseline_sensitivity_numpy()
+
+        assert self._baseline_sensitivity is not None
+        if f"{ant1.codename}-{ant2.codename}" in self._baseline_sensitivity:
+            return self._baseline_sensitivity[f"{ant1.codename}-{ant2.codename}"]
+
+        return self._baseline_sensitivity[f"{ant2.codename}-{ant1.codename}"]
+
+    # This implementation is ~5 times faster than with threads
+    # Only for >20 antennas, it gets ~2 times slower. I think it's worth it.
+    def _baseline_sensitivity_numpy(self) -> dict[str, u.Quantity]:
+        basel_sens: dict[str, u.Quantity] = {}
+        assert self.datarate is not None
+        sefds = np.array([stat.sefd(self.band).to(u.Jy).value for stat in self.stations])
+        bandwidths = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
+                               else self.datarate.to(u.bit/u.s).value for s in self.stations]) * \
+            2 * 2 * min(self.polarizations.value, 2)  # In Hz
+        bandwidth_min = np.minimum.outer(bandwidths, bandwidths)
+        temp = (bandwidth_min/np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=0)
+        for i in range(len(self.stations)):
+            for j in range(i, len(self.stations)):
+                basel_sens[f"{self.stations[i].codename}-{self.stations[j].codename}"] = \
+                    ((np.sqrt(2)/0.7)/np.sqrt(temp[i, j]*1))*u.Jy/u.beam
+
+        return basel_sens
+
+    def _baseline_sensitivity_threads(self) -> dict[str, u.Quantity]:
+        basel_sens: dict[str, u.Quantity] = {}
+        assert self.datarate is not None
+        datarates = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
+                              else self.datarate.to(u.bit/u.s).value for s in self.stations])
+        sefds = np.array([s.sefd(self.band).to(u.Jy).value for s in self.stations])
+
+        def calculate_sensitivity(i, j):
+            temp = min(datarates[i], datarates[j]) * 4 * min(self.polarizations.value, 2) / \
+                   (sefds[i] * sefds[j])
+            return ((np.sqrt(2)/0.7)/np.sqrt(temp*1))*u.Jy/u.beam
+
+        with ThreadPoolExecutor() as executor:
+            indices = [(i, j) for i in range(len(self.stations)) for j in range(i, len(self.stations))]
+            sensitivities = list(executor.map(lambda x: calculate_sensitivity(*x), indices))
+
+        for (index, sensitivity) in zip(indices, sensitivities):
+            basel_sens[f"{self.stations[index[0]].codename}-{self.stations[index[1]].codename}"] = \
+                    ((np.sqrt(2)/0.7)/np.sqrt(sensitivity*1))*u.Jy/u.beam
+
+        return basel_sens
 
     def _compute_uv_per_source(self, source: Optional[Source] = None) -> dict[str, u.Quantity]:
         nstat = len(self.stations)

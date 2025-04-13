@@ -164,7 +164,7 @@ class VLBIObs(obs.Observation):
                                           else 0.0*u.hourangle)).to_string(sep=':', fields=2, pad=True)}")
             else:
                 rprint(f"           {self.times.datetime[0].strftime('%H:%M'):05} UTC"
-                       f"{''.join([' ' for b in antbool[ant]][:-7])}"
+                       f"{''.join([' ' for b in antbool[ant]][:-11])}"
                        f"{self.times.datetime[-1].strftime('%H:%M'):05}")
 
             if doing_gst:
@@ -226,6 +226,26 @@ class VLBIObs(obs.Observation):
 
         figs = plots.elevation_plot(self)
         figs.show()
+
+    def print_baseline_sensitivities(self):
+        """Prints the sensitivity of all baselines in the observation per one minute of time
+        """
+        rprint(f"[bold green]Sensitivity per baseline (in mJy/beam)[/bold green]\n")
+        rprint(" "*8, end='')
+        for s in self.stations:
+            rprint(f"{s.codename:6}", end='')
+
+        rprint('\n' + '------' * (len(self.stations) + 1))
+        for i in range(len(self.stations)):
+            rprint(f"{self.stations[i].codename:3} | {' '*i*6}", end='')
+            for j in range(i, len(self.stations)):
+                try:
+                    rprint(f"{self.baseline_sensitivity(self.stations[i].codename,
+                                                        self.stations[j].codename).to(u.mJy/u.beam).value:6.3}", end='')
+                except TypeError:
+                    rprint("     ", end='')
+
+            rprint('')
 
 
 def get_stations(band: str, list_networks: Optional[list[str]] = None,
@@ -378,6 +398,8 @@ def main(band: str, networks: Optional[list[str]] = None,
 
         # TODO: for now I keep this so it shows the ranges in times and thermal noises
         o.plot_visibility(False)
+
+    # o.print_baseline_sensitivities()
     return o
 
 

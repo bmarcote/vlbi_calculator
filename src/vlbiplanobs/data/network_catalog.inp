@@ -2,7 +2,7 @@
 
 name = European VLBI Network
 default_antennas = Ef, Hh, Jb2, Mc, Nt, Ur, O8, O6, Sr, T6, Tr, Ys, Wb, Ir
-max_datarate = 1024, 1024, 1024, 1024, 1024, 2048, 4096, 4096, 4096, 4096, 4096
+max_datarate = 1024, 1024, 1024, 1024, 1024, 2048, 2048, 2048, 2048, 2048, 2048
 observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.7cm
 
 

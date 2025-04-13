@@ -61,7 +61,8 @@ class Station(object):
                  freqs_sefds: dict[str, u.Quantity], fullname: Optional[str] = None,
                  country: str = "", diameter: str = "",
                  real_time: bool = False, mount: Optional[Mount] = None,
-                 max_datarate: Optional[u.Quantity | dict[str, u.Quantity]] = None) -> None:
+                 max_datarate: Optional[u.Quantity | dict[str, u.Quantity]] = None,
+                 datarate: Optional[u.Quantity] = None) -> None:
         """Initializes a station.
 
         Inputs
@@ -107,6 +108,9 @@ class Station(object):
             network will be the key of the dictionary, with the quantity as value.
             For example, Darnhall can record at 4 Gbps when participating within e-MERLIN observations,
             but their data rate is limited to 512 Mbps when participating within the EVN.
+        - datarate : u.Quantity [OPTIONAL]
+            Specifies the data rate that the station will record. If not provided, it will use the
+            data rate assumed in the observation.
         """
         for a_var, a_var_name in zip((name, codename, country, diameter),
                                      ("name", "codename", "country", "diameter")):
@@ -132,6 +136,7 @@ class Station(object):
             self._mount = mount
 
         self._max_datarate: u.Quantity | dict | None = max_datarate
+        self._datarate: u.Quantity | None = datarate
         if self.mount.mount_type == MountType.ALTAZ:
             self._constraints = [constraints.AzimuthConstraint(min=self.mount.ax1.limits[0],
                                                                max=self.mount.ax1.limits[1]),
@@ -225,6 +230,17 @@ class Station(object):
         participating within the EVN.
         """
         return self._max_datarate
+
+    @property
+    def datarate(self) -> u.Quantity | None:
+        """Returns the data rate that the station can observe.
+        It can be either a astropy.unit.Quantity value (equivalent to Mb/s) or None (if not specified).
+        """
+        return self._datarate
+
+    @datarate.setter
+    def datarate(self, new_datarate: u.Quantity):
+        self._datarate = new_datarate
 
     def elevation(self, obs_times: Time, target: FixedTarget) -> coord.angles.Latitude:
         """Returns the elevation of the target source as seen by the Station during obs_times.
@@ -395,7 +411,8 @@ class Stations(object):
 
     def __init__(self, filename: Optional[str] = None, stations: Optional[Iterable[Station]] = None,
                  observing_bands: Optional[Sequence[str]] = None,
-                 max_datarates: Optional[Union[Sequence[u.Quantity], u.Quantity]] = None) -> None:
+                 max_datarates: Optional[Union[Sequence[u.Quantity], u.Quantity]] = None,
+                 name: Optional[str] = None) -> None:
         """Initializes a Stations of antennas.
 
         Inputs
@@ -408,7 +425,7 @@ class Stations(object):
         - observing_bands : list of str  [OPTIONAL]
             List with all possible observing bands, as specified in the freqsetups.py file.
             If not provided, it will consider all observing bands from the available antennas.
-        - full_name : str  [OPTIONAL]
+        - name : str  [OPTIONAL]
             Full name (expanded) associated to the network.
             If not provided, it will be name
         - max_datarates :  list of u.Quantity  or u.Quantity or None [OPTIONAL]
@@ -423,6 +440,7 @@ class Stations(object):
         assert isinstance(stations, abc.Iterable) or stations is None, "'stations' must be a list or be empty."
         self._stations: dict[str, Station] = {}
         self._bands: dict[str, u.Quantity] = {}
+        self._name: Optional[str] = name
         if (observing_bands is None) and (max_datarates is not None):
             raise ValueError("If 'max_datarates' is provided, 'observing_bands' must also be provided.")
 
@@ -462,6 +480,10 @@ class Stations(object):
             # _all_networks: dict[str, Stations] = self.get_networks_from_configfile(networks_filename)
             # TODO: implement this part!!!!!!!!!!!!
             # raise NotImplementedError
+
+    @property
+    def name(self) -> Optional[str]:
+        return self._name
 
     @property
     def stations(self) -> list[Station]:
@@ -757,7 +779,8 @@ class Stations(object):
             antennas = [all_ants[[a.codename for a in all_ants].index(ant)] for ant in default_ant]
             assert len(antennas) > 0, f"No antennas found for the network {networkname}."
 
-            networks[networkname] = Stations(stations=antennas, observing_bands=obs_bands, max_datarates=max_dt)
+            networks[networkname] = Stations(stations=antennas, observing_bands=obs_bands, max_datarates=max_dt,
+                                             name=config[networkname]["name"])
 
         return networks
 

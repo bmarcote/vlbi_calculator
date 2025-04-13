@@ -109,7 +109,8 @@ class SourceFlux(object):
         self._data[band] = flux
 
     def add_band(self, band: str, flux: FluxMeasurement):
-        """Adds a new measurement of the flux at a new frequency, or overwrites a previous one if the band exists.
+        """Adds a new measurement of the flux at a new frequency, or overwrites a previous
+        one if the band exists.
         """
         if (not isinstance(band, str)) or (not isinstance(flux, FluxMeasurement)):
             raise TypeError("Expected 'band' to be a str and 'flux' to be a FluxMeasurement.")
@@ -269,7 +270,8 @@ class Source(FixedTarget):
                            if r.is_file() and 'rfc' in r.name))
         assert len(rfc_files) > 0, "No RFC files found under the 'data' folder."
 
-        with resources.as_file(resources.files("vlbiplanobs.data").joinpath(sorted(rfc_files)[-1])) as rfcfile:
+        with resources.as_file(resources.files("vlbiplanobs.data").joinpath(sorted(rfc_files)[-1])) \
+                as rfcfile:
             process = subprocess.run(["grep", src_name, rfcfile], capture_output=True, text=True)
         # process = subprocess.run(["grep", src_name, "./data/rfc_2021c_cat.txt"], capture_output=True, text=True)
 
@@ -438,7 +440,8 @@ class SourceCatalog:
                                                         source_type=SourceType.PHASECAL),
                                           duration=float(src['phasecal']['duration'])*u.min
                                           if 'duration' in src['phasecal'] else None,
-                                          every=int(src['phasecal']['every']) if 'every' in src['phasecal'] else -1))
+                                          every=int(src['phasecal']['every'])
+                                          if 'every' in src['phasecal'] else -1))
 
                     if 'checkSource' in src:
                         scans.append(Scan(source=Source(name=src['checkSource']['name'],
@@ -503,8 +506,10 @@ class SourceCatalog:
             #     grade = 3
 
             self.add(Source(name=pars[2], grade=8 if pars[0] == 'C' else 5 if pars[0] == 'N' else 3,
-                            other_names=[pars[1]], coordinates="{0}h{1}m{2}s {3}d{4}m{5}s".format(*pars[3:9]),
-                            source_type=SourceType.PHASECAL, flux=a_flux, notes="RFC Source"), label='catalog')
+                            other_names=[pars[1]],
+                            coordinates="{0}h{1}m{2}s {3}d{4}m{5}s".format(*pars[3:9]),
+                            source_type=SourceType.PHASECAL, flux=a_flux, notes="RFC Source"),
+                     label='catalog')
 
 
 @dataclass
@@ -522,15 +527,17 @@ class ScanBlock:
         """Creates a block of scans, ideally a block to be observed with the target scans, phase-reference
         calibrator source (if needed), and check sources.
 
-        For example, a block can consist on a single target scan (if this is a non phase-referencing observation).
+        For example, a block can consist on a single target scan (if this is a non phase-referencing
+        observation).
         Then such scan will be repeated until fill the maximum observing time.
 
-        On the contrary, in a phase-referencing observation a scan block can consist on one or multiple target
-        scans, the associated phase-referencing scans, and possible check sources to be observed every certain
-        number of target scans.
+        On the contrary, in a phase-referencing observation a scan block can consist on one or
+        multiple target scans, the associated phase-referencing scans, and possible check sources
+        to be observed every certain number of target scans.
 
         If you want to schedule a fringe finder regularly during the observation, that is also possible.
-        However, for isolated scans on these sources it will be preferred to be defined as different scan blocks.
+        However, for isolated scans on these sources it will be preferred to be defined as different
+        scan blocks.
         """
         if len(scans) == 0:
             raise ValueError("The scan block cannot contain an empty list of scans.")
@@ -539,13 +546,15 @@ class ScanBlock:
             raise ValueError("All elements in the list of scans must be of Scan type.")
 
         self._scans = scans
+        self._frac_time: dict[str, float] = {}
 
     @property
     def scans(self) -> list[Scan]:
         return self._scans
 
     def has(self, source_type: SourceType) -> bool:
-        """Returns if the given source type is included among the ones observed in the provided list of scans.
+        """Returns if the given source type is included among the ones observed in the provided
+        list of scans.
         """
         return any([s.source.type is source_type for s in self.scans])
 
@@ -565,17 +574,49 @@ class ScanBlock:
 
         return [s.source.name for s in self.scans if s.source.type is source_type]
 
+    def scan_with_sourcename(self, source_name: str) -> Optional[Scan]:
+        for scan in self._scans:
+            if scan.source.name == source_name:
+                return scan
+
+        raise ValueError(f"The source {source_name} is not present in any scan.")
+
     def scans_with_sources(self, source_type: SourceType) -> list[Scan]:
         """Returns the scans with the given source types in this block.
         """
         return [s for s in self._scans if s.source.type == source_type]
+
+    def fractional_time(self) -> dict[str, float]:
+        """Returns the fractional time dedicated to each source observed within the scan block.
+
+        Returns
+            fractional_time : dict[str, float]
+                The fraction of time estimated to be spent on each particular source assuming
+                the durations of the other scans to be observed in this block.
+                The keys of the dict are the source names, and the values are the fraction of time,
+                from the total scan block time, spent on the source.
+        """
+        if len(self._frac_time.keys()) > 0:
+            return self._frac_time
+
+        total_duration = sum([s.duration for s in self.scans if s.every <= 0])
+        mcm_every = np.lcm.reduce([s.every for s in self.scans if s.every > 0])
+        total_duration = total_duration*mcm_every + \
+            sum([s.duration*(s.every/mcm_every) for s in self.scans if s.every > 0])
+
+        for ascan in self.scans:
+            self._frac_time[ascan.source.name] = ascan.duration*mcm_every / \
+                                                 (ascan.every if ascan.every >= 0 else 1) / total_duration
+
+        return self._frac_time
 
     def fill(self, max_duration: u.Quantity) -> list[Scan]:
         """Given the list of scans, returns the final arrangement of scans that fills the available time.
         This will follow the following conditions:
         - Repeats the target scan within the given time. If a `phasecal` is provided, then it will always
           bracket each target scan with this `phasecal`. If two or more phasecal are provided (e.g. P1, P2),
-          then it will assume a multi phase-referencing technique for the target T:  P1 P2 T P1 P2 T P1 P2...
+          then it will assume a multi phase-referencing technique for the target T:
+            P1 P2 T P1 P2 T P1 P2...
         - If some sources have the 'every = N > 0' constraint, then these will be scheduled every N cycles.
           For example, if no phasecal are provided and N = 3 for the C source, then: T T C T T C ...
           And if one phasecal is provided: P T P T P C P T P...
@@ -585,23 +626,28 @@ class ScanBlock:
         """
         # safety Checks
         if reduce(operator.add, [s.duration.to(u.min) for s in self.scans]) > max_duration:
-            raise ValueError("The max_duration of the block cannot be shorter than the time of all single scans.")
+            raise ValueError("The max_duration of the block cannot be shorter than the time of "
+                             "all single scans.")
 
         main_loop: list[Scan] = []
 
         # First it arranges the (phasecal)/target scans if exist
         if self.has(SourceType.PHASECAL):
             if not self.has(SourceType.TARGET):
-                raise ValueError("If phase calibrator scans provided, then target scans must also be provided.")
+                raise ValueError("If phase calibrator scans provided, then target scans must also "
+                                 "be provided.")
 
-            loop_duration = reduce(operator.add, [s.duration for s in self.scans_with_sources(SourceType.TARGET) +
-                                                  self.scans_with_sources(SourceType.PHASECAL)])
-            last_duration = reduce(operator.add, [s.duration for s in self.scans_with_sources(SourceType.PHASECAL)])
+            loop_duration = reduce(operator.add,
+                                   [s.duration for s in self.scans_with_sources(SourceType.TARGET) +
+                                    self.scans_with_sources(SourceType.PHASECAL)])
+            last_duration = reduce(operator.add,
+                                   [s.duration for s in self.scans_with_sources(SourceType.PHASECAL)])
             # the second sum above is because the phase-referencing loop needs to be closed at the end.
 
             if any([s.every > -1 for s in self.scans
                     if s.source.type not in (SourceType.TARGET, SourceType.PHASECAL)]):
-                # As there can be multiple sources to be observed every certain scans, better to do it incremental...
+                # As there can be multiple sources to be observed every certain scans,
+                # better to do it incremental...
                 # full_n_reps = (max_duration - last_duration)/(loop_duration*)
                 booked_time, n_loop = 0*u.min, 1
                 while True:
@@ -624,11 +670,13 @@ class ScanBlock:
             else:
                 main_loop += (self.scans_with_sources(SourceType.PHASECAL) +
                               self.scans_with_sources(SourceType.TARGET)) * \
-                              int(max_duration.to(u.min).value // (loop_duration + last_duration).to(u.min).value)
+                              int(max_duration.to(u.min).value // (loop_duration +
+                                  last_duration).to(u.min).value)
 
             main_loop += self.scans_with_sources(SourceType.PHASECAL)
         else:
-            target_duration = reduce(operator.add, [s.duration for s in self.scans_with_sources(SourceType.TARGET)])
+            target_duration = reduce(operator.add,
+                                     [s.duration for s in self.scans_with_sources(SourceType.TARGET)])
             main_loop += self.scans_with_sources(SourceType.TARGET) * \
                 int(max_duration.to(u.min).value // target_duration.to(u.min).value)
 
@@ -636,3 +684,6 @@ class ScanBlock:
 
     def __iter__(self):
         yield from self._scans
+
+    def __contains__(self, a_source_name: str):
+        return a_source_name in self.sourcenames()

@@ -77,6 +77,11 @@ rprint('    ' + '\n    '.join([f'{k}: {v.to(u.mJy):.2}' for k, v in o.thermal_no
 # dirty_map_uniform = obs.get_dirtymap(robust='uniform')
 # # fig, ax = plt.subplots()
 
+o = cli.main(band='21cm', stations=evn6, src_catalog='precise/sources.yaml',
+             targets=['R1', 'R2'], duration=12*u.h)
+
+rprint("\nThermal rms noise for 12 h (no elevation):")
+rprint('    ' + '\n    '.join([f'{k}: {v.to(u.mJy):.2}' for k, v in o.thermal_noise().items()]))
 
 # for ant in elevs:
 #     ax.plot(obs.times.datetime[srcup[ant]], elevs[ant][srcup[ant]].deg, '-', label=ant)

@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vlbiplanobs"
-version = "3.0a13"
+version = "3.0a14"
 description = "Observaiton Planner for VLBI observations"
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -57,6 +57,7 @@ include-package-data = true
 "vlbiplanobs.data" = ["data/*"]
 "stations" = ["data/stations_catalog.inp"]
 "networks" = ["data/network_catalog.inp"]
+"rfc" = ["data/rfc_2021c_cat.txt"]
 "vlbiplanobs.gui.assets" = ["gui/assets/*"]
 
 

@@ -71,7 +71,7 @@ def elevation_plot(o) -> go.Figure:
                             mode="lines",
                             line=dict(color=color_str[i], width=10),
                             showlegend=False,
-                            hovertemplate=f"<b>Elevation</b>: {colors[i]:.0f}º<extra></extra><br>"
+                            hovertemplate=f"<b>{o.stations[ant].name}</b><br><b>Elevation</b>: {colors[i]:.0f}º<extra></extra><br>"
                                           f"<b>Time</b>: {o.times[i].strftime('%H:%M') \
                                           if o.times is not None \
                                                           else localtimes[i].strftime('%H:%M')}",

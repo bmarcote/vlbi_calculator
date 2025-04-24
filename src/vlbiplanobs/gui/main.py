@@ -248,15 +248,14 @@ def update_bandwidth_label(datarate: int, npols: int):
 
 
 @app.callback([Output("sensitivity-baseline-modal", "is_open"),
-               Output("sensitivity-baseline-modal", "children"),
-               Output("sens-baseline-style", "style")],
+               Output("sensitivity-baseline-modal", "children")],
               Input("button-sensitivity-baseline", "n_clicks"),
               State("sensitivity-baseline-modal", "is_open"))
 def toggle_modal(n_clicks, is_open):
     if n_clicks is None:
-        return False, dash.no_update, {'display': 'none'}
+        return False, dash.no_update #, {'display': 'none'}
 
-    return not is_open, out.show_baseline_sensitivities(_main_obs.get()), {'display': 'block'}
+    return not is_open, out.show_baseline_sensitivities(_main_obs.get()) #, {'display': 'block'}
 
 
 @app.callback(Output('fig-coverage', 'figure'),
@@ -289,13 +288,7 @@ def check_initial_obstime(duration):
 
 
 @app.callback([Output('user-message', 'children'),
-               Output('card-rms', 'hidden'),
-               Output('rms-value', 'children'),
-               Output('rms-per-channel-value', 'children'),
-               Output('rms-per-time-value', 'children'),
-               Output('table-sensitivities', 'children'),
-               # Output('table-sensitivities', 'hidden'),  # TODO: maybe this one for hidden?
-               Output('card-resolution', 'hidden'),
+               Output('card-rms', 'children'),
                Output('card-resolution', 'children'),
                Output('out-sun', 'children'),
                Output('out-phaseref', 'children'),
@@ -328,19 +321,21 @@ def compute_observation(n_clicks, band, defined_source, source, onsourcetime, de
     """Computes all products to be shown concerning the set observation.
     """
     if n_clicks is None:
-        return *[dash.no_update]*13, False, *[dash.no_update]*5
+        return [dash.no_update]*14
 
     if band == 0 or not selected_antennas or (duration is None and (source == '' or not defined_source)):
         return out.info_card("Select an observing band and the antennas",
-                             "That's the minimum to compute an observation"), True, *[dash.no_update]*4, True, \
-               *[dash.no_update]*4, True, dash.no_update, False, *[dash.no_update]*5
+                             "That's the minimum to compute an observation"), *[dash.no_update]*13
+        # *[dash.no_update]*5, True, \
+        #        dash.no_update, False, True, *[dash.no_update]*4
 
     if defined_epoch and ((startdate is not None and duration is None) or \
                           (startdate is None and duration is not None)) == 1:
         return out.error_card('The observing epoch is partially defined',
                               'If you define the observing epoch, all information: start date and time, '
-                              'and duration is required.'), True, *[dash.no_update]*4, True, \
-               *[dash.no_update]*4, True, dash.no_update, False, *[dash.no_update]*5
+                              'and duration is required.'), *[dash.no_update]*13
+               #                'and duration is required.'), *[dash.no_update]*5, True, \
+               # dash.no_update, False, True, *[dash.no_update]*4
 
 
     obs = cli.main(band=list(fs.bands.keys())[band-1], stations=selected_antennas,
@@ -353,34 +348,11 @@ def compute_observation(n_clicks, band, defined_source, source, onsourcetime, de
                    gui=False, tui=False)
     _main_obs.set(obs)
 
-    if _main_obs.get().datarate is not None: # and _main_obs.get().duration is not None:
-        if isinstance(thermal_noise := _main_obs.get().thermal_noise(), dict):
-            rms = list(thermal_noise.values())[0]
-        else:
-            rms = thermal_noise
-
-        out_rms = [False, out.quantity2str(cli.optimal_units(rms,
-                                                             [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
-                                                              u.mJy/u.beam, u.uJy/u.beam])),
-                   out.quantity2str(cli.optimal_units(rms/np.sqrt(1*u.min/ \
-                                                      (_main_obs.get().duration \
-                                                      if _main_obs.get().duration is not None else 24*u.h)),
-                                                      [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
-                                                       u.mJy/u.beam, u.uJy/u.beam])),
-                   out.quantity2str(cli.optimal_units(rms*np.sqrt(_main_obs.get().subbands* \
-                                                      _main_obs.get().channels),
-                                                      [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
-                                                       u.mJy/u.beam, u.uJy/u.beam])),
-                   out.show_baseline_sensitivities(_main_obs.get())]
-    else:
-        out_rms = [True, dash.no_update, dash.no_update, dash.no_update, dash.no_update]
-
     try:
-        beam = list(_main_obs.get().synthesized_beam().values())[0]
-        sens_units = cli.optimal_units(beam['bmaj'], [u.mas, u.arcsec, u.arcmin, u.deg]).unit
-        out_sens = [False, f"{cli.optimal_units(beam['bmaj'], [u.mas, u.arcsec, u.arcmin, u.deg]).value} x " \
-                    f"{beam['bmin'].to(sens_units)}2, PA = {beam['pa']}."]
-        out_sens = [False, out.resolution(_main_obs.get())]
+        out_rms = _main_obs.get().thermal_noise()
+        beam = _main_obs.get().synthesized_beam()
+        out_rms = out.rms(_main_obs.get())
+        out_sens = out.resolution(_main_obs.get())
 
         if not _main_obs.get().sourcenames or not defined_source:
             out_plot_elev = [True, dash.no_update]
@@ -398,12 +370,27 @@ def compute_observation(n_clicks, band, defined_source, source, onsourcetime, de
     except sources.SourceNotVisible:
         return out.error_card('Source Not Visible!',
                               'The source cannot be observed by the given antennas and/or '
-                              'during the given observing time.'), True, *[dash.no_update]*4, True, \
-               *[dash.no_update]*4, True, dash.no_update, False, *[dash.no_update]*5
+                              'during the given observing time.'), *[dash.no_update]*6, False, \
+               False, *[dash.no_update]*4
 
-    return html.Div(), *out_rms, *out_sens, out_sun, out_phaseref, out_ant, *out_plot_elev, False, \
+    return html.Div(), out_rms, out_sens, out_sun, out_phaseref, out_ant, \
+           *out_plot_elev, False, \
            *out_plot_uv, out_fov, out_freq, out.worldmap_plot(_main_obs.get())
 
+# @app.callback([Output('user-message', 'children'),
+#                Output('card-rms', 'children'),
+#                Output('card-resolution', 'children'),
+#                Output('out-sun', 'children'),
+#                Output('out-phaseref', 'children'),
+#                Output('out-ant', 'children'),
+#                Output('out-elevations', 'hidden'),
+#                Output('out-elevations', 'children'),
+#                Output("sensitivity-baseline-modal", "is_open", allow_duplicate=True),
+#                Output('out-uv-coverage', 'hidden'),
+#                Output('out-uv-coverage', 'children'),
+#                Output('div-card-fov', 'children'),
+#                Output('div-card-vel', 'children'),
+#                Output('out-worldmap', 'children')],
 
 # app.config.suppress_callback_exceptions = True  # Avoids error messages for id's that haven't been loaded yet
 server = app.server
@@ -454,9 +441,9 @@ app.layout = dbc.Container(fluid=True, className='bg-gray-100 row m-0 p-4',
                                          html.Div(className='col-12 mx-0', children=[
                                              html.Div(className='row d-flex m-0', children=[
                                                  html.Div(className='col-6 m-0 px-2', id='card-rms',
-                                                          children=out.rms(), hidden=True),
+                                                          children=out.rms()),
                                                  html.Div(className='col-6 m-0 px-2', id='card-resolution',
-                                                          children=out.resolution(), hidden=True)
+                                                          children=out.resolution())
                                               ], style={'align-items': 'stretch'})
                                          ]),
                                          html.Div(className='col-12 mx-0', id='out-sun', children=[]),

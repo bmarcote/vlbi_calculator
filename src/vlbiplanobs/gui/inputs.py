@@ -61,6 +61,13 @@ def antenna_card_hover(app, target, ant: stations.Station) -> html.Div:
                             'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'})
 
 
+def parse_str_list(a_list: list[str]) -> str:
+    """Returns a string with the list of antennas as a comma-separated string list.
+    For the last element, it adds an 'and' instead of the comma.
+    """
+    return ', '.join(a_list)[::-1].replace(',', 'dna ,' if len(a_list) > 3 else 'dna ', 1)[::-1]
+
+
 def antenna_card(app, ant: stations.Station) -> html.Div:
     return html.Div((dmc.Card(children=[html.Div(
                         dmc.CardSection(
@@ -76,11 +83,11 @@ def antenna_card(app, ant: stations.Station) -> html.Div:
                             dmc.Text(ant.fullname, mb='0', c='#004990') if ant.fullname != ant.name \
                                 else None,
                             dmc.Text(ant.country, c='dimmed', mt='0', mb='1rem'),
-                            dmc.Text(f"Default antenna in {', '.join(ant.networks)}.", mb='1rem') \
+                            dmc.Text(f"Default antenna in {parse_str_list(ant.networks)}.", mb='1rem') \
                                         if len(ant.networks) > 0 else None,
                             dmc.Text("No longer operational.", mb='1rem', c='#a01d26') \
                                         if ant.decommissioned else None,
-                            dmc.Text(f"Can observe at {', '.join(ant.bands)}."),
+                            dmc.Text(f"Can observe at {parse_str_list(ant.bands)}."),
                         ], className='col-12 px-3 pb-2 m-0')
                     ], withBorder=False)), className='col-12 p-0 m-0', style={'width': '300px'})
 

@@ -160,7 +160,10 @@ def summary_freq_res(o: Optional[cli.VLBIObs] = None) -> html.Div:
                             html.Div(className='col-12', style={'color': 'var(--bs-gray-100)'},
                                      children=html.P(f"The total bandwidth of {o.bandwidth} is divided in "
                                                      f"{o.subbands} x {o.bandwidth/o.subbands} subbands, "
-                                                     f"with {o.channels} spectral channels each."))
+                                                     f"with {o.channels} spectral channels each.") \
+                                              if o.subbands > 1 else \
+                                              html.P(f"The total bandwidth of {o.bandwidth} is recorded in "
+                                                     "a single subband, with {o.channels} spectral channels."))
                        ])
 
 
@@ -192,22 +195,60 @@ def field_of_view(o: Optional[cli.VLBIObs] = None) -> html.Div:
                                                      "considering a 10% loss."))
                        ])
 
-def rms() -> html.Div:
-    return card_result("500 uJy/beam", 'rms thermal noise', id='rms',
+def rms(o: Optional[cli.VLBIObs] = None) -> html.Div:
+    if o is None:
+        return html.Div(dbc.Modal(id="sensitivity-baseline-modal", is_open=False,
+                                  children=[html.Div(html.Button('View sensitivity per baseline',
+                                                         id='button-sensitivity-baseline'))
+                                  ]))
+
+    try:
+        if isinstance(thermal_noise := o.thermal_noise(), dict):
+            rms = list(thermal_noise.values())[0]
+        else:
+            rms = thermal_noise
+
+        out_rms = [quantity2str(cli.optimal_units(rms,
+                                                  [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
+                                                   u.mJy/u.beam, u.uJy/u.beam])),
+                   quantity2str(cli.optimal_units(rms/np.sqrt(1*u.min/ \
+                                                  (o.duration \
+                                                  if o.duration is not None else 24*u.h)),
+                                                  [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
+                                                   u.mJy/u.beam, u.uJy/u.beam])),
+                   quantity2str(cli.optimal_units(rms*np.sqrt(o.subbands* \
+                                                  o.channels),
+                                                  [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
+                                                   u.mJy/u.beam, u.uJy/u.beam])),
+                   show_baseline_sensitivities(o)]
+    except:
+        return html.Div(dbc.Modal(id="sensitivity-baseline-modal", is_open=False,
+                                  children=[html.Div(html.Button('View sensitivity per baseline',
+                                                         id='button-sensitivity-baseline'))
+                                  ]))
+
+    src = list(o.ontarget_time.keys())[0]
+    return card_result(out_rms[0], f'rms thermal noise (for {o.ontarget_time[src]:.2g} on-target)', id='rms',
                        extra_rows=[html.Br(), html.Div(className='row', children=[
                             html.Div(className='col-6 text-start px-0 pb-2', children=[
                                 html.H5(className='mb-0 font-weight-bolder text-light',
                                        id='rms-per-channel-value',
-                                       children="6 mJy"),
+                                       children=out_rms[2]),
                                 html.Label(className='text-sm mb-0 text-light',
-                                       children="per spectral channel"),
+                                       children="per spectral channel", id='tooltip-rms-channel'),
                                 ], style={'text-wrap': 'pretty'}),
+                                dbc.Tooltip("This is the theoretical rms noise to obtain under ideal conditions "
+                                            "in a single spectral channel when integrating over the whole "
+                                            " observation.", target='tooltip-rms-channel'),
                             html.Div(className='col-6 text-end px-0', children=[
                                 html.H5(className='mb-0 font-weight-bolder text-light',
                                        id='rms-per-time-value',
-                                       children="10 mJy"),
+                                       children=out_rms[1]),
                                 html.Label(className='text-sm mb-0 text-light',
-                                       children="on 1-min integration"),
+                                       children="on 1-min integration", id='tooltip-rms-time'),
+                                dbc.Tooltip("This is the theoretical rms noise to obtain under ideal conditions "
+                                            "when integrating the data from the full bandwidth with one minute "
+                                            "time integration.", target='tooltip-rms-time'),
                             ], style={'text-wrap': 'pretty'}),
                                 ]),
                                 html.Div(className='row', children=[
@@ -224,9 +265,9 @@ def rms() -> html.Div:
                                    ]),
                                 dbc.Modal(id='sensitivity-baseline-modal',
                                           size='xl', is_open=False,
-                                          children=show_baseline_sensitivities(None)),
-                                html.Div(className='col-12', id='table-sensitivities',
-                                         children=None)
+                                          children=show_baseline_sensitivities(o)),
+                                # html.Div(className='col-12', id='table-sensitivities',
+                                #          children=None)
                         ])
 
 
@@ -260,8 +301,12 @@ def show_baseline_sensitivities(o: Optional[cli.VLBIObs] = None) -> html.Div:
     return html.Div([dbc.ModalHeader(dbc.ModalTitle("Sensitivity per baseline "
                                            f"({(u.mJy/u.beam).to_string("unicode")}) for one-minute "
                                            "time integration")),
-                      dbc.ModalBody(table, className='table-responsive'),], id='sens-baseline-style',
-                    style={'display': 'none'})
+                     html.P("The following table shows the sensitivity for each baseline (or auto-corrleation) "
+                            "for one-minute time integration (considering the full bandwidth available for "
+                            "each baseline. The colors highlight the most sensitive baselines (green color) "
+                            "to the less sensitive baselines (red colors).", className='text-dark p-2'),
+                     dbc.ModalBody(table, className='table-responsive')], id='sens-baseline-style',
+                    style={'display': 'block'})
 
 
 def resolution(o: Optional[cli.VLBIObs] = None) -> html.Div:
@@ -421,7 +466,10 @@ def sun_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:
     return html.Div()
 
 
-def plot_elevations(o: cli.VLBIObs) -> html.Div:
+def plot_elevations(o: Optional[cli.VLBIObs] = None) -> html.Div:
+    if o is None:
+        return html.Div()
+
     return card([html.Div(className='card-header pb-0', children=html.H5('Source Elevation')),
                  dcc.Graph(id='fig-elevations', figure=plots.elevation_plot(o)),
                  html.Div(print_observability_ranges(o))],
@@ -490,7 +538,10 @@ def print_observability_ranges(o: cli.VLBIObs) -> html.Div:
     return text
 
 
-def plot_uv_coverage(o: cli.VLBIObs) -> html.Div:
+def plot_uv_coverage(o: Optional[cli.VLBIObs] = None) -> html.Div:
+    if o is None:
+        return html.Div()
+
     longest_bl = o.longest_baseline()[list(o.longest_baseline())[0]]
     ant_l1, ant_l2 = longest_bl[0].split('-')
     # Using dummy units to allow the conversion

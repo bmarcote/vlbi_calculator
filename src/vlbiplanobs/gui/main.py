@@ -124,19 +124,23 @@ def update_datarate(band, *networks):
     return f"{val.value:.01f} {val.unit.to_string("unicode")}"
 
 
-@app.callback(Output(f"switches-antennas", 'options'),
+@app.callback(Output(f"switches-antennas", 'children'),
               [Input('band-slider', 'value'),
                Input('switch-specify-e-evn', 'value')],
-              State(f"switches-antennas", 'options'))
+              State(f"switches-antennas", 'value'))
 def enable_antennas_with_band(band_index: int, do_e_evn: bool, selection_antennas: list):
     if band_index == 0:
-        return [{'label': o['label'], 'value': o['value'], 'disabled': False} \
-                for o in selection_antennas]
+        return [dmc.Chip(s.name, value=s.codename, color='#004990',
+                         styles={'display': 'grid',
+                                 'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'}) \
+                for s in observation._STATIONS] #antennas]
 
-    return [{'label': o['label'], 'value': o['value'],
-             'disabled': not list(fs.bands.keys())[band_index - 1] in s.bands or \
-                         (do_e_evn and not s.real_time)} \
-            for o, s in zip(selection_antennas, observation._STATIONS)]
+    return [dmc.Chip(s.name, value=s.codename, color='#004990',
+                     disabled=not list(fs.bands.keys())[band_index - 1] in s.bands or \
+                         (do_e_evn and not s.real_time),
+                     styles={'display': 'grid',
+                             'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'}) \
+            for s in observation._STATIONS]
 
 
 @app.callback(Output('switches-antennas', 'value'),

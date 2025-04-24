@@ -176,11 +176,23 @@ def antenna_list(app, antennas) -> list:
                 html.Div(id='antennas-div', className='container mb-3',
                          style={'display': 'inline-block', 'gap': '10px', 'flex-wrap': 'wrap'},
                          children=[#html.Div(style={'display': 'flex', 'align-items': 'center', 'width': '10rem', 'box-sizing': 'border-box', 'width': 'var(--switch-width)'}, children=
-                                dbc.Checklist(value=[], id='switches-antennas', inline=True,
-                                              persistence=True, switch=True,
-                                              style={'display': 'grid',
-                                                     'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'},
-                                              options=[{'label': s.name, 'value': s.codename} for s in antennas])
+
+                            dmc.MantineProvider(
+                                dmc.Group(
+                                dmc.ChipGroup(value=[], id='switches-antennas',
+                                              persistence=True, multiple=True, deselectable=True,
+
+                                              children=[dmc.Chip(s.name, value=s.codename, color='#004990',
+                                                                 styles={'display': 'grid',
+                                                                         'grid-template-columns': \
+                                                                         'repeat(auto-fit, minmax(10rem, 1fr))'
+                                                                         }) for s in antennas]
+                                              )))
+            #                     dbc.Checklist(value=[], id='switches-antennas', inline=True,
+            #                                   persistence=True, switch=True,
+            #                                   style={'display': 'grid',
+            #                                          'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'},
+            #                                   options=[{'label': s.name, 'value': s.codename} for s in antennas])
             ])
         ])]))]
 

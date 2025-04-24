@@ -437,7 +437,8 @@ class Stations(object):
         Raises
             ValueError: If 'max_datarates' is provided, 'observing_bands' must also be provided.
         """
-        assert isinstance(stations, abc.Iterable) or stations is None, "'stations' must be a list or be empty."
+        assert isinstance(stations, abc.Iterable) or stations is None, \
+               "'stations' must be a list or be empty."
         self._stations: dict[str, Station] = {}
         self._bands: dict[str, u.Quantity] = {}
         self._name: Optional[str] = name
@@ -784,6 +785,15 @@ class Stations(object):
                                              name=config[networkname]["name"])
 
         return networks
+
+    @staticmethod
+    def get_network_full_name(network: str) -> str:
+        config = configparser.ConfigParser()
+        with resources.as_file(resources.files("vlbiplanobs.data").joinpath("network_catalog.inp")) \
+                                                                            as networks_catalog_path:
+            config.read(networks_catalog_path)
+
+        return config[network]["name"]
 
     @staticmethod
     def _parse_station_from_configfile(stationname: str, station: dict) -> Station:

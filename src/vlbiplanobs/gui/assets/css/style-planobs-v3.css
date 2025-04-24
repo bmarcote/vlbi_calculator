@@ -1,0 +1,14 @@
+
+
+@import url('https://fonts.googleapis.com/css?family=Inter:300,400,500,600,700,800');
+
+--bs-evn: #a01d26;
+--bs-jive-dark: #004990;
+--bs-jive-light: #9DB7C4;
+
+:root,
+[data-bs-theme=light] {
+    --bs-font-sans-serif: "Inter";
+    --bs-body-font-family: "Inter";
+}
+

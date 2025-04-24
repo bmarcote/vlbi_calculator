@@ -94,3 +94,7 @@ def test_observation_init():
 
 
 
+# TODO:
+# test uv coverage: same number of points in +x,+y than -x,-y., and the other quarter.
+# test rms: scaling by time as sqrt(), same for banddith, etc.
+

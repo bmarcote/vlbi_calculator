@@ -91,6 +91,6 @@ observing_bands = 0.7cm, 0.348cm
 name = Event Horizon Telescope
 default_antennas = ALMA, Pv, Lm, Nn, SMA, JCMT, APEX, SMT, SPT, GLT
 max_datarate = 32768
-observing_bands = 0.348cm, 0.13cm
+observing_bands = 0.348cm, 0.13cm, 0.09cm
 
 

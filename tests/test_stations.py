@@ -220,3 +220,5 @@ def test_station_file():
                                joinpath(f"network-{net.replace(' ', '_').lower()}.png")) as netfile:
             if net != 'e-EVN':
                 assert netfile.exists()
+
+# TODO: check that the distance for each antenna to the center of the Earth is approx the radius of the Earth

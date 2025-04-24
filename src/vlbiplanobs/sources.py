@@ -323,14 +323,13 @@ class Source(FixedTarget):
             It would be an empty list if this condition never meets.
         """
         if times is None:
-            times = Time(f"{dt.datetime.now(tz=dt.timezone.utc).year}-01-01 00:00") + \
-                    np.arange(0, 365, 1)*u.day
+            times = Time(f"{Time.now().datetime.year}-01-01") + np.arange(0, 365, 1)*u.day
 
         sun_separation = self.sun_separation(times=times)
-        if isinstance(sun_separation, list):
-            return [times[sun_separation[i] < min_separation] for i in range(len(self.coord))]
-        else:
-            return times[sun_separation < min_separation]
+        # if isinstance(sun_separation, list):
+        #     return [times[sun_separation[i] < min_separation] for i in range(len(self.coord))]
+        # else:
+        return times[sun_separation < min_separation]
 
 
 class SourceCatalog:
@@ -469,7 +468,6 @@ class SourceCatalog:
                 The path to the yaml file with the catalog of sources to be imported.
         """
         # TODO: convert this to another module and use duckDB, should be much faster
-        raise NotImplementedError
         if path is None:
             path = resources.as_file(resources.files("vlbiplanobs.data").joinpath("rfc_2021_cat.txt"))
 

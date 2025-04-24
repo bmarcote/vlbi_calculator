@@ -8,7 +8,7 @@ bands: dict[str, str] = {'92cm': '92 cm or 0.33 GHz', '49cm': '49 cm or 0.6 GHz'
                          '18cm': '18 cm or 1.7 GHz', '13cm': '13 cm or 2.3 GHz',
                          '6cm': '6 cm or 5 GHz', '5cm': '5 cm or 6 GHz',
                          '3.6cm': '3.6 cm or 8.3 GHz', '2.5cm': '2.5 cm or 12 GHz',
-                         '2cm': '2 cm or 15 GHz)',
+                         '2cm': '2 cm or 15 GHz',
                          '1.3cm': '1.3 cm or 23 GHz',  # '0.9cm': 'Ka band (0.9 cm or 33 GHz)',
                          '0.7cm': '0.7 cm or 43 GHz',
                          '0.348cm': '0.35 cm or 86 GHz',
@@ -26,8 +26,8 @@ subbands: dict[int, str] = {2**i: f"{2**i} subbands" for i in range(6, -1, -1)}
 channels: dict[int, str] = {2**i: f"{2**i} channels per subband" for i in range(14, 4, -1)}
 
 # Full polarization meaning LL, RR, RL, LR; dual being RR and LL, and single just one of LL or RR.
-polarizations: dict[int, str] = {4: '4 (Full polarization)', 2: '2 (dual polarization)',
-                                 1: '1 (single polarization)'}
+polarizations: dict[int, str] = {4: 'Full polarization (all four stokes)', 2: 'Dual polarization',
+                                 1: 'Single polarization'}
 
 # Integration (averaging) times
 inttimes: dict[Union[int, float], str] = {16: '16 s', 8: '8 s', 4: '4 s', 2: '2 s', 1: '1 s',
@@ -59,3 +59,18 @@ def phaseref_cycle(band: str) -> Optional[u.Quantity]:
         return 2*u.min
     else:
         return None
+
+
+def min_separation_sun(band: str) -> u.Quantity:
+    """Returns the minimum separation to the Sun recommended for a standard VLBI observation
+    at the given band. It follows the same recommendations as written in SCHED:
+
+    Barry Clark estimates from predictions by Ketan Desai of IPM scattering sizes
+    that the Sun will cause amplitude reductions on the  longest VLBA baselines
+    at a solar distance of 60deg F^(-0.6) where F is in GHz.
+
+    Returns
+        min_separation : u.Quantity
+            The minimum separation to the Sun for the given band, e.g. 23 degrees at 6cm.
+    """
+    return 60*((30/float(band.replace('cm', '')))**-0.6)*u.deg

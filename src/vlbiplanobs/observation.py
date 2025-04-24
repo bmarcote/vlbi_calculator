@@ -49,6 +49,14 @@ class Observation(object):
     robust weighting.
     """
 
+    @property
+    def _REF_TIMES(self):
+        return Time('2025-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01)*u.day
+
+    @property
+    def _REF_YEAR(self):
+        return Time('2025-01-01', scale='utc') + np.arange(0.0, 365.2, 1)*u.day
+
     def __init__(self, band: str, stations: Stations, scans: dict[str, ScanBlock],
                  times: Optional[Time] = None, duration: Optional[u.Quantity] = None,
                  datarate: Optional[Union[str, u.Quantity]] = None,
@@ -312,7 +320,8 @@ class Observation(object):
                                      _NETWORKS['EVN'].max_datarate(self.band)) if d is not None])
         else:
             for s in self.stations:
-                s.datarate = min(self._datarate, s.max_datarate)
+                s.datarate = min(self._datarate, s.max_datarate) if s.max_datarate is not None \
+                             else self._datarate
 
         if self._datarate is None:
             self._datarate = max([s.datarate for s in self.stations])
@@ -911,8 +920,8 @@ class Observation(object):
         a reduction of a 10% in the response of the telescope. The field of view should then
         be limited to this range to avoid significant loses.
         """
-        return ((49500*u.arcsec*u.MHz*u.km)*self.channels /
-                (np.max([lb[1] for lb in self.longest_baseline().values()]) *
+        return ((49500*u.arcsec*u.MHz*u.km)*self.channels / \
+                (list(self.longest_baseline().values())[0][1] * \
                  self.bandwidth/self.subbands)).to(u.arcsec)
 
     def time_smearing(self) -> u.Quantity:
@@ -925,9 +934,9 @@ class Observation(object):
         a reduction of a 10% in the response of the telescope. The field of view should then
         be limited to this range to avoid significant loses.
         """
-        return ((18560*u.arcsec*u.km*u.s/u.cm) *
-                (self.wavelength / (np.max([lb[1]
-                 for lb in self.longest_baseline()])*self.inttime))).to(u.arcsec)
+        return ((18560*u.arcsec*u.km*u.s/u.cm) * (self.wavelength / \
+                (list(self.longest_baseline().values())[0][1] * \
+                self.inttime))).to(u.arcsec)
 
     def datasize(self) -> Optional[u.Quantity]:
         """Returns the expected size for the output FITS IDI files.
@@ -945,6 +954,51 @@ class Observation(object):
         temp = len(self.stations)**2 * (self.duration/self.inttime).decompose()  # type: ignore
         temp *= self.polarizations.value*self.subbands*self.channels  # type: ignore
         return temp*1.75*u.GB/(131072*3600)
+
+    def sun_limiting_epochs(self) -> Optional[dict[str, list[Time]]]:
+        if self.scans is None:
+            return None
+
+        bad_epochs: dict[str, list[Time]] = {}
+        for blockname, block in self.scans.items():
+            bad_epochs[blockname] = []
+            for src in block.sources():
+                bad_epochs[blockname] += src.sun_constraint(freqsetups.min_separation_sun(self.band))
+
+            # Keep only the first and last epochs
+            if len(bad_epochs[blockname]) > 0:
+                t0, t1 = min(bad_epochs[blockname]), max(bad_epochs[blockname])
+                # if (t0.datetime.month == 1 and t0.datetime.day == 1) and \
+                #    (t1.datetime.month == 12 and t1.datetime.day == 31):
+                if t0.datetime.month < 3 and t1.datetime.month > 10:
+                    mid_year = Time('2025-06-01')
+                    t1 = max([t for t in bad_epochs[blockname] if t <= mid_year])
+                    t0 = min([t for t in bad_epochs[blockname] if t >= mid_year])
+
+                bad_epochs[blockname] = [t0, t1]
+
+        return bad_epochs
+
+    def sun_constraint(self, times: Optional[Time] = None) -> Optional[dict[str, Optional[u.Quantity]]]:
+        """Checks if the Sun is too close to the targets on each block scan, according to the
+        Barray Clark estimates from predictions by Ketan Desai of IPM scattering sizes (see
+        SCHED references).
+        """
+        if self.scans is None:
+            return None
+
+        if times is None:
+            times = self.times if self.times is not None else self._REF_YEAR
+
+        sun_seps: dict[str, Optional[u.Quantity]] = {}
+        for blockname, block in self.scans.items():
+            min_sep = np.min([s.sun_separation(times=times) for s in block.sources()])
+            if isinstance(min_sep, float):
+                min_sep *= u.deg
+            sun_seps[blockname] = min_sep if min_sep <= freqsetups.min_separation_sun(self.band) \
+                else None
+
+        return sun_seps
 
     def thermal_noise(self) -> Optional[Union[u.Quantity, dict[str, u.Quantity]]]:
         """Returns the expected rms thermal noise for the given observation.
@@ -973,11 +1027,11 @@ class Observation(object):
                               else self.datarate.to(u.bit/u.s).value for s in self.stations]) * \
             2 * 2 * min(self.polarizations.value, 2)  # In Hz
         bandwidth_min = np.minimum.outer(bandwidths, bandwidths)
-        if len(self.sources()) == 0 or self.times is None:
+        if len(self.sources()) == 0:
             if self.times is not None:
-                dt = (self.times[-1]-self.times[0]).to(u.min).value
+                dt = (self.times[-1]-self.times[0]).to(u.min).value * self.ontarget_fraction
             elif self.duration is not None:
-                dt = self.duration.to(u.min).value
+                dt = self.duration.to(u.min).value * self.ontarget_fraction
             else:
                 raise ValueError("Either observinng times or duration must be defined "
                                  "to estimate thermal noise.")
@@ -993,9 +1047,22 @@ class Observation(object):
             #                (1/(sefds[:, None]*sefds[None, :]) - 1/(sefds*sefds)))) / 2
             self._rms = ((np.sqrt(2)/0.7)/np.sqrt(temp*dt))*u.Jy/u.beam
             return self._rms
+        elif self.times is None:
+            times = self._REF_TIMES
+            self._rms = {}
+            delta_t = (times[1] - times[0]).to(u.min).value * self.ontarget_fraction
+            for sourcename in self.sourcenames:
+                scanname = self._scanblock_name_from_source_name(sourcename)
+                assert scanname is not None, f"No scan found related to the source {sourcename}"
+                visible = np.array([self.is_observable_at(times)[scanname][stat.codename] \
+                          for stat in self.stations])
+                integrated_time = np.sum(visible[:, None] & visible[None, :], axis=2) * delta_t
+                temp = np.sum((bandwidth_min*integrated_time /
+                              np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=1))
+                self._rms[sourcename] = ((np.sqrt(2)/0.7)/np.sqrt(temp))*u.Jy/u.beam
         else:
             self._rms = {}
-            delta_t = (self.times[1] - self.times[0]).to(u.min).value
+            delta_t = (self.times[1] - self.times[0]).to(u.min).value * self.ontarget_fraction
             for sourcename in self.sourcenames:
                 scanname = self._scanblock_name_from_source_name(sourcename)
                 assert scanname is not None, f"No scan found related to the source {sourcename}"
@@ -1005,17 +1072,21 @@ class Observation(object):
                               np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=1))
                 self._rms[sourcename] = ((np.sqrt(2)/0.7)/np.sqrt(temp))*u.Jy/u.beam
 
-            return self._rms
+        return self._rms
 
-    def baseline_sensitivity(self, antenna1: str, antenna2: str,
+    def baseline_sensitivity(self, antenna1: Optional[str] = None, antenna2: Optional[str] = None,
                              integration_time: u.Quantity = u.Quantity(1, u.min)) -> u.Quantity:
         """Returns the sensitivity of a given baseline in the observation for
         the expecifiedintegration time.
 
+        If no antennas are defined, then it will return all baseline' sensitivities.
+        If only one antenna is specified, then it will return all baseline' sensitivities to that
+        particular antenna.
+
         Inputs
-            - antenna1: str
+            - antenna1: str | None
                 Codename or antenna name of one of the antennas composing the baseline.
-            - antenna2: str
+            - antenna2: str | None
                 Codename or antenna name of the other antennas composing the baseline.
             - integration_time: astropy.units.Quantity  [OPTIONAL]
                 Integration time to compute the sensitivity. By default, one minute.
@@ -1023,22 +1094,23 @@ class Observation(object):
             - sensitivity: astropy.units.Quantity
                 The sensitivity of the baseline in the observation, in Jy/beam units.
         """
-        ant1 = self.stations[antenna1]
-        ant2 = self.stations[antenna2]
         if self._baseline_sensitivity is None:
-            # Better to calculate all at once, and cache them
-            # def timeit(func):
-            #     t0 = Time.now()
-            #     temp = func()
-            #     t1 = Time.now()
-            #     rprint(f"{func.__name__} took {((t1-t0)*3600e3).value} ms")
-            #     return temp
-
-            # self._baseline_sensitivity = timeit(self._baseline_sensitivity_numpy)
-            # self._baseline_sensitivity = timeit(self._baseline_sensitivity_threads)
             self._baseline_sensitivity = self._baseline_sensitivity_numpy()
 
         assert self._baseline_sensitivity is not None
+        if antenna1 is None and antenna2 is None:
+            return self._baseline_sensitivity
+        elif antenna1 is not None and antenna2 is None:
+            return [self._baseline_sensitivity[f"{antenna1}-{ant}"] for ant in self.stations.codenames] + \
+                   [self._baseline_sensitivity[f"{ant}-{antenna1}"] \
+                    for ant in self.stations.codenames if ant != antenna1]
+        elif antenna1 is None and antenna2 is not None:
+            return [self._baseline_sensitivity[f"{antenna2}-{ant}"] for ant in self.stations.codenames] + \
+                   [self._baseline_sensitivity[f"{ant}-{antenna2}"] \
+                    for ant in self.stations.codenames if ant != antenna2]
+
+        ant1 = self.stations[antenna1]
+        ant2 = self.stations[antenna2]
         if f"{ant1.codename}-{ant2.codename}" in self._baseline_sensitivity:
             return self._baseline_sensitivity[f"{ant1.codename}-{ant2.codename}"]
 
@@ -1086,6 +1158,90 @@ class Observation(object):
 
     def _compute_uv_per_source(self, source: Optional[Source] = None) -> dict[str, u.Quantity]:
         nstat = len(self.stations)
+        positions = np.array([[xyz.value for xyz in ant.location.to_geocentric()] \
+                              for ant in self.stations])
+
+        # Compute all unique baselines (i < j)
+        idx_i, idx_j = np.triu_indices(nstat, k=1)
+        bl_xyz = positions[idx_i] - positions[idx_j]  # shape (nbl, 3)
+        # print(self.stations[0].codename)
+        # print(self.stations[-1].codename)
+        bl_names = [f"{self.stations[int(i)].codename}-{self.stations[int(j)].codename}" \
+                    for i, j in zip(idx_i, idx_j)]
+
+        if self.times is None:
+            gstimes = self._REF_TIMES.sidereal_time('mean', 'greenwich')
+        else:
+            gstimes = self.gstimes
+
+        # Prepare the rotation matrix for each time
+        if source is None:
+            hourangle: coord.Angle = gstimes
+            hourangle = gstimes
+            dec = 45 * u.deg
+            print("Target source is not set, thus we assume a source at +/- 45º declination"
+                  " to estimate the (u, v) values.'")
+        else:
+            hourangle = (gstimes - source.ra.to(u.hourangle)).wrap_at(24 * u.hourangle)
+            dec = source.dec
+
+        ha_rad = hourangle.to(u.rad).value  # shape (ntimes,)
+        dec_rad = dec.to(u.rad).value
+
+        # Rotation matrix for each time (ntimes, 3, 3)
+        # m = np.zeros((len(ha_rad), 3, 3))
+        # m[:, 0, 0] = np.sin(ha_rad)
+        # m[:, 0, 1] = np.cos(ha_rad)
+        # # m[:, 0, 2] = 0
+        # m[:, 1, 0] = -np.sin(dec_rad) * np.cos(ha_rad)
+        # m[:, 1, 1] = np.sin(dec_rad) * np.sin(ha_rad)
+        # m[:, 1, 2] = np.cos(dec_rad)
+        # # m[:, 2, :] = 0  # If you need w, fill in as needed
+
+        # m = np.array([[np.sin(ha_rad), np.cos(ha_rad), np.zeros(len(ha_rad))],
+        #               [-np.sin(dec_rad)*np.cos(ha_rad),
+        #                np.sin(dec_rad)*np.sin(ha_rad),
+        #                np.cos(dec_rad)*np.ones(len(ha_rad))], np.zeros((3, len(ha_rad)))])
+        m = np.array([[[np.sin(h), np.cos(h), 0],
+                       [-np.sin(dec_rad)*np.cos(h), np.sin(dec_rad)*np.sin(h), np.cos(dec_rad)],
+                       [0, 0, 0]
+                      ] for h in ha_rad])
+
+        # Compute uvw for all baselines and times: (ntimes, nbl, 3)
+        # Use einsum for batch matrix multiplication
+        bl_uv = (np.einsum('tij,bj->tbi', m, bl_xyz)*u.m/self.wavelength).decompose()
+        # shape (ntimes, nbl, 3)
+        bl_uv_up: dict[str, u.Quantity] = {}
+        if source is None:
+            for i, bl_name in enumerate(bl_names):
+                bl_uv_up[bl_name] = bl_uv[:, i, :2]  # Only u,v
+            return bl_uv_up
+
+        # Source is provided: filter by visibility
+        if self.times is None:
+            ants_up = self.is_observable_at(self._REF_TIMES)
+        else:
+            ants_up = self.is_observable()
+
+        blockname = [ablock for ablock in self.scans if source.name in self.scans[ablock].sourcenames()][0]
+
+        for bl_idx, bl_name in enumerate(bl_names):
+            ant1, ant2 = bl_name.split('-')
+            # Find times where both antennas are up
+            # up_times = np.intersect1d(ants_up[blockname][ant1], ants_up[blockname][ant2],
+            #                           assume_unique=True)
+            up_times = ants_up[blockname][ant1] & ants_up[blockname][ant2]
+            if len(up_times) > 0:
+                # up_times are indices into the time array
+                bl_uv_up[bl_name] = bl_uv[up_times, bl_idx, :2]
+
+        if not bl_uv_up:
+            raise SourceNotVisible
+
+        return bl_uv_up
+
+    def _compute_uv_per_source_legacy(self, source: Optional[Source] = None) -> dict[str, u.Quantity]:
+        nstat = len(self.stations)
         # Determines the xyz of all baselines. Time independent
         bl_xyz = np.empty(((nstat*(nstat-1))//2, 3))
         bl_names = []
@@ -1099,8 +1255,13 @@ class Observation(object):
                 bl_names.append("{}-{}".format(self.stations[i].codename,
                                                self.stations[j].codename))
 
+        if self.times is None:
+            gstimes = self._REF_TIMES.sidereal_time('mean', 'greenwich')
+        else:
+            gstimes = self.gstimes
+
         if source is None:
-            hourangle: coord.Angle = self.gstimes
+            hourangle: coord.Angle = gstimes
             print("WARNING: 'target' is not set, thus we assume a source at +/- 45º declination"
                   " to estimate the (u, v) values.'")
             m = np.array([[np.sin(hourangle), np.cos(hourangle), np.zeros(len(hourangle))],
@@ -1108,7 +1269,7 @@ class Observation(object):
                            np.sin(45*u.deg)*np.sin(hourangle),
                            np.cos(45*u.deg)*np.ones(len(hourangle))]])
         else:
-            hourangle = (self.gstimes - source.ra.to(u.hourangle)).value % 24*u.hourangle
+            hourangle = (gstimes - source.ra.to(u.hourangle)).value % 24*u.hourangle
             m = np.array([[np.sin(hourangle), np.cos(hourangle), np.zeros(len(hourangle))],
                           [-np.sin(source.dec)*np.cos(hourangle),
                            np.sin(source.dec)*np.sin(hourangle),
@@ -1123,7 +1284,11 @@ class Observation(object):
 
             return bl_uv_up
         else:
-            ants_up = self.is_observable()
+            if self.times is None:
+                ants_up = self.is_observable_at(self._REF_TIMES)
+            else:
+                ants_up = self.is_observable()
+
             blockname = [ablock for ablock in self.scans
                          if source.name in self.scans[ablock].sourcenames()][0]
             for i, bl_name in enumerate(bl_names):
@@ -1156,6 +1321,9 @@ class Observation(object):
         - It may raise the exception SourceNotVisible if no baselines can observe the source
           at all during the observation.
         """
+        if not self.sources():
+            return  {'DUMMY': self._compute_uv_per_source()}
+
         if self._uv_baseline is not None:
             return self._uv_baseline
 
@@ -1359,115 +1527,6 @@ class Observation(object):
                                         self.times[0].datetime.strftime('%H:%M'),
                                         self.times[-1].datetime.strftime(date_format),
                                         self.times[-1].datetime.strftime('%H:%M'), gsttext)
-
-
-    def get_fig_ant_elev(self):
-        data_fig = []
-        data_dict = self.elevations()
-        # Some reference lines at low elevations
-        for ant in data_dict:
-            data_fig.append({'x': self.times.datetime, 'y': data_dict[ant].value,
-                            'mode': 'lines', 'hovertemplate': "Elev: %{y:.2n}º<br>%{x}",
-                            'name': self.stations[ant].name})
-
-        data_fig.append({'x': self.times.datetime, 'y': np.zeros_like(self.times)+10,
-                         'mode': 'lines', 'hoverinfo': 'skip', 'name': 'Elev. limit 10º',
-                         'line': {'dash': 'dash', 'opacity': 0.5, 'color': 'gray'}})
-        data_fig.append({'x': np.unwrap(self.gstimes.value*2*np.pi/24)*24/(2*np.pi), 'y': np.zeros_like(self.times)+20,
-                         'xaxis': 'x2', 'mode': 'lines', 'hoverinfo': 'skip',
-                         'name': 'Elev. limit 20º', 'line': {'dash': 'dot', 'opacity': 0.5,
-                         'color': 'gray'}})
-        return {'data': data_fig,
-                'layout': {'title': 'Source elevation during the observation',
-                           'hovermode': 'closest',
-                           'xaxis': {'title': 'Time (UTC)', 'showgrid': False,
-                                     'ticks': 'inside', 'showline': True, 'mirror': False,
-                                     'hovermode': 'closest', 'color': 'black'},
-                           'xaxis2': {'title': {'text': 'Time (GST)', 'standoff': 0},
-                                      'showgrid': False, 'overlaying': 'x', #'dtick': 1.0,
-                                      'tickvals': np.arange(np.ceil(self.gstimes.value[0]),
-                                            np.floor(np.unwrap(self.gstimes.value*2*np.pi/24)[-1]*24/(2*np.pi))+1),
-                                      'ticktext': np.arange(np.ceil(self.gstimes.value[0]),
-                                            np.floor(np.unwrap(self.gstimes.value*2*np.pi/24)[-1]*24/(2*np.pi))+1)%24,
-                                      'ticks': 'inside', 'showline': True, 'mirror': False,
-                                      'hovermode': 'closest', 'color': 'black', 'side': 'top'},
-                           'yaxis': {'title': 'Elevation (degrees)', 'range': [0., 92.],
-                                     'ticks': 'inside', 'showline': True, 'mirror': "all",
-                                     'showgrid': False, 'hovermode': 'closest'},
-                           'zeroline': True, 'zerolinecolor': 'k'}}
-
-
-
-
-    def get_fig_ant_up(self):
-        data_fig = []
-        data_dict = self.is_visible()
-        gstimes = np.unwrap(self.gstimes.value*2*np.pi/24)*24/(2*np.pi)
-        gstimes = np.array([dt.datetime(self.times.datetime[0].year, self.times.datetime[0].month,
-                            self.times.datetime[0].day) + dt.timedelta(seconds=gst*3600) for gst in gstimes])
-        for i,ant in enumerate(data_dict):
-            # xs = [obs.times.datetime[0].date() + datetime.timedelta(seconds=i*3600) for i in np.unwrap(obs.gstimes.value*2*np.pi/24)[data_dict[ant]]*24/(2*np.pi)]
-            xs = gstimes[data_dict[ant]]
-            data_fig.append({'x': xs,
-                             'y': np.zeros_like(data_dict[ant][0])-i, 'type': 'scatter',
-                             'hovertemplate': "GST %{x}",
-                             'mode': 'markers', 'marker_symbol': "41",
-                             'hoverinfo': "skip",
-                             'name': self.stations[ant].name})
-
-        data_fig.append({'x': self.times.datetime, 'y': np.zeros_like(self.times)-0.5,
-                         'xaxis': 'x2',
-                         'mode': 'lines', 'hoverinfo': 'skip', 'showlegend': False,
-                         'line': {'dash': 'dot', 'opacity': 0.0, 'color': 'white'}})
-        return {'data': data_fig,
-                'layout': {'title': {'text': 'Source visible during the observation',
-                                     'y': 1, 'yanchor': 'top'},
-                           'hovermode': 'closest',
-                           'xaxis': {'title': 'Time (GST)', 'showgrid': False,
-                                     'range': [gstimes[0], gstimes[-1]],
-                                     # 'tickvals': np.arange(np.ceil(obs.gstimes.value[0]),
-                                     #        np.floor(np.unwrap(obs.gstimes.value*2*np.pi/24)[-1]*24/(2*np.pi))+1),
-                                     # 'ticktext': np.arange(np.ceil(obs.gstimes.value[0]),
-                                     #        np.floor(np.unwrap(obs.gstimes.value*2*np.pi/24)[-1]*24/(2*np.pi))+1)%24,
-                                     'tickformat': '%H:%M',
-                                     'ticks': 'inside', 'showline': True, 'mirror': False,
-                                     'hovermode': 'closest', 'color': 'black'},
-                           'xaxis2': {'title': {'text': 'Time (UTC)', 'standoff': 0},
-                                      'showgrid': False, 'overlaying': 'x', #'dtick': 1.0,
-                                      'ticks': 'inside', 'showline': True, 'mirror': False,
-                                      'hovermode': 'closest', 'color': 'black', 'side': 'top'},
-                           'yaxis': {'ticks': '', 'showline': True, 'mirror': True,
-                                     'showticklabels': False, 'zeroline': False,
-                                     'showgrid': False, 'hovermode': 'closest',
-                                     'startline': False}}}
-
-
-
-    def get_fig_uvplane(self):
-        data_fig = []
-        bl_uv = self.get_uv_baseline()
-        for bl_name in bl_uv:
-            # accounting for complex conjugate
-            uv = np.empty((2*len(bl_uv[bl_name]), 2))
-            uv[:len(bl_uv[bl_name]), :] = bl_uv[bl_name]
-            uv[len(bl_uv[bl_name]):, :] = -bl_uv[bl_name]
-            data_fig.append({'x': uv[:,0],
-                             'y': uv[:,1],
-                             # 'type': 'scatter', 'mode': 'lines',
-                             'type': 'scatter', 'mode': 'markers',
-                             'marker': {'symbol': '.', 'size': 2},
-                             'name': bl_name, 'hovertext': bl_name, 'hoverinfo': 'name', 'hovertemplate': ''})
-        return {'data': data_fig,
-                'layout': {'title': '', 'showlegend': False,
-                           'hovermode': 'closest',
-                           'width': 700, 'height': 700,
-                           'xaxis': {'title': 'u (lambda)', 'showgrid': False, 'zeroline': False,
-                                     'ticks': 'inside', 'showline': True, 'mirror': "all",
-                                     'color': 'black'},
-                           'yaxis': {'title': 'v (lambda)', 'showgrid': False, 'scaleanchor': 'x',
-                                     'ticks': 'inside', 'showline': True, 'mirror': "all",
-                                     'color': 'black', 'zeroline': False}}}
-
 
 
     def get_fig_dirty_map(self):

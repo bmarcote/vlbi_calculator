@@ -13,14 +13,14 @@ from vlbiplanobs import stations
 from vlbiplanobs import observation as obs
 from vlbiplanobs import sources
 from vlbiplanobs import freqsetups
-from vlbiplanobs.gui import plots
+from vlbiplanobs import gui
 # from vlbiplanobs import scheduler
 
 _STATIONS = stations.Stations()
 _NETWORKS = _STATIONS.get_networks_from_configfile()
 
 
-def _optimal_units(value: u.Quantity, units: list[u.Unit]):
+def optimal_units(value: u.Quantity, units: list[u.Unit]):
     """Given a value (with some units), returns the unit choice from all
     `units` possibilities that better suits the value.
     It is meant for the following use:
@@ -45,11 +45,12 @@ class VLBIObs(obs.Observation):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def summary(self, gui: bool = True):
+    def summary(self, gui: bool = True, tui: bool = True):
         if gui:
             return self._summary_gui()
 
-        return self._summary_tui()
+        if tui:
+            return self._summary_tui()
 
     def _summary_gui(self):
         self._summary_tui()
@@ -67,13 +68,13 @@ class VLBIObs(obs.Observation):
             rprint("at unspecified times.")
 
         if self.duration is not None:
-            rprint(f"With a total duration of {_optimal_units(self.duration, [u.h, u.min, u.s]):.01f}.")
+            rprint(f"With a total duration of {optimal_units(self.duration, [u.h, u.min, u.s]):.01f}.")
 
         rprint(f"\n[bold green]Setup[/bold green]")
         if None not in (self.datarate, self.bandwidth, self.subbands):
-            val = _optimal_units(self.datarate, [u.Gbit/u.s, u.Mbit/u.s])
+            val = optimal_units(self.datarate, [u.Gbit/u.s, u.Mbit/u.s])
             rprint(f"\nData rate of {val.value:.0f} {val.unit.to_string('unicode')}, "
-                   f"producing a total bandwidth of {_optimal_units(self.bandwidth, [u.MHz, u.GHz])}, "
+                   f"producing a total bandwidth of {optimal_units(self.bandwidth, [u.MHz, u.GHz])}, "
                    f" divided in {self.subbands} x {int(self.bandwidth.value/self.subbands)}-"
                    f"{self.bandwidth.unit} subbands, with {self.channels} channels each, "  # type: ignore
                    f"{self.polarizations} polarization.")
@@ -97,22 +98,28 @@ class VLBIObs(obs.Observation):
                 rprint('      ' +
                        '\n      '.join([s.name + ' [dim](' + s.coord.to_string('hmsdms') + ')[/dim]'
                                         for s in ablock.sources()]))
+                if not ablock.sources(sources.SourceType.PHASECAL) and self.frequency > 80*u.GHz:
+                    rprint("[red]Phase-referencing is not feasible anymore at this band.\n"
+                           "Slewing times would be too short due to the coherent time.\n"
+                           "A bright target is thus mandatory.[/red]")
+
         else:
             rprint("[dim]No sources defined.[/dim]")
             if self.times is not None or self.duration is not None:
                 rprint("\n[bold green]Expected outcome[/bold green]:")
-                val = _optimal_units(self.thermal_noise(), [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
+                val = optimal_units(self.thermal_noise(), [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
                 rprint(f"[bold]Thermal rms noise (for a +/- 45° elevation source)[/bold]: "
                        f"{val.value:.01f} {val.unit.to_string("unicode")}")
                 rprint("[dim](for a +/- 45° elevation source)[/dim]")
 
         print('\n')
 
-    def plot_visibility(self, gui: bool = True):
+    def plot_visibility(self, gui: bool = True, tui: bool = True):
         if gui:
-            return self._plot_visibility_gui()
+            self._plot_visibility_gui()
 
-        return self._plot_visibility_tui()
+        if tui:
+            self._plot_visibility_tui()
 
     def _plot_visibility_tui(self):
         """Show plots on the Terminal User Interface with the different sources and
@@ -132,6 +139,8 @@ class VLBIObs(obs.Observation):
         srcupalways = self.is_always_observable()
         rms_noise = self.thermal_noise()
         ontarget_time = self.ontarget_time
+        sun_const = self.sun_constraint()
+        sun_limit = self.sun_limiting_epochs()
         if doing_gst:
             # Let's put it back to the original values
             gstimes = self.gstimes
@@ -153,22 +162,23 @@ class VLBIObs(obs.Observation):
                 rprint(' [dim](nobody can observe it all the time)[/dim]')
 
             for anti, ant in enumerate(antbool):
-                rprint(f"        {ant:3}| {''.join(['◼︎' if b else ' ' for b in antbool[ant]])}")
+                rprint(f"        {ant:4}| {''.join(['◼︎' if b else ' ' for b in antbool[ant]])}")
 
-            rprint(f"           |-{''.join(['-' for b in antbool[ant]])}|")
+            rprint(f"            |-{''.join(['-' for b in antbool[ant]])}|")
             if doing_gst:
-                rprint(f"           {gstimes[0].to_string(sep=':', fields=2, pad=True)} GST"
+                rprint(f"            {gstimes[0].to_string(sep=':', fields=2, pad=True)} GST"
                        f"{''.join([' ' for b in antbool[ant]][:-11])}"
                        f"{(gstimes[-1] + (24*u.hourangle
                                           if np.abs(localtimes[-1].mjd - localtimes[0].mjd - 1) < 0.1
                                           else 0.0*u.hourangle)).to_string(sep=':', fields=2, pad=True)}")
             else:
-                rprint(f"           {self.times.datetime[0].strftime('%H:%M'):05} UTC"
+                rprint(f"            {self.times.datetime[0].strftime('%H:%M'):05} UTC"
                        f"{''.join([' ' for b in antbool[ant]][:-11])}"
                        f"{self.times.datetime[-1].strftime('%H:%M'):05}")
 
             if doing_gst:
-                when_everyone = self.when_is_observable(mandatory_stations='all', return_gst=True)[ablockname]
+                when_everyone = self.when_is_observable(mandatory_stations='all',
+                                                        return_gst=True)[ablockname]
                 if len(when_everyone) > 0:
                     rprint("\n[bold]Everyone can observe the source at: [/bold]", end='')
                     rprint(', '.join([t1.to_string(sep=':', fields=2, pad=True) + '--' +
@@ -200,19 +210,38 @@ class VLBIObs(obs.Observation):
                                       ' UTC' for t1, t2
                                       in self.when_is_observable(min_stations=min_stat)[ablockname]]))
 
+            # Important verification
+            if doing_gst:
+                if len(sun_limit[ablockname]) > 0:
+                    rprint("[bold red]Note the the Sun is too close to this source[/bold red]",
+                           end='')
+                    t0, t1 = sun_limit[ablockname][0].datetime, sun_limit[ablockname][-1].datetime
+                    if t0 == t1:
+                        rprint(f"[red] on {t0.strftime('%d %b')}![/red]")
+                    elif t0.month == t1.month:
+                        rprint(f"[red] on {t0.day}-{t1.day} {t0.strftime('%b')}![/red]")
+                    elif t0.year == t1.year:
+                        rprint(f"[red] on {t0.strftime('%d %b')} to {t1.strftime('%d %b')}![/red]")
+                    else:
+                        rprint(f"[red]{t0.strftime('%d %b %Y')} to {t1.strftime('%d %b %Y')}![/red]")
+            else:
+                if sun_const[ablockname] is not None:
+                    rprint("[bold red]Note the the Sun is too close to this source during "
+                           f"this observation (separation of {sun_const[ablockname]}).[/bold red]")
+
             rprint("[bold]Expected rms thermal noise for the target source: [/bold]", end='')
             for src, rms in rms_noise.items():
                 if any([s.type is sources.SourceType.TARGET for s in self.sources()]):
                     if src in self.sourcenames_in_block(ablockname, sources.SourceType.TARGET):
-                        val = _optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
+                        val = optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
                         rprint(f"{src}: {val.value:.02f} {val.unit.to_string("unicode")}")
-                        val = _optimal_units(ontarget_time[src], [u.h, u.min, u.s, u.ms])
+                        val = optimal_units(ontarget_time[src], [u.h, u.min, u.s, u.ms])
                         rprint("[dim]for a total on-source time of ~ "
                                f"{val.value:.2f} {val.unit.to_string("unicode")} "
                                f"(assuming the total observing time).[/dim]")
                 else:
                     if src in self.sourcenames_in_block(ablockname):
-                        rprint(f"{src}: {_optimal_units(rms, [u.Jy, u.mJy, u.uJy]):.02f}")
+                        rprint(f"{src}: {optimal_units(rms, [u.Jy, u.mJy, u.uJy]):.02f}")
 
             print('\n')
 
@@ -224,7 +253,7 @@ class VLBIObs(obs.Observation):
             # rprint("No scans have been defined.")
             sys.exit(0)
 
-        figs = plots.elevation_plot(self)
+        figs = gui.plots.elevation_plot(self)
         figs.show()
 
     def print_baseline_sensitivities(self):
@@ -295,7 +324,12 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
         rprint("[yellow]The following antennas were ignored "
                f"because they cannot observe at {band}: {', '.join(dropped_stations)}[/yellow]")
 
-    return _STATIONS.filter_antennas(stations)
+    final_stations = _STATIONS.filter_antennas(stations)
+    if not final_stations:
+        rprint(f"[bold red]No antennas have been selected or none can observe at {band}.[/bold red]")
+        sys.exit(1)
+
+    return final_stations
 
 
 def main(band: str, networks: Optional[list[str]] = None,
@@ -303,7 +337,8 @@ def main(band: str, networks: Optional[list[str]] = None,
          src_catalog: Optional[str] = None, targets: Optional[list[str]] = None,
          start_time: Optional[Time] = None,
          duration: Optional[u.Quantity] = None, datarate: Optional[u.Quantity] = None,
-         gui: bool = True):
+         gui: bool = True, tui: bool = False, ontarget: float = 0.7, subbands: int = 4,
+         channels: int = 64, polarizations: int = 4, inttime: float = 2.0):
     """Planner for VLBI observations.
 
     Inputs
@@ -383,21 +418,19 @@ def main(band: str, networks: Optional[list[str]] = None,
             for a_network in _NETWORKS:
                 if a_network in networks:
                     datarate = _NETWORKS[a_network].max_datarate(band)
-                    print(f"This is a {a_network}, with {datarate})")
                     break
 
     o = VLBIObs(band, get_stations(band, networks, stations), scans=src2observe,
                 times=start_time + np.arange(0, duration_val + 5, 10)*u.min
                 if start_time is not None and duration_val is not None else None, duration=duration,
-                datarate=datarate,  # subbands=, channels=, polarizations=, inttime=)
-                ontarget=0.6)
-    o.summary(gui)
+                datarate=datarate,
+                subbands=subbands, channels=channels,
+                polarizations=polarizations,
+                inttime=inttime,
+                ontarget=ontarget)
+    o.summary(gui, tui)
     if targets is not None or source_catalog is not None:
-        if gui:
-            o.plot_visibility(gui)
-
-        # TODO: for now I keep this so it shows the ranges in times and thermal noises
-        o.plot_visibility(False)
+        o.plot_visibility(gui, tui)
 
     # o.print_baseline_sensitivities()
     return o
@@ -465,6 +498,11 @@ def cli():
     parser.add_argument('--no-gui', action="store_false", default=True,
                         help="If set, then it will not open graphical plots, but it will only\n"
                         "show the quick plots through terminal.")
+    parser.add_argument('--no-tui', action="store_false", default=True,
+                        help="If set, then it will not show all the output in the terminal as default.")
+    parser.add_argument('--server', action="store_true", default=False,
+                        help="If set, then it run the full featured PlanObs program on the browser "
+                        "(as the online version hosted at JIVE).")
     # TODO: add argument, min number of antennas possible
 
     args = parser.parse_args()
@@ -493,6 +531,9 @@ def cli():
     if args.list_antennas or args.list_bands or args.list_networks:
         sys.exit(0)
 
+    if args.server:
+        gui.main.main(False)
+
     if args.band is None:
         parser.print_help()
         rprint("\n\n[bold red]The observing band (-b/--band) and either '--network' and/or "
@@ -515,12 +556,16 @@ def cli():
                " the observation.[/bold red]")
         sys.exit(1)
 
+    if (not args.no_gui) and (not args.no_tui):
+        rprint("[bold yellow]Note that you supressed both GUI and TUI.\n"
+               "No output will be provided.[/bold yellow]")
+
     main(band=args.band, networks=args.network, stations=args.stations,
          src_catalog=args.input,
          targets=args.targets, start_time=Time(args.starttime, scale='utc')
          if args.starttime else None,
          duration=float(args.duration)*u.hour if args.duration is not None else None,
-         datarate=args.data_rate*u.Mbit/u.s if args.data_rate else None, gui=args.no_gui)
+         datarate=args.data_rate*u.Mbit/u.s if args.data_rate else None, gui=args.no_gui, tui=args.no_tui)
 
 
 if __name__ == '__main__':

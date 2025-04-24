@@ -1,5 +1,6 @@
-**WARNING**:
-_I would like to note that I am currently developing a major new version (v2.0) of the Planner. Better UI, much faster, and with a better API. Meanwhile, most of the code is broken in the current repo. Please download the last stable version if you want to use it. But if you have some wishes, I will be happy to receive feedback!_
+> Thank you everyone for the wait!  PlanObs is back with tons of new features.
+> That also imply that for the time being it may contain some minor bugs, and a few features may be missing. They will be back incrementally during the upcoming updates.
+
 
 # EVN Observation Planner
 
@@ -7,52 +8,54 @@ _I would like to note that I am currently developing a major new version (v2.0) 
 The EVN Observation Planner is a tool to determine the visibility of a given astronomical source when planning very-long-baseline-interferometry (VLBI) observations. The tool is specially written for the preparation of observations with the [European VLBI Network (EVN)](https://www.evlbi.org), but it can be used for any kind of VLBI observations than can be currently arranged (e.g. with the [Very Long Baseline Array, VLBA](https://public.nrao.edu/telescopes/vlba/); [the Australian Long Baseline Array, LBA](https://www.atnf.csiro.au/vlbi/overview/index.html); [eMERLIN](http://www.merlin.ac.uk/e-merlin/index.html); or [the global mm-VLBI array](https://www3.mpifr-bonn.mpg.de/div/vlbi/globalmm/), for example). An ad-doc VLBI array can also be quickly configured.
 
 In addition to the determination of the source visibility by the different antennas, the EVN Observation Planner would provide an estimation of the expected rms noise level (sensitivity) reached during the planned observations, and an estimation of the resolution. The EVN Observation Planner can thus be used while [preparing an observing proposal](https://www.evlbi.org/using-evn).
-Note that the EVN Observation Planner has been designed as a complementary, but more featured, version of the current [EVN Calculator](http://old.evlbi.org/cgi-bin/EVNcalc.pl).
+Note that the EVN Observation Planner has been designed as a more complete version of the previous [EVN Calculator](http://old.evlbi.org/cgi-bin/EVNcalc.pl).
 
 
 
-## It runs online!
+## It runs both online and locally!
 
 You can make use of the EVN Observation Planner just by going to [the online tool hosted at JIVE](https://planobs.jive.eu), without installing anything.
 
 
-It only requires the minimal information to be able to compute the results of the observation:
-
-- Select the observing band (at which frequency, or wavelength, do you want to observe?).
-- Select a default VLBI network, or make an ad-hoc one by selecting manually the worldwide antennas that you want to use. You will see that only the antennas that can observe at the given band would be selectable.
-- Enter the start and end of the planned observation, and the coordinates (in J2000 format) of the main source you want to observe.
-- You can still tune more technical details of the observation, like the expected data rate, number of subbands, channels, or integration time. But default values will always been set automatically for your help.
-
-After all this, you only need to press a button (`computer observation`) and you will presented with a detailed output in the different tabs:
-
-- A summary showing the size of the data that you may expect to be downloaded (once correlated), the longest and shortest baselines in the array, the expected synthesized beam (resolution), and rms noise level of the resulting image, and the limitations in the field of view due to the frequency and time averaging.
-- A couple of plots showing the elevation of the source for all the selected antennas, and the time ranges when they can observe the source.
-- A plot showing the expected _u, v_ coverage. Note that depending on how filled the (_u,v_) plane is, the better reconstructed the resulting image will be.
-
-
-
-## Installing it locally
-
-But if you want to run it in your local machine, you can also install the package simply by running
+But if you want to run it in your local machine, you can also install the package via `pip`:
 
 ```bash
-python setup.py install
+python3 -m pip install vlbiplanobs
 ```
 
-Soon we will upload it to PyPy so you will be able to install it from `pip`.
+
+Once you have it installed, you can simply run it by typing `planobs --server` in the terminal.  It will start to run the server and you will be able to access it in your browser by following the typed url (likely http://0.0.0.0:8050/).
 
 
-Note that the current version requires the package `astropy` **version 4.0.1** and latest `astroplan`. This restriction in the version of `astropy` is produced by a bug in versions <4.0.1 only triggered when multiple instances run the program at the same time [(see issue #10114 from astropy)](https://github.com/astropy/astropy/issues/10114). If you are running vlbiplanobs only through the command line you will not be affected. On the other hand, versions >4.0.1 are not supported by the current version of `astroplan` (0.6). This will be fixed once version 0.7 is released, unlocking the more recent versions of `astropy`.
+> **But PlanObs also has a lovely command-line interface!
+
+The EVN Observation Planner can also be used through the terminal or inside your own Python program without the need of running a server.
 
 
-Once you have it installed, you can simply run it by typing `vlbiplanobs` in the terminal.  It will start to run the server and you will be able to access it in your browser by following the typed url (likely http://0.0.0.0:8050/).
+### Command-line interface (CLI)
+
+_This is great for when you want to plan, or verify the feasibility of, a VLBI observation quickly, or you have multiple sources to observe already defined._
 
 
+You only need to type:
+
+```bash
+planobs
+```
 
 
-## But you can also use it inside your Python programs or interactively!
+In your terminal to encounter all options.
 
-The EVN Observation Planner can also be used inside a Python environment or inside your own programs without the need of running a server, ignoring the Dash server.
+
+**Example cases**
+
+1. You want to know when a source (e.g. 'Altair') can be observed by a given VLBI network (e.g. the EVN). It is as easy as:
+
+```bash
+planobs --network EVN --target Altair ........
+    --no-gui   # if you don't want to visualize the plots in the browser but only within the terminal
+```
+
 
 
 ```python

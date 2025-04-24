@@ -188,7 +188,7 @@ def uvplot(o, filter_antennas: Optional[list[str]] = None) -> go.Figure:
             x=uv[:, 0],
             y=uv[:, 1],
             mode='markers',
-            marker=dict(color=color, size=2),
+            marker=dict(color=color, size=1 if color == 'black' else 2),
             name=key,
             hovertext=hover_text,
             hoverinfo='text'

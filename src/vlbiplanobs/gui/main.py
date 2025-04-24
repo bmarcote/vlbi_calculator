@@ -130,17 +130,21 @@ def update_datarate(band, *networks):
               State(f"switches-antennas", 'value'))
 def enable_antennas_with_band(band_index: int, do_e_evn: bool, selection_antennas: list):
     if band_index == 0:
+        return [el.antenna_card_hover(app, dmc.Chip(s.name, value=s.codename,
+                                                    color='#004990', styles={'display': 'grid',
+                                             'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'},), s) for s in observation._STATIONS]
         return [dmc.Chip(s.name, value=s.codename, color='#004990',
                          styles={'display': 'grid',
                                  'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'}) \
                 for s in observation._STATIONS] #antennas]
 
-    return [dmc.Chip(s.name, value=s.codename, color='#004990',
-                     disabled=not list(fs.bands.keys())[band_index - 1] in s.bands or \
-                         (do_e_evn and not s.real_time),
-                     styles={'display': 'grid',
-                             'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'}) \
-            for s in observation._STATIONS]
+    return [el.antenna_card_hover(app,
+                                  dmc.Chip(s.name, value=s.codename,
+                                           color='#004990', styles={'display': 'grid',
+                                             'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'},
+                                           disabled=not list(fs.bands.keys())[band_index - 1] in s.bands or \
+                                                    (do_e_evn and not s.real_time),
+                                           ), s) for s in observation._STATIONS]
 
 
 @app.callback(Output('switches-antennas', 'value'),
@@ -471,9 +475,11 @@ app.layout = dbc.Container(fluid=True, className='bg-gray-100 row m-0 p-4',
                                                       children=[]),
                                              html.Div(className='col-6 m-0 px-2', id='div-card-vel',
                                                       children=[]),
-                                         ]),
-                                         html.Div(className='row col-12 mx-0 my-2', id='out-worldmap',
-                                                  children=[]),
+                                         ])])]),
+                                         html.Div(className='row', children=[
+                                             html.Div(className='col-12 mx-0', children=[
+                                                 html.Div(className='row col-12 mx-0 my-2 px-2',
+                                                          id='out-worldmap', children=[]),
                                          ])])
                                  ]),
                            ]),

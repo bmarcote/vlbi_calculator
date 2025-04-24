@@ -13,7 +13,7 @@ sefd_0.09 = 132.7
 
 [APEX]
 station = Atacama Pathfinder EXperiment
-code = APEX
+code = Ap
 networks = EHT
 country = Chile
 diameter = 12 m
@@ -24,7 +24,7 @@ sefd_0.09 = 9362.5
 
 [ARO12m]
 station = ARO 12m Radio Telescope
-code = ARO12m
+code = Ar1
 networks = EHT
 country = U.S.A.
 diameter = 12 m
@@ -35,7 +35,7 @@ sefd_0.13 = 9400
 
 [ASKAP]
 station = Australian Square Kilometre Array Pathfinder
-code = ASKAP
+code = Ak
 networks = LBA
 country = Australia
 diameter = 1 x 12 m
@@ -54,7 +54,7 @@ sefd_18 = 6000.0
 
 [ATCA]
 station = Australian Telescope Compact Array
-code = ATCA
+code = At
 networks = LBA
 country = Australia
 diameter = 6 x 22 m
@@ -111,6 +111,7 @@ code = Ar
 networks =
 country = Puerto Rico
 diameter = 305 m
+decommissioned = yes
 position = 2390486.9, -5564731.44, 1994720.45
 mount = ALTAZ
 ax1lim = 0, 720
@@ -229,7 +230,7 @@ ax2acc = 0.02778
 [Darnhall]
 station = Darnhall
 code = Da
-networks = eMERLIN, EVN
+networks = eMERLIN
 country = United Kingdom
 diameter = 25 m
 position = 3829087.899, -169568.955, 5081082.346
@@ -1671,6 +1672,7 @@ code = Wb14
 networks = EVN
 country = The Netherlands
 diameter = 14 x 25 m
+decommissioned = yes
 position = 3828767.2647, 442446.1739, 5064921.57
 mount = EQUAT
 ax1lim = -6.0,6.0

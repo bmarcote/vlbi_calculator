@@ -48,16 +48,56 @@ def card(children: Optional[list] = None, className: str = '') -> html.Div:
                     children=[html.Div(className='card-body', children=children)])
 
 
+def antenna_card_hover(app, target, ant: stations.Station) -> html.Div:
+    """Creates a Card showing all the relevant information for a given antenna, which
+    will be displayed as a pop up window when hovering the name of a given antenna.
+    """
+    return html.Div(dmc.MantineProvider(dmc.HoverCard(shadow="md", withArrow=True, width=300,
+                                                      position='right', classNames='col-12 p-0 m-0',
+              children=[dmc.HoverCardTarget(target),
+                        dmc.HoverCardDropdown([antenna_card(app, ant)], className='col-12 m-0 p-0')
+                        ])),
+                    style={'display': 'inline-flex', 'flex-wrap': 'wrap',
+                            'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'})
+
+
+def antenna_card(app, ant: stations.Station) -> html.Div:
+    return html.Div((dmc.Card(children=[html.Div(
+                        dmc.CardSection(
+                            dmc.Image(src=app.get_asset_url(f"ant-{ant.name.replace(' ','_')
+                                          .lower()}.jpg"), h='300px', alt=ant.name),
+
+                        ), className='col-12 p-0 m-0'),
+                        html.Div([
+                            dmc.Group([
+                                dmc.Text(f"{ant.name} ({ant.codename})", className='text-bolder'),
+                                dmc.Badge(ant.diameter, color='#9DB7C4', style={'text-transform': 'none'}),
+                            ], justify='space-between', mt='md', mb='0'),
+                            dmc.Text(ant.fullname, mb='0', c='#004990') if ant.fullname != ant.name \
+                                else None,
+                            dmc.Text(ant.country, c='dimmed', mt='0', mb='1rem'),
+                            dmc.Text(f"Default antenna in {', '.join(ant.networks)}.", mb='1rem') \
+                                        if len(ant.networks) > 0 else None,
+                            dmc.Text("No longer operational.", mb='1rem', c='#a01d26') \
+                                        if ant.decommissioned else None,
+                            dmc.Text(f"Can observe at {', '.join(ant.bands)}."),
+                        ], className='col-12 px-3 pb-2 m-0')
+                    ], withBorder=False)), className='col-12 p-0 m-0', style={'width': '300px'})
+
+
 def compute_button() -> list:
     """Returns the button to compute the observation
     """
     return html.Div(html.Button('CALCULATE', id='compute-observation',
-                                className='btn bg-gradient-info btn-lg mx-auto w-75 m-4 p-2 active',
-                                style={'position': 'sticky', 'top': '20px', 'background-color': '#9DB7C4'}),
+                                className='btn bg-primary text-bolder btn-lg mx-auto w-75 m-4 p-2 active',
+                                style={'position': 'sticky', 'top': '20px'}),
+                                # style={'position': 'sticky', 'top': '20px', 'background-color': '#9DB7C4'}),
                     className='text-center', style={'position': 'relative'})
+
 
 def results() -> list:
     return []
+
 
 def pick_band(bands: dict[str, str]) -> list:
     """Returns the card allowing the user to pick up the band.
@@ -172,29 +212,25 @@ def antenna_list(app, antennas) -> list:
             dbc.AccordionItem(title=html.H4(['Manual Selection of Antennas   ',
                                              html.I(className='fa fa-solid fa-angle-down', id='accordion-ant')],
                                             className='text-dark font-weight-bold mb-0 accordion-header'),
-                              children=[
-                html.Div(id='antennas-div', className='container mb-3',
-                         style={'display': 'inline-block', 'gap': '10px', 'flex-wrap': 'wrap'},
-                         children=[#html.Div(style={'display': 'flex', 'align-items': 'center', 'width': '10rem', 'box-sizing': 'border-box', 'width': 'var(--switch-width)'}, children=
-
-                            dmc.MantineProvider(
+                              children=[dmc.MantineProvider(
                                 dmc.Group(
-                                dmc.ChipGroup(value=[], id='switches-antennas',
-                                              persistence=True, multiple=True, deselectable=True,
-
-                                              children=[dmc.Chip(s.name, value=s.codename, color='#004990',
-                                                                 styles={'display': 'grid',
-                                                                         'grid-template-columns': \
-                                                                         'repeat(auto-fit, minmax(10rem, 1fr))'
-                                                                         }) for s in antennas]
-                                              )))
-            #                     dbc.Checklist(value=[], id='switches-antennas', inline=True,
-            #                                   persistence=True, switch=True,
-            #                                   style={'display': 'grid',
-            #                                          'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'},
-            #                                   options=[{'label': s.name, 'value': s.codename} for s in antennas])
-            ])
-        ])]))]
+                                dmc.ChipGroup(value=[], id='switches-antennas', persistence=True,
+                                              multiple=True, deselectable=True,
+                                              children=[antenna_card_hover(app,
+                                                                          dmc.Chip(s.name, value=s.codename,
+                                                                                   color='#004990',
+                                                                                   styles={'display': 'grid',
+                                                                                    'grid-template-columns': \
+                                                                                    'repeat(auto-fit, minmax(10rem, 1fr))'}
+                                                                                   ), s)
+                                              for s in antennas]), className='container mb-3 flex',
+                                              style={'display': 'inline-flex', 'gap': '10px',
+                                                     'flex-wrap': 'wrap'}
+                                              ))]
+                              )
+                ])
+        )]
+# ))]
 
 
 def source_selection() -> html.Div:

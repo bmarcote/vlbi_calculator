@@ -93,13 +93,6 @@ def info_card(title: str, body: str) -> html.Div:
     return message_card(title, body, 'info')
 
 
-def antenna_card(ant: stations.Station) -> html.Div:
-    """Creates a Card showing all the relevant information for a given antenna, which
-    will be displayed as a pop up window when hovering the name of a given antenna.
-    """
-    pass
-
-
 def warning_phase_referencing_high_freq(o: Optional[cli.VLBIObs] = None) -> html.Div:
     """For observations at high frequencies, it shows a warning mentioning that
     phase referencing is not possible.
@@ -474,7 +467,7 @@ def print_observability_ranges(o: cli.VLBIObs) -> html.Div:
                 text += [f"Only {', '.join(ant_can)} can observe the source at all times."]
             else:
                 text += ["All antennas can observe the source at all times except " + \
-                        ', '.join([ant for ant in o.stations.station_codenames if ant not in ant_can])]
+                        ', '.join([ant for ant in o.stations.station_codenames if ant not in ant_can]) + '.']
         else:
             text += ["But there are no antennas that can observe the source at all time."]
 
@@ -616,6 +609,7 @@ def worldmap_plot(o: Optional[cli.VLBIObs] = None) -> html.Div:
     return card(html.Div(className='row justify-content-center',
                     children=[dcc.Graph(figure=plots.plot_worldmap_stations(data),
         responsive=True, className='fig-on-card',
-                  config={'frameMargins': 0, 'showLink': False, 'displaylogo': False})]))
+                  config={'frameMargins': 0, 'showLink': False, 'displaylogo': False})]),
+                className='col-12 mx-0 px-0')
                   # config={'frameMargins': -10, 'showLink': False, 'displaylogo': False}), html.Br()]))
 

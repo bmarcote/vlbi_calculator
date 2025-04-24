@@ -62,7 +62,7 @@ class Station(object):
                  country: str = "", diameter: str = "",
                  real_time: bool = False, mount: Optional[Mount] = None,
                  max_datarate: Optional[u.Quantity | dict[str, u.Quantity]] = None,
-                 datarate: Optional[u.Quantity] = None) -> None:
+                 datarate: Optional[u.Quantity] = None, decommissioned: bool = False) -> None:
         """Initializes a station.
 
         Inputs
@@ -111,6 +111,8 @@ class Station(object):
         - datarate : u.Quantity [OPTIONAL]
             Specifies the data rate that the station will record. If not provided, it will use the
             data rate assumed in the observation.
+        - decommissioned : bool [OPTIONAL]
+            If the station is decommissioned, False by default.
         """
         for a_var, a_var_name in zip((name, codename, country, diameter),
                                      ("name", "codename", "country", "diameter")):
@@ -137,6 +139,7 @@ class Station(object):
 
         self._max_datarate: u.Quantity | dict | None = max_datarate
         self._datarate: u.Quantity | None = datarate
+        self._decommissioned: bool = decommissioned
         if self.mount.mount_type == MountType.ALTAZ:
             self._constraints = [constraints.AzimuthConstraint(min=self.mount.ax1.limits[0],
                                                                max=self.mount.ax1.limits[1]),
@@ -183,6 +186,12 @@ class Station(object):
         the station in case of connected-interferometers.
         """
         return self._diameter
+
+    @property
+    def decommissioned(self) -> bool:
+        """Returns True if the station is decommissioned, False otherwise.
+        """
+        return self._decommissioned
 
     @property
     def real_time(self) -> bool:
@@ -836,6 +845,8 @@ class Stations(object):
         a_loc = coord.EarthLocation(u.Quantity(temp[0], u.m), u.Quantity(temp[1], u.m), u.Quantity(temp[2], u.m))
         # Getting the SEFD values for the bands
         does_real_time = True if station["real_time"] == "yes" else False
+        is_decommissioned = True if ("decommissioned" in station) and \
+                                    station["decommissioned"].strip() == "yes" else False
         sefds = {}
         max_dt: u.Quantity | dict[str, u.Quantity] | None = None
         for akey in station.keys():
@@ -888,9 +899,10 @@ class Stations(object):
         else:
             amount = None
 
-        return Station(stationname, station["code"], tuple(station["networks"].split(",")),  # type: ignore
+        return Station(stationname, station["code"],
+                       tuple([n.strip() for n in station["networks"].split(",") if n.strip() != '']),
                        a_loc, sefds, station["station"], station["country"], station["diameter"],
-                       does_real_time, amount, max_dt)
+                       does_real_time, amount, max_dt, decommissioned=is_decommissioned)
 
     @staticmethod
     def _get_stations_from_configfile(filename: Optional[str] = None,
@@ -912,6 +924,7 @@ class Stations(object):
             - network - main network to which it belongs to.
             - possible_networks - all networks the station can participate in (including 'network')
             - country - country where the station is located.
+            - decommissioned - if the station is decommissioned.
             - diameter - free format string with the diameter of the station
                         (optional more information in case of interferometers).
             - position = x, y, z (in meters). Geocentric position of the station.

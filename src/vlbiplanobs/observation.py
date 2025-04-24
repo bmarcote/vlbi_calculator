@@ -1059,7 +1059,10 @@ class Observation(object):
                 integrated_time = np.sum(visible[:, None] & visible[None, :], axis=2) * delta_t
                 temp = np.sum((bandwidth_min*integrated_time /
                               np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=1))
-                self._rms[sourcename] = ((np.sqrt(2)/0.7)/np.sqrt(temp))*u.Jy/u.beam
+                # TODO: this is a trick just to get an approximate value, considering if max duration
+                # is set.
+                duration_limit = 1 if self.duration is None else (24*u.h/self.duration).value
+                self._rms[sourcename] = ((np.sqrt(2)/0.7)/np.sqrt(temp) * duration_limit)*u.Jy/u.beam
         else:
             self._rms = {}
             delta_t = (self.times[1] - self.times[0]).to(u.min).value * self.ontarget_fraction

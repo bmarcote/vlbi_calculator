@@ -14,6 +14,7 @@ from vlbiplanobs import observation as obs
 from vlbiplanobs import sources
 from vlbiplanobs import freqsetups
 from vlbiplanobs import gui
+from vlbiplanobs.gui import plots
 # from vlbiplanobs import scheduler
 
 _STATIONS = stations.Stations()
@@ -375,10 +376,15 @@ def main(band: str, networks: Optional[list[str]] = None,
             if (source_catalog is not None) and (target in source_catalog.blocknames):
                 src2observe[target] = source_catalog[target]
             else:
-                a_source = sources.Source.source_from_str(target)
-                src2observe[a_source.name] = sources.ScanBlock([
-                    sources.Scan(a_source, duration=freqsetups.phaseref_cycle(band)
-                                 if freqsetups.phaseref_cycle(band) is not None else 5*u.min)])
+                try:
+                    a_source = sources.Source.source_from_str(target)
+                    src2observe[a_source.name] = sources.ScanBlock([
+                        sources.Scan(a_source, duration=freqsetups.phaseref_cycle(band)
+                                     if freqsetups.phaseref_cycle(band) is not None else 5*u.min)])
+                except ValueError:
+                    rprint(f"[bold red]The source {target} is not known and is not in the catalog "
+                           "file.[/bold red]")
+                    sys.exit(1)
     elif source_catalog is None:
         # rprint("[bold red]Either a source catalog file or a list of targets must be "
         #        "provided (or both).[/bold red]")

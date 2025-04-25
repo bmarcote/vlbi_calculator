@@ -3880,6 +3880,23 @@ fieldset:disabled .btn {
   opacity: var(--bs-btn-disabled-opacity);
 }
 
+.btn-evn {
+  --bs-btn-color: #FFFFFF;
+  --bs-btn-bg: #a01d26;
+  --bs-btn-border-color: #a01d26;
+  --bs-btn-hover-color: #FF9999;
+  --bs-btn-hover-bg: #660000;
+  --bs-btn-hover-border-color: rgb(249.6, 129, 45.3);
+  --bs-btn-focus-shadow-rgb: 212, 98, 19;
+  --bs-btn-active-color: #FFFFFF;
+  --bs-btn-active-bg: #a01d26;
+  --bs-btn-active-border-color: #a01d26;
+  --bs-btn-active-shadow: none;
+  --bs-btn-disabled-color: #000;
+  --bs-btn-disabled-bg: #f97316;
+  --bs-btn-disabled-border-color: #f97316;
+}
+
 .btn-primary {
   --bs-btn-color: #004990;
   --bs-btn-bg: var(--bs-jive-dark);
@@ -4219,6 +4236,21 @@ fieldset:disabled .btn {
 
 .btn-link:hover {
   color: var(--bs-btn-hover-color);
+}
+
+.btn-floating-info {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 5rem;
+    height: 5rem;
+    color: #a01d26;
+    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.btn-floating-info:hover {
+    color: #660000;
+    text-shadow: 2px 2px 2px rgba(200, 200, 200, 0.8);
 }
 
 .btn-lg,
@@ -11051,11 +11083,15 @@ fieldset:disabled .btn {
 
 /* rtl:end:remove */
 .text-primary {
-  color: #f97316 !important;
+  color: #004990 !important;
 }
 
 .text-secondary {
-  color: #71717a !important;
+  color: #9DB7C4 !important;
+}
+
+.text-evn {
+    color: #a01d26 !important;
 }
 
 .text-success {
@@ -11329,7 +11365,8 @@ fieldset:disabled .btn {
 }
 
 .bg-info {
-  background-color: #0ea5e9 !important;
+  /* background-color: #0ea5e9 !important; */
+  background-color: #A6D4E8 !important;
 }
 
 .bg-warning {
@@ -21662,7 +21699,7 @@ fieldset:disabled .btn {
 }
 
 .badge {
-  text-transform: uppercase;
+  /* text-transform: uppercase; */
 }
 
 .btn {
@@ -26174,6 +26211,19 @@ h4,
 a {
   letter-spacing: 0.0025rem;
   color: #27272a;
+}
+
+.sidebar a {
+    color: #9DB7C4;
+  /* --bs-evn: #a01d26; */
+  /* --bs-jive-dark: #004990; */
+  /* --bs-jive-light: #9DB7C4; */
+}
+
+.sidebar h5, h6 {
+    color: #a01d26;
+    /* color: #004990; */
+    padding-top: 1rem;
 }
 
 .text-sm {

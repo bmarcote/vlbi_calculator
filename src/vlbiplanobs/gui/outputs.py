@@ -45,6 +45,15 @@ def card_result(number: str, label: str, id: str, extra_rows: Optional[list] = N
     ])
 
 
+def download_pdf(app, pdf_filename: str) -> html.Div:
+    """Buttom to download the PDF report
+    """
+    html.Div(html.A('Download summary as PDF', id='request-printable-version',
+                    download='evn_planobs_summary.pdf', href=app.get_asset_url(pdf_filename),
+                    className='btn btn-link btn-lg', style={'text-align': 'center'}),
+            className='col-12 justify-content-center', style={'text-align': 'center'})
+
+
 def message_card(title: str, body: str, mode: str, icon: Optional[str] = None):
     """Shows a card with a title and a body, with an icon and a mode that defines the color of the card:
     'info', 'warning', 'danger'. If 'icon' is not provided, it will take an icon by default depending on the mode
@@ -59,15 +68,15 @@ def message_card(title: str, body: str, mode: str, icon: Optional[str] = None):
             case 'warning':
                 icon = 'fa-exclamation'
 
-    colors = {'danger': '#ef4444', 'warning': '#eab308', 'info': '#0ea5e9'}
+    colors = {'danger': '#ef4444', 'warning': '#eab308', 'info': '#A6D4E8'}
 
-    return html.Div(className=f'card col-12 pb-0 m-2 bg-{mode} opacity-10 border-radius-lg',
+    return html.Div(className=f'card col-12 px-4 pb-0 m-2 bg-{mode} opacity-10 border-radius-lg',
             children=html.Div(className='card-body p-2 position-relative',
                 children=[html.Div(className='row align-items-center', children=[
                           html.Div(className='col-2 pl-3 text-center',
                                    children=html.Div(html.I(className=f'fa-solid {icon} '
                                                                      'text-light '
-                                                                     'text-gradient text-xl opacity-40',
+                                                                     'text-xl opacity-40',
                                                             style={'font-size': '3rem',
                                                                    'color': colors[mode]}),
                                                      )),
@@ -329,7 +338,7 @@ def resolution(o: Optional[cli.VLBIObs] = None) -> html.Div:
                        extra_rows=[html.Br(), html.Div(ellipse(bmaj="80px",
                                                                bmin=f"{bmin_elip}px",
                                                                pa=f"{synth_beam['pa'].value}deg"),
-                                                       className='row justift-content-center',
+                                                       className='row justift-content-center py-4',
                                                        style={'display': 'flex',
                                                               'justify-content': 'center'})])
 
@@ -376,7 +385,7 @@ def card_sun_warning(head_line: str, body_line: str, hidden: bool = False) -> ht
                       html.Div(className='col-2 pl-3 text-center',
                                children=html.Div(html.I(className='fa-solid fa-sun '
                                                                   'text-light '
-                                                                  'text-gradient text-xl opacity-40',
+                                                                  'text-xl opacity-40',
                                                         style={'font-size': '3em', 'color': '#eab308'}))),
                       html.Div(className='col-10 text-start align-items-center',
                                children=[html.H5(className='text-white font-weight-bolder mb-0 mt-0',
@@ -396,7 +405,7 @@ def card_ant_warning(head_line: str, body_line: str, hidden: bool = False) -> ht
                                                  'text-center border-radius-2xl',
                                                  children=html.I(className='fa-solid fa-satellite-dish '
                                                                  'text-dark '
-                                                                 'text-gradient text-xl opacity-10'))),
+                                                                 'text-xl opacity-10'))),
                       html.Div(className='col-10 text-start align-items-center',
                                children=[html.H5(className='text-white font-weight-bolder mb-0 mt-0',
                                                  children=head_line),
@@ -404,6 +413,7 @@ def card_ant_warning(head_line: str, body_line: str, hidden: bool = False) -> ht
                                                    children=body_line)])
                ])
             ]))
+
 
 def ant_warning(o: Optional[cli.VLBIObs]) -> html.Div:
     """Returns a warning card if some antennas selected in the observation cannot observe.
@@ -664,3 +674,8 @@ def worldmap_plot(o: Optional[cli.VLBIObs] = None) -> html.Div:
                 className='col-12 mx-0 px-0')
                   # config={'frameMargins': -10, 'showLink': False, 'displaylogo': False}), html.Br()]))
 
+
+def save_to_pdf(o: cli.VLBIObs, fig: str):
+    """Creates a PDF file with the summary of the observation and includes the elevation plot figure.
+    """
+    pass

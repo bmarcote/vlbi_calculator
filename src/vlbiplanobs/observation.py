@@ -1054,6 +1054,7 @@ class Observation(object):
             for sourcename in self.sourcenames:
                 scanname = self._scanblock_name_from_source_name(sourcename)
                 assert scanname is not None, f"No scan found related to the source {sourcename}"
+                duration_limit = 1 if self.duration is None else (24*u.h/self.duration).value
                 visible = np.array([self.is_observable_at(times)[scanname][stat.codename] \
                           for stat in self.stations])
                 integrated_time = np.sum(visible[:, None] & visible[None, :], axis=2) * delta_t
@@ -1061,7 +1062,6 @@ class Observation(object):
                               np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=1))
                 # TODO: this is a trick just to get an approximate value, considering if max duration
                 # is set.
-                duration_limit = 1 if self.duration is None else (24*u.h/self.duration).value
                 self._rms[sourcename] = ((np.sqrt(2)/0.7)/np.sqrt(temp) * duration_limit)*u.Jy/u.beam
         else:
             self._rms = {}
@@ -1130,6 +1130,7 @@ class Observation(object):
             2 * 2 * min(self.polarizations.value, 2)  # In Hz
         bandwidth_min = np.minimum.outer(bandwidths, bandwidths)
         temp = (bandwidth_min/np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=0)
+        np.fill_diagonal(temp, temp.diagonal()/sefds)
         for i in range(len(self.stations)):
             for j in range(i, len(self.stations)):
                 basel_sens[f"{self.stations[i].codename}-{self.stations[j].codename}"] = \

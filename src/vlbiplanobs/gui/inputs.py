@@ -14,9 +14,6 @@ from vlbiplanobs import stations
 from vlbiplanobs import observation
 
 
-
-
-
 def top_banner(app):
     return [html.Div(id='banner',
                      className='d-flex p-0 shadow-sm bg-white card',
@@ -43,19 +40,72 @@ def top_banner(app):
             ]
 
 
+def modal_general_info() -> html.Div:
+    """Returns the modal window that shows all relevant information concerning PlanObs.
+    """
+    return html.Div(className='sidebar',
+                    children=[
+                        html.H5("EVN Observation Planner"),
+                        html.P(["The ", html.B('EVN Observation Planner'), " (", html.Em('PlanObs'),
+                                ") is a tool that allows users to plan very long baseline "
+                                "interferometry (VLBI) observations and verify the "
+                                "expectations of such observations."]),
+                        html.P(["PlanObs is mainly developed and maintained by ",
+                               html.A("Benito Marcote", href="https://bmarcote.github.io/",
+                                      target="_blank"),
+                               " at the ", html.A("Joint Institute for VLBI ERIC (JIVE)",
+                                                  href="https://www.jive.eu", target="_blank"),
+                               " to primarily support observations with the ",
+                               html.A("European VLBI Network (EVN)", href="https://www.evlbi.org",
+                                      target="_blank"),
+                               ". PlanObs's code is publicly available at ",
+                               html.A("GitHub", href="https://github.com/bmarcote/vlbi_calculator",
+                                      target="_blank"),
+                               " under the GNU GPLv3.0+ license."
+                                ]),
+
+                        html.Hr(className='horizontal mb-1 d-xl-block d-none dark'),
+                        html.H6("Command-Line Interface"),
+                        html.P([html.B("PlanObs"), " can be used locally in your computer as a "
+                                "command-line program with different capabilities and options that "
+                                "extend the functionality of the web interface. "]),
+                        html.P(["You can install PlanObs directly from ", html.B("pip"), " as ", html.Br(),
+                                html.Span("> python3 -m pip install vlbiplanobs",
+                                          className='text-center',
+                                          style={'color': "#004990"})]),
+                        html.Div(className='text-center', children=
+                            dbc.Button("Read the Documentation",
+                                       href="https://github.com/bmarcote/vlbi_calculator/blob/master"
+                                            "/README.md", target="_blank", external_link=True,
+                                       color='info', outline=True)),
+
+                        html.Hr(className='horizontal mb-1 d-xl-block d-none dark'),
+                        html.H6("Issues or Feature Requests"),
+                        html.P(["PlanObs is currently undergoing a major update. It is thus not "
+                                "unlikely that you may encounter some small bugs or missing features. "
+                                "In such cases, or either if you just need further information on the "
+                                "current capabilities, or you would like to see new features, please "
+                                "do not heasitate to contact us or ",
+                                html.A("open a new issue on the GitHub repository",
+                                       href="https://github.com/bmarcote/vlbi_calculator/issues",
+                                       target="_blank"), "."])
+                    ])
+
+
 def card(children: Optional[list] = None, className: str = '') -> html.Div:
     return html.Div(className=' '.join(['card m-2', className]), #style={'margin': '10px'},
                     children=[html.Div(className='card-body', children=children)])
 
 
-def antenna_card_hover(app, target, ant: stations.Station) -> html.Div:
+def antenna_card_hover(app, target, ant: stations.Station, show_wavelengths: bool = True) -> html.Div:
     """Creates a Card showing all the relevant information for a given antenna, which
     will be displayed as a pop up window when hovering the name of a given antenna.
     """
     return html.Div(dmc.MantineProvider(dmc.HoverCard(shadow="md", withArrow=True, width=300,
                                                       position='right', classNames='col-12 p-0 m-0',
               children=[dmc.HoverCardTarget(target),
-                        dmc.HoverCardDropdown([antenna_card(app, ant)], className='col-12 m-0 p-0')
+                        dmc.HoverCardDropdown([antenna_card(app, ant, show_wavelengths)],
+                                              className='col-12 m-0 p-0')
                         ])),
                     style={'display': 'inline-flex', 'flex-wrap': 'wrap',
                             'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'})
@@ -68,8 +118,10 @@ def parse_str_list(a_list: list[str]) -> str:
     return ', '.join(a_list)[::-1].replace(',', 'dna ,' if len(a_list) > 3 else 'dna ', 1)[::-1]
 
 
-def antenna_card(app, ant: stations.Station) -> html.Div:
-    return html.Div((dmc.Card(children=[html.Div(
+def antenna_card(app, ant: stations.Station, show_wavelengths: bool = True) -> html.Div:
+    bands_str = [fs.bands[band].split('or')[0].replace('cm', ' cm').strip() if show_wavelengths else \
+                 fs.bands[band].split('or')[1].replace('GHz', ' GHz') for band in ant.bands]
+    return html.Div(dmc.Card(children=[html.Div(
                         dmc.CardSection(
                             dmc.Image(src=app.get_asset_url(f"ant-{ant.name.replace(' ','_')
                                           .lower()}.jpg"), h='300px', alt=ant.name),
@@ -79,25 +131,38 @@ def antenna_card(app, ant: stations.Station) -> html.Div:
                             dmc.Group([
                                 dmc.Text(f"{ant.name} ({ant.codename})", className='text-bolder'),
                                 dmc.Badge(ant.diameter, color='#9DB7C4', style={'text-transform': 'none'}),
-                            ], justify='space-between', mt='md', mb='0'),
+                            ], justify='space-between', mt='md', pt='1rem', mb='0'),
                             dmc.Text(ant.fullname, mb='0', c='#004990') if ant.fullname != ant.name \
                                 else None,
                             dmc.Text(ant.country, c='dimmed', mt='0', mb='1rem'),
-                            dmc.Text(f"Default antenna in {parse_str_list(ant.networks)}.", mb='1rem') \
-                                        if len(ant.networks) > 0 else None,
-                            dmc.Text("No longer operational.", mb='1rem', c='#a01d26') \
+                            dmc.Text(f"Default antenna in {parse_str_list(ant.networks)}.", mb='1rem',
+                                     size='sm') if len(ant.networks) > 0 else None,
+                            dmc.Text("No longer operational.", mb='1rem', c='#a01d26', size='sm') \
                                         if ant.decommissioned else None,
-                            dmc.Text(f"Can observe at {parse_str_list(ant.bands)}."),
-                        ], className='col-12 px-3 pb-2 m-0')
-                    ], withBorder=False)), className='col-12 p-0 m-0', style={'width': '300px'})
+                            dmc.Text("Can observe at the following bands (System Equivalent Flux "
+                                     "Density, SEFD, values in brackets):", size='sm',
+                                     id=f"ant-{ant.codename}-band-spec"),
+                            html.Div(className='container col-12 row mx-0 px-0', children=[
+                              html.Div(className='col-6 px-0 m-0', children=
+                                       [html.Label(children=b_str,
+                                                   id=f"badge-band-{band.replace('.', '_')}-ant-"
+                                                      f"{ant.codename}".lower(),
+                                                   className='text-xs text-primary'),
+                                        html.Label(f"({ant.sefds[band].value:g} "
+                                                   f"{ant.sefds[band].unit.to_string("unicode")})",
+                                                   className='text-xs text-secondary')
+                              ]) for b_str, band in zip(bands_str, ant.bands)])
+                        ], className='col-12 px-2 pb-2 m-0')
+                    ], withBorder=False), className='col-12 p-0 m-0', style={'width': '300px'})
 
 
 def compute_button() -> list:
     """Returns the button to compute the observation
     """
-    return html.Div(html.Button('CALCULATE', id='compute-observation',
-                                className='btn bg-primary text-bolder btn-lg mx-auto w-75 m-4 p-2 active',
-                                style={'position': 'sticky', 'top': '20px'}),
+    return html.Div([dbc.Spinner(id='loading', color='info', children=html.Div(id='loading-div')),
+                     html.Button('CALCULATE', id='compute-observation',
+                                className='btn btn-evn text-bolder btn-lg mx-auto w-75 m-4 p-2 active',
+                                style={'position': 'sticky', 'top': '20px'})],
                                 # style={'position': 'sticky', 'top': '20px', 'background-color': '#9DB7C4'}),
                     className='text-center', style={'position': 'relative'})
 
@@ -226,6 +291,7 @@ def antenna_list(app, antennas) -> list:
                                               children=[antenna_card_hover(app,
                                                                           dmc.Chip(s.name, value=s.codename,
                                                                                    color='#004990',
+                                                                                   persistence=True,
                                                                                    styles={'display': 'grid',
                                                                                     'grid-template-columns': \
                                                                                     'repeat(auto-fit, minmax(10rem, 1fr))'}
@@ -282,7 +348,7 @@ def epoch_selection() -> html.Div:
                         dmc.DateTimePicker(id='starttime', className='form-picker',
                                            value=None, minDate=dt(1900, 1, 1),
                                            maxDate=dt(2100, 1, 1),
-                                           valueFormat='DD-MM-YYYY hh:mm',
+                                           valueFormat='DD-MM-YYYY HH:mm',
                                            placeholder='Start time', withSeconds=False,
                                            persistence=True, clearable=True,
                                            style={'width': '100%'})),

@@ -1,6 +1,7 @@
+include src/vlbiplanobs/data/*
 include src/vlbiplanobs/data/stations_catalog.inp
 include src/vlbiplanobs/data/network_catalog.inp
-include docs/*
-include src/vlbiplanobs/gui/assets/*
+include src/vlbiplanobs/data/rfc_2021c_cat.txt
+recursive-include src/vlbiplanobs/gui/assets *
 include README.md
 include CHANGES.txt

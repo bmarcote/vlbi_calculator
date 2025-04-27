@@ -240,7 +240,7 @@ class VLBIObs(obs.Observation):
                                f"(assuming the total observing time).[/dim]")
                 else:
                     if src in self.sourcenames_in_block(ablockname):
-                        rprint(f"{src}: {optimal_units(rms, [u.Jy, u.mJy, u.uJy]):.02f}")
+                        rprint(f"{src}: {optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam]):.02f}")
 
             print('\n')
 

@@ -754,7 +754,7 @@ def summary_pdf(o: cli.VLBIObs):
                                  f"{cli.optimal_units(o.duration, [u.h, u.min, u.s]):.01f} "
                                  f"({cli.optimal_units(o.ontarget_time[list(o.ontarget_time.keys())[0]],
                                                   [u.h, u.min, u.s]):.01f} on target). "
-                                 f"Total output FITS file size: {o.datasize()}."))
+                                 f"Total output FITS file size: {o.datasize():.02f}."))
 
     layout.add(pdf.Paragraph(f"Participating stations: {', '.join(o.stations.station_codenames)}."))
     if len(o.scans) > 0:

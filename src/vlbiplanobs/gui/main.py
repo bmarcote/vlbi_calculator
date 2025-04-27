@@ -93,6 +93,33 @@ def change_band_labels(show_wavelengths: bool):
            *ant_labels
 
 
+@app.callback(
+    Output("welcome-modal-shown", "data"),
+    [Input("close-modal", "n_clicks")],
+    [State("welcome-modal-shown", "data")]
+)
+def update_modal_shown(n_clicks, modal_shown):
+    if n_clicks:
+        # Set modal_shown to True when the modal is closed
+        return True
+    return modal_shown
+
+
+@app.callback(
+    Output("welcome-modal", "is_open"),
+    [Input("close-modal", "n_clicks")],
+    [State("welcome-modal-shown", "data"), State("welcome-modal", "is_open")]
+)
+def toggle_modal(n_clicks, modal_shown, is_open):
+    if modal_shown is None:
+        # Show modal if it hasn't been shown before
+        return True
+    if n_clicks:
+        # Close modal when the close button is clicked
+        return not is_open
+    return is_open
+
+
 @app.callback([Output(f"network-{network}", 'disabled') for network in observation._NETWORKS] + \
               [Output(f"network-{network}-card", 'style') for network in observation._NETWORKS],
               Input('band-slider', 'value'),
@@ -477,6 +504,7 @@ app.index_string = app.index_string.replace(
 
 app.layout = dbc.Container(fluid=True, className='bg-gray-100 row m-0 p-4',
                            children=el.top_banner(app) + [
+                           el.modal_welcome(),
                            html.Div(id='main-window', className='container-fluid d-flex row p-0 m-0',
                                     children=[
                                 html.Div(id='stations-column', className='col-lg-6 col-md-6 col-6 p-0 m-0',

@@ -40,6 +40,41 @@ def top_banner(app):
             ]
 
 
+def modal_welcome() -> html.Div:
+    """Welcoming window announcing the new version
+    """
+    return html.Div([
+        dcc.Store(id='welcome-modal-shown', storage_type='local'),
+        dbc.Modal([
+            dbc.ModalBody([
+                    html.H4("Welcome to the new EVN Observation Planner (PlanObs)!"),
+                    html.H6("The version 3.0 (beta) is here"),
+                    html.P("This version contains a major upgrade of PlanObs and a big re-design."
+                           "The main new features are:"),
+                    html.Ul([
+                        html.Li("Real antenna mount limits are now taken into account to know if a "
+                                "source can be observed (e.g. hour angle limits)."),
+                        html.Li("The sensitivity calculations take into account the limited bandwidth "
+                                "that some antennas may have (e.g. eMERLIN stations observing within and "
+                                "EVN observation)."),
+                        html.Li("Warnings if the Sun is too close to your source during the observation."),
+                        html.Li("Fully-featured command-line program (CLI) that allows you to plan "
+                                "observations locally, and with multiple sources or from catalogs ("
+                                "this will be added to the online PlanObs in a later release)."),
+                        html.Li("The speed of PlanObs has increased significantly!"),
+                        html.Li("And yet, several new features are yet to come in the next releases."),
+                        # Add more updates as needed
+                    ]),
+                    html.H3(html.Em("Enjoy!"))
+                ], style={'background-color': 'rgb(212, 212, 216)'}
+            ),
+            dbc.ModalFooter(
+                dbc.Button("Close", id="close-modal", className="ml-auto btn btn-secondary")
+            )
+        ], id="welcome-modal", is_open=False)
+    ])
+
+
 def modal_general_info() -> html.Div:
     """Returns the modal window that shows all relevant information concerning PlanObs.
     """

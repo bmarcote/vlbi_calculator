@@ -73,11 +73,11 @@ def modal_general_info() -> html.Div:
                                 html.Span("> python3 -m pip install vlbiplanobs",
                                           className='text-center',
                                           style={'color': "#004990"})]),
-                        html.Div(className='text-center', children=
+                        html.Div(className='text-center col-12', children=[
                             dbc.Button("Read the Documentation",
                                        href="https://github.com/bmarcote/vlbi_calculator/blob/master"
                                             "/README.md", target="_blank", external_link=True,
-                                       color='info', outline=True)),
+                                       className='btn btn-secondary', outline=True)]),
 
                         html.Hr(className='horizontal mb-1 d-xl-block d-none dark'),
                         html.H6("Issues or Feature Requests"),
@@ -85,10 +85,12 @@ def modal_general_info() -> html.Div:
                                 "unlikely that you may encounter some small bugs or missing features. "
                                 "In such cases, or either if you just need further information on the "
                                 "current capabilities, or you would like to see new features, please "
-                                "do not heasitate to contact us or ",
-                                html.A("open a new issue on the GitHub repository",
+                                "do not heasitate to contact us! "]),
+                        html.Div(className='text-center', children=
+                            dbc.Button("Open an Issue",
                                        href="https://github.com/bmarcote/vlbi_calculator/issues",
-                                       target="_blank"), "."])
+                                       target="_blank", external_link=True,
+                                       className='btn btn-secondary', outline=True))
                     ])
 
 
@@ -102,6 +104,7 @@ def antenna_card_hover(app, target, ant: stations.Station, show_wavelengths: boo
     will be displayed as a pop up window when hovering the name of a given antenna.
     """
     return html.Div(dmc.MantineProvider(dmc.HoverCard(shadow="md", withArrow=True, width=300,
+                                                      openDelay=300,
                                                       position='right', classNames='col-12 p-0 m-0',
               children=[dmc.HoverCardTarget(target),
                         dmc.HoverCardDropdown([antenna_card(app, ant, show_wavelengths)],
@@ -159,16 +162,19 @@ def antenna_card(app, ant: stations.Station, show_wavelengths: bool = True) -> h
 def compute_button() -> list:
     """Returns the button to compute the observation
     """
-    return html.Div([dbc.Spinner(id='loading', color='info', children=html.Div(id='loading-div')),
-                     html.Button('CALCULATE', id='compute-observation',
-                                className='btn btn-evn text-bolder btn-lg mx-auto w-75 m-4 p-2 active',
-                                style={'position': 'sticky', 'top': '20px'})],
-                                # style={'position': 'sticky', 'top': '20px', 'background-color': '#9DB7C4'}),
-                    className='text-center', style={'position': 'relative'})
-
-
-def results() -> list:
-    return []
+    return html.Div(html.Div([
+                html.Div([
+                    html.Button('CALCULATE',
+                                id='compute-observation',
+                                className='btn btn-evn text-bolder btn-lg mx-auto w-75 m-4 p-2',
+                                style={'position': 'sticky', 'top': '20px'}),
+                    dbc.Spinner(id='loading', color='#a01d26',
+                                children=html.Div(id='loading-div'),
+                    )
+                ], className='d-flex align-items-center justify-content-center',
+                style={'gap': '5px'}),
+            ], className='col-12 container row'),
+        className='col-6', style={'position': 'relative'})
 
 
 def pick_band(bands: dict[str, str]) -> list:

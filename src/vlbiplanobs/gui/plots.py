@@ -14,7 +14,7 @@ from vlbiplanobs import observation as obs
 from vlbiplanobs import sources
 
 
-def elevation_plot(o) -> go.Figure:
+def elevation_plot(o, show_colorbar: bool = False) -> go.Figure:
     """Creates the plot showing when the different antennas can observe a given
     source,
     """
@@ -27,17 +27,14 @@ def elevation_plot(o) -> go.Figure:
     viridis = cm.get_cmap('viridis')
 
     if o.times is None:
-        # Let's calculate the visibility GST ranges
-        localtimes = Time('2025-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01)*u.day
-        o.times = localtimes
-        doing_gst = True
+        localtimes = o._REF_TIMES
     else:
-        doing_gst = False
+        localtimes = o.times
 
-    srcup = o.is_observable()
-    elevs = o.elevations()
-    if doing_gst:
-        o.times = None
+    srcup = o.is_observable_at(localtimes)
+    elevs = o.elevations()  # auto does it in localtimes
+    # if doing_gst:
+    #     o.times = None
 
     fig = make_subplots(rows=min([len(srcup), 4]), cols=len(srcup) // 4 + 1,
                         subplot_titles=[f"Elevations for {src_block}" for src_block in srcup] \
@@ -71,11 +68,11 @@ def elevation_plot(o) -> go.Figure:
                             mode="lines",
                             line=dict(color=color_str[i], width=10),
                             showlegend=False,
+                            marker=dict(showscale=show_colorbar),
                             hovertemplate=f"<b>{o.stations[ant].name}</b><br><b>Elevation</b>: {colors[i]:.0f}º<extra></extra><br>"
                                           f"<b>Time</b>: {o.times[i].strftime('%H:%M') \
                                           if o.times is not None \
                                                           else localtimes[i].strftime('%H:%M')}",
-                            # TODO: the times shown there are wrong! They change per source...
                         ),
                         row=src_i % 4 + 1,
                         col=src_i // 4 + 1
@@ -84,7 +81,7 @@ def elevation_plot(o) -> go.Figure:
     fig.update_layout(
         showlegend=False,
         hovermode='closest',
-        xaxis_title="Time (GST)" if doing_gst else "Time (UTC)",
+        xaxis_title="Time (GST)" if o.times is None else "Time (UTC)",
         yaxis_title="Antennas",
         title='',
         paper_bgcolor='rgba(0,0,0,0)',   # Transparent background
@@ -123,13 +120,9 @@ def elevation_plot(o) -> go.Figure:
         ),
         margin=dict(l=2, r=2, t=1, b=0)
     )
-
-        # fig.update_yaxes(
-        #     tickvals=len(o.stations) - np.array(range(len(srcup[src_block].keys()))),  # Positions on the y-axis
-        #     # tickvals=list(range(len(srcup[src_block].keys()))),  # Positions on the y-axis
-        #     ticktext=list(srcup[src_block].keys()),   # Corresponding labels (names)
-        #     title="Antennas"
-        # )
+    if show_colorbar:
+        fig.update_layout(coloraxis=dict(colorscale='Viridis'),
+                          coloraxis_colorbar=dict(title='Elevation (degrees)'))
 
     return fig
 

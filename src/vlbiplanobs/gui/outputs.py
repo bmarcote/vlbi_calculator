@@ -1,6 +1,9 @@
 # import numpy as np
 # from datetime import datetime as dt
 # import enum
+import io
+import tempfile
+from pathlib import Path
 from typing import Optional, Union
 from datetime import datetime as dt
 import numpy as np
@@ -9,6 +12,7 @@ from astropy.time import Time
 # from fpdf import FPDF
 from dash import Dash, html, dcc, callback, Output, Input, State
 import dash_bootstrap_components as dbc
+from borb import pdf
 # import plotly.express as px
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs import stations
@@ -656,7 +660,7 @@ def worldmap_plot(o: Optional[cli.VLBIObs] = None) -> html.Div:
             "name": [], "text": [], "hovertemplate": [], "observes": []}
     try:
         ant_observes = o.can_be_observed()[list(o.can_be_observed().keys())[0]]
-    except ValueError:
+    except (ValueError, IndexError):
         ant_observes = {ant.codename: True for ant in o.stations}
 
     for ant in o.stations:
@@ -674,8 +678,180 @@ def worldmap_plot(o: Optional[cli.VLBIObs] = None) -> html.Div:
                 className='col-12 mx-0 px-0')
                   # config={'frameMargins': -10, 'showLink': False, 'displaylogo': False}), html.Br()]))
 
+def button_summary(o: cli.VLBIObs) -> html.Div:
+    return dbc.Button(className='btn-lg mx-auto w-75 m-4 p-2 btn btn-outline-secondary',
+                      color='secondary', outline=True,
+                                id='button-download', style={'position': 'sticky', 'top': '20px'},
+                                children="DOWNLOAD SUMMARY AS PDF", download='planobs_summary.pdf')
 
-def save_to_pdf(o: cli.VLBIObs, fig: str):
+
+def summary_pdf(o: cli.VLBIObs):
     """Creates a PDF file with the summary of the observation and includes the elevation plot figure.
     """
-    pass
+    buffer = io.BytesIO()
+    doc: pdf.Document = pdf.Document()
+    page = pdf.Page()
+    doc.add_page(page)
+    layout: pdf.PageLayout = pdf.SingleColumnLayout(page)
+    layout.add(pdf.Paragraph("EVN Observation Planner - Summary Report", font_size=20, font='Helvetica-bold',
+                         horizontal_alignment=pdf.Alignment.CENTERED))
+    text = f"Observation to be conducted at {o.band.replace('cm', ' cm')}"
+    if o.times is not None:
+        if o.times[0].datetime.date() == o.times[-1].datetime.date():
+            layout.add(pdf.Paragraph(f"{text} from {o.times[0].strftime('%d %b %Y %H:%M')}–"
+                                     f"{o.times[-1].strftime('%H:%M')} UTC."))
+        elif (o.times[-1] - o.times[0]) < 24*u.h:
+            layout.add(pdf.Paragraph(f"{text} from {o.times[0].strftime('%d %b %Y %H:%M')}–"
+                                     f"{o.times[-1].strftime('%H:%M')} (+1d) UTC."))
+        else:
+            layout.add(pdf.Paragraph(f"{text} from {o.times[0].strftime('%d %b %Y %H:%M')} to "
+                                     f"{o.times[-1].strftime('%d %b %H:%M')} UTC."))
+    else:
+        min_stat = 3 if len(o.stations) > 3 else min(2, len(o.stations))
+        if len(o.stations) > 2:
+            if o.times is not None:
+                srcup = o.is_observable()
+            else:
+                srcup = o.is_observable_at(Time('2025-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01)*u.day)
+
+            for ablockname, antbool in srcup.items():
+                gst_range = (', '.join([t1.to_string(sep=':', fields=2, pad=True) + '--' +
+                                  (t2 + (24*u.hourangle if np.abs(t1 - t2) < 0.1*u.hourangle
+                                         else 0.0*u.hourangle)).to_string(sep=':', fields=2, pad=True) +
+                                  ' GST.' for t1, t2
+                                  in o.when_is_observable(min_stations=min_stat,
+                                                          return_gst=True)[ablockname]]))
+                layout.add(pdf.Paragraph(f"{text}. Optimal visibility range (> {min_stat} antennas) at "
+                                         f"{gst_range}{' for '+ablockname if len(srcup) > 1 else ''}"))
+
+    sun_const = o.sun_constraint()
+    sun_limit = o.sun_limiting_epochs()
+    for ablockname in o.sun_limiting_epochs():
+        if o.times is None:
+            if len(sun_limit[ablockname]) > 0:
+                text = "Note the the Sun is too close to this source"
+                t0, t1 = sun_limit[ablockname][0].datetime, sun_limit[ablockname][-1].datetime
+                if t0 == t1:
+                    text += f" on {t0.strftime('%d %b')}"
+                elif t0.month == t1.month:
+                    text += f" on {t0.day}-{t1.day} {t0.strftime('%b')}"
+                elif t0.year == t1.year:
+                    text += f" from {t0.strftime('%d %b')} to {t1.strftime('%d %b')}"
+                else:
+                    text += f" from {t0.strftime('%d %b %Y')} to {t1.strftime('%d %b %Y')}"
+                text += f" (minimum separation of {sun_const[ablockname]:.02f})"
+                text += f" for {ablockname}." if len(o.sun_limiting_epochs()) > 1 else "."
+                layout.add(pdf.Paragraph(text, font_color=pdf.HexColor("#FF0000")))
+        else:
+            if sun_const[ablockname] is not None:
+                text = "Note the the Sun is too close to the source"
+                text += f" {ablockname}" if len(o.sun_limiting_epochs()) > 1 else " "
+                text += f"({sun_const[ablockname]:.02f} away)."
+                layout.add(pdf.Paragraph(text, font_color=pdf.HexColor("#FF0000")))
+
+    if o.duration is not None:
+        layout.add(pdf.Paragraph("With a total duration of "
+                                 f"{cli.optimal_units(o.duration, [u.h, u.min, u.s]):.01f} "
+                                 f"({cli.optimal_units(o.ontarget_time[list(o.ontarget_time.keys())[0]],
+                                                  [u.h, u.min, u.s]):.01f} on target). "
+                                 f"Total output FITS file size: {o.datasize()}."))
+
+    layout.add(pdf.Paragraph(f"Participating stations: {', '.join(o.stations.station_codenames)}."))
+    if len(o.scans) > 0:
+        for ablock in o.scans.values():
+            layout.add(pdf.Paragraph(f"Target source: {'\n'.join([s.name + ' (' + s.coord.to_string('hmsdms') \
+                                                              + ').' for s in ablock.sources()])}"))
+    else:
+        layout.add(pdf.Paragraph("No sources defined."))
+
+    if None not in (o.datarate, o.bandwidth, o.subbands):
+        val = cli.optimal_units(o.datarate, [u.Gbit/u.s, u.Mbit/u.s])
+        layout.add(pdf.Paragraph(f"\nData rate of {val:.0f}, "
+               f"producing a total bandwidth of {cli.optimal_units(o.bandwidth, [u.MHz, u.GHz])}, "
+               f" divided in {o.subbands} x {int(o.bandwidth.value/o.subbands)}-"
+               f"{o.bandwidth.unit} subbands, with {o.channels} channels each, "
+               f"{o.polarizations} polarization, and {o.inttime:.01f} integration time."))
+    else:
+        layout.add(pdf.Paragraph("No setup (data rate, bandwidth, number of subbands) specified."))
+
+    for ablock in o.scans.values():
+        for src in o.sources():
+            if len(o.scans) > 1:
+                layout.add(pdf.Paragraph(f"For the source {src.name}", font='Helvetica-bold'))
+
+            rms = cli.optimal_units(o.thermal_noise()[src.name], [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
+            rms_chan = cli.optimal_units(rms/np.sqrt(1*u.min/ \
+                                         (o.duration if o.duration is not None else 24*u.h)),
+                                         [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
+                                          u.mJy/u.beam, u.uJy/u.beam])
+            rms_min = cli.optimal_units(rms*np.sqrt(o.subbands*o.channels),
+                                        [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
+                                         u.mJy/u.beam, u.uJy/u.beam])
+            layout.add(pdf.Paragraph(f"Thermal rms noise: "
+                                     f"{rms:.3g} ({rms_chan:.3g} per spectral "
+                                     f"channel and {rms_min:.3g} per one-minute time integration."))
+            synth_beam = o.synthesized_beam()[src.name]
+            bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
+            bmin = synth_beam['bmin'].to(bmaj.unit)
+            bmin_elip = max(int(bmin.value*80/bmaj.value), 2)
+            layout.add(pdf.Paragraph(f"Synthesized beam{' for ' + src.name if len(o.scans.values()) \
+                                                        > 1 else ''}: "
+                                     f"{bmaj.value:2.1f} x {bmin:2.1f}"
+                                     f", {synth_beam['pa'].value:2.0f}º."))
+
+    bw_smearing = cli.optimal_units(o.bandwidth_smearing(), [u.deg, u.arcmin, u.arcsec])
+    tm_smearing = cli.optimal_units(o.time_smearing(), [u.deg, u.arcmin, u.arcsec])
+    layout.add(pdf.Paragraph(f"Field of view limited to {bw_smearing:.2g} (from frequency smearing) "
+                             f"and {tm_smearing:.2g} (from time smearing), considering 10% loss."))
+
+    if len(o.scans.keys()) > 0:
+        fig = plots.elevation_plot(o, show_colorbar=True)
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tempfig:
+            fig.write_image(tempfig.name)
+            figpath = Path(tempfig.name)
+
+        layout.add(pdf.Image(figpath, width=414, height=265, horizontal_alignment=pdf.Alignment.CENTERED))
+
+    pdf.PDF.dumps(buffer, doc)
+    buffer.seek(0)
+    return buffer
+
+            # if self.times is not None or self.duration is not None:
+            #     rprint("\n[bold green]Expected outcome[/bold green]:")
+            #     rprint("[dim](for a +/- 45° elevation source)[/dim]")
+
+
+    def get_fig_dirty_map(self):
+        raise NotImplementedError
+        # Right now I only leave the natural weighting map (the uniform does not always correspond to the true one)
+        dirty_map_nat, laxis = self.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
+        # TODO: uncomment these two lines and move them outside observation. Flexibility
+        # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+        #         aspect='equal')
+        # fig = make_subplots(rows=1, cols=1, subplot_titles=('Natural weighting',), shared_xaxes=True, shared_yaxes=True)
+        fig.add_trace(fig1.data[0], row=1, col=1)
+        mapsize = 30*self.synthesized_beam()['bmaj'].to(u.mas).value
+        fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
+                          xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
+                          yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
+        fig.update_xaxes(title_text="RA (mas)", constrain="domain")
+        fig.update_yaxes(title_text="Dec (mas)", scaleanchor="x", scaleratio=1)
+        # dirty_map_nat, laxis = obs.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
+        # dirty_map_uni, laxis = obs.get_dirtymap(pixsize=1024, robust='uniform', oversampling=4)
+        # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+        #         aspect='equal')
+        # fig2 = px.imshow(img=dirty_map_uni, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+        #         aspect='equal')
+        # fig = make_subplots(rows=1, cols=2, subplot_titles=('Natural weighting', 'Uniform weighting'),
+        #                     shared_xaxes=True, shared_yaxes=True)
+        # fig.add_trace(fig1.data[0], row=1, col=1)
+        # fig.add_trace(fig2.data[0], row=1, col=2)
+        # mapsize = 30*obs.synthesized_beam()['bmaj'].to(u.mas).value
+        # fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
+        #                   xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
+        #                   # This xaxis2 represents the xaxis for fig2.
+        #                   xaxis2={'autorange': False, 'range': [mapsize, -mapsize]},
+        #                   yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
+        # fig.update_xaxes(title_text="RA (mas)", constrain="domain")
+        # fig.update_yaxes(title_text="Dec (mas)", row=1, col=1, scaleanchor="x", scaleratio=1)
+

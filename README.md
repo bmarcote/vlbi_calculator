@@ -24,7 +24,7 @@ python3 -m pip install vlbiplanobs
 ```
 
 
-Once you have it installed, you can simply run it by typing `planobs --server` in the terminal.  It will start to run the server and you will be able to access it in your browser by following the typed url (likely http://0.0.0.0:8050/).
+Once you have it installed, you can simply run it by typing `planobs-server` in the terminal.  It will start to run the server and you will be able to access it in your browser by following the typed url (likely http://0.0.0.0:8050/).
 
 
 > **But PlanObs also has a lovely command-line interface!
@@ -49,103 +49,19 @@ In your terminal to encounter all options.
 
 **Example cases**
 
-1. You want to know when a source (e.g. 'Altair') can be observed by a given VLBI network (e.g. the EVN). It is as easy as:
+1. You want to know when a source (e.g. 'Altair') can be observed by a given VLBI network (e.g. the EVN and eMERLIN). It is as easy as:
 
 ```bash
-planobs --network EVN --target Altair ........
+planobs -b 6cm -t 'Altair' --network EVN eMERLIN
+```
+
+
+If you want to specify an epoch and some particular stations, you can do:
+
+```bash
+planobs --band 6cm --target 'Altair' --stations Ef Hh Ir Mc Tr Hh T6 O8 Wb Cm --starttime '2020-06-15 20:00' --duration 12
     --no-gui   # if you don't want to visualize the plots in the browser but only within the terminal
 ```
-
-
-
-```python
-# Packages used in the example:
-import numpy as np
-from astropy import units as u
-
-import vlbiplanobs
-
-# Two main modules that can also be imported directly
-from vlbiplanobs import stations
-from vlbiplanobs import observation
-
-# You can define your source and telescopes before setting the observation:
-
-# You can define the source you want to observe with:
-source = observation.Source(coordinates='XXhXXmXXs XXdXXmXXs', name='my_source')
-
-# To can then retrieve the coordinates with:
-# (as in a astropy.coordinates.angles.Longitude/Latitude object)
-source.ra
-source.dec
-# Or retrieve the full astropy.coordinates object as
-source.coord
-
-
-# You can import all stations that are known by default:
-all_stations = stations.Stations.get_stations_from_configfile()
-# Note that you can get the codenames with
-all_stations.keys()
-
-# Or just a subset of them by selecting manually
-# the stations you want from their codenames (e.g.):
-my_stations = stations.Stations.get_stations_from_configfile(codenames=('Ef', 'Ys', 'Wb'))
-
-# Where you can also select the antennas that can observe at a given band:
-stations18cm = my_stations.stations_with_band('18cm')
-
-
-# Finally, you can set the observation
-obs = observation.Observation(target=source,
-    times=observation.Time('1967-04-17 10:00') + np.arange(0, 600, 15)*u.min,  # list of times covering the observation.
-    band='18cm',  # must be a string with the format XXcm.
-    datarate=1024, # Mbps
-    subbands=8, # no. subbands (or IFs).
-    channels=64, # no. of channels per subband
-    polarizations=4, # no. of polarizations (1: single, 2: dual, 4: full polarization)
-    inttime=2,  # integration time in seconds (or astropy.Quantity)
-    ontarget=0.7, # fraction of the total observing time spent in the target source (affects to the estimated noise level)
-    stations=stations18cm,   # add a Stations object containing all stations that will observe
-    bits=2)  # no. of bits used for data recording (2 in typical VLBI observations)
-
-# You can get the wavelength or frequency of the observation
-print(obs.wavelength)
-print(obs.frequency)
-
-# The total bandwidth of the observation
-print(obs.bandwidth)
-# Or per subband:
-print(obs.bandwidth/obs.subbands)
-
-# Get the times (UTC) in datetime format, or GST:
-print(obs.times.datetime)
-print(obs.gstimes)
-
-
-# Obtain the source elevation along the observation for each antenna
-obs.elevations()  # Returns a dict with the codename of the station as key and an numpy.array with the elevations as value.
-
-# or the altitude/azimuth of the source, following the same approach
-obs.altaz()
-
-# If you just want to know at which times the source will be visible per station:
-obs.is_visible()
-
-# Obtain the expected thermal rms noise for the whole observation
-obs.thermal_noise()
-
-# And the expected synthesized beam (using a neutral weighting of zero)
-obs.synthesized_beam()  # returns a dict with 'bmaj', 'bmin', 'pa'.
-
-# And some additional useful information as (but not limited to):
-obs.longest_baseline()  # returning ((antenna1,antenna2), baseline_length)
-obs.shortest_baseline()
-obs.bandwidth_smearing()
-obs.time_smearing()
-
-```
-
-You can then use of favourite tools or your own scripts to process this information.
 
 
 

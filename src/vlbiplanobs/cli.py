@@ -13,9 +13,7 @@ from vlbiplanobs import stations
 from vlbiplanobs import observation as obs
 from vlbiplanobs import sources
 from vlbiplanobs import freqsetups
-from vlbiplanobs import gui
 from vlbiplanobs.gui import plots
-# from vlbiplanobs import scheduler
 
 _STATIONS = stations.Stations()
 _NETWORKS = _STATIONS.get_networks_from_configfile()
@@ -254,7 +252,7 @@ class VLBIObs(obs.Observation):
             # rprint("No scans have been defined.")
             sys.exit(0)
 
-        figs = gui.plots.elevation_plot(self)
+        figs = plots.elevation_plot(self)
         figs.show()
 
     def print_baseline_sensitivities(self):
@@ -506,9 +504,6 @@ def cli():
                         "show the quick plots through terminal.")
     parser.add_argument('--no-tui', action="store_false", default=True,
                         help="If set, then it will not show all the output in the terminal as default.")
-    parser.add_argument('--server', action="store_true", default=False,
-                        help="If set, then it run the full featured PlanObs program on the browser "
-                        "(as the online version hosted at JIVE).")
     # TODO: add argument, min number of antennas possible
 
     args = parser.parse_args()
@@ -536,9 +531,6 @@ def cli():
 
     if args.list_antennas or args.list_bands or args.list_networks:
         sys.exit(0)
-
-    if args.server:
-        gui.main.main(False)
 
     if args.band is None:
         parser.print_help()

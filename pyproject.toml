@@ -67,4 +67,5 @@ include-package-data = true
 
 [project.scripts]
 planobs = "vlbiplanobs.cli:cli"
+planobs-server = "vlbiplanobs.gui.main:main"
 

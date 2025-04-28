@@ -176,7 +176,7 @@ def summary_freq_res(o: Optional[cli.VLBIObs] = None) -> html.Div:
                                                      f"with {o.channels} spectral channels each.") \
                                               if o.subbands > 1 else \
                                               html.P(f"The total bandwidth of {o.bandwidth} is recorded in "
-                                                     "a single subband, with {o.channels} spectral channels."))
+                                                     f"a single subband, with {o.channels} spectral channels."))
                        ])
 
 

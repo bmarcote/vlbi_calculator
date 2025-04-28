@@ -2,13 +2,11 @@
 
 /* @font-face { */
 /*   font-family: 'Inter'; */
-/*   /* src: url('https://fonts.googleapis.com/css?family=Inter:300,400,500,600,700,800'); */ */
-/*   /* src: url('../fonts/nucleo.ttf'); */ */
-/*   src: url("../fonts/Inter-VariableFont_opsz,wght.ttf"); */
 /* } */
 
 
-/*!
+@import url('https://fonts.googleapis.com/css?family=Inter:300,400,500,600,700,800');
+/*
  * Bootstrap  v5.3.3 (https://getbootstrap.com/)
  * Copyright 2011-2024 The Bootstrap Authors
  * Licensed under MIT (https://github.com/twbs/bootstrap/blob/main/LICENSE)
@@ -18,6 +16,8 @@
   --bs-evn: #a01d26;
   --bs-jive-dark: #004990;
   --bs-jive-light: #9DB7C4;
+  --bs-font-sans-serif: "Inter";
+  --bs-body-font-family: "Inter";
   --bs-blue: #0ea5e9;
   --bs-indigo: #6366f1;
   --bs-purple: #a855f7;
@@ -40,7 +40,7 @@
   --bs-gray-700: #3f3f46;
   --bs-gray-800: #27272a;
   --bs-gray-900: #18181b;
-  --bs-primary: var(--bs-jive-light);
+  --bs-primary: #9DB7C4;
   /* --bs-primary: #f97316; */
   --bs-secondary: #004990;
   --bs-success: #22c55e;
@@ -86,7 +86,7 @@
   --bs-dark-border-subtle: #71717a;
   --bs-white-rgb: 255, 255, 255;
   --bs-black-rgb: 0, 0, 0;
-  --bs-font-sans-serif: "Inter" "Open Sans" "nucleo";
+  --bs-font-sans-serif: "Inter";
   --bs-font-monospace: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --bs-gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0));
   --bs-body-font-family: var(--bs-font-sans-serif);

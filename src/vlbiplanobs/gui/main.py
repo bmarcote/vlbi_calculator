@@ -311,7 +311,10 @@ def toggle_modal(n_clicks, is_open):
               Input("button-download", "n_clicks"))
 def download_pdf_summary(n_clicks):
     if n_clicks is not None:
-        return dcc.send_bytes(out.summary_pdf(_main_obs.get()).getvalue(), "planobs_summary.pdf")
+        try:
+            return dcc.send_bytes(out.summary_pdf(_main_obs.get()).getvalue(), "planobs_summary.pdf")
+        except ValueError:
+            return dash.no_update
 
     return dash.no_update
 

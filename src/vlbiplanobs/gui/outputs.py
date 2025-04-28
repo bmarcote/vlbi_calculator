@@ -688,6 +688,9 @@ def button_summary(o: cli.VLBIObs) -> html.Div:
 def summary_pdf(o: cli.VLBIObs):
     """Creates a PDF file with the summary of the observation and includes the elevation plot figure.
     """
+    if o is None:
+        raise ValueError("Observation cannot be None")
+
     buffer = io.BytesIO()
     doc: pdf.Document = pdf.Document()
     page = pdf.Page()

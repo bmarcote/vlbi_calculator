@@ -122,7 +122,14 @@ class Station(object):
         assert isinstance(real_time, bool), "'real_time' must be a bool."
         self.observer: Observer = Observer(name=name.replace("_", " "), location=location)
         self._codename: str = codename
-        self._networks: tuple[str] = networks if isinstance(networks, tuple) else (networks,)
+        if isinstance(networks, str):
+            # It shouldn't, but to be on the safe side and avoid mistakes from the user
+            self._networks: tuple[str] = tuple(n.strip() for n in networks.split(','))
+        elif isinstance(networks, list):
+            self._networks = tuple(networks)
+        else:
+            self._networks = networks
+
         self._freqs_sefds: dict[str, float] = {f if "cm" in f else f"{f}cm": v
                                                for f, v in freqs_sefds.items()}
         self._fullname: str = name if fullname is None else fullname
@@ -450,7 +457,7 @@ class Stations(object):
                "'stations' must be a list or be empty."
         self._stations: dict[str, Station] = {}
         self._bands: dict[str, u.Quantity] = {}
-        self._name: Optional[str] = name
+        self._name: str = name if name is not None else "Network"
         if (observing_bands is None) and (max_datarates is not None):
             raise ValueError("If 'max_datarates' is provided, 'observing_bands' must also be provided.")
 
@@ -492,7 +499,7 @@ class Stations(object):
             # raise NotImplementedError
 
     @property
-    def name(self) -> Optional[str]:
+    def name(self) -> str:
         return self._name
 
     @property
@@ -619,7 +626,7 @@ class Stations(object):
         return self.__add__(stations)
 
     def stations_with_band(self, band: str) -> Generator[Station]:
-        """Returns a the stations in the Stations that can observe at the given band.
+        """Returns the stations in the Stations that can observe at the given band.
         that can observe at the given band.
 
         Inputs
@@ -649,7 +656,6 @@ class Stations(object):
             - Stations
                 A new network object containing only the antennas that can observe in the network.
         """
-        # TODO: change this to network -> networks so it may include multiple!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         if isinstance(networks, str):
             networks = [n.strip() for n in networks.split(',')]
 
@@ -716,11 +722,12 @@ class Stations(object):
         if not all([codename in self.station_codenames for codename in codenames]):
             unexpected_ant = set(codenames).difference(set(self.station_codenames))
             if len(unexpected_ant) == 1:
-                rprint(f"[yellow bold]WARNING: The antenna with codename {unexpected_ant.pop()} is not present "
-                       "in the current network.[/yellow bold]")
+                rprint(f"[yellow bold]WARNING: The antenna with codename {unexpected_ant.pop()}"
+                       " is not present in the current network.[/yellow bold]")
             else:
-                rprint(f"[yellow bold]WARNING: The antennas with codenames {', '.join(list(unexpected_ant))} "
-                       "are not present in the current network.[/yellow bold]")
+                rprint("[yellow bold]WARNING: The antennas with codenames "
+                       f"{', '.join(list(unexpected_ant))} are not present in the current "
+                       "network.[/yellow bold]")
         codename_indices = {codename: i for i, codename in enumerate(codenames)}
         return Stations(stations=sorted([s for s in self.stations if s.codename in codenames],
                                         key=lambda x: codename_indices[x.codename]),
@@ -771,13 +778,15 @@ class Stations(object):
 
             obs_bands = [b.strip() for b in config[networkname]["observing_bands"].split(",")]
             default_ant = [a.strip() for a in config[networkname]["default_antennas"].split(",")]
-            assert all([ant in all_ants.station_codenames for ant in default_ant]), "The default antenna(s) " \
-                   f"({', '.join([ant for ant in default_ant if ant not in all_ants])}) from '{networkname}' " \
-                   "is not present in stations_catalog!"
+            assert all([ant in all_ants.station_codenames for ant in default_ant]), \
+                   "The default antenna(s) (" + \
+                   ", ".join([ant for ant in default_ant if ant not in all_ants]) + \
+                   f") from '{networkname}' is not present in stations_catalog!"
 
             assert all([band in freqsetups.bands.keys() for band in obs_bands]), \
-                   f"Observing band ({', '.join([b for b in obs_bands if b not in freqsetups.bands.keys()])}) " \
-                   "not present in freqsetups.py!"
+                   "Observing band (" + \
+                   ", ".join([b for b in obs_bands if b not in freqsetups.bands.keys()]) + \
+                   ") not present in freqsetups.py!"
 
             if isinstance(max_dt, Sequence):
                 temp = ', '.join([d for d in max_dt if int(d.value) not in freqsetups.data_rates.keys()])
@@ -790,7 +799,8 @@ class Stations(object):
             antennas = [all_ants[[a.codename for a in all_ants].index(ant)] for ant in default_ant]
             assert len(antennas) > 0, f"No antennas found for the network {networkname}."
 
-            networks[networkname] = Stations(stations=antennas, observing_bands=obs_bands, max_datarates=max_dt,
+            networks[networkname] = Stations(stations=antennas,
+                                             observing_bands=obs_bands, max_datarates=max_dt,
                                              name=config[networkname]["name"])
 
         return networks
@@ -799,7 +809,7 @@ class Stations(object):
     def get_network_full_name(network: str) -> str:
         config = configparser.ConfigParser()
         with resources.as_file(resources.files("vlbiplanobs.data").joinpath("network_catalog.inp")) \
-                                                                            as networks_catalog_path:
+                as networks_catalog_path:
             config.read(networks_catalog_path)
 
         return config[network]["name"]
@@ -842,11 +852,12 @@ class Stations(object):
             Station
         """
         temp = [float(i.strip()) for i in station["position"].split(",")]
-        a_loc = coord.EarthLocation(u.Quantity(temp[0], u.m), u.Quantity(temp[1], u.m), u.Quantity(temp[2], u.m))
+        a_loc = coord.EarthLocation(u.Quantity(temp[0], u.m), u.Quantity(temp[1], u.m),
+                                    u.Quantity(temp[2], u.m))
         # Getting the SEFD values for the bands
         does_real_time = True if station["real_time"] == "yes" else False
         is_decommissioned = True if ("decommissioned" in station) and \
-                                    station["decommissioned"].strip() == "yes" else False
+            station["decommissioned"].strip() == "yes" else False
         sefds = {}
         max_dt: u.Quantity | dict[str, u.Quantity] | None = None
         for akey in station.keys():

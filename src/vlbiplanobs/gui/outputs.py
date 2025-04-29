@@ -131,7 +131,7 @@ def warning_phase_referencing_high_freq(o: Optional[cli.VLBIObs] = None) -> html
 
 
 def summary_freq_res(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    if o is None or None in (o.bandwidth, o.subbands, o.channels):
+    if (o is None) or None in (o.bandwidth, o.subbands, o.channels):
         return html.Div()
 
     try:
@@ -213,7 +213,7 @@ def rms(o: Optional[cli.VLBIObs] = None) -> html.Div:
                                                   (o.duration if o.duration is not None else 24*u.h)),
                                                   [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
                                                    u.mJy/u.beam, u.uJy/u.beam])),
-                   quantity2str(cli.optimal_units(rms*np.sqrt(o.subbands * o.channels),
+                   quantity2str(cli.optimal_units(rms*np.sqrt(o.subbands * o.channels),  # type: ignore
                                                   [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
                                                    u.mJy/u.beam, u.uJy/u.beam])),
                    show_baseline_sensitivities(o)]
@@ -738,9 +738,9 @@ def summary_pdf(o: cli.VLBIObs):
         layout.add(pdf.Paragraph("With a total duration of "
                                  f"{cli.optimal_units(o.duration, [u.h, u.min, u.s]):.01f} "
                                  f"({cli.optimal_units(o.ontarget_time[list(o.ontarget_time.keys())[0]], [u.h, u.min, u.s]):.01f} on target). "
-                                 f"Total output FITS file size: {o.datasize():.02f}."))
+                                 f"Total output FITS file size: {o.datasize():.2f}."))
 
-    layout.add(pdf.Paragraph(f"Participating stations: {', '.join(o.stations.station_codenames)}."))
+    layout.add(pdf.Paragraph(f"Participating stations ({len(o.stations)}): {', '.join(o.stations.station_codenames)}."))
     if len(o.scans) > 0:
         for ablock in o.scans.values():
             temp = '\n'.join([f"{s.name} ({s.coord.to_string('hmsdms')})." for s in ablock.sources()])

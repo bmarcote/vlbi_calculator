@@ -527,7 +527,9 @@ def cli():
         for aband in obs.freqsetups.bands:
             rprint(f"[bold]{aband}[/bold] [dim]({obs.freqsetups.bands[aband]})[/dim]")
             rprint("[dim]  Observable with [/dim]", end='')
-            rprint(f"[dim]{', '.join([nn for nn, n in _NETWORKS.items() if aband in n.observing_bands])}[/dim]")
+            rprint("[dim]" +
+                   ', '.join([nn for nn, n in _NETWORKS.items() if aband in n.observing_bands]) +
+                   "[/dim]")
 
     if args.list_antennas or args.list_bands or args.list_networks:
         sys.exit(0)

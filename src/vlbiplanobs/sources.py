@@ -467,6 +467,7 @@ class SourceCatalog:
             path : str
                 The path to the yaml file with the catalog of sources to be imported.
         """
+        raise NotImplementedError
         # TODO: convert this to another module and use duckDB, should be much faster
         if path is None:
             path = resources.as_file(resources.files("vlbiplanobs.data").joinpath("rfc_2021_cat.txt"))

@@ -1,6 +1,7 @@
 import asyncio
 import threading
-from typing import Optional, Union, Iterable, Sequence, Self, Tuple
+from collections import defaultdict
+from typing import Optional, Union, Iterable, Sequence, Self, Tuple, Literal
 from importlib import resources
 from functools import partial
 from itertools import product
@@ -59,11 +60,11 @@ class Observation(object):
         return Time('2025-01-01', scale='utc') + np.arange(0.0, 365.2, 1)*u.day
 
     def __init__(self, band: str, stations: Stations, scans: dict[str, ScanBlock],
-                 times: Optional[Time] = None, duration: Optional[u.Quantity] = None,
-                 datarate: Optional[Union[str, u.Quantity]] = None,
-                 subbands: Optional[int] = None, channels: int = 64,
+                 times: Optional[Time] = None, duration: u.Quantity = 24*u.h,
+                 datarate: Optional[u.Quantity] = None,
+                 subbands: int = 8, channels: int = 64,
                  polarizations: Union[int, str] = 4,
-                 inttime: Union[float, u.Quantity] = 2.0,
+                 inttime: u.Quantity = 2.0*u.s,
                  ontarget: float = 0.7, bits: int = 2):
         """Initializes an observation.
         Note that you can initialize an empty observation at this stage and add the
@@ -128,13 +129,8 @@ class Observation(object):
             raise ValueError("Scans needs to be either a ScanBlock or a list of ScanBlocks.")
 
         self._source_list: Optional[list[Source]] = None
-        # Because otherwise gstimes is not initialized
-        if times is None:
-            self._times = None
-            self._gstimes = None
-        else:
-            self.times = times
-
+        self._fixed_time: bool = times is not None
+        self.times = times
         self.band = band
         self.subbands = subbands
         self.channels = channels
@@ -144,8 +140,7 @@ class Observation(object):
         self._duration = duration if duration is not None else 24*u.h
         self.stations = stations
         self.bitsampling = bits
-        self.datarate = datarate if isinstance(datarate, u.Quantity) or datarate is None \
-            else datarate*u.Mbit/u.s
+        self.datarate = datarate
         self.ontarget_fraction = ontarget
         self._uv_baseline: Optional[dict[str, dict[str, u.Quantity]]] = None
         self._uv_array: Optional[dict[str, np.ndarray]] = None
@@ -158,7 +153,7 @@ class Observation(object):
         self._baseline_sensitivity: Optional[dict[str, u.Quantity]] = None
 
     @property
-    def scans(self) -> Optional[dict[str, ScanBlock]]:
+    def scans(self) -> dict[str, ScanBlock]:
         """Returns the ScanBlock that will be observed during the observation.
         """
         return self._scans
@@ -166,7 +161,7 @@ class Observation(object):
     @scans.setter
     def scans(self, scans: Optional[dict[str, ScanBlock]]):
         with self._mutex:
-            self._scans = scans
+            self._scans = scans if scans is not None else {}
             self._elevations = None
             self._altaz = None
             self._is_visible = None
@@ -203,13 +198,11 @@ class Observation(object):
 
         return self._source_list
 
-    def _scanblock_name_from_source_name(self, source_name: str) -> Optional[str]:
+    def _scanblock_name_from_source_name(self, source_name: str) -> str:
         if self.scans is not None:
             for scanblockname, scanblock in self.scans.items():
                 if source_name in scanblock:
                     return scanblockname
-        else:
-            return None
 
         raise ValueError(f"The source {source_name} is not present in any scan.")
 
@@ -221,7 +214,7 @@ class Observation(object):
         return [a_source.name for a_source in self.sources()]
 
     @property
-    def times(self) -> Optional[Time]:
+    def times(self) -> Time:
         """Returns the times when the observation runs as an astropy.time.Time object.
         It can return None if the times have not been set yet, showing a warning.
         """
@@ -235,11 +228,9 @@ class Observation(object):
             raise ValueError("'times' must have at least two time values: "
                              "start and end of the observation.")
         with self._mutex:
-            self._times = new_times
-            if self._times is None:
-                self._gstimes = None
-            else:
-                self._gstimes = self._times.sidereal_time('mean', 'greenwich')
+            self._times = new_times if new_times is not None else self._REF_TIMES
+            self._gstimes = self._times.sidereal_time('mean', 'greenwich')
+            self._fixed_time = new_times is not None
 
             self._elevations = None
             self._altaz = None
@@ -257,6 +248,10 @@ class Observation(object):
         It can return None if the times have not been set yet, showing a warning.
         """
         return self._gstimes
+
+    @property
+    def fixed_time(self) -> bool:
+        return self._fixed_time
 
     @property
     def duration(self) -> u.Quantity:
@@ -298,19 +293,20 @@ class Observation(object):
         return 30*u.GHz/self.wavelength.to(u.cm).value
 
     @property
-    def datarate(self) -> Optional[u.Quantity]:
+    def datarate(self) -> u.Quantity:
         """Retuns the data rate (per station) used at which the observation is conducted.
         It can return None if the data rate has not been set yet, showing a warning.
         """
         return self._datarate
 
     @datarate.setter
-    def datarate(self, new_datarate: Optional[u.Quantity]):
+    def datarate(self, new_datarate: u.Quantity):
         """Sets the data rate used at each station during the observation.
 
         Inputs
         - new_datarate : astropy.units.Quantity  [e.g. Mb/s]
         """
+        the_networks = self._guess_network()
         with self._mutex:
             if new_datarate is None:
                 self._datarate = None
@@ -318,7 +314,7 @@ class Observation(object):
                 if new_datarate <= 0:
                     raise ValueError(f"datarate must be a positive number (currently {new_datarate})")
 
-                self._datarate = new_datarate*u.Mbit/u.s
+                self._datarate = new_datarate * u.Mbit/u.s
             elif isinstance(new_datarate, u.Quantity):
                 if new_datarate <= 0:
                     raise ValueError(f"datarate must be a positive number (currently {new_datarate})")
@@ -328,7 +324,6 @@ class Observation(object):
                 raise ValueError(f"Unknown type for datarate {new_datarate}"
                                  "(int or astropy.units.Quantity (~bit/s) expected)")
 
-            the_networks = self._guess_network()
             if 'EVN' in the_networks:
                 for s in self.stations:
                     if isinstance(s.max_datarate, dict) and 'EVN' in s.max_datarate:
@@ -368,7 +363,7 @@ class Observation(object):
         return sorted_networks
 
     @property
-    def subbands(self) -> Optional[int]:
+    def subbands(self) -> int:
         """Returns the number of subbands (also known as intermediate frequencies for AIPS users)
         in which the total bandwidth of the observation will be divided during correlation.
         It can return None if the number of subbands has not been set yet, showing a warning.
@@ -376,9 +371,9 @@ class Observation(object):
         return self._subbands
 
     @subbands.setter
-    def subbands(self, n_subbands: Optional[int]):
-        if (n_subbands is not None) and (not isinstance(n_subbands, int)) and (n_subbands <= 0):
-            raise ValueError("n_subbands needs to be a positive int, or None.")
+    def subbands(self, n_subbands: int):
+        if (n_subbands is None) or (not isinstance(n_subbands, int)) or (n_subbands <= 0):
+            raise ValueError("n_subbands needs to be a positive integer.")
 
         self._subbands = n_subbands
 
@@ -422,8 +417,8 @@ class Observation(object):
                     self._polarizations = Polarization.FULL
                 case _:
                     raise ValueError("Polarizations needs to be either a Polarization value, "
-                                     "the number 1, 2, or 4, or the strings "
-                                     "'single', 'dual' or 'full' (equivalent to the numbers, respectively).")
+                                     "the number 1, 2, or 4, or the strings 'single', "
+                                     "'dual' or 'full' (equivalent to the numbers, respectively).")
 
             self._rms = None
             self._baseline_sensitivity = None
@@ -432,30 +427,25 @@ class Observation(object):
             self._synth_beam = None
 
     @property
-    def inttime(self) -> Optional[u.Quantity]:
+    def inttime(self) -> u.Quantity:
         """Returns the integration time used when correlating the observation as an astropy.units.Quantity.
         It can return None if the integration time has not been set yet, showing a warning.
         """
         return self._inttime
 
     @inttime.setter
-    def inttime(self, new_inttime: Optional[Union[int, float, u.Quantity]]):
+    def inttime(self, new_inttime: u.Quantity):
         """Sets the integration time of the observation.
         Inputs
         - new_inttime float/int or astropy.units.Quantity.
             If no units provided, seconds are assumed.
         """
-        if new_inttime is None:
-            self._inttime = None
-        elif isinstance(new_inttime, float) or isinstance(new_inttime, int):
-            if new_inttime <= 0:
-                raise ValueError(f"'inttime' must be a positive number (currently {new_inttime})")
+        if new_inttime <= 0:
+            raise ValueError(f"'inttime' must be a positive number (currently {new_inttime})")
 
+        if isinstance(new_inttime, float) or isinstance(new_inttime, int):
             self._inttime = new_inttime*u.s
         elif isinstance(new_inttime, u.Quantity):
-            if new_inttime <= 0:
-                raise ValueError(f"'inttime' must be a positive number (currently {new_inttime})")
-
             self._inttime = new_inttime.to(u.s)
         else:
             raise ValueError(f"Unknown type for 'inttime' {new_inttime} "
@@ -479,42 +469,31 @@ class Observation(object):
             self._rms = None
 
     @property
-    def ontarget_time(self) -> Optional[dict[str, u.Quantity]]:
+    def ontarget_time(self) -> dict[str, u.Quantity]:
         """Total time spent on the target source during the observation.
         It can return None if the ontarget_fraction and duration have not been set yet, showing a warning.
         """
-        with self._mutex:
-            if (self.duration is None) and (self.scans is None):
-                return None
-            elif (self.duration is not None) and (self.scans is None or not self.scans):
-                return {'DUMMY': self.duration*self.ontarget_fraction}
-            elif (self.duration is None) and (self.scans is not None):
-                rprint("[red bold]Unexpected State[/red bold]: [red]You should have not reached "
-                       "this place... Duration should be set already when scans are set![/red]")
-                raise RuntimeError("Observation duration is not set but scans are set.")
+        if not self.scans:
+            return {'DUMMY': self.duration*self.ontarget_fraction}
 
-            to_return = {}
-            for scanblock in self.scans.values():
-                if len(scanblock.scans) == 1:
-                    to_return[scanblock.scans[0].source.name] = self.duration*self.ontarget_fraction
-                else:
-                    for src, dur in scanblock.fractional_time().items():
-                        to_return[src] = dur * self.duration  # type: ignore
+        to_return = {}
+        for scanblock in self.scans.values():
+            if len(scanblock.scans) == 1:
+                to_return[scanblock.scans[0].source.name] = self.duration*self.ontarget_fraction
+            else:
+                for src, dur in scanblock.fractional_time().items():
+                    to_return[src] = dur * self.duration  # type: ignore
 
-            return to_return
+        return to_return
 
     @property
-    def bandwidth(self) -> Optional[u.Quantity]:
+    def bandwidth(self) -> u.Quantity:
         """Returns the total bandwidth of the observation.
         It returns None if the attributes 'polarizations', 'datarate', or 'bitsampling'
         have not been set yet.
         """
-        with self._mutex:
-            if None in (self.polarizations, self.datarate, self.bitsampling):
-                return None
-
-            pols = self.polarizations.value % 3 + self.polarizations.value // 3  # Either 1 or 2
-            return (self.datarate/(pols*self.bitsampling*2)).to(u.MHz)  # type: ignore
+        pols = self.polarizations.value % 3 + self.polarizations.value // 3  # Either 1 or 2
+        return (self.datarate/(pols*self.bitsampling*2)).to(u.MHz)  # type: ignore
 
     @property
     def bitsampling(self) -> int:
@@ -559,20 +538,14 @@ class Observation(object):
     def sources_in_block(self, block_name: str, source_type: Optional[SourceType] = None) -> list[Source]:
         """Returns the sources that are included in a specific scan block.
         """
-        if self._scans is None or block_name not in self._scans:
-            raise ValueError(f"The ScanBlock named {block_name} could not be found.")
-
         return self._scans[block_name].sources(source_type)
 
     def sourcenames_in_block(self, block_name: str, source_type: Optional[SourceType] = None) -> list[str]:
         """Returns the sources that are included in a specific scan block.
         """
-        if self._scans is None or block_name not in self._scans:
-            raise ValueError(f"The ScanBlock named {block_name} could not be found.")
-
         return self._scans[block_name].sourcenames(source_type) if self._scans is not None else None
 
-    def elevations(self) -> dict[str, dict[str, dict[str, coord.angles.Latitude]]]:
+    def elevations(self) -> dict[str, dict[str, coord.angles.Latitude]]:
         """Returns the elevation of the sources for each stations participating in the observation
         for all the given observing times.
 
@@ -581,95 +554,20 @@ class Observation(object):
                 Dictionary where they keys are: the ScanBlock name, the source name,
                 and then the station code names, and the values are the elevations at each time stamp.
         """
-        if (self.sources is None): # or (self.times is None):
-            raise ValueError("The target has not been initialized")
+        if not self.sources():
+            return {}
+
         # the current timing checks provided (on a test observation):
         # Elevations with process: 16.56423762498889 s
         # Elevations with threads: 0.2133850830141455 s
         # Elevations with nothing: 0.36229008401278406 s
         with self._mutex:
             if self._elevations is None:
-                self._elevations = self._elevations_threads()
+                # self._elevations = self._elevations_threads()
+                self._elevations = {src: {ant: altaz.alt for ant, altaz in srcd.items()}
+                                    for src, srcd in self.altaz().items()}
 
         return self._elevations
-
-    # INFO: this code in the following was meant to test how the computation runs faster
-    # (process, threads, etc)
-    def _elevation_func(self, a_scanblock: ScanBlock) -> dict[str, dict[str, Iterable]]:
-        if (self.sources is None): # or (self.times is None):
-            raise ValueError("The target has not been initialized")
-
-        # TODO: check if doing a multi-thread here will improve performance or not
-
-        return {src.name: {a_station.codename: a_station.elevation(self.times if self.times is not None
-                                                                   else self._REF_TIMES, src)
-                for a_station in self.stations}
-                for src in self.sources()}
-
-    def _elevations_process(self) -> dict:
-        """Returns the elevation of the target source for each stations participating in the observation
-        for all the given observing times.
-
-        It computes it using different processes in parallel.
-
-        Returns
-            elevations : dict
-                Dictionary where they keys are the station code names, and the values will be
-                an astropy.coordinates.angles.Latitude object with the elevation at each observing time.
-        """
-        with ProcessPoolExecutor() as pool:
-            results = pool.map(self._elevation_func, self.stations)
-
-        return {s.codename: r for s, r in zip(self.stations, results)}
-
-    def _elevations_threads(self) -> dict:
-        """Returns the elevation of the target source for each stations participating in the observation
-        for all the given observing times.
-
-        It computes it using different concurrent threads.
-
-        Returns
-            elevations : dict
-                Dictionary where they keys are the station code names, and the values will be
-                an astropy.coordinates.angles.Latitude object with the elevation at each observing time.
-        """
-        assert self.scans is not None
-        with ThreadPoolExecutor() as pool:
-            results = pool.map(self._elevation_func, self.scans.values())
-
-        return {s: r for s, r in zip(self.scans.keys(), results)}
-
-    def _elevations_single(self) -> dict:
-        """Returns the elevation of the target source for each stations participating in the observation
-        for all the given observing times.
-
-        It computes it without parallelization.
-
-        Returns
-            elevations : dict
-                Dictionary where they keys are the station code names, and the values will be
-                an astropy.coordinates.angles.Latitude object with the elevation at each observing time.
-        """
-        elevations = {}
-        for a_station in self.stations:
-            elevations[a_station.codename] = a_station.elevation(self.times, self.sources)
-        return elevations
-
-    async def _elevations_async_func(self, a_station: Station) -> list:
-        return a_station.elevation(self.times, self.sources)
-
-    async def _elevations_async_launch(self) -> dict:
-        tasks: dict = {}
-        for station in self.stations:
-            tasks[station.codename] = asyncio.create_task(self._elevations_async_func(station))
-            await tasks[station.codename]
-
-        return tasks
-
-    def _elevations_asyncio(self) -> dict:
-        return asyncio.run(self._elevations_async_launch())
-        # return {s.codename: v
-        #         for s,v in zip(self.stations, asyncio.run(self._elevations_async_launch()))}
 
     def altaz(self) -> dict[str, dict[str, coord.SkyCoord]]:
         """Returns the altitude/azimuth of the target source for each stations participating
@@ -682,8 +580,8 @@ class Observation(object):
                 an astropy.coordinates.SkyCoord object with the altitude and azimuth
                 of the source at each observing time.
         """
-        if None in (self.sources, self.times):
-            raise ValueError("The target and/or observing times have not been initialized")
+        if not self.sources():
+            return {}
 
         if self._altaz is None:
             self._altaz = self._altaz_threads()
@@ -691,34 +589,28 @@ class Observation(object):
         return self._altaz
 
     def _altaz_threads(self) -> dict:
-        assert self.sources is not None and self.scans is not None
-
         def compute_altaz_for_source(station_source: tuple) -> tuple:
             station, source = station_source[0], station_source[1]
-            return station, source, station.altaz(self.times, source)
+            return station.codename, source.name, station.altaz(self.times, source)
 
-        temp: dict[str, dict[str, coord.SkyCoord]] = {station.codename: {} for station in self.stations}
-        for ablockname, ablock in self.scans.items():
-            temp[ablockname] = {source.name: {} for source in ablock.sources()}
-            with ThreadPoolExecutor() as executor:
-                results = list(executor.map(compute_altaz_for_source, [(station, source)
-                                            for station in self.stations for source in ablock.sources()]))
-            for (station, source, altaz) in results:
-                temp[ablockname][source.name][station.codename] = altaz
+        combined_results: dict[str, dict[str, coord.SkyCoord]] = defaultdict(dict)
 
-        return temp
+        with ThreadPoolExecutor() as pool:
+            results = pool.map(compute_altaz_for_source,
+                               [(station, source) for station in self.stations
+                                for source in self.sources()])
+            for station_codename, source_name, altaz in results:
+                combined_results[source_name][station_codename] = altaz
 
-    def _compute_is_visible_for_source(self, station_source_time) -> tuple:
-        station, source = station_source_time[0], station_source_time[1]
-        if len(station_source_time) == 3:
-            times = station_source_time[2]
-        else:
-            times = self.times
-        return station, source, station.is_observable(times, source)
+        return combined_results
 
-    def is_observable(self) -> dict[str, dict[str, list[bool]]]:
+    def _compute_is_visible_for_source(self, ant_src_t: tuple) -> tuple:
+        return ant_src_t[0].codename, ant_src_t[1].name, ant_src_t[0].is_observable(ant_src_t[2],
+                                                                                    ant_src_t[1])
+
+    def is_observable(self, times: Optional[Time] = None) -> dict[str, dict[str, list[bool]]]:
         """Returns whenever the given ScanBlock can be observed by each station for each time
-        of the observation.
+        of the observation. If times are not provided, then it will use the observation times.
 
         Returns
             is_visible : dict
@@ -730,42 +622,24 @@ class Observation(object):
                 In this sense, you can e.g. call obs.times[obs.is_visible[a_station_codename]]
                 to get such times.
         """
-        if None in (self.scans, self.times, self.sources):
-            raise ValueError("The target, sources and/or observing times have not been initialized")
+        if not self.sources():
+            return {}
 
-        with self._mutex:
-            if self._is_visible is None:
-                self._is_visible = {}
-                for ablockname, ablock in self.scans.items():  # type: ignore
-                    with ThreadPoolExecutor() as executor:
-                        results = list(executor.map(self._compute_is_visible_for_source, [(station, source)
-                                                    for station in self.stations
-                                                    for source in ablock.sources()]))  # type: ignore
-
-                    self._is_visible[ablockname] = {}
-                    for (station, source, visible) in results:
-                        if station.codename in self._is_visible[ablockname]:
-                            self._is_visible[ablockname][station.codename] *= visible
-                        else:
-                            self._is_visible[ablockname][station.codename] = visible
-
-            return self._is_visible
-
-    def is_observable_at(self, time: Time) -> dict[str, dict[str, list[bool]]]:
-        """Returns whenever the given ScanBlock can be observed by each station at the given time.
-        """
-        _is_visible_at: dict[str, dict[str, list[bool]]] = {}
-        for ablockname, ablock in self.scans.items():  # type: ignore
+        if self._is_visible is None:
+            self._is_visible = {ablockname: {ant.codename: np.full(len(self.times), True, dtype=bool)
+                                for ant in self.stations} for ablockname in self.scans}
             with ThreadPoolExecutor() as executor:
-                results = list(executor.map(self._compute_is_visible_for_source, [(station, source, time)
-                                            for station in self.stations
-                                            for source in ablock.sources()]))  # type: ignore
+                results = list(executor.map(self._compute_is_visible_for_source,
+                                            [(station, source, times if times is not None else self.times)
+                                             for station in self.stations
+                                             for source in self.sources()]))
 
-            _is_visible_at[ablockname] = {}
-            for (station, source, visible) in results:
-                _is_visible_at[ablockname][station.codename] = visible
+            for station_codename, source_name, visible in results:
+                for ablockname, ablock in self.scans.items():
+                    if source_name in ablock.sourcenames():
+                        self._is_visible[ablockname][station_codename] &= visible
 
-        return _is_visible_at
+        return self._is_visible
 
     def can_be_observed(self) -> dict[str, dict[str, bool]]:
         """Returns whenever the sources can be observed by each station at least during part
@@ -788,28 +662,31 @@ class Observation(object):
                 a tuple containing a numpy array with the boolean indicating if the given BlockScan
                 (same order as in Observation.sources) is always visible for the given station.
         """
-        if None in (self.scans, self.times, self.sources):
-            raise ValueError("The target, sources and/or observing times have not been initialized")
+        if not self.sources():
+            return {}
 
         if self._is_always_visible is None:
+            self._is_always_visible = {ablockname: {ant.codename: True
+                                       for ant in self.stations} for ablockname in self.scans}
+
             def compute_is_always_visible_for_source(station_source: tuple) -> tuple:
                 station, source = station_source[0], station_source[1]
                 return station, source, station.is_always_observable(self.times, source)
 
-            self._is_always_visible = {ablockname: {} for ablockname in self.scans}  # type: ignore
-            for ablockname, ablock in self.scans.items():  # type: ignore
-                with ThreadPoolExecutor() as executor:
-                    results = list(executor.map(compute_is_always_visible_for_source, [(station, source)
-                                                for station in self.stations
-                                                for source in ablock.sources()]))  # type: ignore
+            with ThreadPoolExecutor() as executor:
+                results = list(executor.map(compute_is_always_visible_for_source,
+                                            [(station, source) for station in self.stations
+                                             for source in self.sources()]))
 
-                for (station, source, visible) in results:
-                    self._is_always_visible[ablockname][station.codename] = visible
+            for station_codename, source_name, visible in results:
+                for ablockname, ablock in self.scans.items():
+                    if source_name in ablock.sourcenames():
+                        self._is_always_visible[ablockname][station_codename] &= visible
 
         return self._is_always_visible
 
     def when_is_observable(self, min_stations: int = 3,
-                           mandatory_stations: Optional[str | list[str]] = None,
+                           mandatory_stations: Optional[Literal['all'] | list[str]] = None,
                            stations_all_time: bool = False, within_time_range: Optional[Time] = None,
                            return_gst: bool = False) -> dict[str, list[Time | u.Quantity]]:
         """Returns the time range when the different BlockScans/sources are visible verifying the set
@@ -852,11 +729,7 @@ class Observation(object):
             raise ValueError("The sources have not been initialized")
 
         if within_time_range is None:
-            if self.times is None:
-                # Using the autonm equinox as that one GST ~= UTC
-                within_time_range = Time('2025-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01)*u.day
-            else:
-                within_time_range = self.times
+            within_time_range = self.times
         else:
             assert len(within_time_range) == 2, \
                 "The time range must contain only two times (start and end time)"
@@ -865,13 +738,14 @@ class Observation(object):
             within_time_range = within_time_range[0] + \
                 np.arange((within_time_range[1] - within_time_range[0]).to(u.day).value, 0.01)*u.day
 
+        # TODO: I can likely optimize this function. And continue from here on
         if mandatory_stations == 'all':
             mandatory_stations = self.stations.station_codenames
             min_stations = len(mandatory_stations)
 
         result: dict[str, list[Time | u.Quantity]] = {}
-        for blockname, station_visibility in self.is_observable_at(time=within_time_range).items():  # type: ignore
-            visible_times = [False for i in range(len(within_time_range))]
+        for blockname, station_visibility in self.is_observable(times=within_time_range).items():
+            visible_times = [False]*len(within_time_range)
             for i, time in enumerate(within_time_range):
                 if ((sum(vis[i] for vis in station_visibility.values()) >= min_stations)
                     and ((mandatory_stations is None)
@@ -956,8 +830,8 @@ class Observation(object):
         a reduction of a 10% in the response of the telescope. The field of view should then
         be limited to this range to avoid significant loses.
         """
-        return ((49500*u.arcsec*u.MHz*u.km)*self.channels / \
-                (list(self.longest_baseline().values())[0][1] * \
+        return ((49500*u.arcsec*u.MHz*u.km)*self.channels /
+                (list(self.longest_baseline().values())[0][1] *
                  self.bandwidth/self.subbands)).to(u.arcsec)
 
     def time_smearing(self) -> u.Quantity:
@@ -970,9 +844,9 @@ class Observation(object):
         a reduction of a 10% in the response of the telescope. The field of view should then
         be limited to this range to avoid significant loses.
         """
-        return ((18560*u.arcsec*u.km*u.s/u.cm) * (self.wavelength / \
-                (list(self.longest_baseline().values())[0][1] * \
-                self.inttime))).to(u.arcsec)
+        return ((18560*u.arcsec*u.km*u.s/u.cm) * (self.wavelength /
+                (list(self.longest_baseline().values())[0][1] *
+                 self.inttime))).to(u.arcsec)
 
     def datasize(self) -> Optional[u.Quantity]:
         """Returns the expected size for the output FITS IDI files.
@@ -984,12 +858,9 @@ class Observation(object):
         stations. The provided value will thus always be un upper-limit for the real, final,
         value.
         """
-        if None in (self.duration, self.inttime, self.subbands, self.channels):
-            return None
-
-        temp = len(self.stations)**2 * (self.duration/self.inttime).decompose()  # type: ignore
-        temp *= self.polarizations.value*self.subbands*self.channels  # type: ignore
-        return temp*1.75*u.GB/(131072*3600)
+        temp = len(self.stations)**2 * (self.duration/self.inttime).decompose()
+        temp *= self.polarizations.value*self.subbands*self.channels
+        return temp * 1.75*u.GB / (131072 * 3600)
 
     def sun_limiting_epochs(self) -> Optional[dict[str, list[Time]]]:
         if self.scans is None:
@@ -1063,26 +934,19 @@ class Observation(object):
                               else self.datarate.to(u.bit/u.s).value for s in self.stations]) * \
             2 * 2 * min(self.polarizations.value, 2)  # In Hz
         bandwidth_min = np.minimum.outer(bandwidths, bandwidths)
-        if len(self.sources()) == 0:
-            if self.times is not None:
-                dt = (self.times[-1]-self.times[0]).to(u.min).value * self.ontarget_fraction
-            elif self.duration is not None:
+        if not self.sources():
+            if not self.fixed_time:
                 dt = self.duration.to(u.min).value * self.ontarget_fraction
             else:
-                raise ValueError("Either observinng times or duration must be defined "
-                                 "to estimate thermal noise.")
+                dt = (self.times[-1]-self.times[0]).to(u.min).value * self.ontarget_fraction
 
-            # THIS IS THE NEW IMPLEMENTATION TO USE.
             temp = np.sum((bandwidth_min/np.outer(sefds, sefds)) *
                           np.triu(np.ones_like(bandwidth_min), k=1))
-
-            # THIS IS THE FASTEST IMPLEMENTATION BUT NEEDS TO INCLUDE THE DIFFERENT BANDWIDTHS
-            # return (np.sum(1/(sefds[:, None]*sefds[None, :])) - np.sum(1/(sefds*sefds))) / 2
-            # temp = (np.sum(((bandwidth_min/np.outer(sefds, sefds)) *
-            #                 np.triu(np.ones_like(bandwidth_min), k=1)) *
-            #                (1/(sefds[:, None]*sefds[None, :]) - 1/(sefds*sefds)))) / 2
             self._rms = ((np.sqrt(2)/0.7)/np.sqrt(temp*dt))*u.Jy/u.beam
             return self._rms
+
+        # TODO: this is not needed anymore, but I need to consider th ecase with not fixed_time
+        # and duration set, so it will need to be re-evaluated. A cummulative function and then max?
         elif self.times is None:
             times = self._REF_TIMES
             self._rms = {}
@@ -1091,8 +955,8 @@ class Observation(object):
                 scanname = self._scanblock_name_from_source_name(sourcename)
                 assert scanname is not None, f"No scan found related to the source {sourcename}"
                 duration_limit = 1 if self.duration is None else (24*u.h/self.duration).value
-                visible = np.array([self.is_observable_at(times)[scanname][stat.codename] \
-                          for stat in self.stations])
+                visible = np.array([self.is_observable(times)[scanname][stat.codename]
+                                    for stat in self.stations])
                 integrated_time = np.sum(visible[:, None] & visible[None, :], axis=2) * delta_t
                 temp = np.sum((bandwidth_min*integrated_time /
                               np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=1))
@@ -1139,13 +1003,15 @@ class Observation(object):
         if antenna1 is None and antenna2 is None:
             return self._baseline_sensitivity
         elif antenna1 is not None and antenna2 is None:
-            return [self._baseline_sensitivity[f"{antenna1}-{ant}"] for ant in self.stations.codenames] + \
-                   [self._baseline_sensitivity[f"{ant}-{antenna1}"] \
-                    for ant in self.stations.codenames if ant != antenna1]
+            return [self._baseline_sensitivity[f"{antenna1}-{ant}"]
+                    for ant in self.stations.station_codenames] + \
+                   [self._baseline_sensitivity[f"{ant}-{antenna1}"]
+                    for ant in self.stations.station_codenames if ant != antenna1]
         elif antenna1 is None and antenna2 is not None:
-            return [self._baseline_sensitivity[f"{antenna2}-{ant}"] for ant in self.stations.codenames] + \
-                   [self._baseline_sensitivity[f"{ant}-{antenna2}"] \
-                    for ant in self.stations.codenames if ant != antenna2]
+            return [self._baseline_sensitivity[f"{antenna2}-{ant}"]
+                    for ant in self.stations.station_codenames] + \
+                   [self._baseline_sensitivity[f"{ant}-{antenna2}"]
+                    for ant in self.stations.station_codenames if ant != antenna2]
 
         ant1 = self.stations[antenna1]
         ant2 = self.stations[antenna2]
@@ -1197,7 +1063,7 @@ class Observation(object):
 
     def _compute_uv_per_source(self, source: Optional[Source] = None) -> dict[str, u.Quantity]:
         nstat = len(self.stations)
-        positions = np.array([[xyz.value for xyz in ant.location.to_geocentric()] \
+        positions = np.array([[xyz.value for xyz in ant.location.to_geocentric()]
                               for ant in self.stations])
 
         # Compute all unique baselines (i < j)
@@ -1205,7 +1071,7 @@ class Observation(object):
         bl_xyz = positions[idx_i] - positions[idx_j]  # shape (nbl, 3)
         # print(self.stations[0].codename)
         # print(self.stations[-1].codename)
-        bl_names = [f"{self.stations[int(i)].codename}-{self.stations[int(j)].codename}" \
+        bl_names = [f"{self.stations[int(i)].codename}-{self.stations[int(j)].codename}"
                     for i, j in zip(idx_i, idx_j)]
 
         if self.times is None:
@@ -1243,8 +1109,7 @@ class Observation(object):
         #                np.cos(dec_rad)*np.ones(len(ha_rad))], np.zeros((3, len(ha_rad)))])
         m = np.array([[[np.sin(h), np.cos(h), 0],
                        [-np.sin(dec_rad)*np.cos(h), np.sin(dec_rad)*np.sin(h), np.cos(dec_rad)],
-                       [0, 0, 0]
-                      ] for h in ha_rad])
+                       [0, 0, 0]] for h in ha_rad])
 
         # Compute uvw for all baselines and times: (ntimes, nbl, 3)
         # Use einsum for batch matrix multiplication
@@ -1258,7 +1123,7 @@ class Observation(object):
 
         # Source is provided: filter by visibility
         if self.times is None:
-            ants_up = self.is_observable_at(self._REF_TIMES)
+            ants_up = self.is_observable(self._REF_TIMES)
         else:
             ants_up = self.is_observable()
 
@@ -1324,7 +1189,7 @@ class Observation(object):
             return bl_uv_up
         else:
             if self.times is None:
-                ants_up = self.is_observable_at(self._REF_TIMES)
+                ants_up = self.is_observable(self._REF_TIMES)
             else:
                 ants_up = self.is_observable()
 
@@ -1361,7 +1226,7 @@ class Observation(object):
           at all during the observation.
         """
         if not self.sources():
-            return  {'DUMMY': self._compute_uv_per_source()}
+            return {'DUMMY': self._compute_uv_per_source()}
 
         with self._mutex_uv:
             if self._uv_baseline is not None:
@@ -1428,26 +1293,27 @@ class Observation(object):
 
         self._synth_beam = {}
 
-        resolution = lambda bl : ((2.063e8*u.mas)/bl).to(u.mas)
+        def resolution(bl: float) -> u.Quantity:
+            return ((2.063e8*u.mas)/bl).to(u.mas)
+
         uvvis = self.get_uv_values()
         for src, uv in uvvis.items():
             # Transform the uv points into r,theta (polar) points
             uvvis_polar = np.empty_like(uv)
-            uvvis_polar[:,0] = np.sqrt((uv**2).sum(axis=1)) # radius
-            uvvis_polar[:,1] = np.arctan2(uv[:,1], uv[:,0]) # theta
+            uvvis_polar[:, 0] = np.sqrt((uv**2).sum(axis=1))  # radius
+            uvvis_polar[:, 1] = np.arctan2(uv[:, 1], uv[:, 0])  # theta
             # Defines the BMAJ and PA
-            bl_bmaj = np.max(uvvis_polar[:,0])
-            bl_bmaj_theta = uvvis_polar[:,1][np.where(uvvis_polar[:,0] == bl_bmaj)][0]
+            bl_bmaj = np.max(uvvis_polar[:, 0])
+            bl_bmaj_theta = uvvis_polar[:, 1][np.where(uvvis_polar[:, 0] == bl_bmaj)][0]
             # Gets the BMIN and an orthogonal projection
-            bl_bmin_theta = ( bl_bmaj_theta + np.pi/2 ) % (2*np.pi)
+            bl_bmin_theta = (bl_bmaj_theta + np.pi/2) % (2*np.pi)
             bl_bmin = np.max(np.abs(uv.dot(np.array([np.cos(bl_bmin_theta),
                                                      np.sin(bl_bmin_theta)]))))
 
             self._synth_beam[src] = {'bmaj': resolution(bl_bmin), 'bmin': resolution(bl_bmaj),
-                                      'pa': (bl_bmaj_theta*u.rad).to(u.deg)}
+                                     'pa': (bl_bmaj_theta*u.rad).to(u.deg)}
 
         return self._synth_beam
-
 
     def get_dirtymap(self, pixsize: int = 1024, robust: str = "natural", oversampling: int = 4):
         """Returns the dirty beam produced for the given observation.
@@ -1508,19 +1374,19 @@ class Observation(object):
         uvdata = self.get_uv_array()
         uvscaling = (oversampling*pixsize)/(2*1.05*np.max(np.max(np.abs(uvdata), axis=0)))
         if robust == 'natural':
-            uvimg[oversampling*pixsize//2 + np.trunc(uvdata[:,0]*uvscaling).astype(int), \
-                  oversampling*pixsize//2 + np.trunc(uvdata[:,1]*uvscaling).astype(int)] += 1
+            uvimg[oversampling*pixsize//2 + np.trunc(uvdata[:, 0]*uvscaling).astype(int),
+                  oversampling*pixsize//2 + np.trunc(uvdata[:, 1]*uvscaling).astype(int)] += 1
         else:
-            uvimg[oversampling*pixsize//2 + np.trunc(uvdata[:,0]*uvscaling).astype(int), \
-                  oversampling*pixsize//2 + np.trunc(uvdata[:,1]*uvscaling).astype(int)] = 1
+            uvimg[oversampling*pixsize//2 + np.trunc(uvdata[:, 0]*uvscaling).astype(int),
+                  oversampling*pixsize//2 + np.trunc(uvdata[:, 1]*uvscaling).astype(int)] = 1
 
         # Recovering the requested size for the image
         # uvimg = uvimg[int(pixsize*0.5):int(pixsize*1.5), int(pixsize*0.5):int(pixsize*1.5)]
         dirty_beam = np.real(np.fft.ifftshift(np.fft.ifft2(np.fft.fftshift(uvimg/np.max(uvimg)))))
-        imgsize = (uvscaling*u.rad/2).to(u.mas) # angular equivalent size of the resulting image
-        return dirty_beam[int(pixsize*(oversampling-1)/2):int(pixsize*(oversampling+1)/2), \
-                          int(pixsize*(oversampling-1)/2):int(pixsize*(oversampling+1)/2)].T/np.max(dirty_beam), \
-               np.linspace(-imgsize, imgsize, pixsize)
+        imgsize = (uvscaling*u.rad/2).to(u.mas)  # angular equivalent size of the resulting image
+        return dirty_beam[int(pixsize*(oversampling-1)/2):int(pixsize*(oversampling+1)/2),
+                          int(pixsize*(oversampling-1)/2):int(pixsize*(oversampling+1)/2)].T / \
+            np.max(dirty_beam), np.linspace(-imgsize, imgsize, pixsize)
 
     def print_obs_times(self, date_format='%d %B %Y'):
         """Returns the time range (starttime-to-endtime) of the observation in a smart way.
@@ -1570,7 +1436,6 @@ class Observation(object):
                                         self.times[-1].datetime.strftime(date_format),
                                         self.times[-1].datetime.strftime('%H:%M'), gsttext)
 
-
     def get_fig_dirty_map(self):
         raise NotImplementedError
         # Right now I only leave the natural weighting map (the uniform does not always correspond to the true one)
@@ -1578,7 +1443,8 @@ class Observation(object):
         # TODO: uncomment these two lines and move them outside observation. Flexibility
         # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
         #         aspect='equal')
-        # fig = make_subplots(rows=1, cols=1, subplot_titles=('Natural weighting',), shared_xaxes=True, shared_yaxes=True)
+        # fig = make_subplots(rows=1, cols=1, subplot_titles=('Natural weighting',),
+        #                     shared_xaxes=True, shared_yaxes=True)
         fig.add_trace(fig1.data[0], row=1, col=1)
         mapsize = 30*self.synthesized_beam()['bmaj'].to(u.mas).value
         fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
@@ -1629,5 +1495,3 @@ class Observation(object):
     #
     #     pdf.output('test.pdf','F')
     #
-
-

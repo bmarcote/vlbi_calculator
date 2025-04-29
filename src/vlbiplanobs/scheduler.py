@@ -1,4 +1,6 @@
-import asyncio
+# -*- coding: utf-8 -*-
+# Licensed under GPLv3+ - see LICENSE
+
 from typing import Optional, Union, Iterable, Sequence, Self
 from importlib import resources
 from functools import partial
@@ -55,7 +57,8 @@ class ScanBlockScheduler:
         for i, block in self.observation.scans.items():
             self.start_times[i] = self.model.NewIntVar(self.starttime, self.endtime,
                                                        f'start_time_{i}')
-            self.durations[i] = self.model.NewIntVar(int(10*np.sum([s.duration.to(u.h).value for s in block.scans])),
+            self.durations[i] = self.model.NewIntVar(int(10*np.sum([s.duration.to(u.h).value
+                                                                    for s in block.scans])),
                                                      self.max_duration, f'duration_{i}')
             self.end_times[i] = self.model.NewIntVar(self.starttime, self.endtime,
                                                      f'end_time_{i}')

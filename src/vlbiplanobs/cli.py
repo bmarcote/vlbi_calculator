@@ -107,8 +107,8 @@ class VLBIObs(obs.Observation):
             if self.times is not None or self.duration is not None:
                 rprint("\n[bold green]Expected outcome[/bold green]:")
                 val = optimal_units(self.thermal_noise(), [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
-                rprint(f"[bold]Thermal rms noise (for a +/- 45° elevation source)[/bold]: "
-                       f"{val.value:.01f} {val.unit.to_string("unicode")}")
+                rprint("[bold]Thermal rms noise (for a +/- 45° elevation source)[/bold]: ", end='')
+                rprint(f"{val.value:.01f} {val.unit.to_string('unicode')}")
                 rprint("[dim](for a +/- 45° elevation source)[/dim]")
 
         print('\n')
@@ -165,11 +165,11 @@ class VLBIObs(obs.Observation):
 
             rprint(f"            |-{''.join(['-' for b in antbool[ant]])}|")
             if doing_gst:
+                temp = (24*u.hourangle if np.abs(localtimes[-1].mjd - localtimes[0].mjd - 1) < 0.1
+                        else 0.0*u.hourangle)
                 rprint(f"            {gstimes[0].to_string(sep=':', fields=2, pad=True)} GST"
                        f"{''.join([' ' for b in antbool[ant]][:-11])}"
-                       f"{(gstimes[-1] + (24*u.hourangle
-                                          if np.abs(localtimes[-1].mjd - localtimes[0].mjd - 1) < 0.1
-                                          else 0.0*u.hourangle)).to_string(sep=':', fields=2, pad=True)}")
+                       f"{(gstimes[-1] + temp).to_string(sep=':', fields=2, pad=True)}")
             else:
                 rprint(f"            {self.times.datetime[0].strftime('%H:%M'):05} UTC"
                        f"{''.join([' ' for b in antbool[ant]][:-11])}"
@@ -233,10 +233,10 @@ class VLBIObs(obs.Observation):
                 if any([s.type is sources.SourceType.TARGET for s in self.sources()]):
                     if src in self.sourcenames_in_block(ablockname, sources.SourceType.TARGET):
                         val = optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
-                        rprint(f"{src}: {val.value:.02f} {val.unit.to_string("unicode")}")
+                        rprint(f"{src}: {val.value:.02f} {val.unit.to_string('unicode')}")
                         val = optimal_units(ontarget_time[src], [u.h, u.min, u.s, u.ms])
                         rprint("[dim]for a total on-source time of ~ "
-                               f"{val.value:.2f} {val.unit.to_string("unicode")} "
+                               f"{val.value:.2f} {val.unit.to_string('unicode')} "
                                f"(assuming the total observing time).[/dim]")
                 else:
                     if src in self.sourcenames_in_block(ablockname):
@@ -268,8 +268,9 @@ class VLBIObs(obs.Observation):
             rprint(f"{self.stations[i].codename:3} | {' '*i*6}", end='')
             for j in range(i, len(self.stations)):
                 try:
-                    rprint(f"{self.baseline_sensitivity(self.stations[i].codename,
-                                                        self.stations[j].codename).to(u.mJy/u.beam).value:6.3}", end='')
+                    temp = self.baseline_sensitivity(self.stations[i].codename,
+                                                     self.stations[j].codename).to(u.mJy/u.beam).value
+                    rprint(f"{temp:6.3}", end='')
                 except TypeError:
                     rprint("     ", end='')
 
@@ -526,8 +527,7 @@ def cli():
         for aband in obs.freqsetups.bands:
             rprint(f"[bold]{aband}[/bold] [dim]({obs.freqsetups.bands[aband]})[/dim]")
             rprint("[dim]  Observable with [/dim]", end='')
-            rprint(f"[dim]{', '.join([nn for nn, n in _NETWORKS.items()
-                                      if aband in n.observing_bands])}[/dim]")
+            rprint(f"[dim]{', '.join([nn for nn, n in _NETWORKS.items() if aband in n.observing_bands])}[/dim]")
 
     if args.list_antennas or args.list_bands or args.list_networks:
         sys.exit(0)

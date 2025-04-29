@@ -1,6 +1,5 @@
 from typing import Optional
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import Normalize
@@ -37,7 +36,7 @@ def elevation_plot(o, show_colorbar: bool = False) -> go.Figure:
     #     o.times = None
 
     fig = make_subplots(rows=min([len(srcup), 4]), cols=len(srcup) // 4 + 1,
-                        subplot_titles=[f"Elevations for {src_block}" for src_block in srcup] \
+                        subplot_titles=[f"Elevations for {src_block}" for src_block in srcup]
                         if len(srcup) > 1 else '')
 
     # Break the line into segments for color changes
@@ -63,16 +62,13 @@ def elevation_plot(o, show_colorbar: bool = False) -> go.Figure:
                     fig.add_trace(
                         go.Scatter(
                             x=o.times.datetime[srcup[src_block][ant]][i:i+2] if o.times is not None else
-                                                      localtimes.datetime[srcup[src_block][ant]][i:i+2],
+                                localtimes.datetime[srcup[src_block][ant]][i:i+2],
                             y=y_value,
                             mode="lines",
                             line=dict(color=color_str[i], width=10),
                             showlegend=False,
                             marker=dict(showscale=show_colorbar),
-                            hovertemplate=f"<b>{o.stations[ant].name}</b><br><b>Elevation</b>: {colors[i]:.0f}º<extra></extra><br>"
-                                          f"<b>Time</b>: {o.times[i].strftime('%H:%M') \
-                                          if o.times is not None \
-                                                          else localtimes[i].strftime('%H:%M')}",
+                            hovertemplate=f"<b>{o.stations[ant].name}</b><br><b>Elevation</b>: {colors[i]:.0f}º<extra></extra><br><b>Time</b>: {o.times[i].strftime('%H:%M') if o.times is not None else localtimes[i].strftime('%H:%M')}",
                         ),
                         row=src_i % 4 + 1,
                         col=src_i // 4 + 1

@@ -44,36 +44,21 @@ class Obs():
 _main_obs = Obs()
 
 current_directory = os.path.dirname(os.path.realpath(__file__))
-# external_stylesheets: list = [current_directory + '/assets/css/style-planobs-v3.css']
 external_stylesheets: list = []
-# current_directory + '/assets/css/style-planobs-v3.css']
-# external_stylesheets: list = [current_directory + '/assets/css/' + css \
-#                               for css in ('nucleo-icons.css', 'nucleo-svg.css', 'soft-ui-dashboard.css',
-#                                           'soft-ui-dashboard.min.css', 'soft-ui-dashboard.css.map')]
 external_scripts: list = []
-# "https://kit.fontawesome.com/69c65a0ab5.js"]  # [current_directory + '/assets/js/' + js \
-# external_scripts: list = [current_directory + '/assets/js/' + js \
-#                               for js in ('soft-ui-dashboard.js', 'soft-ui-dashboard.min.js',
-#                                          'soft-ui-dashboard.js.map')]  # ,
-# "https://planobs.jive.eu/assets/mixpanel-analytics.js"]
-for css in external_stylesheets:
-    assert os.path.isfile(css), f"The file {css} does not exist"
-
-for js in external_scripts:
-    assert os.path.isfile(js), f"The file {js} does not exist"
 
 app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_scripts,
            external_stylesheets=[dbc.themes.FLATLY, dbc.icons.BOOTSTRAP,
                                  dbc.icons.FONT_AWESOME, dmc.styles.DATES] + external_stylesheets,
            assets_folder=current_directory+'/assets/', eager_loading=True,
-           prevent_initial_callbacks='initial_duplicate')  # , suppress_callback_exceptions=True)
+           prevent_initial_callbacks=True)  # , suppress_callback_exceptions=True)
 
 
 @app.callback([Output('band-slider', 'marks'),
                *[Output(f"network-{network}-label-wav", 'hidden') for network in observation._NETWORKS],
                *[Output(f"network-{network}-label-freq", 'hidden') for network in observation._NETWORKS],
-               *[Output(f"badge-band-{band.replace('.', '_')}-ant-{ant.codename}".lower(), 'children') \
-                for ant in observation._STATIONS for band in ant.bands ]],
+               *[Output(f"badge-band-{band.replace('.', '_')}-ant-{ant.codename}".lower(), 'children')
+              for ant in observation._STATIONS for band in ant.bands]],
               Input('switch-band-label', 'value'))
 def change_band_labels(show_wavelengths: bool):
     top_labels = [{'label': 'ν (GHz)', 'style': {'font-weight': 'bold', 'color': '#004990'}}] + \
@@ -81,16 +66,15 @@ def change_band_labels(show_wavelengths: bool):
     bottom_labels = [{'label': 'λ (cm)', 'style': {'font-weight': 'bold', 'color': '#004990'}}] + \
                     [b.split('or')[0].replace('cm', '').strip() for b in fs.bands.values()]
     labels = {i: l for i, l in enumerate(bottom_labels)} if show_wavelengths \
-              else {i: l for i, l in enumerate(top_labels)}
+        else {i: l for i, l in enumerate(top_labels)}
 
-    ant_labels = [fs.bands[band].split('or')[0].replace('cm', ' cm').strip() if show_wavelengths else \
-                 fs.bands[band].split('or')[1].replace('GHz', ' GHz') \
-                 for ant in observation._STATIONS for band in ant.bands]
-    # ant_labels = [fs.bands[band].split('or')[0 if show_wavelengths else 1].replace('cm' if show_wavelengths else 'GHz', '').strip() for ant in observation._STATIONS for band in fs.bands if band in ant.bands]
+    ant_labels = [fs.bands[band].split('or')[0].replace('cm', ' cm').strip() if show_wavelengths else
+                  fs.bands[band].split('or')[1].replace('GHz', ' GHz')
+                  for ant in observation._STATIONS for band in ant.bands]
     return labels, \
-           *[not show_wavelengths for _ in observation._NETWORKS], \
-           *[show_wavelengths for _ in observation._NETWORKS], \
-           *ant_labels
+        *[not show_wavelengths for _ in observation._NETWORKS], \
+        *[show_wavelengths for _ in observation._NETWORKS], \
+        *ant_labels
 
 
 @app.callback(
@@ -120,15 +104,15 @@ def toggle_modal(n_clicks, modal_shown, is_open):
     return is_open
 
 
-@app.callback([Output(f"network-{network}", 'disabled') for network in observation._NETWORKS] + \
+@app.callback([Output(f"network-{network}", 'disabled') for network in observation._NETWORKS] +
               [Output(f"network-{network}-card", 'style') for network in observation._NETWORKS],
               Input('band-slider', 'value'),
               [State(f"network-{network}-card", 'style') for network in observation._NETWORKS])
 def enable_networks_with_band(band_index: int, *card_styles):
     if band_index == 0:
-        card_styles = [{k: v if k != 'opacity' else 1.0 for k, v in card_style.items()}
-                       for card_style in card_styles]
-        return [False for _ in observation._NETWORKS] + card_styles
+        return tuple([False for _ in observation._NETWORKS] + [{k: v if k != 'opacity' else 1.0
+                                                               for k, v in card_style.items()}
+                                                               for card_style in card_styles])
 
     opacity = lambda x: 1.0 if x else 0.2
     card_styles = [{k: v if k != 'opacity' else \
@@ -158,7 +142,7 @@ def update_datarate(band, *networks):
                     if ni and list(fs.bands.keys())[band-1] in nn.observing_bands])
     except (KeyError, ValueError):
         return dash.no_update
-    return f"{val.value:.01f} {val.unit.to_string("unicode")}"
+    return f"{val.value:.01f} {val.unit.to_string('unicode')}"
 
 
 @app.callback(Output(f"switches-antennas", 'children'),
@@ -279,9 +263,7 @@ def update_bandwidth_label(datarate: int, npols: int):
     if (None not in (datarate, npols)) and (datarate != -1):
         # Either 1 or 2 pols per station:
         temp = npols % 3 + npols // 3
-        return [f"The maximum bandwidth is {cli.optimal_units(datarate*u.MHz/(temp*2*2),
-                                                             [u.GHz, u.MHz, u.kHz] )}."
-               ]
+        return [f"The maximum bandwidth is {cli.optimal_units(datarate*u.MHz/(temp*2*2), [u.GHz, u.MHz, u.kHz] )}."]
 
     return ''
 
@@ -544,8 +526,8 @@ app.layout = dbc.Container(fluid=True, className='bg-gray-100 row m-0 p-4',
                                                      children=html.Div(id='button-download'))]),
                                          dcc.Download(id="download-data"),
                                          html.Div(className='col-12 mx-0 px-4 py-2', id='user-message',
-                                                  children=[out.info_card("Specify your VLBI observation "
-                                                      "and then press 'calculate'", "The expected outcome "
+                                                  children=[out.info_card("Set your VLBI observation "
+                                                      "and press 'calculate'", "The expected outcome "
                                                       "details will appear here.")]),
                                          html.Div(className='col-12 mx-0 pb-2', children=[
                                              html.Div(className='row d-flex m-0', children=[

@@ -3,7 +3,7 @@ pythonpath = "src"
 
 
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=42", "wheel", "Cython"]
 build-backend = "setuptools.build_meta"
 
 
@@ -38,8 +38,8 @@ dependencies = [
     "rich",
     "rich_argparse",
     "plotext",
-    "matplotlib",
-    "ortools",
+    # "matplotlib",
+    # "ortools",
     "plotly",
     "dash>=3.0",
     "dash-bootstrap-components>=2.0",
@@ -56,6 +56,9 @@ dependencies = [
 
 [tool.setuptools]
 include-package-data = true
+# ext-modules = [
+#   {name = "observation", sources = ["src/vlbiplanobs/observation.py"]}
+# ]
 
 
 [tool.setuptools.package-data]

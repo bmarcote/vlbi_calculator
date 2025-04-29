@@ -22,7 +22,7 @@ from vlbiplanobs.gui import plots
 
 
 def quantity2str(val: u.Quantity) -> str:
-    return f"{val.value:.3g} {val.unit.to_string("unicode")}"
+    return f"{val.value:.3g} {val.unit.to_string('unicode')}"
 
 
 def card(children: Optional[list] = None, className: str = '', **kwargs) -> html.Div:
@@ -43,24 +43,24 @@ def card_result(number: str, label: str, id: str, extra_rows: Optional[list] = N
                 ])
             ]),
             html.Div(className=f'col-{second_column_n} text-end text-wrap: pretty',
-                     children=second_column_content, style={'align-content': 'center'}) \
-                     if second_column_n > 0 else '',
-        html.Div(className='col-12', children=extra_rows) if extra_rows is not None else ''])
-    ])
+                     children=second_column_content, style={'align-content': 'center'})
+            if second_column_n > 0 else '',
+            html.Div(className='col-12', children=extra_rows) if extra_rows is not None else ''])])
 
 
-def download_pdf(app, pdf_filename: str) -> html.Div:
-    """Buttom to download the PDF report
-    """
-    html.Div(html.A('Download summary as PDF', id='request-printable-version',
-                    download='evn_planobs_summary.pdf', href=app.get_asset_url(pdf_filename),
-                    className='btn btn-link btn-lg', style={'text-align': 'center'}),
-            className='col-12 justify-content-center', style={'text-align': 'center'})
+# def download_pdf(app, pdf_filename: str) -> html.Div:
+#     """Buttom to download the PDF report
+#     """
+#     return html.Div(html.A('Download summary as PDF', id='request-printable-version',
+#                            download='evn_planobs_summary.pdf', href=app.get_asset_url(pdf_filename),
+#                            className='btn btn-link btn-lg', style={'text-align': 'center'}),
+#                     className='col-12 justify-content-center', style={'text-align': 'center'})
 
 
 def message_card(title: str, body: str, mode: str, icon: Optional[str] = None):
     """Shows a card with a title and a body, with an icon and a mode that defines the color of the card:
-    'info', 'warning', 'danger'. If 'icon' is not provided, it will take an icon by default depending on the mode
+    'info', 'warning', 'danger'. If 'icon' is not provided, it will take an icon by default depending on
+    the mode.
     """
     assert mode in ('danger', 'info', 'warning')
     if icon is None:
@@ -75,22 +75,18 @@ def message_card(title: str, body: str, mode: str, icon: Optional[str] = None):
     colors = {'danger': '#ef4444', 'warning': '#eab308', 'info': '#A6D4E8'}
 
     return html.Div(className=f'card col-12 px-4 pb-0 m-2 bg-{mode} opacity-10 border-radius-lg',
-            children=html.Div(className='card-body p-2 position-relative',
-                children=[html.Div(className='row align-items-center', children=[
-                          html.Div(className='col-2 pl-3 text-center',
-                                   children=html.Div(html.I(className=f'fa-solid {icon} '
-                                                                     'text-light '
-                                                                     'text-xl opacity-40',
-                                                            style={'font-size': '3rem',
-                                                                   'color': colors[mode]}),
-                                                     )),
-                          html.Div(className='col-10 text-start align-items-center',
-                                   children=[html.H5(className='text-white font-weight-bolder mb-0 mt-0',
-                                                     children=title),
-                                             html.Span(className='text-white text-sm',
-                                                       children=body)])
-                   ])
-                ]))
+                    children=html.Div(className='card-body p-2 position-relative', children=[
+                        html.Div(className='row align-items-center', children=[
+                            html.Div(className='col-2 pl-3 text-center',
+                                     children=html.Div(
+                                        html.I(className=f"fa-solid {icon} text-light "
+                                                         "text-xl opacity-40",
+                                               style={'font-size': '3rem',
+                                                      'color': colors[mode]}))),
+                            html.Div(className='col-10 text-start align-items-center', children=[
+                                html.H5(className='text-white font-weight-bolder mb-0 mt-0',
+                                        children=title),
+                                html.Span(className='text-white text-sm', children=body)])])]))
 
 
 def warning_card():
@@ -117,44 +113,33 @@ def warning_phase_referencing_high_freq(o: Optional[cli.VLBIObs] = None) -> html
         return html.Div()
     else:
         return html.Div(className='card pb-0 m-2 bg-warning opacity-10 border-radius-lg',
-            children=html.Div(className='card-body p-2 position-relative',
-                children=[html.Div(className='row align-items-center', children=[
-                          html.Div(className='col-2 pl-3 text-center',
-                                   children=html.Div(html.I(className='fa-solid fa-repeat '
-                                                                     'text-light '
-                                                                     'text-xl opacity-40',
-                                                            style={'font-size': '3rem',
-                                                                   'color': '#eab308'}),
-                                                     )),
-                                   # children=html.Div(className='icon icon-shape bg-white shadow '
-                                   #                   'text-center border-radius-2xl',
-                                   #                   children=html.I(className='fa-solid fa-repeat '
-                                   #                                   'text-dark '
-                                   #                                   'text-gradient text-xl opacity-10'))),
-                          html.Div(className='col-10 text-start align-items-center',
-                                   children=[html.H5(className='text-white font-weight-bolder mb-0 mt-0',
-                                                     children="Note that phase referencing is not "
-                                                              "possible"),
-                                             html.Span(className='text-white text-sm',
-                                                       children="At these high frequencies, your target "
-                                                                "must be bright enough to directly fringe "
-                                                                "on it.")])
-                   ])
-                ]))
+                        children=html.Div(className='card-body p-2 position-relative', children=[
+                            html.Div(className='row align-items-center', children=[
+                                html.Div(className='col-2 pl-3 text-center',
+                                         children=html.Div(
+                                            html.I(className='fa-solid fa-repeat text-light '
+                                                             'text-xl opacity-40',
+                                                   style={'font-size': '3rem',
+                                                          'color': '#eab308'}))),
+                                html.Div(className='col-10 text-start align-items-center', children=[
+                                    html.H5(className='text-white font-weight-bolder mb-0 mt-0',
+                                            children="Note that phase referencing is not possible"),
+                                    html.Span(className='text-white text-sm',
+                                              children="At these high frequencies, your target "
+                                                       "must be bright enough to directly fringe "
+                                                       "on it.")])])]))
 
 
 def summary_freq_res(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    if o is None:
+    if o is None or None in (o.bandwidth, o.subbands, o.channels):
         return html.Div()
 
     try:
-        chan_f = cli.optimal_units(o.bandwidth/(o.subbands*o.channels),
-                          [u.GHz, u.MHz, u.kHz, u.Hz])
+        chan_f = cli.optimal_units(o.bandwidth/(o.subbands*o.channels), [u.GHz, u.MHz, u.kHz, u.Hz])
         vel = cli.optimal_units((2.9979e5*u.km/u.s)*(o.bandwidth/(2*o.frequency)).decompose(),
-                            [u.km/u.s, u.m/u.s])
-        chan_v = cli.optimal_units(2*vel/(o.subbands*o.channels),
-                          [u.km/u.s, u.m/u.s])
-    except:
+                                [u.km/u.s, u.m/u.s])
+        chan_v = cli.optimal_units(2*vel/(o.subbands*o.channels), [u.km/u.s, u.m/u.s])
+    except Exception:
         return html.Div()
 
     return card_result(f"{chan_f.value:.3g} {chan_f.unit.to_string('unicode')}",
@@ -163,7 +148,8 @@ def summary_freq_res(o: Optional[cli.VLBIObs] = None) -> html.Div:
                             html.Div(className='numbers', children=[
                                 html.P(className='text-white text-sm mb-0 opacity-7 font-weight-bold',
                                        children="Velocity resolution"),
-                                html.H3(className='text-white font-weight-bolder mb-0 justify-content-center',
+                                html.H3(className='text-white font-weight-bolder mb-0 '
+                                                  'justify-content-center',
                                         id='freq-res-velocity',
                                         children=f"{chan_v.value:.3g} "
                                                  f"{chan_v.unit.to_string('unicode')}")
@@ -173,11 +159,10 @@ def summary_freq_res(o: Optional[cli.VLBIObs] = None) -> html.Div:
                             html.Div(className='col-12', style={'color': 'var(--bs-gray-100)'},
                                      children=html.P(f"The total bandwidth of {o.bandwidth} is divided in "
                                                      f"{o.subbands} x {o.bandwidth/o.subbands} subbands, "
-                                                     f"with {o.channels} spectral channels each.") \
-                                              if o.subbands > 1 else \
-                                              html.P(f"The total bandwidth of {o.bandwidth} is recorded in "
-                                                     f"a single subband, with {o.channels} spectral channels."))
-                       ])
+                                                     f"with {o.channels} spectral channels each.")
+                                     if o.subbands > 1 else  # type: ignore
+                                     html.P(f"The total bandwidth of {o.bandwidth} is recorded in "
+                                            f"a single subband, with {o.channels} spectral channels."))])
 
 
 def field_of_view(o: Optional[cli.VLBIObs] = None) -> html.Div:
@@ -195,25 +180,25 @@ def field_of_view(o: Optional[cli.VLBIObs] = None) -> html.Div:
                             html.Div(className='numbers', children=[
                                 html.P(className='text-white text-sm mb-0 opacity-7 font-weight-bold',
                                        children="Time smearing"),
-                                html.H3(className='text-white font-weight-bolder mb-0 justify-content-center',
+                                html.H3(className='text-white font-weight-bolder mb-0 '
+                                                  'justify-content-center',
                                         id=f'{id}-value',
                                         children=f"{tm_smearing.value:.2n} "
-                                                 f"{tm_smearing.unit.to_string('unicode')}")
-                            ])
-                       ], extra_rows=[
+                                                 f"{tm_smearing.unit.to_string('unicode')}")])],
+                       extra_rows=[
                             html.Br(),
                             html.Div(className='col-12', style={'color': 'var(--bs-gray-100)'},
-                                     children=html.P("The field of view (FoV) will be limited to this radius"
-                                                     " after correlation due to time and frequency smearing, "
-                                                     "considering a 10% loss."))
-                       ])
+                                     children=html.P("The field of view (FoV) will be limited to "
+                                                     "this radius after correlation due to time "
+                                                     "and frequency smearing, "
+                                                     "considering a 10% loss."))])
+
 
 def rms(o: Optional[cli.VLBIObs] = None) -> html.Div:
     if o is None:
         return html.Div(dbc.Modal(id="sensitivity-baseline-modal", is_open=False,
                                   children=[html.Div(html.Button('View sensitivity per baseline',
-                                                         id='button-sensitivity-baseline'))
-                                  ]))
+                                                                 id='button-sensitivity-baseline'))]))
 
     try:
         if isinstance(thermal_noise := o.thermal_noise(), dict):
@@ -224,21 +209,18 @@ def rms(o: Optional[cli.VLBIObs] = None) -> html.Div:
         out_rms = [quantity2str(cli.optimal_units(rms,
                                                   [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
                                                    u.mJy/u.beam, u.uJy/u.beam])),
-                   quantity2str(cli.optimal_units(rms/np.sqrt(1*u.min/ \
-                                                  (o.duration \
-                                                  if o.duration is not None else 24*u.h)),
+                   quantity2str(cli.optimal_units(rms/np.sqrt(1*u.min /
+                                                  (o.duration if o.duration is not None else 24*u.h)),
                                                   [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
                                                    u.mJy/u.beam, u.uJy/u.beam])),
-                   quantity2str(cli.optimal_units(rms*np.sqrt(o.subbands* \
-                                                  o.channels),
+                   quantity2str(cli.optimal_units(rms*np.sqrt(o.subbands * o.channels),
                                                   [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
                                                    u.mJy/u.beam, u.uJy/u.beam])),
                    show_baseline_sensitivities(o)]
-    except:
+    except Exception:
         return html.Div(dbc.Modal(id="sensitivity-baseline-modal", is_open=False,
                                   children=[html.Div(html.Button('View sensitivity per baseline',
-                                                         id='button-sensitivity-baseline'))
-                                  ]))
+                                                                 id='button-sensitivity-baseline'))]))
 
     src = list(o.ontarget_time.keys())[0]
     return card_result(out_rms[0], f'rms thermal noise (for {o.ontarget_time[src]:.2g} on-target)', id='rms',
@@ -312,7 +294,7 @@ def show_baseline_sensitivities(o: Optional[cli.VLBIObs] = None) -> html.Div:
     table = dbc.Table(table_header + [html.Tbody(rows)], bordered=True,
                       className='table align-items-center mb-0')
     return html.Div([dbc.ModalHeader(dbc.ModalTitle("Sensitivity per baseline "
-                                           f"({(u.mJy/u.beam).to_string("unicode")}) for one-minute "
+                                           f"({(u.mJy/u.beam).to_string('unicode')}) for one-minute "
                                            "time integration")),
                      html.P("The following table shows the sensitivity for each baseline (or auto-corrleation) "
                             "for one-minute time integration (considering the full bandwidth available for "
@@ -755,15 +737,14 @@ def summary_pdf(o: cli.VLBIObs):
     if o.duration is not None:
         layout.add(pdf.Paragraph("With a total duration of "
                                  f"{cli.optimal_units(o.duration, [u.h, u.min, u.s]):.01f} "
-                                 f"({cli.optimal_units(o.ontarget_time[list(o.ontarget_time.keys())[0]],
-                                                  [u.h, u.min, u.s]):.01f} on target). "
+                                 f"({cli.optimal_units(o.ontarget_time[list(o.ontarget_time.keys())[0]], [u.h, u.min, u.s]):.01f} on target). "
                                  f"Total output FITS file size: {o.datasize():.02f}."))
 
     layout.add(pdf.Paragraph(f"Participating stations: {', '.join(o.stations.station_codenames)}."))
     if len(o.scans) > 0:
         for ablock in o.scans.values():
-            layout.add(pdf.Paragraph(f"Target source: {'\n'.join([s.name + ' (' + s.coord.to_string('hmsdms') \
-                                                              + ').' for s in ablock.sources()])}"))
+            temp = '\n'.join([f"{s.name} ({s.coord.to_string('hmsdms')})." for s in ablock.sources()])
+            layout.add(pdf.Paragraph(f"Target source: {temp}"))
     else:
         layout.add(pdf.Paragraph("No sources defined."))
 
@@ -797,8 +778,8 @@ def summary_pdf(o: cli.VLBIObs):
             bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
             bmin = synth_beam['bmin'].to(bmaj.unit)
             bmin_elip = max(int(bmin.value*80/bmaj.value), 2)
-            layout.add(pdf.Paragraph(f"Synthesized beam{' for ' + src.name if len(o.scans.values()) \
-                                                        > 1 else ''}: "
+            temp = f" for {src.name}" if len(o.scans.values()) > 1 else ""
+            layout.add(pdf.Paragraph(f"Synthesized beam{temp}: "
                                      f"{bmaj.value:2.1f} x {bmin:2.1f}"
                                      f", {synth_beam['pa'].value:2.0f}º."))
 

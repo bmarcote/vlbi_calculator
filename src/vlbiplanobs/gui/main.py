@@ -377,7 +377,7 @@ def compute_observation(n_clicks, band, defined_source, source, onsourcetime, de
         # *[dash.no_update]*5, True, \
         #        dash.no_update, False, True, *[dash.no_update]*4
 
-    if len([ant for ant in selected_antennas if observation._STATIONS[ant]
+    if len([ant for ant in selected_antennas if observation._STATIONS[ant.codename]
                                                 .has_band(list(fs.bands.keys())[band-1])]) == 0:
         return out.error_card("No antennas are able to observe at this band",
                              "First, select antennas that can observe at the selected band"), \
@@ -502,13 +502,11 @@ app.layout = dbc.Container(fluid=True, className='bg-gray-100 row m-0 p-4',
                                                             children=[html.Div(className='row d-flex',
                                                             children=html.Div([
                                                        html.Div(children=el.source_selection(),
-                                                                className='col-6 col-lg-6 col-md-6 '
-                                                                          'col-sm-6 col-xs-12 d-flex',
+                                                                className='col-6',
                                                                 style={'min-width': '250px',
                                                                        'padding-right': '0px'}),
                                                        html.Div(children=el.epoch_selection(),
-                                                                className='col-6 col-lg-6 col-md-6 '
-                                                                          'col-sm-6 col-xs-12 d-flex',
+                                                                className='col-6',
                                                                 style={'min-width': '300px',
                                                                        'padding-left': '0px'}),
                                                    ], className='col-12 d-flex',

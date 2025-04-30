@@ -24,13 +24,7 @@ def elevation_plot(o, show_colorbar: bool = False) -> go.Figure:
     # Normalize the color array to [0, 1] and map it to the viridis colormap
     norm = Normalize(vmin=0, vmax=90)  # Normalize values between 0 and 90
     viridis = cm.get_cmap('viridis')
-
-    if o.times is None:
-        localtimes = o._REF_TIMES
-    else:
-        localtimes = o.times
-
-    srcup = o.is_observable_at(localtimes)
+    srcup = o.is_observable()
     elevs = o.elevations()  # auto does it in localtimes
     # if doing_gst:
     #     o.times = None
@@ -45,9 +39,9 @@ def elevation_plot(o, show_colorbar: bool = False) -> go.Figure:
         for anti, ant in enumerate(srcup[src_block]):
             targets = o.scans[src_block].sources(sources.SourceType.TARGET)
             if len(targets) > 0:
-                colors = elevs[src_block][targets[0].name][ant][srcup[src_block][ant]].value
+                colors = elevs[targets[0].name][ant][srcup[src_block][ant]].value
             else:
-                colors = elevs[src_block][o.scans[src_block].sources()[0].name][ant][srcup[src_block][ant]].value
+                colors = elevs[o.scans[src_block].sources()[0].name][ant][srcup[src_block][ant]].value
 
             colors_cm = viridis(norm(colors))
 
@@ -61,14 +55,13 @@ def elevation_plot(o, show_colorbar: bool = False) -> go.Figure:
                     # fig[src_block].add_trace(
                     fig.add_trace(
                         go.Scatter(
-                            x=o.times.datetime[srcup[src_block][ant]][i:i+2] if o.times is not None else
-                                localtimes.datetime[srcup[src_block][ant]][i:i+2],
+                            x=o.times.datetime[srcup[src_block][ant]][i:i+2],
                             y=y_value,
                             mode="lines",
                             line=dict(color=color_str[i], width=10),
                             showlegend=False,
                             marker=dict(showscale=show_colorbar),
-                            hovertemplate=f"<b>{o.stations[ant].name}</b><br><b>Elevation</b>: {colors[i]:.0f}º<extra></extra><br><b>Time</b>: {o.times[i].strftime('%H:%M') if o.times is not None else localtimes[i].strftime('%H:%M')}",
+                            hovertemplate=f"<b>{o.stations[ant].name}</b><br><b>Elevation</b>: {colors[i]:.0f}º<extra></extra><br><b>Time</b>: {o.times[i].strftime('%H:%M')}",
                         ),
                         row=src_i % 4 + 1,
                         col=src_i // 4 + 1
@@ -77,7 +70,7 @@ def elevation_plot(o, show_colorbar: bool = False) -> go.Figure:
     fig.update_layout(
         showlegend=False,
         hovermode='closest',
-        xaxis_title="Time (GST)" if o.times is None else "Time (UTC)",
+        xaxis_title="Time (GST)" if not o.fixed_time else "Time (UTC)",
         yaxis_title="Antennas",
         title='',
         paper_bgcolor='rgba(0,0,0,0)',   # Transparent background

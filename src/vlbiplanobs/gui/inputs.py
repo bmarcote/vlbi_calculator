@@ -34,17 +34,10 @@ def modal_welcome() -> html.Div:
                                 "observations locally, and with multiple sources or from catalogs ("
                                 "this will be added to the online PlanObs in a later release)."),
                         html.Li("The speed of PlanObs has increased significantly!"),
-                        html.Li("And yet, several new features are yet to come in the next releases."),
-                        # Add more updates as needed
-                    ]),
-                    html.H3(html.Em("Enjoy!"))
-                ], style={'background-color': 'rgb(212, 212, 216)'}
-            ),
-            dbc.ModalFooter(
-                dbc.Button("Close", id="close-modal", className="ml-auto btn btn-secondary")
-            )
-        ], id="welcome-modal", is_open=False)
-    ])
+                        html.Li("And yet, several new features are yet to come in the next releases.")]),
+                    html.H3(html.Em("Enjoy!"))], style={'background-color': 'rgb(212, 212, 216)'}),
+            dbc.ModalFooter(dbc.Button("Close", id="close-modal", className="ml-auto btn btn-secondary"))],
+        id="welcome-modal", is_open=False)])
 
 
 def modal_general_info() -> html.Div:
@@ -103,7 +96,7 @@ def modal_general_info() -> html.Div:
 
 
 def card(children: Optional[list] = None, className: str = '') -> html.Div:
-    return html.Div(className=' '.join(['card m-2', className]),
+    return html.Div(className=' '.join(['card my-2', className]),
                     children=[html.Div(className='card-body', children=children)])
 
 
@@ -188,6 +181,16 @@ def compute_button() -> html.Div:
 
 
 @functools.cache
+def pick_band_labels(show_wavelengths: bool) -> list:
+    if show_wavelengths:
+        return [{'label': 'λ\n(cm)', 'style': {'font-weight': 'bold', 'color': '#004990', 'white-space': 'pre'}}] + \
+               [b.split('or')[0].replace('cm', '').strip() for b in fs.bands.values()]
+
+    return [{'label': 'ν\n(GHz)', 'style': {'font-weight': 'bold', 'color': '#004990', 'white-space': 'pre'}}] + \
+           [b.split('or')[1].replace('GHz', '').strip() for b in fs.bands.values()]
+
+
+@functools.cache
 def band_from_index(ind: int) -> str:
     """Returns the band selected by the slider, given the index of the slider.
     If no band is selected, returns None.
@@ -201,10 +204,7 @@ def band_from_index(ind: int) -> str:
 def pick_band(bands: dict[str, str]) -> list:
     """Returns the card allowing the user to pick up the band.
     """
-    top_labels = [{'label': 'ν (GHz)', 'style': {'font-weight': 'bold'}}] + \
-                 [{'label': b.split('or')[1].replace('GHz', '').strip()} for b in bands.values()]
-    bottom_labels = [{'label': 'λ (cm)', 'style': {'font-weight': 'bold'}}] + \
-                    [{'label': b.split('or')[0].replace('cm', '').strip()} for b in bands.values()]
+    labels = pick_band_labels(False)
     return [html.Div(className='row col-12',
                      children=[html.Div(className='col-12', children=[
                         html.Div(className='row align-items-bottom', children=[
@@ -216,8 +216,8 @@ def pick_band(bands: dict[str, str]) -> list:
                                                persistence=True),
                                  ])]),
                         html.Br(),
-                        html.Div(dcc.Slider(min=0, max=len(top_labels), step=1, value=0,
-                                            marks={i: l for i, l in enumerate(bottom_labels)},  # type: ignore
+                        html.Div(dcc.Slider(min=0, max=len(labels), step=1, value=0,
+                                            marks={i: l for i, l in enumerate(labels)},
                                  included=False, id='band-slider', persistence=True))])])]
 
 

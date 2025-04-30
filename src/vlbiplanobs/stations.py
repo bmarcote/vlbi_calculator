@@ -533,6 +533,11 @@ class Stations(object):
         """
         return list(self._bands.keys())
 
+    def has_band(self, observing_band: str) -> bool:
+        """Returns True if the network can observe the observing_band, False otherwise.
+        """
+        return observing_band in self._bands
+
     def max_datarate(self, observing_band: str) -> Optional[u.Quantity]:
         return self._bands[observing_band]
 

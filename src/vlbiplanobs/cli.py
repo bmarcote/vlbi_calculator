@@ -15,9 +15,6 @@ from vlbiplanobs import sources
 from vlbiplanobs import freqsetups
 from vlbiplanobs.gui import plots
 
-_STATIONS = stations.Stations()
-_NETWORKS = _STATIONS.get_networks_from_configfile()
-
 
 def optimal_units(value: u.Quantity, units: list[u.Unit]):
     """Given a value (with some units), returns the unit choice from all
@@ -297,13 +294,13 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
     stations = []
     if list_networks is not None:
         try:
-            networks = [_NETWORKS[n] for n in list_networks]
+            networks = [obs._NETWORKS[n] for n in list_networks]
             for n in networks:
                 for s in n.station_codenames:
-                    if s not in stations and band in _STATIONS[s].bands:
+                    if s not in stations and band in obs._STATIONS[s].bands:
                         stations.append(s)
         except KeyError:
-            unknown_networks: list = [n for n in list_networks if n not in _NETWORKS]  # type: ignore
+            unknown_networks: list = [n for n in list_networks if n not in obs._NETWORKS]  # type: ignore
             n_networks = len(unknown_networks)  # type: ignore
             rprint(f"[bold red]The network{'s' if n_networks > 1 else ''} {', '.join(unknown_networks)}"
                    f" {'are' if n_networks > 1 else 'is'} not known.[/bold red]")
@@ -312,19 +309,19 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
     if list_stations is not None:
         try:
             for s in list_stations:
-                a_station = _STATIONS[s.strip()].codename
-                if a_station not in stations and band in _STATIONS[a_station].bands:
+                a_station = obs._STATIONS[s.strip()].codename
+                if a_station not in stations and band in obs._STATIONS[a_station].bands:
                     stations.append(a_station)
         except KeyError:
             rprint(f"[bold red]The station {a_station} is not known.[/bold red]")
             sys.exit(1)
 
-    dropped_stations = [s for s in stations if band not in _STATIONS[s].bands]
+    dropped_stations = [s for s in stations if band not in obs._STATIONS[s].bands]
     if len(dropped_stations) > 0:
         rprint("[yellow]The following antennas were ignored "
                f"because they cannot observe at {band}: {', '.join(dropped_stations)}[/yellow]")
 
-    final_stations = _STATIONS.filter_antennas(stations)
+    final_stations = obs._STATIONS.filter_antennas(stations)
     if not final_stations:
         rprint(f"[bold red]No antennas have been selected or none can observe at {band}.[/bold red]")
         sys.exit(1)
@@ -420,9 +417,9 @@ def main(band: str, networks: Optional[list[str]] = None,
 
     if datarate is None:
         if networks is not None:
-            for a_network in _NETWORKS:
+            for a_network in obs._NETWORKS:
                 if a_network in networks:
-                    datarate = _NETWORKS[a_network].max_datarate(band)
+                    datarate = obs._NETWORKS[a_network].max_datarate(band)
                     break
 
     o = VLBIObs(band, get_stations(band, networks, stations), scans=src2observe,
@@ -511,14 +508,14 @@ def cli():
 
     if args.list_networks:
         rprint("[bold]Available VLBI networks:[/bold]")
-        for network_name, network in _NETWORKS.items():
+        for network_name, network in obs._NETWORKS.items():
             rprint(f"[bold]{network_name}:[/bold] {network.name}")
             rprint(f"  [dim]Default antennas: {', '.join(network.station_codenames)}[/dim]")
             rprint(f"  [dim]Observes at: {', '.join(network.observing_bands)}[/dim]")
 
     if args.list_antennas:
         rprint("\n[bold]All available antennas:[/bold]")
-        for ant in _STATIONS:
+        for ant in obs._STATIONS:
             rprint(f"     {ant.name} ({ant.codename}):  {ant.diameter} in {ant.country}")
             rprint(f"      [dim]Observes at {', '.join(ant.bands)}[/dim]")
 
@@ -528,7 +525,7 @@ def cli():
             rprint(f"[bold]{aband}[/bold] [dim]({obs.freqsetups.bands[aband]})[/dim]")
             rprint("[dim]  Observable with [/dim]", end='')
             rprint("[dim]" +
-                   ', '.join([nn for nn, n in _NETWORKS.items() if aband in n.observing_bands]) +
+                   ', '.join([nn for nn, n in obs._NETWORKS.items() if aband in n.observing_bands]) +
                    "[/dim]")
 
     if args.list_antennas or args.list_bands or args.list_networks:

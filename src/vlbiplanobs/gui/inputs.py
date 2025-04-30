@@ -1,6 +1,4 @@
-# import numpy as np
-# from datetime import datetime as dt
-# import enum
+import functools
 from typing import Optional, Union, Sequence
 from datetime import datetime as dt
 # from astropy import units as u
@@ -14,28 +12,27 @@ from vlbiplanobs import stations
 from vlbiplanobs import observation
 
 
-def top_banner(app):
-    return [html.Div(id='banner',
-                     className='d-flex p-0 shadow-sm bg-white card',
-                     children=[html.Div(className='card-body m-0 p-3', children=[
-                        html.A(className='d-inline-block mr-md-auto',
-                               href="https://www.evlbi.org",
-                               children=[html.Img(height='70px',
-                                                  src=app.get_asset_url("logo_evn.png"),
-                                                  alt='European VLBI Network (EVN)',
-                                                  className="d-inline-block align-middle")]),
-                        html.Div(html.H2('EVN Observation Planner'),
-                                 className='d-inline-block align-middle mx-auto mb-0 font-weight-bolder',
-                                 style={'text-align': 'center', 'margin': '0', "flex": "1"}),
-                        html.A(className='d-inline-block ml-auto pull-right',
-                               href="https://www.jive.eu",
-                               children=[html.Img(src=app.get_asset_url("logo_jive.png"),
-                                                  height='70px',
-                                                  alt='Joint Institute for VLBI ERIC (JIVE)')])
-                     ], style={'display': 'flex', 'align-items': 'center',
-                               'justify-content': 'space-between'})
-                     ])
-            ]
+def top_banner(app) -> html.Div:
+    return html.Div(id='banner',
+                    className='d-flex p-0 shadow-sm bg-white card',
+                    children=[html.Div(className='card-body m-0 p-3', children=[
+                       html.A(className='d-inline-block mr-md-auto',
+                              href="https://www.evlbi.org",
+                              children=[html.Img(height='70px',
+                                                 src=app.get_asset_url("logo_evn.png"),
+                                                 alt='European VLBI Network (EVN)',
+                                                 className="d-inline-block align-middle")]),
+                       html.Div(html.H2('EVN Observation Planner'),
+                                className='d-inline-block align-middle mx-auto mb-0 font-weight-bolder',
+                                style={'text-align': 'center', 'margin': '0', "flex": "1"}),
+                       html.A(className='d-inline-block ml-auto pull-right',
+                              href="https://www.jive.eu",
+                              children=[html.Img(src=app.get_asset_url("logo_jive.png"),
+                                                 height='70px',
+                                                 alt='Joint Institute for VLBI ERIC (JIVE)')])
+                    ], style={'display': 'flex', 'align-items': 'center',
+                              'justify-content': 'space-between'})
+                    ])
 
 
 def modal_welcome() -> html.Div:
@@ -151,7 +148,21 @@ def parse_str_list(a_list: Sequence[str]) -> str:
     """Returns a string with the list of antennas as a comma-separated string list.
     For the last element, it adds an 'and' instead of the comma.
     """
-    return ', '.join(a_list)[::-1].replace(',', 'dna ,' if len(a_list) > 3 else 'dna ', 1)[::-1]
+    return ', '.join(a_list)[::-1].replace(',', ' dna ,' if len(a_list) > 3 else 'dna ', 1)[::-1]
+
+
+def print_table_bands_sefds(ant: stations.Station, show_wavelengths: bool = True) -> html.Div:
+    bands_str = [fs.bands[band].split('or')[0].replace('cm', ' cm').strip() if show_wavelengths else
+                 fs.bands[band].split('or')[1].replace('GHz', ' GHz') for band in ant.bands]
+
+    return html.Div([html.Div(className='col-6 px-0 m-0',
+                              children=[
+                                html.Label(children=b_str,
+                                           className='text-xs text-primary'),
+                                html.Label(f"({ant.sefds[band].value:g} "
+                                           f"{ant.sefds[band].unit.to_string('unicode')})",
+                                           className='text-xs text-secondary')]
+                              ) for b_str, band in zip(bands_str, ant.bands)], className='row')
 
 
 def antenna_card(app, ant: stations.Station, show_wavelengths: bool = True) -> html.Div:
@@ -177,16 +188,8 @@ def antenna_card(app, ant: stations.Station, show_wavelengths: bool = True) -> h
                             dmc.Text("Can observe at the following bands (System Equivalent Flux "
                                      "Density, SEFD, values in brackets):", size='sm',
                                      id=f"ant-{ant.codename}-band-spec"),
-                            html.Div(className='container col-12 row mx-0 px-0', children=[
-                              html.Div(className='col-6 px-0 m-0', children=[
-                                       html.Label(children=b_str,
-                                                  id=f"badge-band-{band.replace('.', '_')}-ant-"
-                                                     f"{ant.codename}".lower(),
-                                                  className='text-xs text-primary'),
-                                       html.Label(f"({ant.sefds[band].value:g} "
-                                                  f"{ant.sefds[band].unit.to_string('unicode')})",
-                                                  className='text-xs text-secondary')]
-                                       ) for b_str, band in zip(bands_str, ant.bands)])
+                            html.Div(className='container col-12 row mx-0 px-0', id=f"badge-band-ant-{ant.codename}",
+                                     children=print_table_bands_sefds(ant, show_wavelengths))
                         ], className='col-12 px-2 pb-2 m-0')
                     ], withBorder=False), className='col-12 p-0 m-0', style={'width': '300px'})
 
@@ -205,6 +208,17 @@ def compute_button() -> html.Div:
                 ], className='d-flex align-items-center justify-content-center', style={'gap': '5px'}),
             ], className='col-12 container row'),
         className='col-6', style={'position': 'relative'})
+
+
+@functools.cache
+def band_from_index(ind: int) -> str:
+    """Returns the band selected by the slider, given the index of the slider.
+    If no band is selected, returns None.
+    """
+    if ind == 0:
+        raise ValueError("No band selected")
+
+    return list(fs.bands.keys())[ind - 1]
 
 
 def pick_band(bands: dict[str, str]) -> list:
@@ -230,26 +244,25 @@ def pick_band(bands: dict[str, str]) -> list:
                                  included=False, id='band-slider', persistence=True))])])]
 
 
-def network_entry(app, network: str, bands: dict[str, str]) -> html.Div:
+def network_band_labels(network: str, show_wavelengths: bool = False) -> str:
+    if show_wavelengths:
+        label_bands = [b.replace('cm', '').strip() for b in observation._NETWORKS[network].observing_bands]
+    else:
+        label_bands = [fs.bands[b].split('or')[1].replace('GHz', '').strip()
+                       for b in observation._NETWORKS[network].observing_bands]
+
+    if len(label_bands) == 0:
+        return 'N/A'
+    elif len(label_bands) == 1:
+        return label_bands[0]
+    else:
+        return ', '.join(label_bands[:-1]) + (', and ' if len(label_bands) > 3 else ' and ') + label_bands[-1] + \
+            (' cm.' if show_wavelengths else ' GHz.')
+
+
+def network_entry(app, network: str) -> html.Div:
     """Returns the DIV that shows a given VLBI network to be selected
     """
-    if len(observation._NETWORKS[network].observing_bands) > 1:
-        if len(observation._NETWORKS[network].observing_bands) > 2:
-            temp = ', and'
-        else:
-            temp = ' and'
-        wavelengths = ', '.join([b.replace('cm', '').strip()
-                                 for b in observation._NETWORKS[network].observing_bands[:-1]]) + \
-                      temp + observation._NETWORKS[network].observing_bands[-1].replace('cm', ' cm.').strip()
-        frequencies = ', '.join([bands[b].split('or')[1].replace('GHz', '').strip()
-                                 for b in observation._NETWORKS[network].observing_bands[:-1]]) + temp + \
-                      bands[observation._NETWORKS[network].observing_bands[-1]].split('or')[1] + '.'
-    elif len(observation._NETWORKS[network].observing_bands) == 1:
-        wavelengths = observation._NETWORKS[network].observing_bands[0]
-        frequencies = bands[observation._NETWORKS[network].observing_bands[0]].split('or')[1].replace('GHz', '')
-    else:
-        wavelengths = 'N/A'
-        frequencies = 'N/A'
 
     has_full_name = stations.Stations.get_network_full_name(network) != network
     return html.Div([dbc.Card([dbc.CardImg(src=app.get_asset_url(f"network-{network.lower()}.png"),
@@ -270,13 +283,9 @@ def network_entry(app, network: str, bands: dict[str, str]) -> html.Div:
                                 className='mt-0 mb-0 text-white',
                                 style={'white-space': 'nowrap', 'text-overflow': 'ellipsis',
                                        'overflow': 'hidden'}) if has_full_name else '',
-                        html.Label(f"Observes at {wavelengths}", hidden=True,
+                        html.Label(f"Observes at {network_band_labels(network)}",
                                    className='card-text text-white',
-                                   id=f"network-{network}-label-wav",
-                                   style={'line-height': '1.2'}),
-                        html.Label(f"Observes at {frequencies}", hidden=False,
-                                   className='card-text text-white',
-                                   id=f"network-{network}-label-freq",
+                                   id=f"network-{network}-label-band",
                                    style={'line-height': '1.2'})],
                                    className='card-body text-start p-0 pt-0 w-100'))],
                               className='m-2 card-background',
@@ -286,10 +295,10 @@ def network_entry(app, network: str, bands: dict[str, str]) -> html.Div:
                     className='col-4')
 
 
-def networks(app, networks, bands) -> list:
+def networks(app, networks) -> list:
     return [card([html.H4("Select default VLBI Network(s)",
                           className='text-dark font-weight-bold mb-0 pl-2 ml-4'),
-                  html.Div([network_entry(app, network, bands) for network in networks],
+                  html.Div([network_entry(app, network) for network in networks],
                            className='d-flex flex-wrap')])]
 
 
@@ -379,25 +388,25 @@ def correlations() -> html.Div:
                             dcc.Dropdown(id='datarate', placeholder="Maximum observing data rate...",
                                          options=tuple([{'label': drl, 'value': str(dr)}  # type: ignore
                                                        for dr, drl in fs.data_rates.items()][::-1]),
-                                         value=2048, persistence=True),
+                                         value=2048, persistence=True, clearable=False),
                             html.Label(id='bandwidth-label', style={'color': '#999999'}, children='',
                                        htmlFor="datarate")]),
                         html.Div(className='col-6', children=[
                             html.Div(className='form-group', children=[
                                 dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
-                                             options=[{'label': sbl, 'value': sb}  # type: ignore
+                                             options=[{'label': sbl, 'value': sb}
                                                       for sb, sbl in fs.subbands.items()][::-1],
-                                             value=8, persistence=True),
+                                             value=8, persistence=True, clearable=False),
                                 dcc.Dropdown(id='channels',
                                              placeholder="Select no. channels per subband...",
                                              options=[{'label': chl, 'value': ch}  # type: ignore
                                                       for ch, chl in fs.channels.items()][::-1],
-                                             value=64, persistence=True),
+                                             value=64, persistence=True, clearable=False),
                                 dcc.Dropdown(id='pols', placeholder="Polarizations...",
                                              options=[{'label': pl, 'value': p}  # type: ignore
                                                       for p, pl in fs.polarizations.items()],
-                                             value=4, persistence=True),
+                                             value=4, persistence=True, clearable=False),
                                 dcc.Dropdown(id='inttime', placeholder="Integration time...",
                                              options=[{'label': itl, 'value': it}  # type: ignore
                                                       for it, itl in fs.inttimes.items()],
-                                             value=2, persistence=True)])])])])])
+                                             value=2, persistence=True, clearable=False)])])])])])

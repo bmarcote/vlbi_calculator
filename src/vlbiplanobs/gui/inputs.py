@@ -12,29 +12,6 @@ from vlbiplanobs import stations
 from vlbiplanobs import observation
 
 
-def top_banner(app) -> html.Div:
-    return html.Div(id='banner',
-                    className='d-flex p-0 shadow-sm bg-white card',
-                    children=[html.Div(className='card-body m-0 p-3', children=[
-                       html.A(className='d-inline-block mr-md-auto',
-                              href="https://www.evlbi.org",
-                              children=[html.Img(height='70px',
-                                                 src=app.get_asset_url("logo_evn.png"),
-                                                 alt='European VLBI Network (EVN)',
-                                                 className="d-inline-block align-middle")]),
-                       html.Div(html.H2('EVN Observation Planner'),
-                                className='d-inline-block align-middle mx-auto mb-0 font-weight-bolder',
-                                style={'text-align': 'center', 'margin': '0', "flex": "1"}),
-                       html.A(className='d-inline-block ml-auto pull-right',
-                              href="https://www.jive.eu",
-                              children=[html.Img(src=app.get_asset_url("logo_jive.png"),
-                                                 height='70px',
-                                                 alt='Joint Institute for VLBI ERIC (JIVE)')])
-                    ], style={'display': 'flex', 'align-items': 'center',
-                              'justify-content': 'space-between'})
-                    ])
-
-
 def modal_welcome() -> html.Div:
     """Welcoming window announcing the new version
     """

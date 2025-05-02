@@ -15,7 +15,7 @@ bands: dict[str, str] = {'92cm': '92 cm or 0.33 GHz', '49cm': '49 cm or 0.6 GHz'
                          '0.13cm': '0.13 cm or 230 GHz',
                          '0.09cm': '0.087 cm or 345 GHz'}
 
-# from 4 Mbps to 32 Gbps
+# from 4 Mbps to 32 Gbps.
 data_rates: dict[int, str] = {i: f"{i} Mbps" if i < 1e3 else f"{i/1000:.0f} Gbps"
                               for i in [2**j for j in range(2, 16)]}
 

@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Optional
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,14 +14,13 @@ from vlbiplanobs import observation as obs
 from vlbiplanobs import sources
 
 
-def elevation_plot(o, show_colorbar: bool = False) -> go.Figure:
+def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
     """Creates the plot showing when the different antennas can observe a given
     source,
     """
-    if o is None:
-        return html.Div()
+    if o is None or not o.scans:
+        return None
 
-    assert o.scans is not None
     # Normalize the color array to [0, 1] and map it to the viridis colormap
     norm = Normalize(vmin=0, vmax=90)  # Normalize values between 0 and 90
     viridis = cm.get_cmap('viridis')
@@ -116,11 +116,10 @@ def elevation_plot(o, show_colorbar: bool = False) -> go.Figure:
     return fig
 
 
-def uvplot(o, filter_antennas: Optional[list[str]] = None) -> go.Figure:
-    if o is None:
+def uvplot(o, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure]:
+    if o is None or not o.scans:
         return None
 
-    assert o.scans is not None
     bl_uv = o.get_uv_data()
     data = []
     default_color = 'black'
@@ -170,7 +169,7 @@ def uvplot(o, filter_antennas: Optional[list[str]] = None) -> go.Figure:
             x=uv[:, 0],
             y=uv[:, 1],
             mode='markers',
-            marker=dict(color=color, size=1 if color == 'black' else 2),
+            marker=dict(color=color, size=2 if color == 'black' else 4),
             name=key,
             hovertext=hover_text,
             hoverinfo='text'
@@ -221,7 +220,25 @@ def uvplot(o, filter_antennas: Optional[list[str]] = None) -> go.Figure:
     return fig
 
 
-def plot_worldmap_stations(data):
+def plot_worldmap_stations(o) -> Optional[go.Figure]:
+    if o is None or not o.scans:
+        return None
+
+    data: dict[str, list | str] = defaultdict(list)
+    # data = {"lat": [], "lon": [], "color": [], "symbol": [], "mode": "markers",
+    #         "name": [], "text": [], "hovertemplate": [], "observes": []}
+    try:
+        ant_observes = o.can_be_observed()[list(o.can_be_observed().keys())[0]]
+    except (ValueError, IndexError):
+        ant_observes = {ant.codename: True for ant in o.stations}
+
+    for ant in o.stations:
+        data["lat"].append(ant.location.lat.value)
+        data["lon"].append(ant.location.lon.value)
+        data["name"].append(ant.name)
+        data["observes"].append(ant_observes[ant.codename])
+        data["text"].append(f"{ant.name}<br>({ant.country})<br> {ant.diameter}")
+        data["hovertemplate"].append(f"{ant.name}<br>({ant.country})<br> {ant.diameter}<extra></extra>")
     avg_lon = np.mean(data['lon'])
     fig = go.Figure(go.Scattergeo(
         lon=data['lon'],

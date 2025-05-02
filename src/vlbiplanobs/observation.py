@@ -242,7 +242,7 @@ class Observation(object):
             self._synth_beam = None
 
     @property
-    def gstimes(self) -> Optional[coord.angles.Longitude]:
+    def gstimes(self) -> coord.angles.Longitude:
         """Returns the GST times when the observation runs as an astropy.coordinates.angles.Longitude
         object (meaning in hourangle units).
         It can return None if the times have not been set yet, showing a warning.
@@ -478,11 +478,11 @@ class Observation(object):
 
         to_return = {}
         for scanblock in self.scans.values():
-            if len(scanblock.scans) == 1:
-                to_return[scanblock.scans[0].source.name] = self.duration*self.ontarget_fraction
-            else:
+            if len(scanblock.scans) > 1:
                 for src, dur in scanblock.fractional_time().items():
-                    to_return[src] = dur * self.duration  # type: ignore
+                    to_return[src] = dur * self.duration
+            else:
+                to_return[scanblock.scans[0].source.name] = self.duration*self.ontarget_fraction
 
         return to_return
 
@@ -557,13 +557,8 @@ class Observation(object):
         if not self.sources():
             return {}
 
-        # the current timing checks provided (on a test observation):
-        # Elevations with process: 16.56423762498889 s
-        # Elevations with threads: 0.2133850830141455 s
-        # Elevations with nothing: 0.36229008401278406 s
         with self._mutex:
             if self._elevations is None:
-                # self._elevations = self._elevations_threads()
                 self._elevations = {src: {ant: altaz.alt for ant, altaz in srcd.items()}
                                     for src, srcd in self.altaz().items()}
 
@@ -647,8 +642,8 @@ class Observation(object):
 
         Returns
             is_observable : dict
-                Dictionary where they keys are the station code names, and the values will be
-                a dictionary with the sources names as keys, and a boolean containing
+                Dictionary where they keys are the scan block names, and the values are
+                a dictionary with the station code names as keys, and a boolean containing
                 if the source can be observed by the station.
         """
         return {s: {k: any(v) for k, v in i.items()} for s, i in self.is_observable().items()}
@@ -671,7 +666,7 @@ class Observation(object):
 
             def compute_is_always_visible_for_source(station_source: tuple) -> tuple:
                 station, source = station_source[0], station_source[1]
-                return station, source, station.is_always_observable(self.times, source)
+                return station.codename, source.name, station.is_always_observable(self.times, source)
 
             with ThreadPoolExecutor() as executor:
                 results = list(executor.map(compute_is_always_visible_for_source,
@@ -862,10 +857,20 @@ class Observation(object):
         temp *= self.polarizations.value*self.subbands*self.channels
         return temp * 1.75*u.GB / (131072 * 3600)
 
-    def sun_limiting_epochs(self) -> Optional[dict[str, list[Time]]]:
-        if self.scans is None:
-            return None
+    def sun_limiting_epochs(self) -> dict[str, list[Time]]:
+        """Returns a dictionary with the sun-constrained epochs for each scan block.
+        For each block, it retursn a two-element list with the initial and final time that
+        define the time range when the Sun is too close to at least some of the sources
+        in the block. The "too close" threshold is defined by the Barray Clark estimates
+        from predictions by Ketan Desai of IPM scattering sizes (see SCHED references) at
+        the observing band.
 
+        Returns
+            dict[str, list[Time]]
+                A dictionary with the keys being the name of the scan blocks and the values
+                a list with the start and end time for the exclusion time range.
+                If the list is empty, implies that there is no risky times where the Sun is too close.
+        """
         bad_epochs: dict[str, list[Time]] = {}
         for blockname, block in self.scans.items():
             bad_epochs[blockname] = []
@@ -875,8 +880,6 @@ class Observation(object):
             # Keep only the first and last epochs
             if len(bad_epochs[blockname]) > 0:
                 t0, t1 = min(bad_epochs[blockname]), max(bad_epochs[blockname])
-                # if (t0.datetime.month == 1 and t0.datetime.day == 1) and \
-                #    (t1.datetime.month == 12 and t1.datetime.day == 31):
                 if t0.datetime.month < 3 and t1.datetime.month > 10:
                     mid_year = Time('2025-06-01')
                     t1 = max([t for t in bad_epochs[blockname] if t <= mid_year])
@@ -886,20 +889,15 @@ class Observation(object):
 
         return bad_epochs
 
-    def sun_constraint(self, times: Optional[Time] = None) -> Optional[dict[str, Optional[u.Quantity]]]:
+    def sun_constraint(self, times: Optional[Time] = None) -> dict[str, Optional[u.Quantity]]:
         """Checks if the Sun is too close to the targets on each block scan, according to the
         Barray Clark estimates from predictions by Ketan Desai of IPM scattering sizes (see
         SCHED references).
         """
-        if self.scans is None:
-            return None
-
-        if times is None:
-            times = self.times if self.times is not None else self._REF_YEAR
-
         sun_seps: dict[str, Optional[u.Quantity]] = {}
         for blockname, block in self.scans.items():
-            min_sep = np.min([s.sun_separation(times=times) for s in block.sources()])
+            min_sep = np.min([s.sun_separation(times=times if times is not None else self.times)
+                              for s in block.sources()])
             if isinstance(min_sep, float):
                 min_sep *= u.deg
             sun_seps[blockname] = min_sep if min_sep <= freqsetups.min_separation_sun(self.band) \
@@ -907,7 +905,7 @@ class Observation(object):
 
         return sun_seps
 
-    def thermal_noise(self) -> Optional[Union[u.Quantity, dict[str, u.Quantity]]]:
+    def thermal_noise(self) -> Union[u.Quantity, dict[str, u.Quantity]]:
         """Returns the expected rms thermal noise for the given observation.
 
         Each antenna has a different sensitivity for the observing band (established from
@@ -924,9 +922,6 @@ class Observation(object):
         """
         if self._rms is not None:
             return self._rms
-
-        if self.datarate is None:
-            raise ValueError("The data rate must be defined to estimate thermal noise.")
 
         # TODO: I think the n_stations = 1 may be a special case, where it requires k=0, not k=1
         sefds = np.array([stat.sefd(self.band).to(u.Jy).value for stat in self.stations])
@@ -1069,8 +1064,6 @@ class Observation(object):
         # Compute all unique baselines (i < j)
         idx_i, idx_j = np.triu_indices(nstat, k=1)
         bl_xyz = positions[idx_i] - positions[idx_j]  # shape (nbl, 3)
-        # print(self.stations[0].codename)
-        # print(self.stations[-1].codename)
         bl_names = [f"{self.stations[int(i)].codename}-{self.stations[int(j)].codename}"
                     for i, j in zip(idx_i, idx_j)]
 
@@ -1084,8 +1077,8 @@ class Observation(object):
             hourangle: coord.Angle = gstimes
             hourangle = gstimes
             dec = 45 * u.deg
-            print("Target source is not set, thus we assume a source at +/- 45º declination"
-                  " to estimate the (u, v) values.'")
+            # print("Target source is not set, thus we assume a source at +/- 45º declination"
+            #       " to estimate the (u, v) values.'")
         else:
             hourangle = (gstimes - source.ra.to(u.hourangle)).wrap_at(24 * u.hourangle)
             dec = source.dec
@@ -1134,7 +1127,8 @@ class Observation(object):
             # Find times where both antennas are up
             # up_times = np.intersect1d(ants_up[blockname][ant1], ants_up[blockname][ant2],
             #                           assume_unique=True)
-            up_times = ants_up[blockname][ant1] & ants_up[blockname][ant2]
+            # NOTE: type(ants_up)=<class 'dict'>, type(ants_up[blockname])=<class 'dict'>, type(ants_up[blockname][ant1])=<class 'numpy.ndarray'>
+            up_times = ants_up[blockname][ant1] & ants_up[blockname][ant2]  # type: ignore
             if len(up_times) > 0:
                 # up_times are indices into the time array
                 bl_uv_up[bl_name] = bl_uv[up_times, bl_idx, :2]

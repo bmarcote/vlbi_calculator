@@ -1,11 +1,13 @@
 @charset "UTF-8";
 
-/* @font-face { */
-/*   font-family: 'Inter'; */
-/* } */
+@font-face {
+  font-family: 'Lato';
+  /* font-family: 'Inter'; */
+}
 
 
 @import url('https://fonts.googleapis.com/css?family=Inter:300,400,500,600,700,800');
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&display=swap')
 /*
  * Bootstrap  v5.3.3 (https://getbootstrap.com/)
  * Copyright 2011-2024 The Bootstrap Authors
@@ -16,8 +18,8 @@
   --bs-evn: #a01d26;
   --bs-jive-dark: #004990;
   --bs-jive-light: #9DB7C4;
-  --bs-font-sans-serif: "Inter";
-  --bs-body-font-family: "Inter";
+  --bs-font-sans-serif: "Lato" "Inter";
+  --bs-body-font-family: "Lato" "Inter";
   --bs-blue: #0ea5e9;
   --bs-indigo: #6366f1;
   --bs-purple: #a855f7;
@@ -86,7 +88,7 @@
   --bs-dark-border-subtle: #71717a;
   --bs-white-rgb: 255, 255, 255;
   --bs-black-rgb: 0, 0, 0;
-  --bs-font-sans-serif: "Inter";
+  --bs-font-sans-serif: "Lato" "Inter";
   --bs-font-monospace: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --bs-gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0));
   --bs-body-font-family: var(--bs-font-sans-serif);
@@ -5772,6 +5774,7 @@ fieldset:disabled .btn {
 }
 
 .accordion-item:last-of-type>.accordion-collapse {
+  border-bottom: none;
   border-bottom-right-radius: var(--bs-accordion-border-radius);
   border-bottom-left-radius: var(--bs-accordion-border-radius);
 }
@@ -26281,7 +26284,7 @@ p {
 }
 
 .text-sans-serif {
-  font-family: "Inter" !important;
+  font-family: "Lato" "Inter" !important;
 }
 
 .text-monospace {

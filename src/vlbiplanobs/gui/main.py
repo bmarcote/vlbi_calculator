@@ -27,17 +27,17 @@ class Obs():
     def __init__(self, o: Optional[cli.VLBIObs] = None):
         self.plan_lock: threading.Lock = threading.Lock()
         self._OBS: cli.VLBIObs | None = o
-        self.prev_datarate: int | None = None
-        self.prev_channels: int | None = None
-        self.prev_subbands: int | None = None
+        self.prev_datarate: int = 2048
+        self.prev_channels: int = 64
+        self.prev_subbands: int = 8
 
     def set(self, obs: cli.VLBIObs):
         with self.plan_lock:
             self._OBS = obs
 
     def get(self) -> Optional[cli.VLBIObs]:
-        with self.plan_lock:
-            return self._OBS
+        # with self.plan_lock:
+        return self._OBS
 
 
 _main_obs = Obs()
@@ -55,23 +55,43 @@ app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_
            prevent_initial_callbacks=True)
 
 
+@app.callback([Output('download-data', 'data'),
+               Output('downloading', 'children')],
+              Input("button-download", "n_clicks"),
+              running=[(Output('button-download', 'disabled'), True, False),])
+def download_pdf_summary(n_clicks):
+    if n_clicks is not None:
+        try:
+            return dcc.send_bytes(outputs.summary_pdf(_main_obs.get()).getvalue(),
+                                  "planobs_summary.pdf"), html.Div()
+        except ValueError as e:
+            # TODO: put proper logging print
+            print(f"An error occurred: {e}")
+            return dash.no_update, dash.no_update
+
+    return dash.no_update, dash.no_update
+
 
 @app.callback([Output('user-message', 'children'),
                Output('loading-div', 'children'),
-               Output('button-download-summary', 'children'),
+               Output('download-summary-div', 'hidden'),
                Output('card-rms', 'children'),
+               Output('sensitivity-baseline-modal', 'children'),
                Output('card-resolution', 'children'),
                Output('out-sun', 'children'),
                Output('out-phaseref', 'children'),
                Output('out-ant', 'children'),
                Output('out-elevations', 'hidden'),
-               Output('out-elevations', 'children'),
-               Output("sensitivity-baseline-modal", "is_open", allow_duplicate=True),
+               Output('out-elevations-info', 'children'),
+               Output('fig-elevations', 'figure'),
                Output('out-uv-coverage', 'hidden'),
-               Output('out-uv-coverage', 'children'),
+               Output('out-uv-coverage-info', 'children'),
+               Output('fig-uv-coverage', 'figure'),
+               Output('select-antenna-uv-plot', 'options'),
                Output('div-card-fov', 'children'),
                Output('div-card-vel', 'children'),
-               Output('out-worldmap', 'children')],
+               Output('out-worldmap', 'hidden'),
+               Output('fig-worldmap', 'figure')],
               Input('compute-observation', 'n_clicks'),
               [State('band-slider', 'value'),
                State('switch-specify-source', 'value'),
@@ -92,25 +112,27 @@ def compute_observation(n_clicks, band, defined_source, source, onsourcetime, de
                         pols, inttime, selected_antennas):
     """Computes all products to be shown concerning the set observation.
     """
+    n_outputs = 20
     if n_clicks is None:
-        return [dash.no_update]*16
+        return [dash.no_update]*n_outputs
 
     if band == 0 or (not selected_antennas) or (duration is None and (source == '' or not defined_source)):
-        return outputsinfo_card("Select an observing band and the antennas",
-                             "That's the minimum to compute an observation. "
-                             "If source is not provided, a duration must be set too."), *[dash.no_update]*15
+        return outputs.warning_card("Select an observing band and the antennas",
+                                    "If no source is provided, a duration for the observation "
+                                    "must be set."), \
+            *[dash.no_update]*(n_outputs - 1)
 
-    if len([ant for ant in selected_antennas if observation._STATIONS[ant]
-            .has_band(list(fs.bands.keys())[band-1])]) == 0:
-        return outputserror_card("No antennas are able to observe at this band",
-                              "First, select antennas that can observe at the selected band"), \
-               *[dash.no_update]*15
+    if not [ant for ant in selected_antennas
+            if observation._STATIONS[ant].has_band(list(fs.bands.keys())[band-1])]:
+        return outputs.error_card("No antennas are able to observe at this band",
+                                  "First, select antennas that can observe at the selected band"), \
+               *[dash.no_update]*(n_outputs - 1)
 
     if defined_epoch and ((startdate is not None and duration is None) or
                           (startdate is None and duration is not None)) == 1:
-        return outputserror_card('The observing epoch is partially defined',
-                              'If you define the observing epoch, all information: start date and time, '
-                              'and duration is required.'), *[dash.no_update]*15
+        return outputs.error_card('The observing epoch is partially defined',
+                                  'If you define the observing epoch, then all start date, time, '
+                                  'and duration are required.'), *[dash.no_update]*(n_outputs - 1)
 
     t0 = dt.now()
     try:
@@ -132,25 +154,25 @@ def compute_observation(n_clicks, band, defined_source, source, onsourcetime, de
         _main_obs.get().synthesized_beam()
         _main_obs.get().get_uv_data()
     except Exception as e:
-        return outputserror_card(f"An error has occured ({e})"), *[dash.no_update]*15
+        return outputs.error_card(f"An error has occured", str(e)), *[dash.no_update]*(n_outputs - 1)
 
     try:
         futures = {}
         with ThreadPoolExecutor() as executor:
             futures['rms'] = executor.submit(_main_obs.get().thermal_noise)
             futures['beam'] = executor.submit(_main_obs.get().synthesized_beam)
-            futures['out-rms'] = executor.submit(outputsrms, _main_obs.get())
-            futures['out-res'] = executor.submit(outputsresolution, _main_obs.get())
-            futures['out_ant'] = executor.submit(outputsant_warning, _main_obs.get())
-            futures['out_phaseref'] = executor.submit(outputswarning_phase_referencing_high_freq,
+            futures['out-rms'] = executor.submit(outputs.rms, _main_obs.get())
+            futures['out-res'] = executor.submit(outputs.resolution, _main_obs.get())
+            futures['out_ant'] = executor.submit(outputs.ant_warning, _main_obs.get())
+            futures['out_phaseref'] = executor.submit(outputs.warning_phase_referencing_high_freq,
                                                       _main_obs.get())
-            futures['out_fov'] = executor.submit(outputsfield_of_view, _main_obs.get())
-            futures['out_freq'] = executor.submit(outputssummary_freq_res, _main_obs.get())
+            futures['out_fov'] = executor.submit(outputs.field_of_view, _main_obs.get())
+            futures['out_freq'] = executor.submit(outputs.summary_freq_res, _main_obs.get())
 
             out_rms = futures['rms'].result()
             beam = futures['beam'].result()
             out_rms = futures['out-rms'].result()
-            out_sens = futures['out-res'].result()
+            out_res = futures['out-res'].result()
             out_ant = futures['out_ant'].result()
             out_phaseref = futures['out_phaseref'].result()
             out_fov = futures['out_fov'].result()
@@ -158,15 +180,12 @@ def compute_observation(n_clicks, band, defined_source, source, onsourcetime, de
 
         with ThreadPoolExecutor() as executor:
             if not (not _main_obs.get().sourcenames or not defined_source):
-                futures['out_plot_elev'] = executor.submit(outputsplot_elevations, _main_obs.get())
-                futures['out_sun'] = executor.submit(outputssun_warning, _main_obs.get())
+                # futures['out_plot_elev'] = executor.submit(outputs.plot_elevations, _main_obs.get())
+                futures['out_sun'] = executor.submit(outputs.sun_warning, _main_obs.get())
                 # futures['out_plot_uv'] = executor.submit(outputsplot_uv_coverage, _main_obs.get())
 
             # futures['out_worldmap'] = executor.submit(outputsworldmap_plot, _main_obs.get())
 
-            out_plot_elev = ['out_plot_elev' not in futures, dash.no_update
-                             if 'out_plot_elev' not in futures
-                             else futures['out_plot_elev'].result()]
             out_sun = dash.no_update if 'out_sun' not in futures else futures['out_sun'].result()
         #     out_plot_uv = ['out_plot_uv' not in futures, dash.no_update if 'out_plot_uv' not in futures \
         #                    else futures['out_plot_uv'].result()]
@@ -180,30 +199,34 @@ def compute_observation(n_clicks, band, defined_source, source, onsourcetime, de
 
         if not _main_obs.get().sourcenames or not defined_source:
             #     out_plot_elev = [True, dash.no_update]
+            out_plot_elev = [True, dash.no_update, dash.no_update]
             #     out_sun = dash.no_update
-            out_plot_uv = [True, dash.no_update]
+            out_plot_uv = [True, dash.no_update, dash.no_update, dash.no_update]
         else:
+            out_plot_elev = [False,
+                             outputs.print_observability_ranges(_main_obs.get()),
+                             plots.elevation_plot(_main_obs.get())]
             #     out_plot_elev = [False, outputsplot_elevations(_main_obs.get())]
             #     out_sun = outputssun_warning(_main_obs.get())
-            out_plot_uv = [False, outputsplot_uv_coverage(_main_obs.get())]
+            out_plot_uv = [False, outputs.print_baseline_lengths(_main_obs.get()),
+                           plots.uvplot(_main_obs.get()), outputs.put_antenna_options(_main_obs.get())]
         #
         # out_ant = outputsant_warning(_main_obs.get())
         # out_phaseref = outputswarning_phase_referencing_high_freq(_main_obs.get())
         # out_fov = outputsfield_of_view(_main_obs.get())
         # out_freq = outputssummary_freq_res(_main_obs.get())
-        out_worldmap = outputsworldmap_plot(_main_obs.get())
-
+        out_worldmap = plots.plot_worldmap_stations(_main_obs.get())
+        out_baseline_sens = outputs.baseline_sensitivities(_main_obs.get())
     except sources.SourceNotVisible:
-        return outputserror_card('Source Not Visible!',
-                              'The source cannot be observed by the given antennas and/or '
-                              'during the given observing time.'), *[dash.no_update]*7, False, \
-               False, *[dash.no_update]*4
+        return outputs.error_card('Source Not Visible!',
+                                  'The source cannot be observed by the given antennas and/or '
+                                  'during the given observing time.'), *[dash.no_update]*(n_outputs - 1)
     except Exception as e:
-        return outputserror_card(f"An error has occured ({e})"), *[dash.no_update]*15
+        return outputs.error_card(f"An error has occured", str(e)), *[dash.no_update]*(n_outputs - 1)
 
     # print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
-    return html.Div(), html.Div(), outputsbutton_summary(_main_obs.get()), out_rms, out_sens, out_sun, \
-        out_phaseref, out_ant, *out_plot_elev, False, *out_plot_uv, out_fov, out_freq, out_worldmap
+    return html.Div(), html.Div(), False, out_rms, out_baseline_sens, out_res, out_sun, \
+        out_phaseref, out_ant, *out_plot_elev, *out_plot_uv, out_fov, out_freq, False, out_worldmap
 
 
 server = app.server
@@ -216,11 +239,13 @@ app.layout = dbc.Container(fluid=True, className='bg-gray-100 row m-0 p-4', chil
                            layout.top_banner(app),
                            inputs.modal_welcome(),
                            html.Div(id='main-window', className='container-fluid d-flex row p-0 m-0',
-                                    children=[html.Div(id='right-column', className='col-12 col-sm-6 m-0 p-0',
+                                    children=[html.Div(id='right-column',
+                                                       className='col-12 col-sm-6 m-0 p-0',
                                                        children=layout.inputs_column(app)),
-                                              html.Div(id='left-column', className='col-12 col-sm-6 m-0 p-0',
-                                                       children=layout.outputs_column(app)),
-                                              ]),
+                                              html.Div(id='left-column',
+                                                       className='col-12 col-sm-6 m-0 p-0',
+                                                       children=[layout.compute_buttons(app),
+                                                                 layout.outputs_column(app)])]),
                            html.Div(html.A(html.I(className="fa-solid fa-circle-info",
                                                   style={"font-size": "4rem"}),
                                            id="more-info-button",

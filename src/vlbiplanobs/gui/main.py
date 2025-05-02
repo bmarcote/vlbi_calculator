@@ -105,16 +105,17 @@ def download_pdf_summary(n_clicks):
                State('channels', 'value'),
                State('pols', 'value'),
                State('inttime', 'value'),
+               State('switch-specify-e-evn', 'value'),
                State('switches-antennas', 'value')],
               running=[(Output("compute-observation", "disabled"), True, False),])
-def compute_observation(n_clicks, band, defined_source, source, onsourcetime, defined_epoch,
-                        startdate, duration, datarate, subbands, channels,
-                        pols, inttime, selected_antennas):
+def compute_observation(n_clicks, band: int, defined_source: bool, source: str, onsourcetime: float,
+                        defined_epoch: bool, startdate: str, duration: float, datarate: int, subbands: int,
+                        channels: int, pols: int, inttime: int, e_evn: bool, selected_antennas: list[str]):
     """Computes all products to be shown concerning the set observation.
     """
     n_outputs = 20
     if n_clicks is None:
-        return [dash.no_update]*n_outputs
+        raise dash.exceptions.PreventUpdate
 
     if band == 0 or (not selected_antennas) or (duration is None and (source == '' or not defined_source)):
         return outputs.warning_card("Select an observing band and the antennas",
@@ -122,10 +123,12 @@ def compute_observation(n_clicks, band, defined_source, source, onsourcetime, de
                                     "must be set."), \
             *[dash.no_update]*(n_outputs - 1)
 
-    if not [ant for ant in selected_antennas
-            if observation._STATIONS[ant].has_band(list(fs.bands.keys())[band-1])]:
-        return outputs.error_card("No antennas are able to observe at this band",
-                                  "First, select antennas that can observe at the selected band"), \
+    selected_antennas = [ant for ant in selected_antennas
+                         if observation._STATIONS[ant].has_band(inputs.band_from_index(band))
+                         and (not e_evn or observation._STATIONS[ant].real_time)]
+    if not selected_antennas:
+        return outputs.error_card("No antennas are able to observe with the current setup",
+                                  "First, select antennas that can actually observe."), \
                *[dash.no_update]*(n_outputs - 1)
 
     if defined_epoch and ((startdate is not None and duration is None) or
@@ -137,7 +140,7 @@ def compute_observation(n_clicks, band, defined_source, source, onsourcetime, de
     t0 = dt.now()
     try:
         # TODO: Do not create again the Obs. Modify values instead (unless it was None before)
-        _main_obs.set(cli.main(band=list(fs.bands.keys())[band-1], stations=selected_antennas,
+        _main_obs.set(cli.main(band=inputs.band_from_index(band), stations=selected_antennas,
                       targets=[source,] if defined_source and source.strip() != '' else None,
                       duration=duration*u.h if duration is not None else None,
                       ontarget=onsourcetime/100,
@@ -156,6 +159,7 @@ def compute_observation(n_clicks, band, defined_source, source, onsourcetime, de
     except Exception as e:
         return outputs.error_card(f"An error has occured", str(e)), *[dash.no_update]*(n_outputs - 1)
 
+    assert _main_obs.get() is not None, "Observation should have been created."
     try:
         futures = {}
         with ThreadPoolExecutor() as executor:

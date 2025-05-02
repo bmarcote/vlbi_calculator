@@ -261,15 +261,15 @@ def rms(o: Optional[cli.VLBIObs] = None) -> html.Div:
         return html.Div()
 
     src = list(o.ontarget_time.keys())[0]
-    return card_result(out_rms[0], f'rms thermal noise (for {o.ontarget_time[src]:.2g} on-target)', id='rms',
-                       extra_rows=[html.Br(), html.Div(className='row', children=[
+    return card_result(out_rms[0], f'rms thermal noise (for {o.ontarget_time[src]:.2g} on-target)',
+                       id='rms', extra_rows=[html.Br(), html.Div(className='row', children=[
                             html.Div(className='col-6 text-start px-0 pb-2', children=[
                                 html.H5(className='mb-0 font-weight-bolder text-light',
                                         id='rms-per-channel-value', children=out_rms[2]),
                                 html.Label(className='text-sm mb-0 text-light',
                                            children="per spectral channel", id='tooltip-rms-channel')],
                                      style={'text-wrap': 'pretty'}),
-                            dbc.Tooltip("This is the theoretical rms noise to obtain under ideal conditions "
+                            dbc.Tooltip("Theoretical rms noise to obtain under ideal conditions "
                                         "in a single spectral channel when integrating over the whole "
                                         " observation.", target='tooltip-rms-channel'),
                             html.Div(className='col-6 text-end px-0', children=[
@@ -277,9 +277,9 @@ def rms(o: Optional[cli.VLBIObs] = None) -> html.Div:
                                         id='rms-per-time-value', children=out_rms[1]),
                                 html.Label(className='text-sm mb-0 text-light',
                                            children="on 1-min integration", id='tooltip-rms-time'),
-                                dbc.Tooltip("This is the theoretical rms noise to obtain under ideal conditions "
-                                            "when integrating the data from the full bandwidth with one minute "
-                                            "time integration.", target='tooltip-rms-time')],
+                                dbc.Tooltip("Theoretical rms noise to obtain under ideal conditions "
+                                            "when integrating the data from the full bandwidth for "
+                                            "one minute time integration.", target='tooltip-rms-time')],
                                      style={'text-wrap': 'pretty'})]),
                                    html.Div(className='row', children=[
                                        html.Div(html.Button('View sensitivity per baseline',
@@ -366,7 +366,7 @@ def plot_elevations(o: Optional[cli.VLBIObs] = None) -> html.Div:
     return card([html.Div(className='card-header pb-0', children=html.H5('Source Elevation')),
                  dcc.Graph(id='fig-elevations', figure=plots.elevation_plot(o)),
                  html.Div(print_observability_ranges(o), id='out-elevations-info')],
-                className='')
+                )
 
 
 def print_observability_ranges(o: Optional[cli.VLBIObs]) -> html.Div:
@@ -433,7 +433,7 @@ def plot_uv_coverage(o: Optional[cli.VLBIObs] = None) -> html.Div:
                               options=put_antenna_options(o)),  # type: ignore
                  html.Br(), html.Br(),
                  html.Div(className='row', id='out-uv-coverage-info', children=print_baseline_lengths(o))
-                 ], className='')
+                 ])
 
 
 def put_antenna_options(o: Optional[cli.VLBIObs] = None) -> list:
@@ -638,7 +638,6 @@ def summary_pdf(o: cli.VLBIObs):
     pdf.PDF.dumps(buffer, doc)
     buffer.seek(0)
     return buffer
-
 
     def get_fig_dirty_map(self):
         raise NotImplementedError

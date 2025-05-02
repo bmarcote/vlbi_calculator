@@ -57,7 +57,7 @@ def toggle_modal(n_clicks, modal_shown, is_open):
     if n_clicks:
         return not is_open
 
-    return dash.no_update
+    raise dash.exceptions.PreventUpdate
 
 
 @dash.callback([[Output(f"network-{network}", 'disabled') for network in observation._NETWORKS],

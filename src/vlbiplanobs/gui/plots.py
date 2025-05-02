@@ -26,8 +26,6 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
     viridis = cm.get_cmap('viridis')
     srcup = o.is_observable()
     elevs = o.elevations()  # auto does it in localtimes
-    # if doing_gst:
-    #     o.times = None
 
     fig = make_subplots(rows=min([len(srcup), 4]), cols=len(srcup) // 4 + 1,
                         subplot_titles=[f"Elevations for {src_block}" for src_block in srcup]
@@ -35,7 +33,6 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
 
     # Break the line into segments for color changes
     for src_i, src_block in enumerate(srcup):
-        # fig[src_block] = go.Figure()
         for anti, ant in enumerate(srcup[src_block]):
             targets = o.scans[src_block].sources(sources.SourceType.TARGET)
             if len(targets) > 0:
@@ -44,15 +41,11 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
                 colors = elevs[o.scans[src_block].sources()[0].name][ant][srcup[src_block][ant]].value
 
             colors_cm = viridis(norm(colors))
-
-            # Convert RGBA colors to Plotly-compatible string format
-            # color_str = colors #.apply(lambda c: f"rgba({int(c[0]*255)}, {int(c[1]*255)}, {int(c[2]*255)}, {c[3]})")
             color_str = [f"rgba({r}, {g}, {b}, {a})" for r, g, b, a in colors_cm]
 
             y_value = np.zeros(2) + (len(o.stations) - anti)
             for i in range(len(srcup[src_block][ant][srcup[src_block][ant]]) - 1):
                 if colors[i] > 10:
-                    # fig[src_block].add_trace(
                     fig.add_trace(
                         go.Scatter(
                             x=o.times.datetime[srcup[src_block][ant]][i:i+2],
@@ -61,11 +54,11 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
                             line=dict(color=color_str[i], width=10),
                             showlegend=False,
                             marker=dict(showscale=show_colorbar),
-                            hovertemplate=f"<b>{o.stations[ant].name}</b><br><b>Elevation</b>: {colors[i]:.0f}º<extra></extra><br><b>Time</b>: {o.times[i].strftime('%H:%M')}",
-                        ),
+                            hovertemplate=f"<b>{o.stations[ant].name}</b><br><b>Elevation</b>: "
+                                          f"{colors[i]:.0f}º<extra></extra><br><b>Time</b>: "
+                                          f"{o.times[i].strftime('%H:%M')}"),
                         row=src_i % 4 + 1,
-                        col=src_i // 4 + 1
-                    )
+                        col=src_i // 4 + 1)
 
     fig.update_layout(
         showlegend=False,
@@ -75,40 +68,15 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
         title='',
         paper_bgcolor='rgba(0,0,0,0)',   # Transparent background
         plot_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(
-            type="date",
-            tickformat="%H:%M",
-            showline=True,
-            linecolor='black',
-            linewidth=1,
-            mirror='allticks',  # True,
-            ticks='inside',
-            tickmode='auto',
-            minor=dict(
-                ticks='inside',
-                ticklen=4,
-                tickcolor='black',
-                showgrid=False
-            )
-        ),
-        yaxis=dict(
-            showline=True,
-            linecolor='black',
-            linewidth=1,
-            mirror='allticks',
-            ticks='inside',
-            tickmode='array',
-            tickvals=len(o.stations) - np.array(range(len(srcup[src_block].keys()))),
-            ticktext=list(srcup[src_block].keys()),
-            minor=dict(
-                ticks='inside',
-                ticklen=4,
-                tickcolor='black',
-                showgrid=False
-            )
-        ),
-        margin=dict(l=2, r=2, t=1, b=0)
-    )
+        xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
+                   mirror='allticks', ticks='inside', tickmode='auto',
+                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
+        yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
+                   tickmode='array',
+                   tickvals=len(o.stations) - np.array(range(len(srcup[src_block].keys()))),
+                   ticktext=list(srcup[src_block].keys()),
+                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
+        margin=dict(l=2, r=2, t=1, b=0))
     if show_colorbar:
         fig.update_layout(coloraxis=dict(colorscale='Viridis'),
                           coloraxis_colorbar=dict(title='Elevation (degrees)'))
@@ -221,12 +189,10 @@ def uvplot(o, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure
 
 
 def plot_worldmap_stations(o) -> Optional[go.Figure]:
-    if o is None or not o.scans:
+    if o is None:
         return None
 
-    data: dict[str, list | str] = defaultdict(list)
-    # data = {"lat": [], "lon": [], "color": [], "symbol": [], "mode": "markers",
-    #         "name": [], "text": [], "hovertemplate": [], "observes": []}
+    data: dict[str, list] = defaultdict(list)
     try:
         ant_observes = o.can_be_observed()[list(o.can_be_observed().keys())[0]]
     except (ValueError, IndexError):

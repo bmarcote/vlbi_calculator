@@ -1077,7 +1077,7 @@ class Observation(object):
             hourangle: coord.Angle = gstimes
             hourangle = gstimes
             dec = 45 * u.deg
-            # print("Target source is not set, thus we assume a source at +/- 45º declination"
+            # print:"Target source is not set, thus we assume a source at +/- 45º declination"
             #       " to estimate the (u, v) values.'")
         else:
             hourangle = (gstimes - source.ra.to(u.hourangle)).wrap_at(24 * u.hourangle)

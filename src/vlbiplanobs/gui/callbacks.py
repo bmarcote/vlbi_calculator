@@ -21,7 +21,7 @@ from vlbiplanobs import cli
 from vlbiplanobs.gui import inputs, outputs, plots
 from vlbiplanobs.gui.callbacks import *
 from vlbiplanobs.gui.layout import *
-from vlbiplanobs.gui.main import app, _main_obs
+from vlbiplanobs.gui import main as gui_main
 
 
 @dash.callback([Output('band-slider', 'marks'),
@@ -114,8 +114,8 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
         tuple({'label': drl, 'value': dr, 'disabled': dr > max_datarate}
               for dr, drl in fs.data_rates.items()), \
         32 if do_spectral_line else max_datarate if max_datarate is not None else datarate, \
-        4096 if do_spectral_line else _main_obs.prev_channels, \
-        1 if do_spectral_line else _main_obs.prev_subbands
+        4096 if do_spectral_line else gui_main._main_obs.prev_channels, \
+        1 if do_spectral_line else gui_main._main_obs.prev_subbands
 
 
 @dash.callback([Output(f"chip-{ant.codename}", "disabled") for ant in observation._STATIONS],
@@ -200,9 +200,9 @@ def update_bandwidth_label(datarate: int, npols: int, chans: int, subbands: int,
     polarizations. Returns a string with the value and units.
     """
     if not do_spectral_line:
-        _main_obs.prev_datarate = datarate
-        _main_obs.prev_channels = chans
-        _main_obs.prev_subbands = subbands
+        gui_main._main_obs.prev_datarate = datarate
+        gui_main._main_obs.prev_channels = chans
+        gui_main._main_obs.prev_subbands = subbands
 
     if None in (datarate, npols, chans, subbands):
         raise dash.exceptions.PreventUpdate

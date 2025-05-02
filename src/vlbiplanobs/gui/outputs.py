@@ -118,8 +118,8 @@ def sun_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:
     sun_const = o.sun_constraint()
     sun_limit = o.sun_limiting_epochs()
     if not o.fixed_time:
-        sun_const_src = sun_const[list(sun_const.keys())[0]]
         if len(sun_limits := list(sun_limit.values())[0]) > 0:
+            sun_const_src = sun_const[list(sun_const.keys())[0]]
             assert sun_const_src is not None, "I am here because this should be none!"
             t0, t1 = sun_limits[0].datetime, sun_limits[-1].datetime
             if t0 == t1:

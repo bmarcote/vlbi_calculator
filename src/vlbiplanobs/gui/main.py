@@ -49,7 +49,7 @@ external_scripts: list = []
 app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_scripts,
            external_stylesheets=[dbc.themes.FLATLY, dbc.icons.BOOTSTRAP,
                                  dbc.icons.FONT_AWESOME, dmc.styles.DATES] + external_stylesheets,
-           assets_folder=current_directory+'/assets/', eager_loading=True,
+           assets_folder=current_directory+'/assets/', eager_loading=False,
            # prevent_initial_callbacks='initial_duplicate')  # type: ignore
            # , suppress_callback_exceptions=True)
            prevent_initial_callbacks=True)
@@ -228,7 +228,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
     except Exception as e:
         return outputs.error_card(f"An error has occured", str(e)), *[dash.no_update]*(n_outputs - 1)
 
-    # print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
+    print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
     return html.Div(), html.Div(), False, out_rms, out_baseline_sens, out_res, out_sun, \
         out_phaseref, out_ant, *out_plot_elev, *out_plot_uv, out_fov, out_freq, False, out_worldmap
 

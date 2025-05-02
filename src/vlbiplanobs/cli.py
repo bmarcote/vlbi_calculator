@@ -1,14 +1,11 @@
 import sys
 import argparse
-from typing import Optional, Union
+from typing import Optional
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.collections import LineCollection
 from astropy import units as u
 from astropy.time import Time
 from rich import print as rprint
 from rich_argparse import RawTextRichHelpFormatter
-import plotext as pltt
 from vlbiplanobs import stations
 from vlbiplanobs import observation as obs
 from vlbiplanobs import sources
@@ -66,7 +63,7 @@ class VLBIObs(obs.Observation):
         if self.duration is not None:
             rprint(f"With a total duration of {optimal_units(self.duration, [u.h, u.min, u.s]):.01f}.")
 
-        rprint(f"\n[bold green]Setup[/bold green]")
+        rprint("\n[bold green]Setup[/bold green]")
         if None not in (self.datarate, self.bandwidth, self.subbands):
             val = optimal_units(self.datarate, [u.Gbit/u.s, u.Mbit/u.s])
             rprint(f"\nData rate of {val.value:.0f} {val.unit.to_string('unicode')}, "
@@ -129,8 +126,6 @@ class VLBIObs(obs.Observation):
         else:
             doing_gst = False
 
-        elevs = self.elevations()
-        altaz = self.altaz()
         srcup = self.is_observable()
         srcupalways = self.is_always_observable()
         rms_noise = self.thermal_noise()
@@ -143,7 +138,7 @@ class VLBIObs(obs.Observation):
             localtimes = self.times[:]
             self.times = None
 
-        rprint(f"[bold]The blocks are observable for:[/bold]")
+        rprint("[bold]The blocks are observable for:[/bold]")
         for ablockname, antbool in srcup.items():
             rprint(f"    - '{ablockname}':", end='')
             if any(srcupalways[ablockname].values()):
@@ -255,7 +250,7 @@ class VLBIObs(obs.Observation):
     def print_baseline_sensitivities(self):
         """Prints the sensitivity of all baselines in the observation per one minute of time
         """
-        rprint(f"[bold green]Sensitivity per baseline (in mJy/beam)[/bold green]\n")
+        rprint("[bold green]Sensitivity per baseline (in mJy/beam)[/bold green]\n")
         rprint(" "*8, end='')
         for s in self.stations:
             rprint(f"{s.codename:6}", end='')

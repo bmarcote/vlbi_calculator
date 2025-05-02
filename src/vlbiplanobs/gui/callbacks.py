@@ -1,55 +1,44 @@
-import os
-import threading
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
-from dataclasses import dataclass
-from typing import Optional, Union
-from datetime import datetime as dt
-import numpy as np
-import dash
-from dash import Dash, html, dcc, callback, Output, Input, State
-import dash_bootstrap_components as dbc
-import dash_mantine_components as dmc
-import plotly.graph_objects as go
+from typing import Optional
+from dash import Output, Input, State, callback, no_update, Patch
+from dash.exceptions import PreventUpdate
 from astropy import coordinates as coord
 from astropy import units as u
-from astropy.time import Time
 from vlbiplanobs import freqsetups as fs
-from vlbiplanobs import stations
 from vlbiplanobs import sources
 from vlbiplanobs import observation
 from vlbiplanobs import cli
-from vlbiplanobs.gui import inputs, outputs, plots
-from vlbiplanobs.gui.callbacks import *
-from vlbiplanobs.gui.layout import *
+from vlbiplanobs.gui import inputs
 from vlbiplanobs.gui import main as gui_main
 
 
-@dash.callback([Output('band-slider', 'marks'),
-                [Output(f"network-{network}-label-band", 'children')
-                 for network in observation._NETWORKS],
-                [Output(f"badge-band-ant-{ant.codename}", 'children')
-                 for ant in observation._STATIONS]],
-               Input('switch-band-label', 'value'))
+@callback([Output('band-slider', 'marks'),
+           [Output(f"network-{network}-label-band", 'children')
+            for network in observation._NETWORKS],
+           [Output(f"badge-band-ant-{ant.codename}", 'children')
+            for ant in observation._STATIONS]],
+          Input('switch-band-label', 'value'))
 def change_band_labels(show_wavelengths: bool):
-    return {i: l for i, l in enumerate(inputs.pick_band_labels(show_wavelengths))}, \
-           tuple(inputs.network_band_labels(network, show_wavelengths) for network in observation._NETWORKS), \
-           tuple(inputs.print_table_bands_sefds(ant, show_wavelengths) for ant in observation._STATIONS)
+    return {i: label for i, label in enumerate(inputs.pick_band_labels(show_wavelengths))}, \
+           tuple(inputs.network_band_labels(network, show_wavelengths)
+                 for network in observation._NETWORKS), \
+           tuple(inputs.print_table_bands_sefds(ant, show_wavelengths)
+                 for ant in observation._STATIONS)
 
 
-@dash.callback(Output("welcome-modal-shown", "data"),
-               Input("close-modal", "n_clicks"),
-               State("welcome-modal-shown", "data"))
+@callback(Output("welcome-modal-shown", "data"),
+          Input("close-modal", "n_clicks"),
+          State("welcome-modal-shown", "data"))
 def update_modal_shown(n_clicks, modal_shown):
     if n_clicks:
         return True
 
-    return dash.no_update
+    return no_update
 
 
-@dash.callback(Output("welcome-modal", "is_open"),
-               Input("close-modal", "n_clicks"),
-               [State("welcome-modal-shown", "data"),
-                State("welcome-modal", "is_open")])
+@callback(Output("welcome-modal", "is_open"),
+          Input("close-modal", "n_clicks"),
+          [State("welcome-modal-shown", "data"),
+           State("welcome-modal", "is_open")])
 def toggle_modal(n_clicks, modal_shown, is_open):
     if modal_shown is None:
         return True
@@ -57,13 +46,13 @@ def toggle_modal(n_clicks, modal_shown, is_open):
     if n_clicks:
         return not is_open
 
-    raise dash.exceptions.PreventUpdate
+    raise PreventUpdate
 
 
-@dash.callback([[Output(f"network-{network}", 'disabled') for network in observation._NETWORKS],
-                [Output(f"network-{network}-card", 'style') for network in observation._NETWORKS]],
-               Input('band-slider', 'value'),
-               [State(f"network-{network}-card", 'style') for network in observation._NETWORKS])
+@callback([[Output(f"network-{network}", 'disabled') for network in observation._NETWORKS],
+           [Output(f"network-{network}-card", 'style') for network in observation._NETWORKS]],
+          Input('band-slider', 'value'),
+          [State(f"network-{network}-card", 'style') for network in observation._NETWORKS])
 def enable_networks_with_band(band_index: int, *card_styles):
     if band_index == 0:
         return tuple(False for _ in observation._NETWORKS), \
@@ -76,27 +65,28 @@ def enable_networks_with_band(band_index: int, *card_styles):
     new_card_styles: tuple = tuple({k: v if k != 'opacity' else
                                    opacity(inputs.band_from_index(band_index) in network.observing_bands)
                                    for k, v in card_style.items()}
-                                   for network, card_style in zip(observation._NETWORKS.values(), card_styles))
+                                   for network, card_style in zip(observation._NETWORKS.values(),
+                                                                  card_styles))
 
     return tuple(inputs.band_from_index(band_index) not in network.observing_bands
                  for network in observation._NETWORKS.values()), new_card_styles
 
 
-@dash.callback([Output('datarate', 'options'),
-                Output('datarate', 'value'),
-                Output('channels', 'value'),
-                Output('subbands', 'value')],
-               [Input('switch-specify-continuum', 'value'),
-                Input('band-slider', 'value'),
-                [Input(f"network-{network}", 'value') for network in observation._NETWORKS]],
-               State('datarate', 'value'))
+@callback([Output('datarate', 'options'),
+           Output('datarate', 'value'),
+           Output('channels', 'value'),
+           Output('subbands', 'value')],
+          [Input('switch-specify-continuum', 'value'),
+           Input('band-slider', 'value'),
+           [Input(f"network-{network}", 'value') for network in observation._NETWORKS]],
+          State('datarate', 'value'))
 def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: list[bool], datarate: int):
     if band == 0:
-        raise dash.exceptions.PreventUpdate
+        raise PreventUpdate
 
     if not [None for nb, nn in zip(network_bools, observation._NETWORKS.values())
             if nb and nn.has_band(inputs.band_from_index(band))]:
-        raise dash.exceptions.PreventUpdate
+        raise PreventUpdate
 
     network_names = [nn for nb, nn in zip(network_bools, observation._NETWORKS) if nb]
     try:
@@ -108,7 +98,7 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
                                     for net in network_names
                                     if observation._NETWORKS[net].has_band(inputs.band_from_index(band))]))
     except AttributeError:
-        raise dash.exceptions.PreventUpdate
+        raise PreventUpdate
 
     return  \
         tuple({'label': drl, 'value': dr, 'disabled': dr > max_datarate}
@@ -118,9 +108,9 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
         1 if do_spectral_line else gui_main._main_obs.prev_subbands
 
 
-@dash.callback([Output(f"chip-{ant.codename}", "disabled") for ant in observation._STATIONS],
-               [Input('band-slider', 'value'),
-                Input('switch-specify-e-evn', 'value')])
+@callback([Output(f"chip-{ant.codename}", "disabled") for ant in observation._STATIONS],
+          [Input('band-slider', 'value'),
+           Input('switch-specify-e-evn', 'value')])
 def enable_antennas_with_band(band_index: int, do_e_evn: bool):
     if band_index == 0:
         return tuple(False for _ in observation._STATIONS)
@@ -129,9 +119,9 @@ def enable_antennas_with_band(band_index: int, do_e_evn: bool):
                  for ant in observation._STATIONS)
 
 
-@dash.callback(Output('switches-antennas', 'value'),
-               [Input(f"network-{network}", 'value') for network in observation._NETWORKS],
-               State('switches-antennas', 'value'))
+@callback(Output('switches-antennas', 'value'),
+          [Input(f"network-{network}", 'value') for network in observation._NETWORKS],
+          State('switches-antennas', 'value'))
 def update_selected_antennas_from_networks(*args):
     networks, current_antennas = args[:-1], set(args[-1])
     ants2include = set()
@@ -148,28 +138,28 @@ def update_selected_antennas_from_networks(*args):
     return tuple(current_antennas - ants2exclude | ants2include)
 
 
-@dash.callback(Output('source-selection-div', 'hidden'),
-               Input('switch-specify-source', 'value'))
+@callback(Output('source-selection-div', 'hidden'),
+          Input('switch-specify-source', 'value'))
 def toggle_source_field(pick_source: bool):
     return not pick_source
 
 
-@dash.callback(Output('epoch-selection-div', 'hidden'),
-               Input('switch-specify-epoch', 'value'))
+@callback(Output('epoch-selection-div', 'hidden'),
+          Input('switch-specify-epoch', 'value'))
 def toggle_epoch_field(define_epoch: bool):
     return not define_epoch
 
 
-@dash.callback(Output('accordion-ant', 'className'),
-               Input('accordion-state', 'active_item'))
+@callback(Output('accordion-ant', 'className'),
+          Input('accordion-state', 'active_item'))
 def toggle_accordion_arrow(accordion_expanded: int):
     return 'fa fa-solid fa-angle-down' if accordion_expanded is None else 'fa fa-solid fa-angle-up'
 
 
-@dash.callback([Output('error_source', 'children'),
-                Output('error_source', 'className'),
-                Output('source-input', 'className')],
-               Input('source-input', 'value'))
+@callback([Output('error_source', 'children'),
+           Output('error_source', 'className'),
+           Output('source-input', 'className')],
+          Input('source-input', 'value'))
 def get_initial_source(source_coord: str):
     """Verifies that the introduced source coordinates have a right format.
     If they are correct, it does nothing. If they are incorrect, it shows an error labinputs.
@@ -180,21 +170,21 @@ def get_initial_source(source_coord: str):
         try:
             src = sources.Source.source_from_str(source_coord)
             return src.coord.to_string('hmsdms', precision=3), 'form-text text-success', 'form-control is-valid'
-        except ValueError as e:
+        except ValueError:
             return "Wrong coordinates.", 'form-text text-danger', 'form-control is-invalid'
-        except coord.name_resolve.NameResolveError as e:
+        except coord.name_resolve.NameResolveError:
             return "Unrecognized name. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'", \
                    'form-text text-danger', 'form-control is-invalid'
 
-    return '', dash.no_update, dash.no_update
+    return '', no_update, no_update
 
 
-@dash.callback(Output('bandwidth-label', 'children'),
-               [Input('datarate', 'value'),
-                Input('pols', 'value'),
-                Input('channels', 'value'),
-                Input('subbands', 'value')],
-               State('switch-specify-continuum', 'value'))
+@callback(Output('bandwidth-label', 'children'),
+          [Input('datarate', 'value'),
+           Input('pols', 'value'),
+           Input('channels', 'value'),
+           Input('subbands', 'value')],
+          State('switch-specify-continuum', 'value'))
 def update_bandwidth_label(datarate: int, npols: int, chans: int, subbands: int, do_spectral_line: bool):
     """Updates the total bandwidth label as a function of the selected datarate and number of
     polarizations. Returns a string with the value and units.
@@ -205,39 +195,39 @@ def update_bandwidth_label(datarate: int, npols: int, chans: int, subbands: int,
         gui_main._main_obs.prev_subbands = subbands
 
     if None in (datarate, npols, chans, subbands):
-        raise dash.exceptions.PreventUpdate
+        raise PreventUpdate
 
     # Either 1 or 2 pols per station:
     return "The maximum bandwidth is " \
            f"{cli.optimal_units(datarate*u.MHz/((npols % 3 + npols // 3)*2*2), [u.GHz, u.MHz, u.kHz]):.0f}."
 
 
-@dash.callback(Output("sensitivity-baseline-modal", "is_open"),
-               Input("button-sensitivity-baseline", "n_clicks"),
-               State("sensitivity-baseline-modal", "is_open"))
+@callback(Output("sensitivity-baseline-modal", "is_open"),
+          Input("button-sensitivity-baseline", "n_clicks"),
+          State("sensitivity-baseline-modal", "is_open"))
 def toggle_modal_baseline_sensitivity(n_clicks, is_open):
     if n_clicks is None:
-        return dash.no_update
+        return no_update
 
     return not is_open
 
 
-@dash.callback(Output("more-info-modal", "is_open"),
-               Input("more-info-button", "n_clicks"),
-               State("more-info-modal", "is_open"))
+@callback(Output("more-info-modal", "is_open"),
+          Input("more-info-button", "n_clicks"),
+          State("more-info-modal", "is_open"))
 def toggle_modal_info_button(n_clicks, is_open):
     if n_clicks is None:
-        return dash.no_update
+        return no_update
 
     return not is_open
 
 
-@dash.callback(Output('fig-uv-coverage', 'figure', allow_duplicate=True),
-               Input('select-antenna-uv-plot', 'value'),
-               State('fig-uv-coverage', 'figure'), prevent_initial_call='initial_duplicate')
+@callback(Output('fig-uv-coverage', 'figure', allow_duplicate=True),
+          Input('select-antenna-uv-plot', 'value'),
+          State('fig-uv-coverage', 'figure'), prevent_initial_call='initial_duplicate')
 def update_uv_figure(highlight_antennas: list[str], figure):
     if figure is None:
-        raise dash.exceptions.PreventUpdate
+        raise PreventUpdate
 
     highlight_colors = [
         "#FF0000",  # Red
@@ -276,7 +266,7 @@ def update_uv_figure(highlight_antennas: list[str], figure):
 
         return 2
 
-    updated_fig = dash.Patch()
+    updated_fig = Patch()
     for i, trace in enumerate(figure['data']):
         # trace is a dictionary
         if any(a in highlight_antennas for a in trace['name'].split('-')):
@@ -290,10 +280,10 @@ def update_uv_figure(highlight_antennas: list[str], figure):
     return updated_fig
 
 
-@dash.callback([Output('error_duration', 'children'),
-                Output('error_duration', 'className'),
-                Output('duration', 'className')],
-               Input('duration', 'value'))
+@callback([Output('error_duration', 'children'),
+           Output('error_duration', 'className'),
+           Output('duration', 'className')],
+          Input('duration', 'value'))
 def check_initial_obstime(duration: Optional[int | float]):
     """Verify the introduced times/dates for correct values.
     Once the user has introduced all values for the start and end of the observation,
@@ -302,7 +292,7 @@ def check_initial_obstime(duration: Optional[int | float]):
         - The total observing length is less than five days (value chosen for computational reasons).
     """
     if duration is None:
-        return dash.no_update, dash.no_update, dash.no_update
+        return no_update, no_update, no_update
 
     if (not isinstance(duration, float)) and (not isinstance(duration, int)):
         return 'Must be a number',  'form-text text-danger', 'form-control is-invalid'
@@ -312,4 +302,4 @@ def check_initial_obstime(duration: Optional[int | float]):
     elif duration > 4*24:
         return 'Must be shorter than 4 days',  'form-text text-danger', 'form-control is-invalid'
 
-    return "", dash.no_update, 'form-control'
+    return "", no_update, 'form-control'

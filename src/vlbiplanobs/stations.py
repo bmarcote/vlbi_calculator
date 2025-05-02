@@ -2,7 +2,7 @@
 # Licensed under GPLv3+ - see LICENSE
 from __future__ import annotations
 from collections import abc
-from typing import Optional, Union, Iterable, Sequence, Self, Generator
+from typing import Optional, Union, Iterable, Sequence, Generator
 import configparser
 from importlib import resources
 import numpy as np

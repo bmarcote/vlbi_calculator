@@ -1,20 +1,15 @@
-# from dash.dependencies import Input, Output, State
+# from dependencies import Input, Output, State
 import os
 import threading
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
-from dataclasses import dataclass
-from typing import Optional, Union
+from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 from datetime import datetime as dt
-import numpy as np
-import dash
-from dash import Dash, html, dcc, callback, Output, Input, State
+from dash import Dash, html, dcc, Output, Input, State, no_update
+from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-from astropy import coordinates as coord
 from astropy import units as u
 from astropy.time import Time
-from vlbiplanobs import freqsetups as fs
-from vlbiplanobs import stations
 from vlbiplanobs import sources
 from vlbiplanobs import observation
 from vlbiplanobs import cli
@@ -67,9 +62,9 @@ def download_pdf_summary(n_clicks):
         except ValueError as e:
             # TODO: put proper logging print
             print(f"An error occurred: {e}")
-            return dash.no_update, dash.no_update
+            return no_update, no_update
 
-    return dash.no_update, dash.no_update
+    return no_update, no_update
 
 
 @app.callback([Output('user-message', 'children'),
@@ -115,13 +110,13 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
     """
     n_outputs = 20
     if n_clicks is None:
-        raise dash.exceptions.PreventUpdate
+        raise PreventUpdate
 
     if band == 0 or (not selected_antennas) or (duration is None and (source == '' or not defined_source)):
         return outputs.warning_card("Select an observing band and the antennas",
                                     "If no source is provided, a duration for the observation "
                                     "must be set."), \
-            *[dash.no_update]*(n_outputs - 1)
+            *[no_update]*(n_outputs - 1)
 
     selected_antennas = [ant for ant in selected_antennas
                          if observation._STATIONS[ant].has_band(inputs.band_from_index(band))
@@ -129,13 +124,13 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
     if not selected_antennas:
         return outputs.error_card("No antennas are able to observe with the current setup",
                                   "First, select antennas that can actually observe."), \
-               *[dash.no_update]*(n_outputs - 1)
+               *[no_update]*(n_outputs - 1)
 
     if defined_epoch and ((startdate is not None and duration is None) or
                           (startdate is None and duration is not None)) == 1:
         return outputs.error_card('The observing epoch is partially defined',
                                   'If you define the observing epoch, then all start date, time, '
-                                  'and duration are required.'), *[dash.no_update]*(n_outputs - 1)
+                                  'and duration are required.'), *[no_update]*(n_outputs - 1)
 
     t0 = dt.now()
     try:
@@ -157,7 +152,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         _main_obs.get().synthesized_beam()
         _main_obs.get().get_uv_data()
     except Exception as e:
-        return outputs.error_card(f"An error has occured", str(e)), *[dash.no_update]*(n_outputs - 1)
+        return outputs.error_card("An error has occured", str(e)), *[no_update]*(n_outputs - 1)
 
     assert _main_obs.get() is not None, "Observation should have been created."
     try:
@@ -174,7 +169,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
             futures['out_freq'] = executor.submit(outputs.summary_freq_res, _main_obs.get())
 
             out_rms = futures['rms'].result()
-            beam = futures['beam'].result()
+            # beam = futures['beam'].result()
             out_rms = futures['out-rms'].result()
             out_res = futures['out-res'].result()
             out_ant = futures['out_ant'].result()
@@ -190,8 +185,8 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
 
             # futures['out_worldmap'] = executor.submit(outputsworldmap_plot, _main_obs.get())
 
-            out_sun = dash.no_update if 'out_sun' not in futures else futures['out_sun'].result()
-        #     out_plot_uv = ['out_plot_uv' not in futures, dash.no_update if 'out_plot_uv' not in futures \
+            out_sun = no_update if 'out_sun' not in futures else futures['out_sun'].result()
+        #     out_plot_uv = ['out_plot_uv' not in futures, no_update if 'out_plot_uv' not in futures \
         #                    else futures['out_plot_uv'].result()]
         #     out_worldmap = futures['out_worldmap'].result()
         #
@@ -202,10 +197,10 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         # # out_sens = outputsresolution(_main_obs.get())
 
         if not _main_obs.get().sourcenames or not defined_source:
-            #     out_plot_elev = [True, dash.no_update]
-            out_plot_elev = [True, dash.no_update, dash.no_update]
-            #     out_sun = dash.no_update
-            out_plot_uv = [True, dash.no_update, dash.no_update, dash.no_update]
+            #     out_plot_elev = [True, no_update]
+            out_plot_elev = [True, no_update, no_update]
+            #     out_sun = no_update
+            out_plot_uv = [True, no_update, no_update, no_update]
         else:
             out_plot_elev = [False,
                              outputs.print_observability_ranges(_main_obs.get()),
@@ -224,9 +219,9 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
     except sources.SourceNotVisible:
         return outputs.error_card('Source Not Visible!',
                                   'The source cannot be observed by the given antennas and/or '
-                                  'during the given observing time.'), *[dash.no_update]*(n_outputs - 1)
+                                  'during the given observing time.'), *[no_update]*(n_outputs - 1)
     except Exception as e:
-        return outputs.error_card(f"An error has occured", str(e)), *[dash.no_update]*(n_outputs - 1)
+        return outputs.error_card("An error has occured", str(e)), *[no_update]*(n_outputs - 1)
 
     print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
     return html.Div(), html.Div(), False, out_rms, out_baseline_sens, out_res, out_sun, \
@@ -234,31 +229,24 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
 
 
 server = app.server
-app.index_string = app.index_string.replace(
-    '<body>',
-    '<body class="g-sidenav-show bg-gray-100">'
-)
+app.index_string = app.index_string.replace('<body>', '<body class="g-sidenav-show bg-gray-100">')
 
-app.layout = dbc.Container(fluid=True, className='bg-gray-100 row m-0 p-4', children=[
-                           layout.top_banner(app),
-                           inputs.modal_welcome(),
-                           html.Div(id='main-window', className='container-fluid d-flex row p-0 m-0',
-                                    children=[html.Div(id='right-column',
-                                                       className='col-12 col-sm-6 m-0 p-0',
-                                                       children=layout.inputs_column(app)),
-                                              html.Div(id='left-column',
-                                                       className='col-12 col-sm-6 m-0 p-0',
-                                                       children=[layout.compute_buttons(app),
-                                                                 layout.outputs_column(app)])]),
-                           html.Div(html.A(html.I(className="fa-solid fa-circle-info",
-                                                  style={"font-size": "4rem"}),
-                                           id="more-info-button",
-                                           className="btn-floating-info btn-lg rounded-circle")),
-                           dbc.Tooltip("Opens more information", target='more-info-button'),
-                           dbc.Offcanvas(children=inputs.modal_general_info(),
-                                         id='more-info-modal',
-                                         is_open=False, className='shadow-lg blur', placement='end'),
-                           html.Div(id='bottom-banner', children=[html.Br(), html.Br(), html.Br()])])
+app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-100 row m-0 p-4', children=[
+                   layout.top_banner(app),
+                   inputs.modal_welcome(),
+                   html.Div(id='main-window', className='container-fluid d-flex row p-0 m-0',
+                            children=[html.Div(id='right-column', className='col-12 col-sm-6 m-0 p-0',
+                                               children=layout.inputs_column(app)),
+                                      html.Div(id='left-column', className='col-12 col-sm-6 m-0 p-0',
+                                               children=[layout.compute_buttons(app),
+                                                         layout.outputs_column(app)])]),
+                   html.Div(html.A(html.I(className="fa-solid fa-circle-info", style={"font-size": "4rem"}),
+                                   id="more-info-button",
+                                   className="btn-floating-info btn-lg rounded-circle")),
+                   dbc.Tooltip("Opens more information", target='more-info-button'),
+                   dbc.Offcanvas(children=inputs.modal_general_info(), id='more-info-modal',
+                                 is_open=False, className='shadow-lg blur', placement='end'),
+                   html.Div(id='bottom-banner', children=[html.Br(), html.Br(), html.Br()])]))
 
 
 def main(debug: bool = False):

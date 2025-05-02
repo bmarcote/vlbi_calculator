@@ -38,7 +38,7 @@ dependencies = [
     "rich",
     "rich_argparse",
     "plotext",
-    # "matplotlib",
+    "matplotlib",
     # "ortools",
     "plotly",
     "dash>=3.0",

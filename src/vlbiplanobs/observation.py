@@ -1,23 +1,13 @@
-import asyncio
 import threading
 from collections import defaultdict
-from typing import Optional, Union, Iterable, Sequence, Self, Tuple, Literal
-from importlib import resources
-from functools import partial
-from itertools import product
-import subprocess
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from typing import Optional, Union, Tuple, Literal
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
-import yaml
-from rich import print as rprint
-# import scipy.ndimage
-import datetime as dt
-from enum import Enum, auto
-from dataclasses import dataclass
+from enum import Enum
 from astropy import units as u
 from astropy import coordinates as coord
-from astropy.time import Time, TimeDelta
-from .stations import Station, Stations
+from astropy.time import Time
+from .stations import Stations
 from .sources import Source, Scan, ScanBlock, SourceType, SourceNotVisible
 from . import freqsetups
 
@@ -1127,7 +1117,8 @@ class Observation(object):
             # Find times where both antennas are up
             # up_times = np.intersect1d(ants_up[blockname][ant1], ants_up[blockname][ant2],
             #                           assume_unique=True)
-            # NOTE: type(ants_up)=<class 'dict'>, type(ants_up[blockname])=<class 'dict'>, type(ants_up[blockname][ant1])=<class 'numpy.ndarray'>
+            # NOTE: type(ants_up)=<class 'dict'>, type(ants_up[blockname])=<class 'dict'>,
+            # type(ants_up[blockname][ant1])=<class 'numpy.ndarray'>
             up_times = ants_up[blockname][ant1] & ants_up[blockname][ant2]  # type: ignore
             if len(up_times) > 0:
                 # up_times are indices into the time array
@@ -1430,42 +1421,42 @@ class Observation(object):
                                         self.times[-1].datetime.strftime(date_format),
                                         self.times[-1].datetime.strftime('%H:%M'), gsttext)
 
-    def get_fig_dirty_map(self):
-        raise NotImplementedError
-        # Right now I only leave the natural weighting map (the uniform does not always correspond to the true one)
-        dirty_map_nat, laxis = self.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
-        # TODO: uncomment these two lines and move them outside observation. Flexibility
-        # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
-        #         aspect='equal')
-        # fig = make_subplots(rows=1, cols=1, subplot_titles=('Natural weighting',),
-        #                     shared_xaxes=True, shared_yaxes=True)
-        fig.add_trace(fig1.data[0], row=1, col=1)
-        mapsize = 30*self.synthesized_beam()['bmaj'].to(u.mas).value
-        fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
-                          xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
-                          yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
-        fig.update_xaxes(title_text="RA (mas)", constrain="domain")
-        fig.update_yaxes(title_text="Dec (mas)", scaleanchor="x", scaleratio=1)
-        # dirty_map_nat, laxis = obs.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
-        # dirty_map_uni, laxis = obs.get_dirtymap(pixsize=1024, robust='uniform', oversampling=4)
-        # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
-        #         aspect='equal')
-        # fig2 = px.imshow(img=dirty_map_uni, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
-        #         aspect='equal')
-        # fig = make_subplots(rows=1, cols=2, subplot_titles=('Natural weighting', 'Uniform weighting'),
-        #                     shared_xaxes=True, shared_yaxes=True)
-        # fig.add_trace(fig1.data[0], row=1, col=1)
-        # fig.add_trace(fig2.data[0], row=1, col=2)
-        # mapsize = 30*obs.synthesized_beam()['bmaj'].to(u.mas).value
-        # fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
-        #                   xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
-        #                   # This xaxis2 represents the xaxis for fig2.
-        #                   xaxis2={'autorange': False, 'range': [mapsize, -mapsize]},
-        #                   yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
-        # fig.update_xaxes(title_text="RA (mas)", constrain="domain")
-        # fig.update_yaxes(title_text="Dec (mas)", row=1, col=1, scaleanchor="x", scaleratio=1)
-
-        return fig
+    # def get_fig_dirty_map(self):
+    #     raise NotImplementedError
+    #     # Right now I only leave the natural weighting map (the uniform does not always correspond to the true one)
+    #     dirty_map_nat, laxis = self.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
+    #     # TODO: uncomment these two lines and move them outside observation. Flexibility
+    #     # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+    #     #         aspect='equal')
+    #     # fig = make_subplots(rows=1, cols=1, subplot_titles=('Natural weighting',),
+    #     #                     shared_xaxes=True, shared_yaxes=True)
+    #     fig.add_trace(fig1.data[0], row=1, col=1)
+    #     mapsize = 30*self.synthesized_beam()['bmaj'].to(u.mas).value
+    #     fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
+    #                       xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
+    #                       yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
+    #     fig.update_xaxes(title_text="RA (mas)", constrain="domain")
+    #     fig.update_yaxes(title_text="Dec (mas)", scaleanchor="x", scaleratio=1)
+    #     # dirty_map_nat, laxis = obs.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
+    #     # dirty_map_uni, laxis = obs.get_dirtymap(pixsize=1024, robust='uniform', oversampling=4)
+    #     # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+    #     #         aspect='equal')
+    #     # fig2 = px.imshow(img=dirty_map_uni, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+    #     #         aspect='equal')
+    #     # fig = make_subplots(rows=1, cols=2, subplot_titles=('Natural weighting', 'Uniform weighting'),
+    #     #                     shared_xaxes=True, shared_yaxes=True)
+    #     # fig.add_trace(fig1.data[0], row=1, col=1)
+    #     # fig.add_trace(fig2.data[0], row=1, col=2)
+    #     # mapsize = 30*obs.synthesized_beam()['bmaj'].to(u.mas).value
+    #     # fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
+    #     #                   xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
+    #     #                   # This xaxis2 represents the xaxis for fig2.
+    #     #                   xaxis2={'autorange': False, 'range': [mapsize, -mapsize]},
+    #     #                   yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
+    #     # fig.update_xaxes(title_text="RA (mas)", constrain="domain")
+    #     # fig.update_yaxes(title_text="Dec (mas)", row=1, col=1, scaleanchor="x", scaleratio=1)
+    #
+    #     return fig
 
     # def export_to_pdf(self, outputname):
     #     """Exports the basic information of the observation into a PDF file.

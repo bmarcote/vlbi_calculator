@@ -1,16 +1,10 @@
 from collections import defaultdict
 from typing import Optional
 import numpy as np
-import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import Normalize
-from astropy.time import Time
-from astropy import units as u
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import plotly.express as px
-from dash import html
-from vlbiplanobs import observation as obs
 from vlbiplanobs import sources
 
 
@@ -90,7 +84,6 @@ def uvplot(o, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure
 
     bl_uv = o.get_uv_data()
     data = []
-    default_color = 'black'
     highlight_colors = [
         "#FF0000",  # Red
         "#0000FF",  # Blue

@@ -1,12 +1,9 @@
 import functools
-from typing import Optional, Union, Sequence
+from typing import Optional, Sequence
 from datetime import datetime as dt
-# from astropy import units as u
-# from fpdf import FPDF
-from dash import Dash, html, dcc, callback, Output, Input, State
+from dash import html, dcc
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-# import plotly.express as px
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs import stations
 from vlbiplanobs import observation
@@ -107,12 +104,11 @@ def antenna_card_hover(app, target, ant: stations.Station, show_wavelengths: boo
     """Creates a Card showing all the relevant information for a given antenna, which
     will be displayed as a pop up window when hovering the name of a given antenna.
     """
-    return html.Div(dmc.MantineProvider(dmc.HoverCard(shadow="md", withArrow=True, width=300,
-                                                      openDelay=300,
-                                                      position='right', classNames='col-12 p-0 m-0',
+    return html.Div(dmc.HoverCard(shadow="md", withArrow=True, width=300,
+                                  openDelay=300, position='right', classNames='col-12 p-0 m-0',
                     children=[dmc.HoverCardTarget(target),
                               dmc.HoverCardDropdown([antenna_card(app, ant, show_wavelengths)],
-                                                    className='col-12 m-0 p-0')])),
+                                                    className='col-12 m-0 p-0')]),
                     style={'display': 'inline-flex', 'flex-wrap': 'wrap',
                            'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'})
 
@@ -221,7 +217,7 @@ def pick_band(bands: dict[str, str]) -> html.Div:
                                 ])]),
                        html.Br(),
                        html.Div(dcc.Slider(min=0, max=len(labels), step=1, value=0,
-                                           marks={i: l for i, l in enumerate(labels)},
+                                           marks={i: label for i, label in enumerate(labels)},
                                 included=False, id='band-slider', persistence=True))])])
 
 
@@ -288,7 +284,7 @@ def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
                                                             id='accordion-ant')],
                                                     className='text-dark font-weight-bold mb-0 '
                                                     'accordion-header'),
-                                      children=[dmc.MantineProvider(dmc.Group(
+                                      children=[dmc.Group(
                                           dmc.ChipGroup(value=[], id='switches-antennas', persistence=True,
                                                         multiple=True, deselectable=True, children=[
                                               antenna_card_hover(app,
@@ -304,7 +300,7 @@ def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
                                               for s in observation._STATIONS]),
                                           className='container mb-2 flex',
                                           style={'display': 'inline-flex', 'gap': '5px',
-                                                 'flex-wrap': 'wrap'}))])))
+                                                 'flex-wrap': 'wrap'})])))
 
 
 def source_selection() -> html.Div:
@@ -333,14 +329,14 @@ def epoch_selection() -> html.Div:
                         html.Div(className='row', children=[
                             html.Label('Start of observation (UTC)', htmlFor='starttime'),
                             html.Div(className='row mx-0', children=[
-                                html.Div(className='col-12 px-0 mx-0', children=[dmc.MantineProvider(
+                                html.Div(className='col-12 px-0 mx-0', children=[
                                     dmc.DateTimePicker(id='starttime', className='form-picker',
                                                        value=None, minDate=dt(1900, 1, 1),
                                                        maxDate=dt(2100, 1, 1),
                                                        valueFormat='DD-MM-YYYY HH:mm',
                                                        placeholder='Start time', withSeconds=False,
                                                        persistence=True, clearable=True,
-                                                       style={'width': '100%'}))])]),
+                                                       style={'width': '100%'})])]),
                             html.Div(className='row', children=[
                                 html.Small(id='error_starttime', style={'color': 'red'},
                                            className='form-text text-muted')])])]),

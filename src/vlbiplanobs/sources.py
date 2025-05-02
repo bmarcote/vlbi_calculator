@@ -2,20 +2,16 @@ from typing import Optional, Union, Self, Sequence
 from importlib import resources
 import subprocess
 import functools
-# from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import numpy as np
-import yaml                # type: ignore
-# from rich import print as rprint
+import yaml
 import operator
 from functools import reduce
-import datetime as dt
 from pathlib import Path
 from enum import Enum, auto
 from dataclasses import dataclass
 from astropy import units as u
 from astropy.time import Time
 from astropy import coordinates as coord
-# import polars as pl
 from astroplan import FixedTarget
 
 

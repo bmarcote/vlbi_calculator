@@ -1,15 +1,6 @@
-import functools
-from typing import Optional, Union, Sequence
-from datetime import datetime as dt
-# from astropy import units as u
-# from fpdf import FPDF
-from dash import Dash, html, dcc, callback, Output, Input, State
-import dash_bootstrap_components as dbc
-import dash_mantine_components as dmc
-# import plotly.express as px
+from dash import html, dcc
+from dash_bootstrap_components import Modal
 from vlbiplanobs import freqsetups as fs
-from vlbiplanobs import stations
-from vlbiplanobs import observation
 from vlbiplanobs.gui import inputs, outputs
 
 
@@ -64,7 +55,7 @@ def outputs_column(app) -> html.Div:
         html.Div(id='out-ant', className='m-0 p-0'),
         # Now the actual results
         html.Div(className='col-12 m-0 p-0', children=html.Div(className='row d-flex m-0 p-0', children=[
-            html.Div(dbc.Modal(id="sensitivity-baseline-modal", size='xl', is_open=False)),
+            html.Div(Modal(id="sensitivity-baseline-modal", size='xl', is_open=False)),
             html.Div(outputs.rms(), className='col-6 m-0 p-0', id='card-rms'),
             html.Div(outputs.resolution(), className='col-6 m-0 p-0', id='card-resolution')])),
         # style={'align-items': 'stretch'}),

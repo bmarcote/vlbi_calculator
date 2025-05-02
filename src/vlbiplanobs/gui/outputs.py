@@ -1,22 +1,12 @@
-# import numpy as np
-# from datetime import datetime as dt
-# import enum
 import io
 import tempfile
 from pathlib import Path
-from typing import Optional, Union, Literal
-from datetime import datetime as dt
+from typing import Optional, Literal
 import numpy as np
 from astropy import units as u
-from astropy.time import Time
-# from fpdf import FPDF
-from dash import Dash, html, dcc, callback, Output, Input, State
+from dash import html, dcc
 import dash_bootstrap_components as dbc
 from borb import pdf
-# import plotly.express as px
-from vlbiplanobs import freqsetups as fs
-from vlbiplanobs import stations
-from vlbiplanobs import observation
 from vlbiplanobs import cli
 from vlbiplanobs.gui import plots, inputs
 
@@ -185,7 +175,7 @@ def summary_freq_res(o: Optional[cli.VLBIObs] = None) -> html.Div:
         return html.Div()
 
     return card_result(f"{chan_f.value:.3g} {chan_f.unit.to_string('unicode')}",
-                       f"Frequency resolution", id='freq-res-frequency',
+                       "Frequency resolution", id='freq-res-frequency',
                        second_column_n=6, second_column_content=[
                             html.Div(className='numbers', children=[
                                 html.P(className='text-white text-sm mb-0 opacity-7 font-weight-bold',
@@ -216,7 +206,7 @@ def field_of_view(o: Optional[cli.VLBIObs] = None) -> html.Div:
     bw_smearing = cli.optimal_units(o.bandwidth_smearing(), [u.deg, u.arcmin, u.arcsec])
     tm_smearing = cli.optimal_units(o.time_smearing(), [u.deg, u.arcmin, u.arcsec])
     return card_result(f"{bw_smearing.value:.2n} {bw_smearing.unit.to_string('unicode')}",
-                       f"Bandwidth smearing", id='fov',
+                       "Bandwidth smearing", id='fov',
                        second_column_n=6, second_column_content=[
                             html.Div(className='numbers', children=[
                                 html.P(className='text-white text-sm mb-0 opacity-7 font-weight-bold',
@@ -388,7 +378,7 @@ def print_observability_ranges(o: Optional[cli.VLBIObs]) -> html.Div:
                      ', '.join([t1.strftime('%d %b %Y %H:%M')+'-'+t2.strftime('%H:%M') +
                                 ' UTC.' for t1, t2 in when_everyone])]
         else:
-            text += [f"Everyone can observe the source at " +
+            text += ["Everyone can observe the source at " +
                      ', '.join([t1.to_string(sep=':', fields=2, pad=True) + '-' +
                                 t2.to_string(sep=':', fields=2, pad=True) +
                                 ' GST.' for t1, t2 in when_everyone])]
@@ -396,7 +386,6 @@ def print_observability_ranges(o: Optional[cli.VLBIObs]) -> html.Div:
     text += [html.Br()]
     if any(srcupalways[ablockname].values()):
         ant_can = [ant for ant, b in srcupalways[ablockname].items() if b]
-        print(ant_can, len(o.stations))
         if len(ant_can) <= len(o.stations)/2:
             text += [f"Only {', '.join(ant_can)} can observe the source at all times.", html.Br()]
         elif len(ant_can) < len(o.stations):
@@ -615,7 +604,6 @@ def summary_pdf(o: cli.VLBIObs):
             synth_beam = o.synthesized_beam()[src.name]
             bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
             bmin = synth_beam['bmin'].to(bmaj.unit)
-            bmin_elip = max(int(bmin.value*80/bmaj.value), 2)
             temp = f" for {src.name}" if len(o.scans.values()) > 1 else ""
             layout.add(pdf.Paragraph(f"Synthesized beam{temp}: "
                                      f"{bmaj.value:2.1f} x {bmin:2.1f}"
@@ -639,37 +627,37 @@ def summary_pdf(o: cli.VLBIObs):
     buffer.seek(0)
     return buffer
 
-    def get_fig_dirty_map(self):
-        raise NotImplementedError
-        # Right now I only leave the natural weighting map (the uniform does not always correspond to the true one)
-        dirty_map_nat, laxis = self.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
-        # TODO: uncomment these two lines and move them outside observation. Flexibility
-        # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
-        #         aspect='equal')
-        # fig = make_subplots(rows=1, cols=1, subplot_titles=('Natural weighting',), shared_xaxes=True, shared_yaxes=True)
-        fig.add_trace(fig1.data[0], row=1, col=1)
-        mapsize = 30*self.synthesized_beam()['bmaj'].to(u.mas).value
-        fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
-                          xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
-                          yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
-        fig.update_xaxes(title_text="RA (mas)", constrain="domain")
-        fig.update_yaxes(title_text="Dec (mas)", scaleanchor="x", scaleratio=1)
-        # dirty_map_nat, laxis = obs.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
-        # dirty_map_uni, laxis = obs.get_dirtymap(pixsize=1024, robust='uniform', oversampling=4)
-        # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
-        #         aspect='equal')
-        # fig2 = px.imshow(img=dirty_map_uni, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
-        #         aspect='equal')
-        # fig = make_subplots(rows=1, cols=2, subplot_titles=('Natural weighting', 'Uniform weighting'),
-        #                     shared_xaxes=True, shared_yaxes=True)
-        # fig.add_trace(fig1.data[0], row=1, col=1)
-        # fig.add_trace(fig2.data[0], row=1, col=2)
-        # mapsize = 30*obs.synthesized_beam()['bmaj'].to(u.mas).value
-        # fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
-        #                   xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
-        #                   # This xaxis2 represents the xaxis for fig2.
-        #                   xaxis2={'autorange': False, 'range': [mapsize, -mapsize]},
-        #                   yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
-        # fig.update_xaxes(title_text="RA (mas)", constrain="domain")
-        # fig.update_yaxes(title_text="Dec (mas)", row=1, col=1, scaleanchor="x", scaleratio=1)
+    # def get_fig_dirty_map(self):
+    #     raise NotImplementedError
+    #     # Right now I only leave the natural weighting map (the uniform does not always correspond to the true one)
+    #     dirty_map_nat, laxis = self.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
+    #     # TODO: uncomment these two lines and move them outside observation. Flexibility
+    #     # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+    #     #         aspect='equal')
+    #     # fig = make_subplots(rows=1, cols=1, subplot_titles=('Natural weighting',), shared_xaxes=True, shared_yaxes=True)
+    #     fig.add_trace(fig1.data[0], row=1, col=1)
+    #     mapsize = 30*self.synthesized_beam()['bmaj'].to(u.mas).value
+    #     fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
+    #                       xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
+    #                       yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
+    #     fig.update_xaxes(title_text="RA (mas)", constrain="domain")
+    #     fig.update_yaxes(title_text="Dec (mas)", scaleanchor="x", scaleratio=1)
+    #     # dirty_map_nat, laxis = obs.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
+    #     # dirty_map_uni, laxis = obs.get_dirtymap(pixsize=1024, robust='uniform', oversampling=4)
+    #     # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+    #     #         aspect='equal')
+    #     # fig2 = px.imshow(img=dirty_map_uni, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
+    #     #         aspect='equal')
+    #     # fig = make_subplots(rows=1, cols=2, subplot_titles=('Natural weighting', 'Uniform weighting'),
+    #     #                     shared_xaxes=True, shared_yaxes=True)
+    #     # fig.add_trace(fig1.data[0], row=1, col=1)
+    #     # fig.add_trace(fig2.data[0], row=1, col=2)
+    #     # mapsize = 30*obs.synthesized_beam()['bmaj'].to(u.mas).value
+    #     # fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
+    #     #                   xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
+    #     #                   # This xaxis2 represents the xaxis for fig2.
+    #     #                   xaxis2={'autorange': False, 'range': [mapsize, -mapsize]},
+    #     #                   yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
+    #     # fig.update_xaxes(title_text="RA (mas)", constrain="domain")
+    #     # fig.update_yaxes(title_text="Dec (mas)", row=1, col=1, scaleanchor="x", scaleratio=1)
 

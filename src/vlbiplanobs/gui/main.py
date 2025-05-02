@@ -135,7 +135,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
     t0 = dt.now()
     try:
         # TODO: Do not create again the Obs. Modify values instead (unless it was None before)
-        _main_obs.set(cli.main(band=inputs.band_from_index(band), stations=selected_antennas,
+        _main_obs.set(cli.main(band=inputs.band_from_index(band), stations=sorted(selected_antennas),
                       targets=[source,] if defined_source and source.strip() != '' else None,
                       duration=duration*u.h if duration is not None else None,
                       ontarget=onsourcetime/100,

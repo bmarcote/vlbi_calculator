@@ -163,7 +163,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
             futures['out-rms'] = executor.submit(outputs.rms, _main_obs.get())
             futures['out-res'] = executor.submit(outputs.resolution, _main_obs.get())
             futures['out_ant'] = executor.submit(outputs.ant_warning, _main_obs.get())
-            futures['out_phaseref'] = executor.submit(outputs.warning_phase_referencing_high_freq,
+            futures['out_phaseref'] = executor.submit(outputs.warning_low_high_freq,
                                                       _main_obs.get())
             futures['out_fov'] = executor.submit(outputs.field_of_view, _main_obs.get())
             futures['out_freq'] = executor.submit(outputs.summary_freq_res, _main_obs.get())

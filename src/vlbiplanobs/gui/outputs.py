@@ -83,19 +83,25 @@ def info_card(title: str | list, body: str | list, icon: Optional[str] = None) -
     return message_card(title, body, 'info', icon)
 
 
-def warning_phase_referencing_high_freq(o: Optional[cli.VLBIObs] = None) -> html.Div:
+def warning_low_high_freq(o: Optional[cli.VLBIObs] = None) -> html.Div:
     """For observations at high frequencies, it shows a warning mentioning that
     phase referencing is not possible.
+    For observations at low frequencies, it shows a warning mentioning that there
+    may be significant RFI and the thermal rms may be affected.
     """
     if o is None:
         return html.Div()
 
-    if o.frequency < 70*u.GHz:
-        return html.Div()
-    else:
-        return warning_card("Note that phase referencing is not possible",
+    if o.frequency < 3*u.GHz:
+        return warning_card("Significant RFI may be expected",
+                            "At these low frequencies, a significant (~10%) of the data may be lost.",
+                            icon='fa-solid fa-repeat')
+    elif o.frequency > 70*u.GHz:
+        return warning_card("Phase referencing is not possible",
                             "At these high frequencies, your target must be bright enough "
                             "to directly fringe on it.", icon='fa-solid fa-repeat')
+
+    return html.Div()
 
 
 def sun_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:

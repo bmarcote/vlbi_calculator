@@ -340,7 +340,7 @@ def resolution(o: Optional[cli.VLBIObs] = None) -> html.Div:
                        # TODO: double check angle. Is it x-inverted??????
                        extra_rows=[html.Br(), html.Div(ellipse(bmaj="80px",
                                                                bmin=f"{bmin_elip}px",
-                                                               pa=f"{synth_beam['pa'].value}deg"),
+                                                               pa=f"{-synth_beam['pa'].value+90:.1f}deg"),
                                                        className='row justift-content-center py-3',
                                                        style={'display': 'flex',
                                                               'justify-content': 'center'})])

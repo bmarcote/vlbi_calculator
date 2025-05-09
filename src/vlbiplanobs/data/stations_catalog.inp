@@ -1237,27 +1237,53 @@ sefd_13 = 20.0
 sefd_3.6 = 18.0
 sefd_1.3 = 83
 
-[SKA1 MID 1]
-station = Square Kilometre Array (1-dish MID)
-code = SKA1
+[SKA-Mid 1]
+station = Square Kilometre Array (1-dish Mid)
+code = Sk1
 networks =
 country = South Africa
-diameter = 1 x 12 m
+diameter = 1 x 15 m
 position = 5109105.93105892, 2003381.49740976, -3239353.39941561
 real_time = no
-sefd_21 = 551
-sefd_18 = 551
+sefd_30 = 257
+sefd_21 = 257
+sefd_18 = 257
+sefd_6 = 300
+sefd_5 = 300
+sefd_3.6 = 300
+sefd_2 = 349
 
-[SKA1 MID]
-station = Square Kilometre Array (phased up)
-code = SKA
+[SKA-Mid AA*]
+station = Square Kilometre Array AA* (phased up)
+code = Sk2
 networks =
 country = South Africa
-diameter = 190 x 12 m
+diameter = 78-80x15m+64x13.5m
 position = 5109105.93105892, 2003381.49740976, -3239353.39941561
 real_time = no
-sefd_21 = 3.0
-sefd_18 = 3.0
+sefd_30 = 3.3
+sefd_21 = 3.3
+sefd_18 = 3.3
+sefd_6 = 3.9
+sefd_5 = 3.9
+sefd_3.6 = 3.9
+sefd_2 = 4.5
+
+[SKA-Mid AA4]
+station = Square Kilometre Array AA4 (phased up)
+code = Sk4
+networks =
+country = South Africa
+diameter = 133x15m+64x13.5m
+position = 5109105.93105892, 2003381.49740976, -3239353.39941561
+real_time = no
+sefd_30 = 1.55
+sefd_21 = 1.55
+sefd_18 = 1.55
+sefd_6 = 2.38
+sefd_5 = 2.38
+sefd_3.6 = 2.38
+sefd_2 = 2.77
 
 [SMA]
 station = Submillimeter Array

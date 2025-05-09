@@ -94,3 +94,8 @@ max_datarate = 32768
 observing_bands = 0.348cm, 0.13cm, 0.09cm
 
 
+# [SKA]
+# name = SKA (AA4)
+# default_antennas =
+# max_datarate = 16384
+# observing_bands = 30cm, 21cm, 18cm, 6cm, 5cm, 3.6cm, 2cm

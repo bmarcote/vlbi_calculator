@@ -921,36 +921,17 @@ class Observation(object):
         bandwidth_min = np.minimum.outer(bandwidths, bandwidths)
         if not self.sources():
             if not self.fixed_time:
-                dt = self.duration.to(u.min).value * self.ontarget_fraction
+                dt = self.duration.to(u.s).value * self.ontarget_fraction
             else:
-                dt = (self.times[-1]-self.times[0]).to(u.min).value * self.ontarget_fraction
+                dt = (self.times[-1]-self.times[0]).to(u.s).value * self.ontarget_fraction
 
             temp = np.sum((bandwidth_min/np.outer(sefds, sefds)) *
                           np.triu(np.ones_like(bandwidth_min), k=1))
-            self._rms = ((np.sqrt(2)/0.7)/np.sqrt(temp*dt))*u.Jy/u.beam
+            self._rms = ((4/0.7)/np.sqrt(temp*dt))*u.Jy/u.beam
             return self._rms
-
-        # TODO: this is not needed anymore, but I need to consider th ecase with not fixed_time
-        # and duration set, so it will need to be re-evaluated. A cummulative function and then max?
-        elif self.times is None:
-            times = self._REF_TIMES
-            self._rms = {}
-            delta_t = (times[1] - times[0]).to(u.min).value * self.ontarget_fraction
-            for sourcename in self.sourcenames:
-                scanname = self._scanblock_name_from_source_name(sourcename)
-                assert scanname is not None, f"No scan found related to the source {sourcename}"
-                duration_limit = 1 if self.duration is None else (24*u.h/self.duration).value
-                visible = np.array([self.is_observable(times)[scanname][stat.codename]
-                                    for stat in self.stations])
-                integrated_time = np.sum(visible[:, None] & visible[None, :], axis=2) * delta_t
-                temp = np.sum((bandwidth_min*integrated_time /
-                              np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=1))
-                # TODO: this is a trick just to get an approximate value, considering if max duration
-                # is set.
-                self._rms[sourcename] = ((np.sqrt(2)/0.7)/np.sqrt(temp) * duration_limit)*u.Jy/u.beam
         else:
             self._rms = {}
-            delta_t = (self.times[1] - self.times[0]).to(u.min).value * self.ontarget_fraction
+            delta_t = (self.times[1] - self.times[0]).to(u.s).value * self.ontarget_fraction
             for sourcename in self.sourcenames:
                 scanname = self._scanblock_name_from_source_name(sourcename)
                 assert scanname is not None, f"No scan found related to the source {sourcename}"
@@ -958,7 +939,7 @@ class Observation(object):
                 integrated_time = np.sum(visible[:, None] & visible[None, :], axis=2) * delta_t
                 temp = np.sum((bandwidth_min*integrated_time /
                               np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=1))
-                self._rms[sourcename] = ((np.sqrt(2)/0.7)/np.sqrt(temp))*u.Jy/u.beam
+                self._rms[sourcename] = ((4/0.7)/np.sqrt(temp))*u.Jy/u.beam
 
         return self._rms
 

@@ -45,8 +45,6 @@ app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_
            external_stylesheets=[dbc.themes.FLATLY, dbc.icons.BOOTSTRAP,
                                  dbc.icons.FONT_AWESOME, dmc.styles.DATES] + external_stylesheets,
            assets_folder=current_directory+'/assets/', eager_loading=False,
-           # prevent_initial_callbacks='initial_duplicate')  # type: ignore
-           # , suppress_callback_exceptions=True)
            prevent_initial_callbacks=True)
 
 
@@ -102,7 +100,8 @@ def download_pdf_summary(n_clicks):
                State('inttime', 'value'),
                State('switch-specify-e-evn', 'value'),
                State('switches-antennas', 'value')],
-              running=[(Output("compute-observation", "disabled"), True, False),])
+              running=[(Output("compute-observation", "disabled"), True, False),],
+              suppress_callback_exceptions=True)
 def compute_observation(n_clicks, band: int, defined_source: bool, source: str, onsourcetime: float,
                         defined_epoch: bool, startdate: str, duration: float, datarate: int, subbands: int,
                         channels: int, pols: int, inttime: int, e_evn: bool, selected_antennas: list[str]):

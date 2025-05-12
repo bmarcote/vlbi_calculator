@@ -405,7 +405,7 @@ def print_observability_ranges(o: Optional[cli.VLBIObs]) -> html.Div:
     min_stat = 3 if len(o.stations) > 3 else min(2, len(o.stations))
     if len(o.stations) > 2:
         text += [f"The optimal visibility range (> {min_stat} antennas) occurs on "]
-        if o.times is None:
+        if not o.fixed_time:
             text += [', '.join([t1.to_string(sep=':', fields=2, pad=True) + '-' +
                                 (t2 + (24*u.hourangle if np.abs(t1 - t2) < 0.1*u.hourangle
                                        else 0.0*u.hourangle)).to_string(sep=':', fields=2, pad=True) +

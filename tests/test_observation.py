@@ -4,9 +4,10 @@ import numpy as np
 from astropy import units as u
 from astropy.time import Time
 # from rich import print as rprint
-
 from vlbiplanobs import observation as obs
-
+from vlbiplanobs import stations
+from vlbiplanobs import sources
+from vlbiplanobs import cli
 
 
 def test_polarizations():
@@ -19,23 +20,28 @@ def test_polarizations():
 
 
 def test_observation_init():
-    o = obs.Observation()
+    with pytest.raises(TypeError):
+        o = obs.Observation()
+
+    o = obs.Observation(band='18cm', stations=stations.Stations(), scans={})
     o.polarizations = 'dual'
     assert o.polarizations.value == 2
     o.polarizations = 4
     assert o.polarizations == obs.Polarization.FULL
-
+    evn6 = ['Ef', 'Jb2', 'O8', 'Hh', 'T6', 'Wb', 'Sv', 'Zc', 'Pa', 'Mp', 'Ho', 'Nl', 'Pt', 'Sc', 'Kp', 'Hn']
 
     for tar_name, tar_coord in (('Target', '10h58m29.6s +81d33m58.8s'),
-                    (['Tar1', 'Tar2'], ['10h58m29.6s +81d33m58.8s', '20h58m29.6s +71d33m58.8s'])):
+                                (['Tar1', 'Tar2'],
+                                 ['10h58m29.6s +81d33m58.8s', '20h58m29.6s +71d33m58.8s'])):
         if isinstance(tar_name, list):
             target = [obs.Source(aname, acoord) for aname,acoord in zip(tar_name, tar_coord)]
         else:
             target = obs.Source(tar_name, tar_coord)
 
-        o = obs.Observation(scans=obs.ScanBlock([obs.Scan(source=target)]))
+        o = obs.Observation(band='18cm', stations=obs._STATIONS.filter_antennas(evn6),
+                            scans=obs.ScanBlock([obs.Scan(source=target)]))
         o.times = Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min
-        o.band = '18cm'
+        assert o.band == '18cm'
         o.datarate = 1024
         o.subbands = 8
         o.channels = 32
@@ -57,7 +63,6 @@ def test_observation_init():
 
         # assert len(o.sources) == len(tar_name) if isinstance(tar_name, list) else 1
         # all_stations = stations.Network.get_stations_from_configfile()
-        evn6 = ['Ef', 'Jb2', 'On', 'Hh', 'T6', 'Wb', 'Sv', 'Zc', 'Pa', 'Mp', 'Ho', 'Nl', 'Pt', 'Sc', 'Kp', 'Hn']
         o.stations_from_codenames(evn6)
         _ = o.elevations()
         return
@@ -93,8 +98,26 @@ def test_observation_init():
             assert 'Pa' in o.stations.codenames
 
 
-
 # TODO:
 # test uv coverage: same number of points in +x,+y than -x,-y., and the other quarter.
 # test rms: scaling by time as sqrt(), same for banddith, etc.
 
+def test_thermal_noise():
+    evn6 = ['Ef', 'Jb2', 'O8', 'T6', 'Wb']
+    o = cli.VLBIObs(band='18cm', stations=obs._STATIONS.filter_antennas(evn6), duration=10*u.h, scans={})
+    rmss = []
+    durations = np.array([1, 5, 10, 20])*u.h
+    for durs in durations:
+        o.duration = durs
+        rmss.append(o.thermal_noise())
+
+    rmss = np.array([rms.value for rms in rmss])
+    assert all([(rms[i+1] - rms) < 0.0 for i, rms in enumerate(rmss[:-1])]), \
+        "Larger obs time should produce lower rms."
+    assert all(np.abs(rms - np.array([rms/np.sqrt(t-durations[0]).value
+                      for t, rms in zip(durations[1:], rmss[1:])])) < 1e-5), \
+        f"The returned rms are (for {durations}): {rmss} Jy/beam."
+
+    evn6 = ['Ef', 'Jb2', 'T6', 'Wb']
+    o = cli.VLBIObs(band='18cm', stations=obs._STATIONS.filter_antennas(evn6), duration=10*u.h, scans={})
+    assert o.thermal_noise() > rmss[2]

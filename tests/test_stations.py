@@ -4,6 +4,7 @@ import numpy as np
 from importlib import resources
 from astropy import coordinates as coord
 from astropy import units as u
+from astropy import constants as const
 from astropy.time import Time
 from astroplan import FixedTarget
 from vlbiplanobs import stations
@@ -29,9 +30,14 @@ def test_stations_catalog():
                f"Duplicated codename {config[stationname]['code']} in stations_catalog.inp."
         codenames.add(config[stationname]['code'])
         temp = [float(i.strip()) for i in config[stationname]['position'].split(',')]
-        assert len(temp) == 3, f"The station position of {stationname} does not have the three expected numbers."
-        _ = coord.EarthLocation(u.Quantity(float(temp[0]), u.m), u.Quantity(float(temp[1]), u.m),
+        assert len(temp) == 3, f"The station position of {stationname} does not have " \
+            "the three expected numbers."
+        c = coord.EarthLocation(u.Quantity(float(temp[0]), u.m), u.Quantity(float(temp[1]), u.m),
                                 u.Quantity(float(temp[2]), u.m))
+        # The station must be around the surface of the Earth...
+        # Note that this may fail if in the future I integrate satelites! or antennas on the Moon
+        assert 0.99*const.R_earth < np.sqrt(c.x**2 + c.y**2 + c.z**2) < 1.01*const.R_earth, \
+            "The antenna position seems to be out of the Earth's surface!"
         # Getting the SEFD values for the bands
         assert config[stationname]['real_time'] in ('yes', 'no'), \
                f"'real_time' must be 'yes' or 'no' for {stationname}"
@@ -47,7 +53,8 @@ def test_network_catalog():
     """Checks the consistency of the information in the  network_catalog.inp file.
     """
     config = configparser.ConfigParser()
-    with resources.as_file(resources.files("vlbiplanobs.data").joinpath("network_catalog.inp")) as net_cat_path:
+    with resources.as_file(resources.files("vlbiplanobs.data").joinpath("network_catalog.inp")) \
+            as net_cat_path:
         config.read(net_cat_path)
 
     # To verify that all stations (codenames) defined in the network file as defined in the stations_catalog
@@ -110,13 +117,13 @@ def test_station_functions():
     with pytest.raises(KeyError):
         a_station.sefd('45')
 
-    times1 = Time('2020-03-21 1:00') + np.arange(0, 2*60, 10)*u.min
-    times2 = Time('2020-03-21 3:00') + np.arange(0, 4*60, 10)*u.min
+    times1 = Time('2020-03-21 1:00', scale='utc') + np.arange(0, 2*60, 10)*u.min
+    times2 = Time('2020-03-21 3:00', scale='utc') + np.arange(0, 4*60, 10)*u.min
     src1 = FixedTarget(coord=coord.SkyCoord('0h0m0s 30d0m0s'), name='testSrc')
     # a_station.elevation(times1, src1)  # Should have elevation ranging -7 to 1.1 deg.
     # a_station.elevation(times2, src1)  # Should have elevation ranging 2.2 to 34 deg.
-    assert not all(a_station.is_observable(times1, src1))
-    assert all(a_station.is_observable(times2, src1))
+    assert not all(a_station.is_observable(times1, src1)), f"{a_station.elevation(times1, src1)=}"
+    assert all(a_station.is_observable(times2, src1)), f"{a_station.elevation(times1, src1)=}"
     assert not a_station.is_always_observable(times2, src1)
     assert len(a_station.elevation(times2, src1)) == len(times2)
     assert len(a_station.elevation(times1, src1)) == len(times1)
@@ -221,4 +228,3 @@ def test_station_file():
             if net != 'e-EVN':
                 assert netfile.exists()
 
-# TODO: check that the distance for each antenna to the center of the Earth is approx the radius of the Earth

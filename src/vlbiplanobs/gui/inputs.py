@@ -24,7 +24,7 @@ def modal_welcome() -> html.Div:
                         html.Li("Real antenna mount limits are now taken into account to know if a "
                                 "source can be observed (e.g. hour angle limits)."),
                         html.Li("The sensitivity calculations take into account the limited bandwidth "
-                                "that some antennas may have (e.g. eMERLIN stations observing within and "
+                                "that some antennas may have (e.g. eMERLIN stations observing within an "
                                 "EVN observation)."),
                         html.Li("Warnings if the Sun is too close to your source during the observation."),
                         html.Li("Fully-featured command-line program (CLI) that allows you to plan "
@@ -212,7 +212,7 @@ def pick_band(bands: dict[str, str]) -> html.Div:
                                   html.H4("Observing band", className='text-dark font-weight-bold mb-0'),
                                 ]),
                                 html.Div(className='col-4 text-right', children=[
-                                   dbc.Switch(label='Show wavelenths', value=False, id='switch-band-label',
+                                   dbc.Switch(label='Show wavelengths', value=False, id='switch-band-label',
                                               persistence=True),
                                 ])]),
                        html.Br(),

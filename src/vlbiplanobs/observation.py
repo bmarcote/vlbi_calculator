@@ -247,7 +247,22 @@ class Observation(object):
     def duration(self) -> u.Quantity:
         """Returns the total duration of the observation.
         """
-        return self._duration if self.times is None else (self.times[-1] - self.times[0]).to(u.h)
+        return self._duration if not self.fixed_time else (self.times[-1] - self.times[0]).to(u.h)
+
+    @duration.setter
+    def duration(self, new_duration: u.Quantity):
+        """Sets the total duration of the observation.
+        """
+        assert isinstance(new_duration, u.Quantity), "The new duration must be a quantity with time units."
+        assert new_duration.unit.is_equivalent(u.h), "The new duration must be a quantity with time units."
+        self._duration = new_duration
+        with self._mutex:
+            self._rms = None
+            self._baseline_sensitivity = None
+            self._uv_baseline = None
+            self._is_always_observable = None
+            self._uv_array = None
+            self._synth_beam = None
 
     @property
     def band(self) -> str:
@@ -1038,11 +1053,7 @@ class Observation(object):
         bl_names = [f"{self.stations[int(i)].codename}-{self.stations[int(j)].codename}"
                     for i, j in zip(idx_i, idx_j)]
 
-        if self.times is None:
-            gstimes = self._REF_TIMES.sidereal_time('mean', 'greenwich')
-        else:
-            gstimes = self.gstimes
-
+        gstimes = self.gstimes
         # Prepare the rotation matrix for each time
         if source is None:
             hourangle: coord.Angle = gstimes
@@ -1086,11 +1097,7 @@ class Observation(object):
             return bl_uv_up
 
         # Source is provided: filter by visibility
-        if self.times is None:
-            ants_up = self.is_observable(self._REF_TIMES)
-        else:
-            ants_up = self.is_observable()
-
+        ants_up = self.is_observable()
         blockname = [ablock for ablock in self.scans if source.name in self.scans[ablock].sourcenames()][0]
 
         for bl_idx, bl_name in enumerate(bl_names):
@@ -1125,11 +1132,7 @@ class Observation(object):
                 bl_names.append("{}-{}".format(self.stations[i].codename,
                                                self.stations[j].codename))
 
-        if self.times is None:
-            gstimes = self._REF_TIMES.sidereal_time('mean', 'greenwich')
-        else:
-            gstimes = self.gstimes
-
+        gstimes = self.gstimes
         if source is None:
             hourangle: coord.Angle = gstimes
             print("WARNING: 'target' is not set, thus we assume a source at +/- 45º declination"
@@ -1154,11 +1157,7 @@ class Observation(object):
 
             return bl_uv_up
         else:
-            if self.times is None:
-                ants_up = self.is_observable(self._REF_TIMES)
-            else:
-                ants_up = self.is_observable()
-
+            ants_up = self.is_observable()
             blockname = [ablock for ablock in self.scans
                          if source.name in self.scans[ablock].sourcenames()][0]
             for i, bl_name in enumerate(bl_names):

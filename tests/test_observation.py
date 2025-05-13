@@ -34,12 +34,12 @@ def test_observation_init():
                                 (['Tar1', 'Tar2'],
                                  ['10h58m29.6s +81d33m58.8s', '20h58m29.6s +71d33m58.8s'])):
         if isinstance(tar_name, list):
-            target = [obs.Source(aname, acoord) for aname,acoord in zip(tar_name, tar_coord)]
+            target = [obs.Source(aname, acoord) for aname, acoord in zip(tar_name, tar_coord)]
         else:
             target = obs.Source(tar_name, tar_coord)
 
         o = obs.Observation(band='18cm', stations=obs._STATIONS.filter_antennas(evn6),
-                            scans=obs.ScanBlock([obs.Scan(source=target)]))
+                            scans={'block1': obs.ScanBlock([obs.Scan(source=target)])})
         o.times = Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min
         assert o.band == '18cm'
         o.datarate = 1024
@@ -57,45 +57,38 @@ def test_observation_init():
         o.inttime = 2
 
         if isinstance(tar_name, list):
-            assert len(o.sources) == len(tar_name)
+            assert len(o.sources()) == len(target)
         else:
-            assert len(o.sources) == 1
+            assert len(o.sources()) == 1
 
         # assert len(o.sources) == len(tar_name) if isinstance(tar_name, list) else 1
         # all_stations = stations.Network.get_stations_from_configfile()
-        o.stations_from_codenames(evn6)
+        # o.stations_from_codenames(evn6)
         _ = o.elevations()
-        return
-        temp = o.is_visible()
-        assert len(temp) == len(evn6) and len(evn6) == len(o.stations)
+        temp = o.is_observable()
+        assert len(temp) == 1 and len(list(temp.values())[0]) == len(evn6)
         # If multiple sources, then it will keep the structure of one ouput per source
         assert len(temp[evn6[0]]) == len(tar_name) if isinstance(tar_name, list) else 1
         # temp = obs.Observation.guest_times_for_source(target if not isinstance(target, list) else target[0],
         #                                               obs.Network.get_stations_from_configfile(codenames=evn6))
         # beam = o.synthesized_beam)
-        temp = o.is_always_visible()
-        assert len(temp['Ef']) == len(o.sources)
-        assert temp['Ef']
+        temp = o.is_always_observable()
+        assert len(temp) == 1
+        assert list(temp.values())[0]['Ef']
         # _ = o.thermal_noise()
         # _ = o.get_uv_array()
         # _ = o.get_dirtymap(robust='natural')
         # _ = o.get_dirtymap(robust='uniform')
         # fig, ax = plt.subplots()
 
-        # If no time is defined
-        o.times = None
-        with pytest.raises(ValueError):
-            o.is_visible()
-
-        o.with_networks(['EVN', 'eMERLIN'])
-        assert 'Ef' in o.stations.codenames
-        assert 'Hh' in o.stations.codenames
-        assert 'Cm' in o.stations.codenames
-        assert 'Jb2' in o.stations.codenames
+        assert 'Ef' in o.stations.station_codenames, f"Stations found: {o.stations.station_codenames}"
+        assert 'Hh' in o.stations.station_codenames, f"Stations found: {o.stations.station_codenames}"
+        assert 'Jb2' in o.stations.station_codenames, f"Stations found: {o.stations.station_codenames}"
+        assert 'Nl' in o.stations.station_codenames, f"Stations found: {o.stations.station_codenames}"
+        assert 'Pa' in o.stations.station_codenames, f"Stations found: {o.stations.station_codenames}"
         with pytest.raises(AssertionError):
-            assert 'Nl' in o.stations.codenames
-            assert 'Ku' in o.stations.codenames
-            assert 'Pa' in o.stations.codenames
+            assert 'Cm' in o.stations.station_codenames, f"Stations found: {o.stations.station_codenames}"
+            assert 'Ku' in o.stations.station_codenames, f"Stations found: {o.stations.station_codenames}"
 
 
 # TODO:
@@ -111,13 +104,15 @@ def test_thermal_noise():
         o.duration = durs
         rmss.append(o.thermal_noise())
 
+    assert len(rmss) == len(durations), f"Something went wrong here {rmss=}"
+
     rmss = np.array([rms.value for rms in rmss])
-    assert all([(rms[i+1] - rms) < 0.0 for i, rms in enumerate(rmss[:-1])]), \
+    assert all([(rmss[i+1] - rms) < 0.0 for i, rms in enumerate(rmss[:-1])]), \
         "Larger obs time should produce lower rms."
-    assert all(np.abs(rms - np.array([rms/np.sqrt(t-durations[0]).value
+    assert all(np.abs(rmss[1:] - np.array([rms/np.sqrt(t-durations[0]).value
                       for t, rms in zip(durations[1:], rmss[1:])])) < 1e-5), \
         f"The returned rms are (for {durations}): {rmss} Jy/beam."
 
     evn6 = ['Ef', 'Jb2', 'T6', 'Wb']
     o = cli.VLBIObs(band='18cm', stations=obs._STATIONS.filter_antennas(evn6), duration=10*u.h, scans={})
-    assert o.thermal_noise() > rmss[2]
+    assert o.thermal_noise() > rmss[2]*u.Jy/u.beam

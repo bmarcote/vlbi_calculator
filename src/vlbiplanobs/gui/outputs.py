@@ -114,9 +114,14 @@ def sun_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:
     sun_const = o.sun_constraint()
     sun_limit = o.sun_limiting_epochs()
     if not o.fixed_time:
-        if len(sun_limits := list(sun_limit.values())[0]) > 0:
+        # if len(sun_limits := list(sun_limit.values())[0]) > 0:
+        if list(sun_const.values())[0] is not None:
+            sun_limits = list(sun_limit.values())[0]
             sun_const_src = sun_const[list(sun_const.keys())[0]]
-            assert sun_const_src is not None, "I am here because this should be none!"
+            assert sun_const_src is not None, \
+                "And error occured while checking if the Sun gets too close to the source."
+            assert len(sun_limits) > 0, \
+                "And error occured while checking if the Sun gets too close to the source."
             t0, t1 = sun_limits[0].datetime, sun_limits[-1].datetime
             if t0 == t1:
                 return warning_card("The Sun gets too close to the source",

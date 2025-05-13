@@ -1,3 +1,8 @@
+
+v3.0.2  2025-05-14 -- Bug Fix: rms thermal noises are now providing the correct values.
+                      Thanks @WWGolay for the feedback!
+                   -- Bug Fix: An unexpected error was happening under special circumstances related to Sun distances.
+                      Thanks Katharina Immer for the feedback!
 v3.0.1  2025-05-12 -- Bug Fix: synthesized beam is correctly shown in the GUI card.
                    -- Bug Fix: Avoid an error when downloading PDF when no Sun constraints were present.
                    -- Bug Fix: there was a factor 2/sqrt(2) wrong in the thermal noise calculation.

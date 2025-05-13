@@ -211,10 +211,10 @@ def plot_worldmap_stations(o) -> Optional[go.Figure]:
     fig.update_geos(
         # projection_type='natural earth',
         projection_type='orthographic',
-        lonaxis_range=[avg_lon-90, avg_lon+90],
+        # lonaxis_range=[avg_lon-90, avg_lon+90],
         showland=True,
         landcolor='#9DB7C4',
-        center=dict(lon=avg_lon, lat=0)
+        projection_rotation=dict(lon=avg_lon, lat=0)
     )
 
     fig.update_layout(autosize=True, hovermode='closest', showlegend=False,

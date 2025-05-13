@@ -501,20 +501,25 @@ class Observation(object):
         return (self.datarate/(pols*self.bitsampling*2)).to(u.MHz)  # type: ignore
 
     @property
-    def bitsampling(self) -> int:
+    def bitsampling(self) -> u.Quantity:
         """Returns the bit sampling at which the data are recorded during the observation.
         """
         return self._bitsampling
 
     @bitsampling.setter
-    def bitsampling(self, new_bitsampling: int):
+    def bitsampling(self, new_bitsampling: int | u.Quantity):
         """Sets the bit sampling of the observation.
         Inputs
-        - new_bitsampling : int
+        - new_bitsampling : int | astropy.units.Quantity (bit-equivalent)
             In bits.
         """
         if isinstance(new_bitsampling, int):
             self._bitsampling = new_bitsampling*u.bit
+        elif isinstance(new_bitsampling, u.Quantity):
+            if not new_bitsampling.unit.is_equivalent(u.bit):
+                raise ValueError(f"Unknown unit for {new_bitsampling} (bit-equivalent expected)")
+
+            self._bitsampling = new_bitsampling
         else:
             raise ValueError(f"Unknown type for {new_bitsampling} (int, in bits, expected)")
 
@@ -881,6 +886,7 @@ class Observation(object):
             bad_epochs[blockname] = []
             for src in block.sources():
                 bad_epochs[blockname] += src.sun_constraint(freqsetups.min_separation_sun(self.band))
+                print(bad_epochs)
 
             # Keep only the first and last epochs
             if len(bad_epochs[blockname]) > 0:
@@ -901,13 +907,16 @@ class Observation(object):
         """
         sun_seps: dict[str, Optional[u.Quantity]] = {}
         for blockname, block in self.scans.items():
-            min_sep = np.min([s.sun_separation(times=times if times is not None else self.times)
+            min_sep = np.min([s.sun_separation(times=times if times is not None else self._REF_YEAR
+                                               if not self.fixed_time else self.times)
                               for s in block.sources()])
             if isinstance(min_sep, float):
                 min_sep *= u.deg
+
             sun_seps[blockname] = min_sep if min_sep <= freqsetups.min_separation_sun(self.band) \
                 else None
 
+        print(sun_seps)
         return sun_seps
 
     def thermal_noise(self) -> Union[u.Quantity, dict[str, u.Quantity]]:
@@ -931,8 +940,8 @@ class Observation(object):
         # TODO: I think the n_stations = 1 may be a special case, where it requires k=0, not k=1
         sefds = np.array([stat.sefd(self.band).to(u.Jy).value for stat in self.stations])
         bandwidths = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
-                              else self.datarate.to(u.bit/u.s).value for s in self.stations]) * \
-            2 * 2 * min(self.polarizations.value, 2)  # In Hz
+                              else self.datarate.to(u.bit/u.s).value for s in self.stations]) / \
+            (2 * self.bitsampling.to(u.bit).value)  # In Hz
         bandwidth_min = np.minimum.outer(bandwidths, bandwidths)
         if not self.sources():
             if not self.fixed_time:
@@ -942,7 +951,17 @@ class Observation(object):
 
             temp = np.sum((bandwidth_min/np.outer(sefds, sefds)) *
                           np.triu(np.ones_like(bandwidth_min), k=1))
-            self._rms = ((4/0.7)/np.sqrt(temp*dt))*u.Jy/u.beam
+            self._rms = ((1/0.7)/np.sqrt(temp * dt * min(self.polarizations.value, 2)))*u.Jy/u.beam
+            return self._rms
+        elif not self.fixed_time:
+            self._rms = {}
+            for sourcename in self.sourcenames:
+                temp = np.sum((bandwidth_min/np.outer(sefds, sefds)) *
+                              np.triu(np.ones_like(bandwidth_min), k=1))
+                self._rms[sourcename] = ((1/0.7)/np.sqrt(temp*self.duration.to(u.s).value *
+                                                         min(self.polarizations.value, 2) *
+                                                         self.ontarget_fraction))*u.Jy/u.beam
+
             return self._rms
         else:
             self._rms = {}
@@ -954,7 +973,7 @@ class Observation(object):
                 integrated_time = np.sum(visible[:, None] & visible[None, :], axis=2) * delta_t
                 temp = np.sum((bandwidth_min*integrated_time /
                               np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=1))
-                self._rms[sourcename] = ((4/0.7)/np.sqrt(temp))*u.Jy/u.beam
+                self._rms[sourcename] = ((1/0.7)/np.sqrt(temp * min(self.polarizations.value, 2)))*u.Jy/u.beam
 
         return self._rms
 
@@ -980,7 +999,9 @@ class Observation(object):
         """
         if self._baseline_sensitivity is None:
             self._baseline_sensitivity = self._baseline_sensitivity_numpy()
-
+            for key in self._baseline_sensitivity:
+                self._baseline_sensitivity[key] = self._baseline_sensitivity[key] / \
+                    np.sqrt(integration_time.to(u.s).value)
         if antenna1 is None and antenna2 is None:
             return self._baseline_sensitivity
         elif antenna1 is not None and antenna2 is None:
@@ -1005,40 +1026,18 @@ class Observation(object):
     # Only for >20 antennas, it gets ~2 times slower. I think it's worth it.
     def _baseline_sensitivity_numpy(self) -> dict[str, u.Quantity]:
         basel_sens: dict[str, u.Quantity] = {}
-        assert self.datarate is not None
+
         sefds = np.array([stat.sefd(self.band).to(u.Jy).value for stat in self.stations])
-        bandwidths = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
-                               else self.datarate.to(u.bit/u.s).value for s in self.stations]) * \
-            2 * 2 * min(self.polarizations.value, 2)  # In Hz
-        bandwidth_min = np.minimum.outer(bandwidths, bandwidths)
-        temp = (bandwidth_min/np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=0)
-        np.fill_diagonal(temp, temp.diagonal()/sefds)
+        datarates = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
+                              else self.datarate.to(u.bit/u.s).value for s in self.stations])
+        datarates_min = np.minimum.outer(datarates, datarates)
+        sens = (1/0.7)*(np.sqrt(np.outer(sefds, sefds) /
+                                np.sqrt(min(self.polarizations.value, 2) *
+                                        datarates_min/(2*self.bitsampling.to(u.bit).value))))
         for i in range(len(self.stations)):
             for j in range(i, len(self.stations)):
                 basel_sens[f"{self.stations[i].codename}-{self.stations[j].codename}"] = \
-                    ((np.sqrt(2)/0.7)/np.sqrt(temp[i, j]*1))*u.Jy/u.beam
-
-        return basel_sens
-
-    def _baseline_sensitivity_threads(self) -> dict[str, u.Quantity]:
-        basel_sens: dict[str, u.Quantity] = {}
-        assert self.datarate is not None
-        datarates = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
-                              else self.datarate.to(u.bit/u.s).value for s in self.stations])
-        sefds = np.array([s.sefd(self.band).to(u.Jy).value for s in self.stations])
-
-        def calculate_sensitivity(i, j):
-            temp = min(datarates[i], datarates[j]) * 4 * min(self.polarizations.value, 2) / \
-                   (sefds[i] * sefds[j])
-            return ((np.sqrt(2)/0.7)/np.sqrt(temp*1))*u.Jy/u.beam
-
-        with ThreadPoolExecutor() as executor:
-            indices = [(i, j) for i in range(len(self.stations)) for j in range(i, len(self.stations))]
-            sensitivities = list(executor.map(lambda x: calculate_sensitivity(*x), indices))
-
-        for (index, sensitivity) in zip(indices, sensitivities):
-            basel_sens[f"{self.stations[index[0]].codename}-{self.stations[index[1]].codename}"] = \
-                    ((np.sqrt(2)/0.7)/np.sqrt(sensitivity*1))*u.Jy/u.beam
+                    sens[i, j]*u.Jy/u.beam
 
         return basel_sens
 

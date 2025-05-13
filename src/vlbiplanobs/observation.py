@@ -886,7 +886,6 @@ class Observation(object):
             bad_epochs[blockname] = []
             for src in block.sources():
                 bad_epochs[blockname] += src.sun_constraint(freqsetups.min_separation_sun(self.band))
-                print(bad_epochs)
 
             # Keep only the first and last epochs
             if len(bad_epochs[blockname]) > 0:
@@ -916,7 +915,6 @@ class Observation(object):
             sun_seps[blockname] = min_sep if min_sep <= freqsetups.min_separation_sun(self.band) \
                 else None
 
-        print(sun_seps)
         return sun_seps
 
     def thermal_noise(self) -> Union[u.Quantity, dict[str, u.Quantity]]:

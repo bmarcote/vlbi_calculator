@@ -275,31 +275,23 @@ def networks(app) -> html.Div:
 def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
     """Returns the DIV that shows all the antennas that can be selected, and allows searching through them
     """
-    return html.Div(dbc.Accordion(start_collapsed=True, className='accordion-contents-open-ids', flush=True,
-                                  persistence=True, id='accordion-state',
-                                  children=dbc.AccordionItem(
-                                      title=html.H4(['Manual Selection of Antennas   ',
-                                                     html.I(className='fa fa-solid fa-angle-down',
-                                                            id='accordion-ant')],
-                                                    className='text-dark font-weight-bold mb-0 '
-                                                    'accordion-header'),
-                                      children=[dmc.Group(
-                                          dmc.ChipGroup(value=[], id='switches-antennas', persistence=True,
-                                                        multiple=True, deselectable=True, children=[
-                                              antenna_card_hover(app,
-                                                                 dmc.Chip(s.name, value=s.codename,
-                                                                          id=f"chip-{s.codename}",
-                                                                          color='#004990',
-                                                                          persistence=True,
-                                                                          styles={'display': 'grid',
-                                                                                  'grid-template-columns':
-                                                                                  'repeat(auto-fit, '
-                                                                                  'minmax(10rem, 1fr))'}),
-                                                                 s, show_wavelengths)
-                                              for s in observation._STATIONS]),
-                                          className='mb-2 flex',
-                                          style={'display': 'inline-flex', 'gap': '5px',
-                                                 'flex-wrap': 'wrap'})])))
+    return html.Div([html.H4('Manual Selection of Antennas   '),
+                     dmc.Group(dmc.ChipGroup(value=[], id='switches-antennas', persistence=True,
+                                             multiple=True, deselectable=True, children=[
+                                  antenna_card_hover(app,
+                                                     dmc.Chip(s.name, value=s.codename,
+                                                              id=f"chip-{s.codename}",
+                                                              color='#004990',
+                                                              persistence=True,
+                                                              styles={'display': 'grid',
+                                                                      'grid-template-columns':
+                                                                      'repeat(auto-fit, '
+                                                                      'minmax(10rem, 1fr))'}),
+                                                     s, show_wavelengths)
+                                  for s in observation._STATIONS]),
+                               className='mb-2 flex',
+                               style={'display': 'inline-flex', 'gap': '5px', 'justify-content': 'center',
+                                      'flex-wrap': 'wrap'})])
 
 
 def source_selection() -> html.Div:

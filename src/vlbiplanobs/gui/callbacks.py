@@ -150,12 +150,6 @@ def toggle_epoch_field(define_epoch: bool):
     return not define_epoch
 
 
-@callback(Output('accordion-ant', 'className'),
-          Input('accordion-state', 'active_item'))
-def toggle_accordion_arrow(accordion_expanded: int):
-    return 'fa fa-solid fa-angle-down' if accordion_expanded is None else 'fa fa-solid fa-angle-up'
-
-
 @callback([Output('error_source', 'children'),
            Output('error_source', 'className'),
            Output('source-input', 'className')],

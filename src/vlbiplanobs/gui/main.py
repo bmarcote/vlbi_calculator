@@ -38,7 +38,7 @@ class Obs():
 _main_obs = Obs()
 
 current_directory = os.path.dirname(os.path.realpath(__file__))
-external_stylesheets: list = []
+external_stylesheets: list = ['https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css']
 external_scripts: list = []
 
 app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_scripts,

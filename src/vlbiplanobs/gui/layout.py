@@ -14,7 +14,7 @@ def top_banner(app) -> html.Div:
                                                  alt='European VLBI Network (EVN)',
                                                  className="d-inline-block align-middle")]),
                        html.Div(html.H2(['EVN Observation Planner',
-                                         html.Span(' &nbsp;(v3.0.2 beta)', style={'color': '#a01d26'})]),
+                                         html.Span(' (v3.0.2 beta)', style={'color': '#a01d26'})]),
                                 className='d-inline-block align-middle mx-auto mb-0 font-weight-bolder',
                                 style={'text-align': 'center', 'margin': '0', "flex": "1"}),
                        html.A(className='d-inline-block ml-auto pull-right',
@@ -32,8 +32,10 @@ def inputs_column(app) -> html.Div:
             inputs.card(inputs.networks(app)),
             inputs.card(inputs.antenna_list(app)),
             html.Div(className='m-0 p-0', children=html.Div(className='row d-flex m-0 p-0', children=[
-                 inputs.card(inputs.source_selection(), classNameDiv='col-6 m-0 p-2', style={'min-width': '150px'}),
-                 inputs.card(inputs.epoch_selection(), classNameDiv='col-6 m-0 p-2', style={'min-width': '150px'})])),
+                 inputs.card(inputs.source_selection(), classNameDiv='col-6 m-0 p-2',
+                             style={'min-width': '150px'}),
+                 inputs.card(inputs.epoch_selection(), classNameDiv='col-6 m-0 p-2',
+                             style={'min-width': '150px'})])),
             inputs.card(inputs.correlations())])
 
 

@@ -20,7 +20,7 @@ card = inputs.card
 
 def card_result(number: str | list, label: str | list, id: str, extra_rows: Optional[list] = None,
                 second_column_n: int = 0, second_column_content: Optional[list] = None) -> html.Div:
-    return card(className='bg-primary opacity-10 p-0 m-0', style={'height': '100%'}, children=[
+    return card(className='bg-primary opacity-10 p-0 m-0', style={'height': '100%', 'min-width': '200px'}, children=[
         html.Div(className='row', children=[
             html.Div(className=f'col-{12-second_column_n} text-start text-wrap: pretty', children=[
                 html.Div(className='numbers', children=[
@@ -502,7 +502,7 @@ def download_button() -> html.Div:
                                style={'position': 'sticky', 'top': '20px'})],
                          className='d-flex align-items-center justify-content-center',
                          style={'gap': '5px'}),
-            ], className='col-12 container row', hidden=True, id='download-summary-div'),
+            ],hidden=True, id='download-summary-div'),
         className='col-6', style={'position': 'relative'})
 
 

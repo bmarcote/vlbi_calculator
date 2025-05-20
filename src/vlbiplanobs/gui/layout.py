@@ -31,17 +31,17 @@ def inputs_column(app) -> html.Div:
             inputs.card(inputs.networks(app)),
             inputs.card(inputs.antenna_list(app)),
             html.Div(className='m-0 p-0', children=html.Div(className='row d-flex m-0 p-0', children=[
-                 inputs.card(inputs.source_selection(), classNameDiv='col-6 m-0 p-2'),
-                 inputs.card(inputs.epoch_selection(), classNameDiv='col-6 m-0 p-2')])),
+                 inputs.card(inputs.source_selection(), classNameDiv='col-6 m-0 p-2', style={'min-width': '150px'}),
+                 inputs.card(inputs.epoch_selection(), classNameDiv='col-6 m-0 p-2', style={'min-width': '150px'})])),
             inputs.card(inputs.correlations())])
 
 
 def compute_buttons(app) -> html.Div:
-    return html.Div(className='m-0 p-0', children=[
-        html.Div(className='row d-flex', children=[
+    return html.Div([html.Div(className='m-0 p-0', children=[
+        html.Div(className='row d-flex m-0 p-0', children=[
             inputs.compute_button(),
             outputs.download_button(),
-            dcc.Download(id="download-data")])])
+            dcc.Download(id="download-data")])])])
 
 
 def outputs_column(app) -> html.Div:

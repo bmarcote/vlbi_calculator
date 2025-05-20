@@ -165,7 +165,7 @@ def antenna_card(app, ant: stations.Station, show_wavelengths: bool = True) -> h
 def compute_button() -> html.Div:
     """Returns the button to compute the observation
     """
-    return html.Div(html.Div([
+    return html.Div(
                 html.Div([
                     html.Button('CALCULATE',
                                 id='compute-observation',
@@ -174,7 +174,6 @@ def compute_button() -> html.Div:
                     dbc.Spinner(id='loading', color='#a01d26',
                                 children=html.Div(id='loading-div'))
                 ], className='d-flex align-items-center justify-content-center', style={'gap': '5px'}),
-            ], className='col-12 container row'),
         className='col-6', style={'position': 'relative'})
 
 
@@ -307,18 +306,18 @@ def source_selection() -> html.Div:
     return html.Div([html.H4("Source To Observe", className='text-dark font-weight-bold mb-1'),
                      dbc.Switch(label='Specify a name or coordinates', value=False,
                                 id='switch-specify-source', persistence=True),
-                     html.Div(id='source-selection-div', hidden=True, children=[
-                        html.Div(className='row', children=[
-                            dcc.Input(id='source-input', value=None, type='text',
-                                      className='form-control', placeholder="hh:mm:ss dd:mm:ss",
-                                      persistence=True, debounce=True),
-                            html.Small(id='error_source', className='form-text text-muted')]),
-                        html.Br(),
-                        html.Div(className='row form-group', children=[
-                            html.Label('Percentage of observing time spent on target', htmlFor='onsourcetime'),
-                            dcc.Slider(id='onsourcetime', min=20, max=100, step=10, value=70,
-                                       marks={i: str(i) for i in range(20, 101, 10)},
-                                       persistence=True)])])])
+                     html.Div(id='source-selection-div', hidden=True,
+                              children=html.Div(className='row', children=[
+                                dcc.Input(id='source-input', value=None, type='text',
+                                          className='form-control', placeholder="hh:mm:ss dd:mm:ss",
+                                          persistence=True, debounce=True),
+                                html.Small(id='error_source', className='form-text text-muted')])),
+                     html.Br(),
+                     html.Div(className='row form-group', children=[
+                         html.Label('Percentage of observing time spent on target', htmlFor='onsourcetime'),
+                         dcc.Slider(id='onsourcetime', min=20, max=100, step=10, value=70,
+                                    marks={i: str(i) for i in range(20, 101, 10)},
+                                    persistence=True)])])
 
 
 def epoch_selection() -> html.Div:

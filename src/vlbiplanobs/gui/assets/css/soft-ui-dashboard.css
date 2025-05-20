@@ -806,10 +806,13 @@ progress {
   --bs-gutter-x: 1.5rem;
   --bs-gutter-y: 0;
   width: 100%;
+  max-width: 1400px;
+  min-width: 1200px;
   padding-right: calc(var(--bs-gutter-x) * 0.5);
   padding-left: calc(var(--bs-gutter-x) * 0.5);
-  margin-right: auto;
-  margin-left: auto;
+  margin: auto !important;
+  /*margin-right: auto;*/
+  /*margin-left: auto;*/
 }
 
 @media (min-width: 576px) {
@@ -5473,7 +5476,7 @@ fieldset:disabled .btn {
   position: relative;
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  min-width: 600px;
   height: var(--bs-card-height);
   color: var(--bs-body-color);
   word-wrap: break-word;
@@ -23723,6 +23726,9 @@ html {
 .container-xxl {
   padding-right: calc(var(--bs-gutter-x) * 1);
   padding-left: calc(var(--bs-gutter-x) * 1);
+  max-width: 1400px;
+  min-width: 1200px;
+  margin: auto !important;
 }
 
 .navbar {

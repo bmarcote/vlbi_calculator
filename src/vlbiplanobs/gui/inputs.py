@@ -297,7 +297,7 @@ def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
                                                                                   'minmax(10rem, 1fr))'}),
                                                                  s, show_wavelengths)
                                               for s in observation._STATIONS]),
-                                          className='container mb-2 flex',
+                                          className='mb-2 flex',
                                           style={'display': 'inline-flex', 'gap': '5px',
                                                  'flex-wrap': 'wrap'})])))
 

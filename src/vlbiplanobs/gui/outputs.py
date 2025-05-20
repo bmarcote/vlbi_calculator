@@ -342,7 +342,6 @@ def resolution(o: Optional[cli.VLBIObs] = None) -> html.Div:
     bmin_elip = max(int(bmin.value*80/bmaj.value), 2)
     return card_result([f"{bmaj.value:2.1f} x {quantity2str(bmin)}", html.Sup("2"),
                         f", {synth_beam['pa'].value:2.0f}º"], 'Angular Resolution', id='res',
-                       # TODO: double check angle. Is it x-inverted??????
                        extra_rows=[html.Br(), html.Div(ellipse(bmaj="80px",
                                                                bmin=f"{bmin_elip}px",
                                                                pa=f"{-synth_beam['pa'].value+90:.1f}deg"),
@@ -366,8 +365,8 @@ def ellipse(bmaj, bmin, pa, color='white', z_index=1, position='relative', margi
 def plot_elevations(o: Optional[cli.VLBIObs] = None) -> html.Div:
     return card([html.Div(className='card-header pb-0', children=html.H5('Source Elevation')),
                  dcc.Graph(id='fig-elevations', figure=plots.elevation_plot(o)),
-                 html.Div(print_observability_ranges(o), id='out-elevations-info')],
-                )
+                 dcc.Graph(id='fig-elevations2', figure=plots.elevation_plot_curves(o)),
+                 html.Div(print_observability_ranges(o), id='out-elevations-info')])
 
 
 def print_observability_ranges(o: Optional[cli.VLBIObs]) -> html.Div:
@@ -502,7 +501,7 @@ def download_button() -> html.Div:
                                style={'position': 'sticky', 'top': '20px'})],
                          className='d-flex align-items-center justify-content-center',
                          style={'gap': '5px'}),
-            ],hidden=True, id='download-summary-div'),
+            ], hidden=True, id='download-summary-div'),
         className='col-6', style={'position': 'relative'})
 
 
@@ -534,6 +533,9 @@ def summary_pdf(o: cli.VLBIObs):
         min_stat = 3 if len(o.stations) > 3 else min(2, len(o.stations))
         if len(o.stations) > 2:
             srcup = o.is_observable()
+            if not srcup.items():
+                layout.add(pdf.Paragraph(f"{text}, but no epoch specified."))
+
             for ablockname, antbool in srcup.items():
                 gst_range = (', '.join([t1.to_string(sep=':', fields=2, pad=True) + '--' +
                                         (t2 + (24*u.hourangle if np.abs(t1 - t2) < 0.1*u.hourangle
@@ -596,29 +598,55 @@ def summary_pdf(o: cli.VLBIObs):
     else:
         layout.add(pdf.Paragraph("No setup (data rate, bandwidth, number of subbands) specified."))
 
-    for ablock in o.scans.values():
-        for src in o.sources():
-            if len(o.scans) > 1:
-                layout.add(pdf.Paragraph(f"For the source {src.name}", font='Helvetica-bold'))
+    if not o.scans.values():
+        rms = cli.optimal_units(o.thermal_noise(),
+                                [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
+        rms_chan = cli.optimal_units(rms/np.sqrt(1*u.min /
+                                     (o.duration if o.duration is not None else 24*u.h)),
+                                     [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
+                                      u.mJy/u.beam, u.uJy/u.beam])
+        rms_min = cli.optimal_units(rms*np.sqrt(o.subbands*o.channels),
+                                    [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
+                                     u.mJy/u.beam, u.uJy/u.beam])
+        layout.add(pdf.Paragraph(f"Thermal rms noise: "
+                                 f"{rms:.3g} ({rms_chan:.3g} per spectral "
+                                 f"channel and {rms_min:.3g} per one-minute time integration."))
+        if not o.sourcenames:
+            synth_beam = o.synthesized_beam()[list(o.synthesized_beam().keys())[0]]
+        else:
+            synth_beam = o.synthesized_beam()[o.sourcenames[0]]
 
-            rms = cli.optimal_units(o.thermal_noise()[src.name], [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
-            rms_chan = cli.optimal_units(rms/np.sqrt(1*u.min /
-                                         (o.duration if o.duration is not None else 24*u.h)),
-                                         [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
-                                          u.mJy/u.beam, u.uJy/u.beam])
-            rms_min = cli.optimal_units(rms*np.sqrt(o.subbands*o.channels),
-                                        [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
-                                         u.mJy/u.beam, u.uJy/u.beam])
-            layout.add(pdf.Paragraph(f"Thermal rms noise: "
-                                     f"{rms:.3g} ({rms_chan:.3g} per spectral "
-                                     f"channel and {rms_min:.3g} per one-minute time integration."))
-            synth_beam = o.synthesized_beam()[src.name]
-            bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
-            bmin = synth_beam['bmin'].to(bmaj.unit)
-            temp = f" for {src.name}" if len(o.scans.values()) > 1 else ""
-            layout.add(pdf.Paragraph(f"Synthesized beam{temp}: "
-                                     f"{bmaj.value:2.1f} x {bmin:2.1f}"
-                                     f", {synth_beam['pa'].value:2.0f}º."))
+        bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
+        bmin = synth_beam['bmin'].to(bmaj.unit)
+        layout.add(pdf.Paragraph(f"Synthesized beam (approx for a random source): "
+                                 f"{bmaj.value:2.1f} x {bmin:2.1f}"
+                                 f", {synth_beam['pa'].value:2.0f}º."))
+
+    else:
+        for ablock in o.scans.values():
+            for src in o.sources():
+                if len(o.scans) > 1:
+                    layout.add(pdf.Paragraph(f"For the source {src.name}", font='Helvetica-bold'))
+
+                rms = cli.optimal_units(o.thermal_noise()[src.name],
+                                        [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
+                rms_chan = cli.optimal_units(rms/np.sqrt(1*u.min /
+                                             (o.duration if o.duration is not None else 24*u.h)),
+                                             [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
+                                              u.mJy/u.beam, u.uJy/u.beam])
+                rms_min = cli.optimal_units(rms*np.sqrt(o.subbands*o.channels),
+                                            [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
+                                             u.mJy/u.beam, u.uJy/u.beam])
+                layout.add(pdf.Paragraph(f"Thermal rms noise: "
+                                         f"{rms:.3g} ({rms_chan:.3g} per spectral "
+                                         f"channel and {rms_min:.3g} per one-minute time integration."))
+                synth_beam = o.synthesized_beam()[src.name]
+                bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
+                bmin = synth_beam['bmin'].to(bmaj.unit)
+                temp = f" for {src.name}" if len(o.scans.values()) > 1 else ""
+                layout.add(pdf.Paragraph(f"Synthesized beam{temp}: "
+                                         f"{bmaj.value:2.1f} x {bmin:2.1f}"
+                                         f", {synth_beam['pa'].value:2.0f}º."))
 
     bw_smearing = cli.optimal_units(o.bandwidth_smearing(), [u.deg, u.arcmin, u.arcsec])
     tm_smearing = cli.optimal_units(o.time_smearing(), [u.deg, u.arcmin, u.arcsec])
@@ -632,6 +660,7 @@ def summary_pdf(o: cli.VLBIObs):
             fig.write_image(tempfig.name)
             figpath = Path(tempfig.name)
 
+        # layout.add(pdf.Image(tempfig.name, width=414, height=265, horizontal_alignment=pdf.Alignment.CENTERED))
         layout.add(pdf.Image(figpath, width=414, height=265, horizontal_alignment=pdf.Alignment.CENTERED))
 
     pdf.PDF.dumps(buffer, doc)

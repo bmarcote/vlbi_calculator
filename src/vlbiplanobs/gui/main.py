@@ -77,6 +77,7 @@ def download_pdf_summary(n_clicks):
                Output('out-elevations', 'hidden'),
                Output('out-elevations-info', 'children'),
                Output('fig-elevations', 'figure'),
+               Output('fig-elevations2', 'figure'),
                Output('out-uv-coverage', 'hidden'),
                Output('out-uv-coverage-info', 'children'),
                Output('fig-uv-coverage', 'figure'),
@@ -107,7 +108,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                         channels: int, pols: int, inttime: int, e_evn: bool, selected_antennas: list[str]):
     """Computes all products to be shown concerning the set observation.
     """
-    n_outputs = 20
+    n_outputs = 21
     if n_clicks is None:
         raise PreventUpdate
 
@@ -197,13 +198,14 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
 
         if not _main_obs.get().sourcenames or not defined_source:
             #     out_plot_elev = [True, no_update]
-            out_plot_elev = [True, no_update, no_update]
+            out_plot_elev = [True, no_update, no_update, no_update]
             #     out_sun = no_update
             out_plot_uv = [True, no_update, no_update, no_update]
         else:
             out_plot_elev = [False,
                              outputs.print_observability_ranges(_main_obs.get()),
-                             plots.elevation_plot(_main_obs.get())]
+                             plots.elevation_plot(_main_obs.get()),
+                             plots.elevation_plot_curves(_main_obs.get())]
             #     out_plot_elev = [False, outputsplot_elevations(_main_obs.get())]
             #     out_sun = outputssun_warning(_main_obs.get())
             out_plot_uv = [False, outputs.print_baseline_lengths(_main_obs.get()),
@@ -232,7 +234,7 @@ app.index_string = app.index_string.replace('<body>', '<body class="g-sidenav-sh
 
 app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-100 row m-0 p-4', children=[
                    layout.top_banner(app),
-                   inputs.modal_welcome(),
+                   # inputs.modal_welcome(),
                    html.Div(id='main-window', className='container-fluid d-flex row p-0 m-0',
                             children=[html.Div(id='right-column', className='col-12 col-sm-6 m-0 p-0',
                                                children=layout.inputs_column(app)),

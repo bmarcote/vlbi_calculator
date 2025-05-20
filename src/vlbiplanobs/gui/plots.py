@@ -8,6 +8,66 @@ from plotly.subplots import make_subplots
 from vlbiplanobs import sources
 
 
+def elevation_plot_curves(o) -> Optional[go.Figure]:
+    """Creates the plot showing when the different antennas can observe a given source,
+    with the old style: with the elevation in the y-axis.
+    """
+    if o is None or not o.scans:
+        return None
+
+    srcup = o.is_observable()
+    elevs = o.elevations()
+    # fig = make_subplots(rows=min([len(srcup), 4]), cols=len(srcup) // 4 + 1,
+    #                     subplot_titles=[f"Elevations for {src_block}" for src_block in srcup]
+    #                     if len(srcup) > 1 else '')
+
+    fig = make_subplots()
+
+    fig.add_shape(type="rect",
+                  xref="paper", yref="y",
+                  x0=0, y0=0, x1=1, y1=20,
+                  fillcolor="gray", opacity=0.2, layer="below", line_width=0)
+    fig.add_shape(type="rect",
+                  xref="paper", yref="y",
+                  x0=0, y0=0, x1=1, y1=10,
+                  fillcolor="gray", opacity=0.2, layer="below", line_width=0)
+    for src_i, src_block in enumerate(srcup):
+        for anti, ant in enumerate(srcup[src_block]):
+            targets = o.scans[src_block].sources()  # sources.SourceType.TARGET)
+            y = np.full(len(o.times.datetime), None, dtype=float)
+            y[srcup[src_block][ant]] = elevs[targets[0].name][ant][srcup[src_block][ant]].value
+            fig.add_trace(
+                go.Scatter(x=o.times.datetime,
+                           y=y,
+                           mode='lines',
+                           connectgaps=False,
+                           hoverinfo='none',
+                           hovertemplate=f"<b>{o.stations[ant].name} ({o.stations[ant].codename})</b><br>"
+                                         "<b>Time</b>: %{x}",  # .strftime('%H:%M')}",
+                           name=o.stations[ant].name))
+
+    fig.update_layout(
+        showlegend=True,
+        # showgrid=False,
+        hovermode='closest',
+        xaxis_title="Time (GST)" if not o.fixed_time else "Time (UTC)",
+        yaxis_title="Elevation (degrees)",
+        title='',
+        paper_bgcolor='rgba(0,0,0,0)',   # Transparent background
+        plot_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
+                   mirror='allticks', ticks='inside', tickmode='auto',
+                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
+        yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
+                   tickmode='auto', range=[0, 90],
+                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
+        margin=dict(l=2, r=2, t=1, b=0),
+        legend=dict(x=0.01, y=0.99, xanchor='left', yanchor='top', bgcolor='rgba(255, 255, 255, 0.7)',
+                    bordercolor='rgba(0, 0, 0, 0.3)', borderwidth=1))
+
+    return fig
+
+
 def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
     """Creates the plot showing when the different antennas can observe a given
     source,
@@ -48,7 +108,8 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
                             line=dict(color=color_str[i], width=10),
                             showlegend=False,
                             marker=dict(showscale=show_colorbar),
-                            hovertemplate=f"<b>{o.stations[ant].name}</b><br><b>Elevation</b>: "
+                            hovertemplate=f"<b>{o.stations[ant].name} ({o.stations[ant].codename})</b><br>"
+                                          "<b>Elevation</b>: "
                                           f"{colors[i]:.0f}º<extra></extra><br><b>Time</b>: "
                                           f"{o.times.datetime[srcup[src_block][ant]][i].strftime('%H:%M')}"),
                         row=src_i % 4 + 1,

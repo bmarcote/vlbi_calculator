@@ -25,28 +25,28 @@ def change_band_labels(show_wavelengths: bool):
                  for ant in observation._STATIONS)
 
 
-@callback(Output("welcome-modal-shown", "data"),
-          Input("close-modal", "n_clicks"),
-          State("welcome-modal-shown", "data"))
-def update_modal_shown(n_clicks, modal_shown):
-    if n_clicks:
-        return True
+# @callback(Output("welcome-modal-shown", "data"),
+#           Input("close-modal", "n_clicks"),
+#           State("welcome-modal-shown", "data"))
+# def update_modal_shown(n_clicks, modal_shown):
+#     if n_clicks:
+#         return True
+#
+#     return no_update
 
-    return no_update
 
-
-@callback(Output("welcome-modal", "is_open"),
-          Input("close-modal", "n_clicks"),
-          [State("welcome-modal-shown", "data"),
-           State("welcome-modal", "is_open")])
-def toggle_modal(n_clicks, modal_shown, is_open):
-    if modal_shown is None:
-        return True
-
-    if n_clicks:
-        return not is_open
-
-    raise PreventUpdate
+# @callback(Output("welcome-modal", "is_open"),
+#           Input("close-modal", "n_clicks"),
+#           [State("welcome-modal-shown", "data"),
+#            State("welcome-modal", "is_open")])
+# def toggle_modal(n_clicks, modal_shown, is_open):
+#     if modal_shown is None:
+#         return True
+#
+#     if n_clicks:
+#         return not is_open
+#
+#     raise PreventUpdate
 
 
 @callback([[Output(f"network-{network}", 'disabled') for network in observation._NETWORKS],

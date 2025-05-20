@@ -47,11 +47,11 @@ def message_card(title: str | list, body: str | list, mode: Literal['danger', 'i
     if icon is None:
         match mode:
             case 'danger':
-                icon = 'fa-solid fa-triangle-exclamation'
+                icon = 'fa fa-solid fa-triangle-exclamation'
             case 'info':
-                icon = 'fa-solid fa-info'
+                icon = 'fa fa-solid fa-info'
             case 'warning':
-                icon = 'fa-solid fa-exclamation'
+                icon = 'fa fa-solid fa-exclamation'
 
     colors = {'danger': '#ef4444', 'warning': '#eab308', 'info': '#A6D4E8'}
 

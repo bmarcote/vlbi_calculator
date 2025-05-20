@@ -50,7 +50,7 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
                             marker=dict(showscale=show_colorbar),
                             hovertemplate=f"<b>{o.stations[ant].name}</b><br><b>Elevation</b>: "
                                           f"{colors[i]:.0f}º<extra></extra><br><b>Time</b>: "
-                                          f"{o.times[i].strftime('%H:%M')}"),
+                                          f"{o.times.datetime[srcup[src_block][ant]][i].strftime('%H:%M')}"),
                         row=src_i % 4 + 1,
                         col=src_i // 4 + 1)
 

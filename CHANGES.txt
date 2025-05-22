@@ -1,15 +1,25 @@
 
+v3.0.3  2025-05-21 -- Bug Fix: VLBA can be selected at Ku band too (thanks J. Linford for raising it).
+                   -- Bug Fix: RMS and approx. synthesized beam are now reported again in the PDF when no source/time is specified
+                      (thanks J. Linford for raising it).
+                   -- Bug Fix: (thanks J. Linford for raising it).
+                   -- Bug Fix: The times shown when hovering on the elevation plot are now correct (thanks N. Gusinskaia for raising it).
+                   -- Bug Fix: Icons from font-awesome now properly displayed in Fiferox (thanks P. Boven for raising it).
+                   -- Bug Fixes here and there.
+                   -- The percentage of on-target time is now always visible (thanks J. Linford for the suggestion).
+                   -- Improved layout, although there is still quite some room for further improvements.
+                   -- New Feature: previous style of the elevation plot is now available too.
 v3.0.2  2025-05-14 -- Bug Fix: rms thermal noises are now providing the correct values.
                       Thanks @WWGolay for the feedback!
                    -- Bug Fix: An unexpected error was happening under special circumstances related to Sun distances.
-                      Thanks Katharina Immer for the feedback!
+                      Thanks Katherina Immer for the feedback!
 v3.0.1  2025-05-12 -- Bug Fix: synthesized beam is correctly shown in the GUI card.
                    -- Bug Fix: Avoid an error when downloading PDF when no Sun constraints were present.
                    -- Bug Fix: there was a factor 2/sqrt(2) wrong in the thermal noise calculation.
                       But further testings are going on still.
                    -- New Feature: SKA-AA* and SKA-AA4 configurations (phased-up, multi-ferquency) are now available.
 v3.0b1  2025-04-27 -- First working version of PlanObs on the Dash server.
-v3.0a2  2025-03-21 -- First (partial) implementation of a planobs CLI.
+v3.0a2  2025-03-21 -- First (partial) implementation of a PlanObs CLI.
                    -- Multiple sources, with associated calibrators are possible now.
 v2.0.3  2020-12-10 -- Bug fix: The option of only one subband is back.
                    -- Minor wording updates.

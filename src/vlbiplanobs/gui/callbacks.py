@@ -1,5 +1,5 @@
 from typing import Optional
-from dash import Output, Input, State, callback, no_update, Patch
+from dash import html, Output, Input, State, callback, no_update, Patch
 from dash.exceptions import PreventUpdate
 from astropy import coordinates as coord
 from astropy import units as u
@@ -101,7 +101,7 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
         raise PreventUpdate
 
     return  \
-        tuple({'label': drl, 'value': dr, 'disabled': dr > max_datarate}
+        tuple({'value': dr, 'label': html.Span([drl], style={'color': '#888888' if dr > max_datarate else '#000000'})}
               for dr, drl in fs.data_rates.items()), \
         32 if do_spectral_line else max_datarate if max_datarate is not None else datarate, \
         4096 if do_spectral_line else gui_main._main_obs.prev_channels, \

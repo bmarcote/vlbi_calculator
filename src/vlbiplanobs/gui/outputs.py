@@ -95,11 +95,11 @@ def warning_low_high_freq(o: Optional[cli.VLBIObs] = None) -> html.Div:
     if o.frequency < 3*u.GHz:
         return warning_card("Significant RFI may be expected",
                             "At these low frequencies, a significant (~10%) of the data may be lost.",
-                            icon='fa-solid fa-repeat')
+                            icon='fa fa-solid fa-repeat')
     elif o.frequency > 70*u.GHz:
         return warning_card("Phase referencing is not possible",
                             "At these high frequencies, your target must be bright enough "
-                            "to directly fringe on it.", icon='fa-solid fa-repeat')
+                            "to directly fringe on it.", icon='fa fa-solid fa-repeat')
 
     return html.Div()
 

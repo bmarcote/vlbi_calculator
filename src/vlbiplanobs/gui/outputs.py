@@ -127,28 +127,28 @@ def sun_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:
                 return warning_card("The Sun gets too close to the source",
                                     f"On {t0.strftime('%-d %B')} "
                                     f"(with a minimum separation of {sun_const_src.value:.0f}"
-                                    f"{sun_const_src.unit.to_string('unicode')}).", icon='fa-solid fa-sun')
+                                    f"{sun_const_src.unit.to_string('unicode')}).", icon='fa fa-solid fa-sun')
             elif t0.month == t1.month:
                 return warning_card("The Sun gets too close to the source",
                                     f"During {t0.day}-{t1.day} {t0.strftime('%B')} "
                                     f"(with a minimum separation of {sun_const_src.value:.0f}"
-                                    f"{sun_const_src.unit.to_string('unicode')}).", icon='fa-solid fa-sun')
+                                    f"{sun_const_src.unit.to_string('unicode')}).", icon='fa fa-solid fa-sun')
             elif t0.year == t1.year:
                 return warning_card("The Sun gets too close to the source",
                                     f"From {t0.strftime('%-d %B')} to {t1.strftime('%-d %B')} "
                                     f"(with a minimum separation of {sun_const_src.value:.0f}"
-                                    f"{sun_const_src.unit.to_string('unicode')}).", icon='fa-solid fa-sun')
+                                    f"{sun_const_src.unit.to_string('unicode')}).", icon='fa fa-solid fa-sun')
             else:
                 return warning_card("The Sun gets too close to the source",
                                     f"From {t0.strftime('%-d %B %Y')} to {t1.strftime('%-d %B %Y')} "
                                     f"(with a minimum separation of {sun_const_src.value:.0f}"
-                                    f"{sun_const_src.unit.to_string('unicode')}).", icon='fa-solid fa-sun')
+                                    f"{sun_const_src.unit.to_string('unicode')}).", icon='fa fa-solid fa-sun')
     else:
         if len(sun_separation := list(sun_const.values())) > 0 and sun_separation[0] is not None:
             return warning_card("The Sun is too close to the source!",
                                 f"With a minimum separation of {sun_separation[0].value:.0f}"
                                 f"{sun_separation[0].unit.to_string('unicode')} during the observation.",
-                                icon='fa-solid fa-sun')
+                                icon='fa fa-solid fa-sun')
 
     return html.Div()
 
@@ -168,7 +168,7 @@ def ant_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
     return warning_card("Some antennas cannot observe the source",
                         inputs.parse_str_list([o.stations[ant].name for ant in ants_excluded]) +
-                        ' will be out in the observation.', icon='fa-solid fa-satellite-dish')
+                        ' will be out in the observation.', icon='fa fa-solid fa-satellite-dish')
 
 
 def summary_freq_res(o: Optional[cli.VLBIObs] = None) -> html.Div:

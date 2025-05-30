@@ -1,4 +1,6 @@
 
+v3.0.4  2025-05-30 -- Added East Asia VLBI Network stations.
+                   -- Added SKA (both AA* and AA4) as a network, for a more explicit selection.
 v3.0.3  2025-05-21 -- Bug Fix: VLBA can be selected at Ku band too (thanks J. Linford for raising it).
                    -- Bug Fix: RMS and approx. synthesized beam are now reported again in the PDF when no source/time is specified
                       (thanks J. Linford for raising it).

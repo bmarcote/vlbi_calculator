@@ -49,7 +49,7 @@ observing_bands = 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 2.5cm, 1.3cm, 0.7cm
 [KVN]
 
 name = Korean VLBI Network
-default_antennas = Ky, Ku, Kt
+default_antennas = Ky, Ku, Kt, Kc
 max_datarate = 16384
 observing_bands = 1.3cm, 0.7cm, 0.348cm
 
@@ -68,6 +68,14 @@ name = KVN and VERA Array
 default_antennas = Vr, Vs, Vo, Vm, Ky, Ku, Kt
 max_datarate = 1024
 observing_bands = 1.3cm, 0.7cm
+
+
+[EAVN]
+
+name = East Asia VLBI Network
+default_antennas = Km, Ur, T6, Sh, My, Gf, Ht, Ks, Tk, To, Ts, Tu, Ym, Vr, Vs, Vm, Vo, Vj, Ku, Ky, Kt, Kc
+max_datarate = 16384
+observing_bands = 5cm, 1.3cm, 0.7cm
 
 
 [HSA]
@@ -94,8 +102,15 @@ max_datarate = 32768
 observing_bands = 0.348cm, 0.13cm, 0.09cm
 
 
-# [SKA]
-# name = SKA (AA4)
-# default_antennas =
-# max_datarate = 16384
-# observing_bands = 30cm, 21cm, 18cm, 6cm, 5cm, 3.6cm, 2cm
+[SKA-AA*]
+name = SKA (AA*)
+default_antennas = Sk2
+max_datarate = 16384
+observing_bands = 30cm, 21cm, 18cm, 6cm, 5cm, 3.6cm, 2cm
+
+
+[SKA-AA4]
+name = SKA (AA4)
+default_antennas = Sk4
+max_datarate = 16384
+observing_bands = 30cm, 21cm, 18cm, 6cm, 5cm, 3.6cm, 2cm

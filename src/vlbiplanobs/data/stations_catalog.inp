@@ -366,6 +366,17 @@ ax2rate = 30.5
 ax1acc = 0.75
 ax2acc = 0.25
 
+[Gifu]
+station = Gifu
+code = Gf
+networks = EAVN
+country = Japan
+diameter = 11 m
+position = -3787123.372, 3564181.686, 3680274.967
+real_time = no
+sefd_1.3 = 5811
+mount = ALTAZ
+
 [GMRT]
 station = Giant Metrewave Radio Telescope
 code = GMRT
@@ -495,6 +506,19 @@ ax2lim = 5,88
 ax1rate = 120
 ax2rate = 120
 
+[Hitachi]
+station = Hitachi
+code = Ht
+networks = EAVN
+country = Japan
+diameter = 32 m
+position = -3961788.974, 3243597.492, 3790597.692
+real_time = no
+sefd_5 = 200
+sefd_1.3 = 200
+sefd_0.7 = 1300
+mount = ALTAZ
+
 [Hobart]
 station = Hobart (26m)
 code = Ho
@@ -574,7 +598,7 @@ ax2rate = 120
 [Iriki]
 station = Iriki
 code = Vr
-networks = VERA, KaVA
+networks = VERA, KaVA, EAVN
 country = Japan
 diameter = 20 m
 position = -3521719.5687, 4132174.7528, 3336994.3255
@@ -587,7 +611,7 @@ sefd_0.7 = 4335
 [Ishigaki-jima]
 station = Ishigaki-jima
 code = Vs
-networks = VERA, KaVA
+networks = VERA, KaVA, EAVN
 country = Japan
 diameter = 20 m
 position = -3263995.4716, 4808056.4149, 2619948.5632
@@ -635,6 +659,22 @@ sefd_18 = 320.0
 sefd_6 = 320.0
 sefd_5 = 300.0
 sefd_1.3 = 910
+
+[Kashima]
+station = Kashima
+code = Ks
+networks = EAVN
+country = Japan
+diameter = 34 m
+position = -3997649.6605, 3276690.2581, 3724278.5848
+real_time = no
+sefd_1.3 = 200
+sefd_0.7 = 1300
+mount = ALTAZ
+ax1lim = 90, 630
+ax2lim = 7, 88
+ax1rate = 40
+ax2rate = 45
 
 [Katherine]
 station = Katherine
@@ -927,10 +967,21 @@ ax2rate = 60
 ax1acc = 0.25
 ax2acc = 0.25
 
+[Miyun]
+station = Miyun
+code = My
+networks = EAVN
+country = China
+diameter = 50 m
+position = -2201304.5880, 4324789.2160, 4125367.9130
+real_time = no
+sefd_3.6 = 200
+mount = ALTAZ
+
 [Mizusawa]
 station = Mizusawa
 code = Vm
-networks = VERA, KaVA
+networks = VERA, KaVA, EAVN
 country = Japan
 diameter = 20 m
 position = -3857244.2418, 3108783.5264, 4003899.4149
@@ -1028,7 +1079,7 @@ ax2rate = 30
 [Ogasawara]
 station = Ogasawara
 code = Vo
-networks = VERA, KaVA
+networks = VERA, KaVA, EAVN
 country = Japan
 diameter = 20 m
 position = -4491068.8940, 3481544.8295, 2887399.6227
@@ -1208,6 +1259,25 @@ ax2rate = 29.3
 ax1acc = 0.75
 ax2acc = 0.25
 
+[PyeongChang]
+station = PyeongChang
+code = Kc
+networks = KVN, KaVA, GMVA, EAVN
+country = South Korea
+diameter = 21 m
+position = -3149228.7545, 3966414.5854, 3864840.1879
+real_time = no
+sefd_1.3 = 1288
+sefd_0.7 = 1919.0
+sefd_0.348 = 3125.0
+mount = ALTAZ
+ax1lim = -90,450
+ax2lim = 5,88
+ax1rate = 177
+ax2rate = 177
+ax1acc = 3
+ax2acc = 3
+
 [Robledo 34]
 station = Robledo (34-m)
 code = Ro3
@@ -1245,6 +1315,24 @@ sefd_18 = 35.0
 sefd_13 = 20.0
 sefd_3.6 = 18.0
 sefd_1.3 = 83
+
+[Sejong]
+station = Sejong
+code = Vj
+networks = VERA, KaVA, EAVN
+country = South Korea
+diameter = 22 m
+position = -3110124.158, 4082128.842, 3774757.554
+mount = ALTAZ
+ax1rate = 297
+ax2rate = 297
+ax1lim = -270, 270
+ax2lim = 5, 88
+ax1acc = 5
+ax2acc = 5
+real_time = no
+sefd_1.3 = 1288
+sefd_0.7 = 1919.0
 
 [SKA-Mid 1]
 station = Square Kilometre Array (1-dish Mid)
@@ -1431,10 +1519,23 @@ ax2rate = 30
 ax1acc = 0.05
 ax2acc = 0.05
 
+[Takahagi]
+station = Takahagi
+code = Tk
+networks = EAVN
+country = Japan
+diameter = 32 m
+position = -3961881.825, 3243372.480, 3790687.449
+real_time = no
+sefd_5 = 200
+sefd_1.3 = 200
+sefd_0.7 = 1300
+mount = ALTAZ
+
 [Tamna]
 station = Tamna
 code = Kt
-networks = KVN, KaVA, GMVA
+networks = KVN, KaVA, GMVA, EAVN
 country = South Korea
 diameter = 21 m
 position = -3171731.5532, 4292678.5258, 3481038.7679
@@ -1521,6 +1622,17 @@ ax2lim = 3.5, 90
 ax1rate = 180
 ax2rate = 60
 
+[Tomakomai]
+station = Tomakomai
+code = To
+networks = EAVN
+country = Japan
+diameter = 11 m
+position = -3680552.35577204, 2917483.63943807, 4300979.41085336
+real_time = no
+sefd_1.3 = 5811
+mount = ALTAZ
+
 [Torun]
 station = Torun
 code = Tr
@@ -1544,10 +1656,22 @@ ax2rate = 16
 ax1acc = 0.05
 ax2acc = 0.03
 
+[Tsukuba]
+station = Tsukuba
+code = Ts
+networks = EAVN
+country = Japan
+diameter = 32 m
+position = -3957409.4386, 3310228.7463, 3737494.6630
+real_time = no
+sefd_3.6 = 350.0
+sefd_1.3 = 850
+mount = ALTAZ
+
 [Ulsan]
 station = Ulsan
 code = Ku
-networks = KVN, KaVA, GMVA
+networks = KVN, KaVA, GMVA, EAVN
 country = South Korea
 diameter = 21 m
 position = -3287268.543, 4023450.1448, 3687379.9675
@@ -1586,6 +1710,18 @@ ax1rate = 60
 ax2rate = 30
 ax1acc = 0.5
 ax2acc = 0.5
+
+[Usuda]
+station = Usuda
+code = Tu
+networks = EAVN
+country = Japan
+diameter = 64 m
+position = -3855355.5885, 3427427.3961, 3740971.2139
+real_time = no
+sefd_5 = 137
+sefd_3.6 = 52
+mount = ALTAZ
 
 [VLA 1]
 station = Karl Jansky G. Very Large Array (single-dish)
@@ -1766,6 +1902,19 @@ ax2lim = 5,89
 ax1rate = 240
 ax2rate = 90
 
+[Yamaguchi]
+station = Yamaguchi
+code = Ym
+networks = EAVN
+country = Japan
+diameter = 32 m
+position = -3502544.2588, 3950966.3969, 3566381.1649
+real_time = no
+sefd_5 = 290
+sefd_3.6 = 290
+sefd_1.3 = 290
+mount = ALTAZ
+
 [Yarragadee]
 station = Yarragadee
 code = Yg
@@ -1809,7 +1958,7 @@ ax2rate = 60
 [Yonsei]
 station = Yonsei
 code = Ky
-networks = KVN, KaVA, GMVA
+networks = KVN, KaVA, GMVA, EAVN
 country = South Korea
 diameter = 21 m
 position = -3042280.9035, 4045902.6564, 3867374.3087

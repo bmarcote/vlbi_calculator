@@ -85,7 +85,8 @@ def download_pdf_summary(n_clicks):
                Output('div-card-fov', 'children'),
                Output('div-card-vel', 'children'),
                Output('out-worldmap', 'hidden'),
-               Output('fig-worldmap', 'figure')],
+               Output('fig-worldmap', 'figure'),
+               Output('card-datasize', 'children')],
               Input('compute-observation', 'n_clicks'),
               [State('band-slider', 'value'),
                State('switch-specify-source', 'value'),
@@ -108,12 +109,12 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                         channels: int, pols: int, inttime: int, e_evn: bool, selected_antennas: list[str]):
     """Computes all products to be shown concerning the set observation.
     """
-    n_outputs = 21
+    n_outputs = 22
     if n_clicks is None:
         raise PreventUpdate
 
     if band == 0 or (not selected_antennas) or (duration is None and (source == '' or not defined_source)):
-        return outputs.warning_card("Select an observing band and the antennas",
+        return outputs.warning_card("Select the band antennas, and duration",
                                     "If no source is provided, a duration for the observation "
                                     "must be set."), \
             *[no_update]*(n_outputs - 1)
@@ -217,6 +218,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         # out_freq = outputssummary_freq_res(_main_obs.get())
         out_worldmap = plots.plot_worldmap_stations(_main_obs.get())
         out_baseline_sens = outputs.baseline_sensitivities(_main_obs.get())
+        out_datasize = outputs.data_size(_main_obs.get())
     except sources.SourceNotVisible:
         return outputs.error_card('Source Not Visible!',
                                   'The source cannot be observed by the given antennas and/or '
@@ -226,7 +228,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
 
     print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
     return html.Div(), html.Div(), False, out_rms, out_baseline_sens, out_res, out_sun, \
-        out_phaseref, out_ant, *out_plot_elev, *out_plot_uv, out_fov, out_freq, False, out_worldmap
+        out_phaseref, out_ant, *out_plot_elev, *out_plot_uv, out_fov, out_freq, False, out_worldmap, out_datasize
 
 
 server = app.server

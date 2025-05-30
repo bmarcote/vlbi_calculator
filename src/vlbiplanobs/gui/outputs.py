@@ -236,6 +236,21 @@ def field_of_view(o: Optional[cli.VLBIObs] = None) -> html.Div:
                                                      "considering a 10% loss."))])
 
 
+def data_size(o: Optional[cli.VLBIObs] = None) -> html.Div:
+    if o is None:
+        return html.Div()
+
+    ds = cli.optimal_units(o.datasize(), [u.TB, u.GB, u.MB])
+    return card_result(f"{ds.value:.2n} {ds.unit.to_string('unicode')}",
+                       "Data size", id='data-size',
+                       extra_rows=[
+                        html.Br(),
+                        html.Div(className='col-12', style={'color': 'var(--bs-gray-100)'},
+                                 children=html.P("This is the expected size for the FITS-IDI"
+                                                 " files from the correlated data."))
+                       ])
+
+
 def rms(o: Optional[cli.VLBIObs] = None) -> html.Div:
     if o is None:
         return html.Div()

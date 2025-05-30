@@ -244,23 +244,25 @@ def network_entry(app, network: str) -> html.Div:
     return html.Div(dbc.Card([
         dbc.CardImg(src=app.get_asset_url(f"network-{network.lower()}.png"),
                     top=False, className='full-background',
-                    style={'opacity': 1.0, 'object-fit': 'cover', 'height': '10rem'}),
+                    style={'opacity': 1.0, 'object-fit': 'cover', 'height': '7rem'}),
         dbc.CardImgOverlay(dbc.CardBody([
             html.Div(className='d-flex align-items-center', children=[
-                html.H4(network, className='text-bold text-white mb-0 mt-0 flex-grow-1'),
+                html.H4(network, className='text-bold text-white mb-0 mt-0 flex-grow-1',
+                        title=stations.Stations.get_network_full_name(network)),
                 dbc.Switch(label='', value=False, id=f"network-{network}",
                            className='form-check ml-auto', persistence=True)]),
-            html.H6(stations.Stations.get_network_full_name(network),
-                    className='mt-0 mb-0 text-white',
-                    style={'white-space': 'nowrap', 'text-overflow': 'ellipsis',
-                           'overflow': 'hidden'}) if has_full_name else html.Br(),
+            # html.Br(),
+            # html.H6(stations.Stations.get_network_full_name(network),
+            #         className='mt-0 mb-0 text-white',
+            #         style={'white-space': 'nowrap', 'text-overflow': 'ellipsis',
+            #                'overflow': 'hidden'}) if has_full_name else html.Br(),
             html.Label(f"Observes at {network_band_labels(network)}",
                        className='card-text text-white',
                        id=f"network-{network}-label-band",
                        style={'line-height': '1.2'})],
                        className='card-body text-start p-0 pt-0 w-100'))],
                               className='m-2 card-background',
-                              style={'min-width': '11rem', 'height': '8rem',
+                              style={'min-width': '11rem', 'height': '7rem',
                                      'overflow': 'hidden', 'opacity': 1.0},
                               id=f"network-{network}-card"), className='col-4')
 

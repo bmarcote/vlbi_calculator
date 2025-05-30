@@ -14,7 +14,7 @@ def top_banner(app) -> html.Div:
                                                  alt='European VLBI Network (EVN)',
                                                  className="d-inline-block align-middle")]),
                        html.Div(html.H2(['EVN Observation Planner',
-                                         html.Span(' (v3.0.2 beta)', style={'color': '#a01d26'})]),
+                                         html.Span(' (v3.0.5 beta)', style={'color': '#a01d26'})]),
                                 className='d-inline-block align-middle mx-auto mb-0 font-weight-bolder',
                                 style={'text-align': 'center', 'margin': '0', "flex": "1"}),
                        html.A(className='d-inline-block ml-auto pull-right',
@@ -67,5 +67,6 @@ def outputs_column(app) -> html.Div:
         html.Div(className='col-12 m-0 p-0', children=html.Div(className='row d-flex m-0 p-0', children=[
                 html.Div(outputs.field_of_view(), className='col-6 m-0 p-0', id='div-card-fov'),
                 html.Div(outputs.summary_freq_res(), className='col-6 m-0 p-0', id='div-card-vel')])),
-        html.Div(outputs.plot_worldmap(), id='out-worldmap', className='m-0 p-0', hidden=True)
+        html.Div(outputs.plot_worldmap(), id='out-worldmap', className='m-0 p-0', hidden=True),
+        html.Div(outputs.data_size(), id='card-datasize', className='m-0 p-0', hidden=True)
     ])

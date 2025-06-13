@@ -398,7 +398,7 @@ sefd_30 = 53
 sefd_21 = 47.0
 
 [Green Bank]
-station = Green Bank
+station = Green Bank Telescope
 code = Gb
 networks = HSA, GMVA
 country = U.S.A.
@@ -414,6 +414,7 @@ sefd_13 = 12.0
 sefd_6 = 13.0
 sefd_5 = 13.0
 sefd_3.6 = 15.0
+sefd_2.5 = 15.0
 sefd_2 = 15.0
 sefd_1.3 = 20
 sefd_0.7 = 60.0

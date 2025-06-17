@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vlbiplanobs"
-version = "3.0.4"
+version = "3.0.5"
 description = "Observaiton Planner for VLBI observations"
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -45,6 +45,7 @@ dependencies = [
     "dash-bootstrap-components>=2.0",
     "dash-mantine-components",
     "kaleido",
+    "loguru",
     "borb"
 ]
 

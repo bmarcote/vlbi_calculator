@@ -80,7 +80,7 @@ def enable_networks_with_band(band_index: int, *card_styles):
            Input('band-slider', 'value'),
            [Input(f"network-{network}", 'value') for network in observation._NETWORKS]],
           State('datarate', 'value'))
-def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: list[bool], datarate: int):
+def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: list[bool], datarate: int = 2048):
     if band == 0:
         raise PreventUpdate
 

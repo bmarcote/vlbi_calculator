@@ -68,5 +68,6 @@ def outputs_column(app) -> html.Div:
                 html.Div(outputs.field_of_view(), className='col-6 m-0 p-0', id='div-card-fov'),
                 html.Div(outputs.summary_freq_res(), className='col-6 m-0 p-0', id='div-card-vel')])),
         html.Div(outputs.plot_worldmap(), id='out-worldmap', className='m-0 p-0', hidden=True),
-        html.Div(outputs.data_size(), id='card-datasize', className='m-0 p-0', hidden=True)
+        html.Div(className='col-12 m-0 p-0', children=html.Div(className='row d-flex m-0 p-0', children=[
+            html.Div(outputs.data_size(), id='card-datasize', className='col-6 m-0 p-0')]))
     ])

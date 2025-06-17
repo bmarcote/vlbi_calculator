@@ -8,6 +8,7 @@
 
 @import url('https://fonts.googleapis.com/css?family=Inter:300,400,500,600,700,800');
 @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&display=swap')
+@import url('https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&display=swap')
 /*
  * Bootstrap  v5.3.3 (https://getbootstrap.com/)
  * Copyright 2011-2024 The Bootstrap Authors
@@ -11133,7 +11134,7 @@ fieldset:disabled .btn {
 }
 
 .text-light {
-  color: #e3e3e7 !important;
+  color: #e3e3e7;
 }
 
 .text-dark {
@@ -21685,7 +21686,7 @@ fieldset:disabled .btn {
 }
 
 .badge.bg-primary {
-  background: #f97316;
+  background: #f97316 !important;
 }
 
 .badge.bg-secondary {
@@ -21693,7 +21694,8 @@ fieldset:disabled .btn {
 }
 
 .badge.bg-success {
-  background: #22c55e;
+  background: #baf1ce !important;
+  color: #1fa651 !important;
 }
 
 .badge.bg-info {
@@ -21701,11 +21703,13 @@ fieldset:disabled .btn {
 }
 
 .badge.bg-warning {
-  background: #eab308;
+  background: #fbf9b4 !important;
+  color: #eab308 !important;
 }
 
 .badge.bg-danger {
-  background: #ef4444;
+  background: #f9c1c1 !important;
+  color: #ef4444 !important;
 }
 
 .badge.bg-light {

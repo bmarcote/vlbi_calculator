@@ -53,7 +53,7 @@ def message_card(title: str | list, body: str | list, mode: Literal['danger', 'i
             case 'warning':
                 icon = 'fa fa-solid fa-exclamation'
 
-    colors = {'danger': '#ef4444', 'warning': '#eab308', 'info': '#A6D4E8'}
+    colors = {'danger': '#ef4444', 'warning': '#f4e2a8 !important', 'info': '#A6D4E8'}
 
     return html.Div(className='col-12 m-0 p-2', children=html.Div(
         className=f'card m-0 bg-{mode} opacity-10 border-radius-lg',
@@ -71,7 +71,6 @@ def message_card(title: str | list, body: str | list, mode: Literal['danger', 'i
 
 
 def warning_card(title: str | list, body: str | list, icon: Optional[str] = None) -> html.Div:
-    # TODO: reduce the code un the sun, phase referencing cards to this one.
     return message_card(title, body, 'warning', icon)
 
 

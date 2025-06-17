@@ -335,9 +335,9 @@ def epoch_selection() -> html.Div:
                                            className='form-text text-muted')])])]),
                     html.Div(className='row form-group', children=[
                         html.Label('Duration of the observation (in hours)', htmlFor='duration'),
-                        dcc.Input(id='duration', value=None, type='number', className='form-control',
+                        dbc.Input(id='duration', value=None, type='number', className='form-control',
                                   placeholder="Duration of the observation (in hours)",
-                                  persistence=True, debounce=True, inputMode='numeric', min=0.5, max=50),
+                                  persistence=True, debounce=False, inputMode='numeric', min=0.5, max=50),
                         html.Small(id='error_duration', className='form-text text-muted')])])
 
 

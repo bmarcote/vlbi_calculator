@@ -68,7 +68,7 @@ def download_pdf_summary(n_clicks):
         try:
             logger.info("PDF has been requested and created.")
             return dcc.send_bytes(outputs.summary_pdf(_main_obs.get()).getvalue(),
-                                  f"planobs_summary-{random.getrandits(10)}.pdf"), html.Div()
+                                  f"planobs_summary-{random.getrandbits(10)}.pdf"), html.Div()
         except ValueError as e:
             print(f"An error occurred: {e}")
             logger.exception("While downloading the PDF: {e}", colorize=True)
@@ -152,7 +152,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
     try:
         logger.info(f"New Observation: Networks:{','.join(network_names)}; "
                     f"antennas: {','.join(selected_antennas)};"
-                    f"band: {inputs.band_from_index(band)}; target: {source.strip()}; duration: {duration}h;"
+                    f"band: {inputs.band_from_index(band)}; target: {source}; duration: {duration}h;"
                     f"defined_epoch: {defined_epoch}.")
         _main_obs.set(cli.main(band=inputs.band_from_index(band), stations=sorted(selected_antennas),
                       targets=[source,] if defined_source and source.strip() != '' else None,

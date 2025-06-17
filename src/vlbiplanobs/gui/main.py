@@ -170,9 +170,16 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         _main_obs.get().thermal_noise()
         _main_obs.get().synthesized_beam()
         _main_obs.get().get_uv_data()
+    except ValueError as e:
+        logger.exception("An error has occured: {e}.")
+        return outputs.error_card("Could not plan the observation",
+                                  "Likely your source is not visible during the defined time."),
+            *[no_update]*(n_outputs - 1)
     except Exception as e:
         logger.exception("An error has occured: {e}.")
-        return outputs.error_card("An error has occured", str(e)), *[no_update]*(n_outputs - 1)
+        return outputs.error_card("Could not plan the observation",
+                                  "Missing necessary fields in the observation configuration"),
+            *[no_update]*(n_outputs - 1)
 
     assert _main_obs.get() is not None, "Observation should have been created."
     try:

@@ -1,5 +1,6 @@
 # from dependencies import Input, Output, State
 import os
+import random
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
@@ -10,12 +11,22 @@ import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from astropy import units as u
 from astropy.time import Time
+from loguru import logger
 from vlbiplanobs import sources
 from vlbiplanobs import observation
 from vlbiplanobs import cli
 from vlbiplanobs.gui import inputs, outputs, plots
 from vlbiplanobs.gui.callbacks import *
 from vlbiplanobs.gui import layout
+
+
+if os.access("/var/log/planobs.log", os.W_OK):
+    logfilename = "/var/log/planobs.log"
+else:
+    logfilename = "~/log-planobs.log"
+
+_LOG = logger.add(logfilename, backtrace=True, diagnose=True,
+                  format="{time:YYYY-MM-DD HH:mm} |  {level} {message}")
 
 
 class Obs():
@@ -55,11 +66,12 @@ app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_
 def download_pdf_summary(n_clicks):
     if n_clicks is not None:
         try:
+            logger.info("PDF has been requested and created.")
             return dcc.send_bytes(outputs.summary_pdf(_main_obs.get()).getvalue(),
-                                  "planobs_summary.pdf"), html.Div()
+                                  f"planobs_summary-{random.getrandits(10)}.pdf"), html.Div()
         except ValueError as e:
-            # TODO: put proper logging print
             print(f"An error occurred: {e}")
+            logger.exception("While downloading the PDF: {e}", colorize=True)
             return no_update, no_update
 
     return no_update, no_update
@@ -101,12 +113,14 @@ def download_pdf_summary(n_clicks):
                State('pols', 'value'),
                State('inttime', 'value'),
                State('switch-specify-e-evn', 'value'),
-               State('switches-antennas', 'value')],
+               State('switches-antennas', 'value'),
+               [State(f"network-{network}", 'value') for network in observation._NETWORKS]],
               running=[(Output("compute-observation", "disabled"), True, False),],
               suppress_callback_exceptions=True)
 def compute_observation(n_clicks, band: int, defined_source: bool, source: str, onsourcetime: float,
                         defined_epoch: bool, startdate: str, duration: float, datarate: int, subbands: int,
-                        channels: int, pols: int, inttime: int, e_evn: bool, selected_antennas: list[str]):
+                        channels: int, pols: int, inttime: int, e_evn: bool, selected_antennas: list[str],
+                        selected_networks: list[bool]):
     """Computes all products to be shown concerning the set observation.
     """
     n_outputs = 22
@@ -114,7 +128,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         raise PreventUpdate
 
     if band == 0 or (not selected_antennas) or (duration is None and (source == '' or not defined_source)):
-        return outputs.warning_card("Select the band antennas, and duration",
+        return outputs.warning_card("Select the band, antennas, and duration",
                                     "If no source is provided, a duration for the observation "
                                     "must be set."), \
             *[no_update]*(n_outputs - 1)
@@ -134,8 +148,12 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                                   'and duration are required.'), *[no_update]*(n_outputs - 1)
 
     t0 = dt.now()
+    network_names = [nn for nb, nn in zip(selected_networks, observation._NETWORKS) if nb]
     try:
-        # TODO: Do not create again the Obs. Modify values instead (unless it was None before)
+        logger.info(f"New Observation: Networks:{','.join(network_names)}; "
+                    f"antennas: {','.join(selected_antennas)};"
+                    f"band: {inputs.band_from_index(band)}; target: {source.strip()}; duration: {duration}h;"
+                    f"defined_epoch: {defined_epoch}.")
         _main_obs.set(cli.main(band=inputs.band_from_index(band), stations=sorted(selected_antennas),
                       targets=[source,] if defined_source and source.strip() != '' else None,
                       duration=duration*u.h if duration is not None else None,
@@ -153,6 +171,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         _main_obs.get().synthesized_beam()
         _main_obs.get().get_uv_data()
     except Exception as e:
+        logger.exception("An error has occured: {e}.")
         return outputs.error_card("An error has occured", str(e)), *[no_update]*(n_outputs - 1)
 
     assert _main_obs.get() is not None, "Observation should have been created."
@@ -224,9 +243,11 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                                   'The source cannot be observed by the given antennas and/or '
                                   'during the given observing time.'), *[no_update]*(n_outputs - 1)
     except Exception as e:
+        logger.exception("While computing: {e}.")
         return outputs.error_card("An error has occured", str(e)), *[no_update]*(n_outputs - 1)
 
     print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
+    logger.info(f"Execution time: {(dt.now() - t0).total_seconds()} s")
     return html.Div(), html.Div(), False, out_rms, out_baseline_sens, out_res, out_sun, \
         out_phaseref, out_ant, *out_plot_elev, *out_plot_uv, out_fov, out_freq, False, out_worldmap, out_datasize
 

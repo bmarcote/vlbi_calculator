@@ -175,6 +175,10 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         return outputs.error_card("Could not plan the observation",
                                   "Likely your source is not visible during the defined time."),
             *[no_update]*(n_outputs - 1)
+    except sources.SourceNotVisible as e:
+        return outputs.error_card('Source Not Visible!',
+                                  'The source cannot be observed by the given antennas and/or '
+                                  'during the given observing time.'), *[no_update]*(n_outputs - 1)
     except Exception as e:
         logger.exception("An error has occured: {e}.")
         return outputs.error_card("Could not plan the observation",

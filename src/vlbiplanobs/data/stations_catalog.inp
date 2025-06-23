@@ -19,6 +19,7 @@ country = Chile
 diameter = 12 m
 position = 2225213.22, -5441629.65, -2478102.85
 real_time = no
+sefd_0.348 = 5000
 sefd_0.13 = 4977
 sefd_0.09 = 9362.5
 

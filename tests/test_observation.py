@@ -6,7 +6,7 @@ from astropy.time import Time
 # from rich import print as rprint
 from vlbiplanobs import observation as obs
 from vlbiplanobs import stations
-from vlbiplanobs import sources
+# from vlbiplanobs import sources
 from vlbiplanobs import cli
 
 

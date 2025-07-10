@@ -240,7 +240,7 @@ def network_entry(app, network: str) -> html.Div:
     """Returns the DIV that shows a given VLBI network to be selected
     """
 
-    has_full_name = stations.Stations.get_network_full_name(network) != network
+    # has_full_name = stations.Stations.get_network_full_name(network) != network
     return html.Div(dbc.Card([
         dbc.CardImg(src=app.get_asset_url(f"network-{network.lower()}.png"),
                     top=False, className='full-background',
@@ -297,7 +297,7 @@ def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
 
 
 def source_selection() -> html.Div:
-    return html.Div([html.H4("Source To Observe", className='text-dark font-weight-bold mb-1'),
+    return html.Div([html.H4("Target Source", className='text-dark font-weight-bold mb-1'),
                      dbc.Switch(label='Specify a name or coordinates', value=False,
                                 id='switch-specify-source', persistence=True),
                      html.Div(id='source-selection-div', hidden=True,
@@ -340,6 +340,67 @@ def epoch_selection() -> html.Div:
                                   persistence=True, debounce=False, inputMode='numeric', min=0.5, max=50),
                         html.Small(id='error_duration', className='form-text text-muted')])])
 
+def source_and_epoch_selection() -> html.Div:
+    return html.Div([html.H4("Source  &  Epoch", className='text-dark font-weight-bold mb-1'),
+                     html.Div(className='col-12', children=[
+                        html.Div(className='row d-flex align-items-bottom', children=[
+                            html.Div(className='col-6', children=[
+                                html.Div(className='row form-group', children=[
+                                    html.Label('Duration of the observation (in hours)', htmlFor='duration'),
+                                    dbc.Input(id='duration', value=None, type='number', className='form-control',
+                                            placeholder="Duration of the observation (in hours)",
+                                            persistence=True, debounce=False, inputMode='numeric', min=0.2, max=50),
+                                    html.Small(id='error_duration', className='form-text text-muted')])]),
+                            html.Div(className='col-6', children=[
+                                html.Div(className='row form-group', children=[
+                                    html.Label('Percentage of observing time spent on target', htmlFor='onsourcetime'),
+                                    dcc.Slider(id='onsourcetime', min=20, max=100, step=10, value=70,
+                                                marks={i: str(i) for i in range(20, 101, 10)},
+                                                persistence=True)])])])]),
+                     html.Div(className='col-12', children=[
+                        html.Div(className='row d-flex align-items-bottom', children=[
+                            html.Div(className='col-6', children=[
+                                html.Div(className='row form-group', children=[
+                                    dbc.Switch(label='Specify an epoch', value=False,
+                                                id='switch-specify-epoch', persistence=True),
+                                    html.Div(id='epoch-selection-div', hidden=True, children=[
+                                        html.Div(className='row', children=[
+                                            html.Label('Start of observation (UTC)', htmlFor='starttime'),
+                                            html.Div(className='row mx-0', children=[
+                                                html.Div(className='col-12 px-0 mx-0', children=[
+                                                    dmc.DateInput(id='startdate', className='form-picker',
+                                                                  value=dt.today(), placeholder="Start Date",
+                                                                  valueFormat="DD MMMM YYYY",
+                                                                  clearable=False, persistence=True,
+                                                                  minDate="1950-01-01", maxDate="2100-01-01"),
+                                                    dcc.Dropdown(id='starttime', placeholder="Start time (UTC)",
+                                                                 value="00:00", clearable=False,
+                                                                 options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
+                                                                           'value': f"{hm//60:02n}:{hm % 60:02n}"} \
+                                                                          for hm in range(0, 24*60, 15)],
+                                                                 persistence=True, className='form-hour')])]),
+                                                    # dmc.DateTimePicker(id='starttime', className='form-picker',
+                                                    #                 value=None, minDate=dt(1900, 1, 1),
+                                                    #                 maxDate=dt(2100, 1, 1),
+                                                    #                 valueFormat='DD-MM-YYYY HH:mm',
+                                                    #                 placeholder='Start time', withSeconds=False,
+                                                    #                 persistence=True, clearable=True,
+                                                    #                 style={'width': '100%'})])]),
+                                            html.Div(className='row', children=[
+                                                html.Small(id='error_starttime', style={'color': 'red'},
+                                                        className='form-text text-muted')])])])])]),
+                            html.Div(className='col-6', children=[
+                                html.Div(className='row form-group', children=[
+                                    dbc.Switch(label='Specify a target source', value=False,
+                                                id='switch-specify-source', persistence=True),
+                                    html.Div(id='source-selection-div', hidden=True,
+                                            children=html.Div(className='row', children=[
+                                                html.Label('Source name or coordinates', htmlFor='starttime'),
+                                                dcc.Input(id='source-input', value=None, type='text',
+                                                        className='form-control', placeholder="hh:mm:ss dd:mm:ss",
+                                                        persistence=True, debounce=True),
+                                                html.Small(id='error_source', className='form-text text-muted')]))])])])]),
+                    ])
 
 def correlations() -> html.Div:
     """Creates the inputs to specify if the user wants continuum correlation and/or spectral line.

@@ -105,6 +105,7 @@ def download_pdf_summary(n_clicks):
                State('source-input', 'value'),
                State('onsourcetime', 'value'),
                State('switch-specify-epoch', 'value'),
+               State('startdate', 'value'),
                State('starttime', 'value'),
                State('duration', 'value'),
                State('datarate', 'value'),
@@ -118,7 +119,7 @@ def download_pdf_summary(n_clicks):
               running=[(Output("compute-observation", "disabled"), True, False),],
               suppress_callback_exceptions=True)
 def compute_observation(n_clicks, band: int, defined_source: bool, source: str, onsourcetime: float,
-                        defined_epoch: bool, startdate: str, duration: float, datarate: int, subbands: int,
+                        defined_epoch: bool, startdate: str, starttime: str, duration: float, datarate: int, subbands: int,
                         channels: int, pols: int, inttime: int, e_evn: bool, selected_antennas: list[str],
                         selected_networks: list[bool]):
     """Computes all products to be shown concerning the set observation.
@@ -158,7 +159,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                       targets=[source,] if defined_source and source.strip() != '' else None,
                       duration=duration*u.h if duration is not None else None,
                       ontarget=onsourcetime/100,
-                      start_time=Time(dt.strptime(startdate, '%Y-%m-%d %H:%M:%S'),
+                      start_time=Time(dt.strptime(f"{startdate} {starttime}", '%Y-%m-%d %H:%M'),
                                       format='datetime', scale='utc') if defined_epoch else None,
                       datarate=datarate, subbands=subbands, channels=channels, polarizations=pols,
                       gui=False, tui=False))
@@ -170,20 +171,18 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         _main_obs.get().thermal_noise()
         _main_obs.get().synthesized_beam()
         _main_obs.get().get_uv_data()
-    except ValueError as e:
+    except ValueError:
         logger.exception("An error has occured: {e}.")
         return outputs.error_card("Could not plan the observation",
-                                  "Likely your source is not visible during the defined time."),
-            *[no_update]*(n_outputs - 1)
-    except sources.SourceNotVisible as e:
+                                  "Likely your source is not visible during the defined time."), *[no_update]*(n_outputs - 1)
+    except sources.SourceNotVisible:
         return outputs.error_card('Source Not Visible!',
                                   'The source cannot be observed by the given antennas and/or '
                                   'during the given observing time.'), *[no_update]*(n_outputs - 1)
-    except Exception as e:
+    except Exception:
         logger.exception("An error has occured: {e}.")
         return outputs.error_card("Could not plan the observation",
-                                  "Missing necessary fields in the observation configuration"),
-            *[no_update]*(n_outputs - 1)
+                                  "Missing necessary fields in the observation configuration"), *[no_update]*(n_outputs - 1)
 
     assert _main_obs.get() is not None, "Observation should have been created."
     try:

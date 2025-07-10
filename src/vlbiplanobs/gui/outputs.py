@@ -1,4 +1,4 @@
-import io
+# import io
 import tempfile
 from pathlib import Path
 from typing import Optional, Literal
@@ -600,9 +600,12 @@ def summary_pdf(o: cli.VLBIObs):
             temp = '\n'.join([f"{s.name} ({s.coord.to_string('hmsdms')})." for s in ablock.sources()])
             layout.add(pdf.Paragraph(f"Target source: {temp}"))
 
+    # NOTE: for my future self: I do not like how units are displayed now, but using the unicode output
+    # Makes the PDF writting to break because apparetly Helvetiva (and the other default fonts) do not
+    # support symbols like "^-".  I tried!
     if None not in (o.datarate, o.bandwidth, o.subbands):
         val = cli.optimal_units(o.datarate, [u.Gbit/u.s, u.Mbit/u.s])
-        layout.add(pdf.Paragraph(f"\nData rate of {val.value:.0f} {val.unit.to_string('unicode')}, "
+        layout.add(pdf.Paragraph(f"\nData rate of {val:.0f}, "
                                  "producing a total bandwidth of "
                                  f"{cli.optimal_units(o.bandwidth, [u.MHz, u.GHz])}, "
                                  f" divided in {o.subbands} x {int(o.bandwidth.value/o.subbands)}-"
@@ -622,9 +625,9 @@ def summary_pdf(o: cli.VLBIObs):
                                     [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
                                      u.mJy/u.beam, u.uJy/u.beam])
         layout.add(pdf.Paragraph(f"Thermal rms noise: "
-                                 f"{rms.value:.3g} {rms.unit.to_string('unicode')}\n"
-                                 f" ({rms_chan.value:.3g} {rms_chan.unit.to_string('unicode')} per spectral "
-                                 f"channel and {rms_min.value:.3g} {rms_min.unit.to_string('unicode')}"
+                                 f"{rms:.3g}\n"
+                                 f" ({rms_chan:.3g} per spectral "
+                                 f"channel and {rms_min:.3g}"
                                  " per one-minute time integration."))
         if not o.sourcenames:
             synth_beam = o.synthesized_beam()[list(o.synthesized_beam().keys())[0]]
@@ -653,9 +656,9 @@ def summary_pdf(o: cli.VLBIObs):
                                             [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
                                              u.mJy/u.beam, u.uJy/u.beam])
                 layout.add(pdf.Paragraph(f"Thermal rms noise: "
-                                         f"{rms.value:.3g} {rms.unit.to_string('unicode')}\n"
-                                         f" ({rms_chan.value:.3g} {rms_chan.unit.to_string('unicode')} per spectral "
-                                         f"channel and {rms_min.value:.3g} {rms_min.unit.to_string('unicode')}"
+                                         f"{rms:.3g}\n"
+                                         f" ({rms_chan:.3g} per spectral "
+                                         f"channel and {rms_min:.3g}"
                                          " per one-minute time integration."))
                 synth_beam = o.synthesized_beam()[src.name]
                 bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
@@ -680,10 +683,14 @@ def summary_pdf(o: cli.VLBIObs):
         # layout.add(pdf.Image(tempfig.name, width=414, height=265, horizontal_alignment=pdf.Alignment.CENTERED))
         layout.add(pdf.Image(figpath, width=414, height=265, horizontal_alignment=pdf.Alignment.CENTERED))
 
-    with io.BytesIO() as buffer:
-        pdf.PDF.dumps(buffer, doc)
+    # with io.BytesIO() as buffer:
+    tmp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
+    with open(tmp.name, 'wb') as temp_file:
+        pdf.PDF.dumps(temp_file, doc)
+        print(f"[green]File at {tmp.name}[/green]")
         # buffer.seek(0)
-        return buffer
+
+    return tmp.name
 
     # def get_fig_dirty_map(self):
     #     raise NotImplementedError

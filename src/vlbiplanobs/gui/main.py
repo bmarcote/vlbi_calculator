@@ -65,13 +65,15 @@ app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_
 @app.callback([Output('download-data', 'data'),
                Output('downloading', 'children')],
               Input("button-download", "n_clicks"),
-              running=[(Output('button-download', 'disabled'), True, False),])
+              running=[(Output('button-download', 'disabled'), True, False),],
+              prevent_initial_call=True)
 def download_pdf_summary(n_clicks):
     if n_clicks is not None:
         try:
             logger.info("PDF has been requested and created.")
-            return dcc.send_bytes(outputs.summary_pdf(_main_obs.get()).getvalue(),
-                                  f"planobs_summary-{random.getrandbits(10)}.pdf"), html.Div()
+            # return {'content': outputs.summary_pdf(_main_obs.get()), 'filename': 'planobs_summary.pdf'}, html.Div()
+            return dcc.send_file(outputs.summary_pdf(_main_obs.get()), #.getvalue(),
+                                 filename="planobs_summary.pdf"), html.Div()
         except ValueError as e:
             print(f"An error occurred: {e}")
             logger.exception("While downloading the PDF: {e}", colorize=True)

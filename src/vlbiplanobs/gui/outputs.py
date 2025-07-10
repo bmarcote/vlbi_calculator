@@ -525,7 +525,6 @@ def summary_pdf(o: cli.VLBIObs):
     if o is None:
         raise ValueError("Observation cannot be None")
 
-    buffer = io.BytesIO()
     doc: pdf.Document = pdf.Document()
     page = pdf.Page()
     doc.add_page(page)
@@ -681,9 +680,10 @@ def summary_pdf(o: cli.VLBIObs):
         # layout.add(pdf.Image(tempfig.name, width=414, height=265, horizontal_alignment=pdf.Alignment.CENTERED))
         layout.add(pdf.Image(figpath, width=414, height=265, horizontal_alignment=pdf.Alignment.CENTERED))
 
-    pdf.PDF.dumps(buffer, doc)
-    buffer.seek(0)
-    return buffer
+    with io.BytesIO() as buffer:
+        pdf.PDF.dumps(buffer, doc)
+        # buffer.seek(0)
+        return buffer
 
     # def get_fig_dirty_map(self):
     #     raise NotImplementedError

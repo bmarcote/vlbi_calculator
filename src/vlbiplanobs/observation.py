@@ -89,7 +89,7 @@ class Observation(object):
                  subbands: int = 8, channels: int = 64,
                  polarizations: Union[int, str] = 4,
                  inttime: u.Quantity = 2.0*u.s,
-                 ontarget: float = 0.7, bits: int = 2):
+                 ontarget: float = 0.7, bits: u.Quantity = 2*u.bit):
         """Initializes an observation.
         Note that you can initialize an empty observation at this stage and add the
         information for the different attributes later. However, you may raise exception
@@ -548,15 +548,13 @@ class Observation(object):
 
     @bitsampling.setter
     @enforce_types
-    def bitsampling(self, new_bitsampling: int | u.Quantity):
+    def bitsampling(self, new_bitsampling: u.Quantity):
         """Sets the bit sampling of the observation.
         Inputs
         - new_bitsampling : int | astropy.units.Quantity (bit-equivalent)
             In bits.
         """
-        if isinstance(new_bitsampling, int):
-            self._bitsampling = new_bitsampling*u.bit
-        elif not new_bitsampling.unit.is_equivalent(u.bit):
+        if not new_bitsampling.unit.is_equivalent(u.bit):
             raise ValueError(f"Unexpected unit for new_bitsampling. Bits spected but {new_bitsampling} received.")
 
         self._bitsampling = new_bitsampling

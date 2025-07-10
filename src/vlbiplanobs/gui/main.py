@@ -121,6 +121,7 @@ def download_pdf_summary(n_clicks):
                [State(f"network-{network}", 'value') for network in observation._NETWORKS]],
               running=[(Output("compute-observation", "disabled"), True, False),],
               suppress_callback_exceptions=True)
+@observation.enforce_types
 def compute_observation(n_clicks, band: int, defined_source: bool, source: str, onsourcetime: float,
                         defined_epoch: bool, startdate: str, starttime: str, duration: float, datarate: int, subbands: int,
                         channels: int, pols: int, inttime: int, e_evn: bool, selected_antennas: list[str],
@@ -164,8 +165,8 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                       ontarget=onsourcetime/100,
                       start_time=Time(dt.strptime(f"{startdate} {starttime}", '%Y-%m-%d %H:%M'),
                                       format='datetime', scale='utc') if defined_epoch else None,
-                      datarate=datarate, subbands=subbands, channels=channels, polarizations=pols,
-                      gui=False, tui=False))
+                      datarate=datarate*u.Mbit/u.s, subbands=subbands, channels=channels, polarizations=pols,
+                      gui=False, tui=False, inttime=inttime*u.s))
         _main_obs.prev_datarate = datarate
         _main_obs.prev_channels = channels
         _main_obs.prev_subbands = subbands

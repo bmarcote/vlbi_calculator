@@ -369,7 +369,7 @@ def source_and_epoch_selection() -> html.Div:
                                             html.Div(className='row mx-0', children=[
                                                 html.Div(className='col-12 px-0 mx-0', children=[
                                                     dmc.DateInput(id='startdate', className='form-picker',
-                                                                  value=dt.today(), placeholder="Start Date",
+                                                                  value=dt.today().date(), placeholder="Start Date",
                                                                   valueFormat="DD MMMM YYYY",
                                                                   clearable=False, persistence=True,
                                                                   minDate="1950-01-01", maxDate="2100-01-01"),

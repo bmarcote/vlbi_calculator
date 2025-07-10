@@ -330,7 +330,7 @@ def main(band: str, networks: Optional[list[str]] = None,
          start_time: Optional[Time] = None,
          duration: Optional[u.Quantity] = None, datarate: Optional[u.Quantity] = None,
          gui: bool = True, tui: bool = False, ontarget: float = 0.7, subbands: int = 4,
-         channels: int = 64, polarizations: int = 4, inttime: float = 2.0):
+         channels: int = 64, polarizations: int = 4, inttime: float = 2.0*u.s):
     """Planner for VLBI observations.
 
     Inputs

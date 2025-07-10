@@ -603,7 +603,7 @@ def summary_pdf(o: cli.VLBIObs):
 
     if None not in (o.datarate, o.bandwidth, o.subbands):
         val = cli.optimal_units(o.datarate, [u.Gbit/u.s, u.Mbit/u.s])
-        layout.add(pdf.Paragraph(f"\nData rate of {val:.0f}, "
+        layout.add(pdf.Paragraph(f"\nData rate of {val.value:.0f} {val.unit.to_string('unicode')}, "
                                  "producing a total bandwidth of "
                                  f"{cli.optimal_units(o.bandwidth, [u.MHz, u.GHz])}, "
                                  f" divided in {o.subbands} x {int(o.bandwidth.value/o.subbands)}-"
@@ -623,8 +623,10 @@ def summary_pdf(o: cli.VLBIObs):
                                     [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
                                      u.mJy/u.beam, u.uJy/u.beam])
         layout.add(pdf.Paragraph(f"Thermal rms noise: "
-                                 f"{rms:.3g} ({rms_chan:.3g} per spectral "
-                                 f"channel and {rms_min:.3g} per one-minute time integration."))
+                                 f"{rms.value:.3g} {rms.unit.to_string('unicode')}\n"
+                                 f" ({rms_chan.value:.3g} {rms_chan.unit.to_string('unicode')} per spectral "
+                                 f"channel and {rms_min.value:.3g} {rms_min.unit.to_string('unicode')}"
+                                 " per one-minute time integration."))
         if not o.sourcenames:
             synth_beam = o.synthesized_beam()[list(o.synthesized_beam().keys())[0]]
         else:
@@ -652,8 +654,10 @@ def summary_pdf(o: cli.VLBIObs):
                                             [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
                                              u.mJy/u.beam, u.uJy/u.beam])
                 layout.add(pdf.Paragraph(f"Thermal rms noise: "
-                                         f"{rms:.3g} ({rms_chan:.3g} per spectral "
-                                         f"channel and {rms_min:.3g} per one-minute time integration."))
+                                         f"{rms.value:.3g} {rms.unit.to_string('unicode')}\n"
+                                         f" ({rms_chan.value:.3g} {rms_chan.unit.to_string('unicode')} per spectral "
+                                         f"channel and {rms_min.value:.3g} {rms_min.unit.to_string('unicode')}"
+                                         " per one-minute time integration."))
                 synth_beam = o.synthesized_beam()[src.name]
                 bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
                 bmin = synth_beam['bmin'].to(bmaj.unit)

@@ -9,7 +9,7 @@ from dash import Dash, html, dcc, Output, Input, State, no_update
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
-import astropy
+from astropy.utils.iers import conf as iers_conf
 from astropy import units as u
 from astropy.time import Time
 from loguru import logger
@@ -21,7 +21,8 @@ from vlbiplanobs.gui.callbacks import *
 from vlbiplanobs.gui import layout
 
 
-astropy.utils.iers.conf.auto_download = False
+iers_conf.auto_download = False
+iers_conf.auto_max_age = None
 
 if os.access("/var/log/planobs.log", os.W_OK):
     logfilename = "/var/log/planobs.log"
@@ -171,9 +172,9 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         _main_obs.prev_subbands = subbands
         # I need to run this first otherwise the other functions will fail
         # (likely partially initialized uv values)
-        _main_obs.get().thermal_noise()
-        _main_obs.get().synthesized_beam()
-        _main_obs.get().get_uv_data()
+        # _main_obs.get().thermal_noise()
+        # _main_obs.get().synthesized_beam()
+        # _main_obs.get().get_uv_data()
     except ValueError:
         logger.exception("An error has occured: {e}.")
         return outputs.error_card("Could not plan the observation",

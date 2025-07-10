@@ -3,7 +3,6 @@ import os
 import random
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
 from datetime import datetime as dt
 from dash import Dash, html, dcc, Output, Input, State, no_update
 from dash.exceptions import PreventUpdate
@@ -172,9 +171,9 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         _main_obs.prev_subbands = subbands
         # I need to run this first otherwise the other functions will fail
         # (likely partially initialized uv values)
-        # _main_obs.get().thermal_noise()
-        # _main_obs.get().synthesized_beam()
-        # _main_obs.get().get_uv_data()
+        _main_obs.get().thermal_noise()
+        _main_obs.get().synthesized_beam()
+        _main_obs.get().get_uv_data()
     except ValueError:
         logger.exception("An error has occured: {e}.")
         return outputs.error_card("Could not plan the observation",
@@ -225,8 +224,8 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         #     out_worldmap = futures['out_worldmap'].result()
         #
         #
-        # # out_rms = _main_obs.get().thermal_noise()
-        # # beam = _main_obs.get().synthesized_beam()
+        # out_rms = _main_obs.get().thermal_noise()
+        # beam = _main_obs.get().synthesized_beam()
         # # out_rms = outputsrms(_main_obs.get())
         # # out_sens = outputsresolution(_main_obs.get())
 
@@ -257,7 +256,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                                   'The source cannot be observed by the given antennas and/or '
                                   'during the given observing time.'), *[no_update]*(n_outputs - 1)
     except Exception as e:
-        logger.exception("While computing: {e}.")
+        logger.exception(f"While computing: {e}.")
         return outputs.error_card("An error has occured", str(e)), *[no_update]*(n_outputs - 1)
 
     print(f"Execution time: {(dt.now() - t0).total_seconds()} s")

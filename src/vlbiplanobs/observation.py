@@ -1,6 +1,7 @@
 import threading
+from functools import wraps
 from collections import defaultdict
-from typing import Optional, Union, Tuple, Literal
+from typing import Optional, Union, Tuple, Literal, get_type_hints
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from enum import Enum
@@ -14,6 +15,38 @@ from . import freqsetups
 
 _NETWORKS = Stations.get_networks_from_configfile()
 _STATIONS = Stations()
+
+
+def enforce_types(func):
+    """Decorator that will raise TypeError if the passed attribute to a given function
+    has the wrong type.
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        hints = get_type_hints(func)
+        # Check positional dash_bootstrap_components
+        for arg, (name, expected_type) in zip(args, hints.items()):
+            if name == 'return':
+                continue
+
+            if not isinstance(arg, expected_type):
+                raise TypeError(f"Argument '{name}' must be of type {expected_type.__name__}, "
+                                f"but got {type(arg).__name__}")
+
+        # Check kwyword arguments
+        for name, arg in kwargs.items():
+            if name not in hints:
+                continue
+
+        expected_type = hints[name]
+        if not isinstance(arg, expected_type):
+            raise TypeError(f"Argument '{name}' must be of type {expected_type.__name__}, "
+                            f"but got {type(arg).__name__}")
+
+        return func(*args, **kwargs)
+
+    return func
+
 
 
 class Polarization(Enum):
@@ -49,6 +82,7 @@ class Observation(object):
     def _REF_YEAR(self):
         return Time('2025-01-01', scale='utc') + np.arange(0.0, 365.2, 1)*u.day
 
+    @enforce_types
     def __init__(self, band: str, stations: Stations, scans: dict[str, ScanBlock],
                  times: Optional[Time] = None, duration: u.Quantity = 24*u.h,
                  datarate: Optional[u.Quantity] = None,
@@ -149,6 +183,7 @@ class Observation(object):
         return self._scans
 
     @scans.setter
+    @enforce_types
     def scans(self, scans: Optional[dict[str, ScanBlock]]):
         with self._mutex:
             self._scans = scans if scans is not None else {}
@@ -211,10 +246,9 @@ class Observation(object):
         return self._times
 
     @times.setter
+    @enforce_types
     def times(self, new_times: Optional[Time]):
-        if (new_times is not None) and (not isinstance(new_times, Time)):
-            raise ValueError("'times' must be an astropy.time.Time instance or be None")
-        elif isinstance(new_times, Time) and new_times.size < 2:
+        if (new_times is not None) and isinstance(new_times, Time) and new_times.size < 2:
             raise ValueError("'times' must have at least two time values: "
                              "start and end of the observation.")
         with self._mutex:
@@ -250,11 +284,13 @@ class Observation(object):
         return self._duration if not self.fixed_time else (self.times[-1] - self.times[0]).to(u.h)
 
     @duration.setter
+    @enforce_types
     def duration(self, new_duration: u.Quantity):
         """Sets the total duration of the observation.
         """
-        assert isinstance(new_duration, u.Quantity), "The new duration must be a quantity with time units."
-        assert new_duration.unit.is_equivalent(u.h), "The new duration must be a quantity with time units."
+        if not new_duration.unit.is_equivalent(u.h):
+            raise TypeError("The new duration must be a quantity with time units.")
+
         self._duration = new_duration
         with self._mutex:
             self._rms = None
@@ -272,10 +308,11 @@ class Observation(object):
         return self._band
 
     @band.setter
+    @enforce_types
     def band(self, new_band: str):
         if (new_band not in freqsetups.bands):
-            raise ValueError("'new_band' needs to  match the following bands: "
-                             f"{', '.join(freqsetups.bands.keys())} (wavelengths given in cm.)")
+            raise TypeError("'new_band' needs to  match the following bands: "
+                            f"{', '.join(freqsetups.bands.keys())} (wavelengths given in cm.)")
 
         with self._mutex:
             self._band = new_band
@@ -305,12 +342,16 @@ class Observation(object):
         return self._datarate
 
     @datarate.setter
+    @enforce_types
     def datarate(self, new_datarate: u.Quantity):
         """Sets the data rate used at each station during the observation.
 
         Inputs
         - new_datarate : astropy.units.Quantity  [e.g. Mb/s]
         """
+        if not new_datarate.unit.is_equivalent(u.bit/u.s):
+            raise TypeError("The new data rate must be a quantity with bit /s equivalent units.")
+
         the_networks = self._guess_network()
         with self._mutex:
             if new_datarate is None:
@@ -376,9 +417,10 @@ class Observation(object):
         return self._subbands
 
     @subbands.setter
+    @enforce_types
     def subbands(self, n_subbands: int):
-        if (n_subbands is None) or (not isinstance(n_subbands, int)) or (n_subbands <= 0):
-            raise ValueError("n_subbands needs to be a positive integer.")
+        if n_subbands <= 0:
+            raise ValueError(f"n_subbands needs to be a positive integer, but is {n_subbands}.")
 
         self._subbands = n_subbands
 
@@ -390,12 +432,10 @@ class Observation(object):
         return self._channels
 
     @channels.setter
+    @enforce_types
     def channels(self, n_channels: int):
-        if n_channels is None:
-            raise ValueError("channels needs to be a positive int, not None.")
-
-        if (not isinstance(n_channels, int)) or (isinstance(n_channels, int) and n_channels <= 0):
-            raise ValueError("channels needs to be a positive integer.")
+        if n_channels <= 0:
+            raise ValueError(f"n_channels needs to be a positive integer, but is {n_channels}.")
 
         self._channels = n_channels
 
@@ -407,6 +447,7 @@ class Observation(object):
         return self._polarizations
 
     @polarizations.setter
+    @enforce_types
     def polarizations(self, pols: Union[int, str, Polarization]):
         with self._mutex:
             if isinstance(pols, Polarization):
@@ -439,6 +480,7 @@ class Observation(object):
         return self._inttime
 
     @inttime.setter
+    @enforce_types
     def inttime(self, new_inttime: u.Quantity):
         """Sets the integration time of the observation.
         Inputs
@@ -446,15 +488,12 @@ class Observation(object):
             If no units provided, seconds are assumed.
         """
         if new_inttime <= 0:
-            raise ValueError(f"'inttime' must be a positive number (currently {new_inttime})")
+            raise ValueError(f"'inttime' must be a positive number, but is {new_inttime}.")
 
-        if isinstance(new_inttime, float) or isinstance(new_inttime, int):
-            self._inttime = new_inttime*u.s
-        elif isinstance(new_inttime, u.Quantity):
-            self._inttime = new_inttime.to(u.s)
-        else:
-            raise ValueError(f"Unknown type for 'inttime' {new_inttime} "
-                             "(float/int/Quantity(~seconds) expected)")
+        if not new_inttime.unit.is_equivalent(u.s):
+            raise TypeError(f"'inttime' must be a quantity with time units, but is {new_inttime}.")
+
+        self._inttime = new_inttime.to(u.s)
 
     @property
     def ontarget_fraction(self) -> float:
@@ -465,6 +504,7 @@ class Observation(object):
         return self._ontarget
 
     @ontarget_fraction.setter
+    @enforce_types
     def ontarget_fraction(self, ontarget: float):
         if not (0.0 < ontarget <= 1.0):
             raise ValueError("'ontarget_fraction' must be a float within (0.0, 1.0].")
@@ -507,6 +547,7 @@ class Observation(object):
         return self._bitsampling
 
     @bitsampling.setter
+    @enforce_types
     def bitsampling(self, new_bitsampling: int | u.Quantity):
         """Sets the bit sampling of the observation.
         Inputs
@@ -515,13 +556,10 @@ class Observation(object):
         """
         if isinstance(new_bitsampling, int):
             self._bitsampling = new_bitsampling*u.bit
-        elif isinstance(new_bitsampling, u.Quantity):
-            if not new_bitsampling.unit.is_equivalent(u.bit):
-                raise ValueError(f"Unknown unit for {new_bitsampling} (bit-equivalent expected)")
+        elif not new_bitsampling.unit.is_equivalent(u.bit):
+            raise ValueError(f"Unexpected unit for new_bitsampling. Bits spected but {new_bitsampling} received.")
 
-            self._bitsampling = new_bitsampling
-        else:
-            raise ValueError(f"Unknown type for {new_bitsampling} (int, in bits, expected)")
+        self._bitsampling = new_bitsampling
 
     @property
     def stations(self) -> Stations:
@@ -531,6 +569,7 @@ class Observation(object):
         return self._stations
 
     @stations.setter
+    @enforce_types
     def stations(self, new_stations: Stations):
         assert isinstance(new_stations, Stations)
         with self._mutex:
@@ -545,11 +584,13 @@ class Observation(object):
             self._uv_array = None
             self._synth_beam = None
 
+    @enforce_types
     def sources_in_block(self, block_name: str, source_type: Optional[SourceType] = None) -> list[Source]:
         """Returns the sources that are included in a specific scan block.
         """
         return self._scans[block_name].sources(source_type)
 
+    @enforce_types
     def sourcenames_in_block(self, block_name: str, source_type: Optional[SourceType] = None) -> list[str]:
         """Returns the sources that are included in a specific scan block.
         """
@@ -613,6 +654,7 @@ class Observation(object):
         return ant_src_t[0].codename, ant_src_t[1].name, ant_src_t[0].is_observable(ant_src_t[2],
                                                                                     ant_src_t[1])
 
+    @enforce_types
     def is_observable(self, times: Optional[Time] = None) -> dict[str, dict[str, list[bool]]]:
         """Returns whenever the given ScanBlock can be observed by each station for each time
         of the observation. If times are not provided, then it will use the observation times.
@@ -690,6 +732,7 @@ class Observation(object):
 
         return self._is_always_visible
 
+    @enforce_types
     def when_is_observable(self, min_stations: int = 3,
                            mandatory_stations: Optional[Literal['all'] | list[str]] = None,
                            stations_all_time: bool = False, within_time_range: Optional[Time] = None,
@@ -899,6 +942,7 @@ class Observation(object):
 
         return bad_epochs
 
+    @enforce_types
     def sun_constraint(self, times: Optional[Time] = None) -> dict[str, Optional[u.Quantity]]:
         """Checks if the Sun is too close to the targets on each block scan, according to the
         Barray Clark estimates from predictions by Ketan Desai of IPM scattering sizes (see
@@ -975,6 +1019,7 @@ class Observation(object):
 
         return self._rms
 
+    @enforce_types
     def baseline_sensitivity(self, antenna1: Optional[str] = None, antenna2: Optional[str] = None,
                              integration_time: u.Quantity = u.Quantity(1, u.min)) -> u.Quantity:
         """Returns the sensitivity of a given baseline in the observation for
@@ -1277,6 +1322,7 @@ class Observation(object):
 
         return self._synth_beam
 
+    @enforce_types
     def get_dirtymap(self, pixsize: int = 1024, robust: str = "natural", oversampling: int = 4):
         """Returns the dirty beam produced for the given observation.
 
@@ -1350,7 +1396,8 @@ class Observation(object):
                           int(pixsize*(oversampling-1)/2):int(pixsize*(oversampling+1)/2)].T / \
             np.max(dirty_beam), np.linspace(-imgsize, imgsize, pixsize)
 
-    def print_obs_times(self, date_format='%d %B %Y'):
+    @enforce_types
+    def print_obs_times(self, date_format: str = '%d %B %Y'):
         """Returns the time range (starttime-to-endtime) of the observation in a smart way.
         If the observation lasts for less than one day it omits the end date:
                 20 January 1971

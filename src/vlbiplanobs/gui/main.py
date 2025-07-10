@@ -9,6 +9,7 @@ from dash import Dash, html, dcc, Output, Input, State, no_update
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
+import astropy
 from astropy import units as u
 from astropy.time import Time
 from loguru import logger
@@ -19,6 +20,8 @@ from vlbiplanobs.gui import inputs, outputs, plots
 from vlbiplanobs.gui.callbacks import *
 from vlbiplanobs.gui import layout
 
+
+astropy.utils.iers.conf.auto_download = False
 
 if os.access("/var/log/planobs.log", os.W_OK):
     logfilename = "/var/log/planobs.log"

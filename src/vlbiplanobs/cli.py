@@ -54,7 +54,7 @@ class VLBIObs(obs.Observation):
         """
         rprint("\n[bold green]VLBI observation[/bold green]")
         rprint(f"To be conducted at {self.band.replace('cm', ' cm')} ", end='')
-        if self.times is not None:
+        if self.fixed_time:
             rprint(f"from {self.times[0].strftime('%d %b %Y %H:%M')}–"
                    f"{self.times[-1].strftime('%H:%M')} UTC")
         else:
@@ -98,7 +98,7 @@ class VLBIObs(obs.Observation):
 
         else:
             rprint("[dim]No sources defined.[/dim]")
-            if self.times is not None or self.duration is not None:
+            if self.fixed_time or self.duration is not None:
                 rprint("\n[bold green]Expected outcome[/bold green]:")
                 val = optimal_units(self.thermal_noise(), [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
                 rprint("[bold]Thermal rms noise (for a +/- 45° elevation source)[/bold]: ", end='')
@@ -118,7 +118,7 @@ class VLBIObs(obs.Observation):
         """Show plots on the Terminal User Interface with the different sources and
         when they are visible within the observation.
         """
-        if self.times is None:
+        if not self.fixed_time:
             rprint("[bold green]Searching for suitable GST range "
                    "(no pre-defined observing time)[/bold green]\n")
             self.times = Time('2025-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01)*u.day
@@ -204,21 +204,21 @@ class VLBIObs(obs.Observation):
             # Important verification
             if doing_gst:
                 if len(sun_limit[ablockname]) > 0:
-                    rprint("[bold red]Note the the Sun is too close to this source[/bold red]",
+                    rprint("[bold red]Note that the Sun is too close to this source[/bold red]",
                            end='')
                     t0, t1 = sun_limit[ablockname][0].datetime, sun_limit[ablockname][-1].datetime
                     if t0 == t1:
-                        rprint(f"[red] on {t0.strftime('%d %b')}![/red]")
+                        rprint(f"[bold red] on {t0.strftime('%d %b')}![/bold red]")
                     elif t0.month == t1.month:
-                        rprint(f"[red] on {t0.day}-{t1.day} {t0.strftime('%b')}![/red]")
+                        rprint(f"[bold red] on {t0.day}-{t1.day} {t0.strftime('%b')}![/bold red]")
                     elif t0.year == t1.year:
-                        rprint(f"[red] on {t0.strftime('%d %b')} to {t1.strftime('%d %b')}![/red]")
+                        rprint(f"[bold red] on {t0.strftime('%d %b')} to {t1.strftime('%d %b')}![/bold red]")
                     else:
-                        rprint(f"[red]{t0.strftime('%d %b %Y')} to {t1.strftime('%d %b %Y')}![/red]")
+                        rprint(f"[bold red]{t0.strftime('%d %b %Y')} to {t1.strftime('%d %b %Y')}![/bold red]")
             else:
                 if sun_const[ablockname] is not None:
-                    rprint("[bold red]Note the the Sun is too close to this source during "
-                           f"this observation (separation of {sun_const[ablockname]}).[/bold red]")
+                    rprint("[bold red]Note that the Sun is too close to this source during "
+                           f"this observation (separation of {sun_const[ablockname]:.1f}).[/bold red]")
 
             rprint("[bold]Expected rms thermal noise for the target source: [/bold]", end='')
             for src, rms in rms_noise.items():
@@ -329,7 +329,7 @@ def main(band: str, networks: Optional[list[str]] = None,
          src_catalog: Optional[str] = None, targets: Optional[list[str]] = None,
          start_time: Optional[Time] = None,
          duration: Optional[u.Quantity] = None, datarate: Optional[u.Quantity] = None,
-         gui: bool = True, tui: bool = False, ontarget: float = 0.7, subbands: int = 4,
+         gui: bool = False, tui: bool = True, ontarget: float = 0.7, subbands: int = 4,
          channels: int = 64, polarizations: int = 4, inttime: float = 2.0*u.s):
     """Planner for VLBI observations.
 
@@ -411,11 +411,11 @@ def main(band: str, networks: Optional[list[str]] = None,
         duration_val = duration.to(u.min).value
 
     if datarate is None:
-        if networks is not None:
-            for a_network in obs._NETWORKS:
-                if a_network in networks:
-                    datarate = obs._NETWORKS[a_network].max_datarate(band)
-                    break
+        obs_networks = networks or obs.Observation.guess_network(band, obs._STATIONS.filter_antennas(stations))
+        for a_network in obs._NETWORKS:
+            if a_network in obs_networks:
+                datarate = obs._NETWORKS[a_network].max_datarate(band)
+                break
 
     o = VLBIObs(band, get_stations(band, networks, stations), scans=src2observe,
                 times=start_time + np.arange(0, duration_val + 5, 10)*u.min
@@ -492,7 +492,7 @@ def cli():
                         "it will pick such pulsar(s).")
     parser.add_argument('--data-rate', type=float, default=None,
                         help="Maximum data rate of the observation, in Mb/s.")
-    parser.add_argument('--no-gui', action="store_false", default=True,
+    parser.add_argument('--no-gui', action="store_false", default=False,
                         help="If set, then it will not open graphical plots, but it will only\n"
                         "show the quick plots through terminal.")
     parser.add_argument('--no-tui', action="store_false", default=True,

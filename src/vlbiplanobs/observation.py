@@ -8,7 +8,7 @@ from enum import Enum
 from astropy import units as u
 from astropy import coordinates as coord
 from astropy.time import Time
-from .stations import Stations
+from .stations import Stations, Station
 from .sources import Source, Scan, ScanBlock, SourceType, SourceNotVisible
 from . import freqsetups
 
@@ -407,6 +407,28 @@ class Observation(object):
                                                            reverse=True)
                                       if rating[n[0]] > 0.0]
         return sorted_networks
+
+    @staticmethod
+    def guess_network(band: str, list_stations: list[Station]) -> list[str]:
+        """Returns the VLBI network that is driving the observations, making a guess given
+        the antennas that are participating and the observing band.
+        """
+        rating: dict = {}
+        for network in _NETWORKS:
+            if band in _NETWORKS[network].observing_bands:
+                rating[network] = len([s for s in list_stations
+                                       if s.codename in _NETWORKS[network].station_codenames]) / \
+                                  len(list_stations)
+
+        sorted_networks: list[str] = [n[0] for n in sorted(rating.items(), key=lambda x: rating[x[0]],
+                                                           reverse=True)
+                                      if rating[n[0]] > 0.0]
+        return sorted_networks
+
+
+
+    def _get_max_datarate(network: str, band: str) -> u.Quantity:
+        return _NETWORKS[network].max_datarate(band)
 
     @property
     def subbands(self) -> int:

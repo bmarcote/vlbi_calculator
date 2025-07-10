@@ -71,7 +71,7 @@ rprint('    ' + '\n    '.join([f'{k:10} ({v[0]}) {v[1]:.1f} - ({w[0]}) {w[1]:.1f
 # rprint(f"Longest baseline: {'\n'.join([f'{k} ({v[0]}) {v[1]}' for k, v in o.longest_baseline().items()])}")
 # rprint('    ' + '\n    '.join([f'{k} ({v[0]}) {v[1]:.1f}' for k, v in o.shortest_baseline().items()]))
 rprint("\nThermal rms noise:")
-rprint('    ' + '\n    '.join([f'{k}: {v.to(u.mJy):.2}' for k, v in o.thermal_noise().items()]))
+rprint('    ' + '\n    '.join([f'{k}: {v.to(u.mJy/u.beam):.2}' for k, v in o.thermal_noise().items()]))
 # uvdata = obs.get_uv_array()
 # dirty_map_natural = obs.get_dirtymap(robust='natural')
 # dirty_map_uniform = obs.get_dirtymap(robust='uniform')
@@ -81,7 +81,7 @@ o = cli.main(band='21cm', stations=evn6, src_catalog='precise/sources.yaml',
              targets=['R1', 'R2'], duration=12*u.h)
 
 rprint("\nThermal rms noise for 12 h (no elevation):")
-rprint('    ' + '\n    '.join([f'{k}: {v.to(u.mJy):.2}' for k, v in o.thermal_noise().items()]))
+rprint('    ' + '\n    '.join([f'{k}: {v.to(u.mJy/u.beam):.2}' for k, v in o.thermal_noise().items()]))
 
 # for ant in elevs:
 #     ax.plot(obs.times.datetime[srcup[ant]], elevs[ant][srcup[ant]].deg, '-', label=ant)

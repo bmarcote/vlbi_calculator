@@ -2,6 +2,7 @@
 import os
 # import random
 import threading
+import argparse
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
@@ -74,13 +75,14 @@ def download_pdf_summary(n_clicks):
             logger.info("PDF has been requested and created.")
             # return {'content': outputs.summary_pdf(_main_obs.get()), 'filename': 'planobs_summary.pdf'}, html.Div()
             return dcc.send_file(outputs.summary_pdf(_main_obs.get()), #.getvalue(),
-                                 filename="planobs_summary.pdf"), html.Div()
+                                 filename="planobs_summary.pdf"), html.Div(), #no_update
         except ValueError as e:
             print(f"An error occurred: {e}")
-            logger.exception("While downloading the PDF: {e}", colorize=True)
-            return no_update, no_update
+            logger.exception(f"While downloading the PDF: {e}", colorize=True)
+            return no_update, no_update #, outputs.error_card("Error during the PDF creation",
+                                                            # "Re-calculate a full observation and try again")
 
-    return no_update, no_update
+    return no_update, no_update #, no_update
 
 
 @app.callback([Output('user-message', 'children'),
@@ -297,4 +299,7 @@ def main(debug: bool = False):
 
 
 if __name__ == '__main__':
-    main(debug=True)
+    parser = argparse.ArgumentParser(description="EVN Observation Planner (PlanObs)")
+    parser.add_argument('-d', '--debug', action='store_true', default=False, help="Enable debug mode")
+    args = parser.parse_args()
+    main(debug=args.debug)

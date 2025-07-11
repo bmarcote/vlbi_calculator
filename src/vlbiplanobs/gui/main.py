@@ -1,7 +1,8 @@
 # from dependencies import Input, Output, State
 import os
-import random
+# import random
 import threading
+from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
 from dash import Dash, html, dcc, Output, Input, State, no_update

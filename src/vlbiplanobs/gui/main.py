@@ -65,7 +65,8 @@ app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_
 
 
 @app.callback([Output('download-data', 'data'),
-               Output('downloading', 'children')],
+               Output('downloading', 'children'),
+               Output('user-message', 'children', allow_duplicate=True)],
               Input("button-download", "n_clicks"),
               running=[(Output('button-download', 'disabled'), True, False),],
               prevent_initial_call=True)
@@ -75,14 +76,14 @@ def download_pdf_summary(n_clicks):
             logger.info("PDF has been requested and created.")
             # return {'content': outputs.summary_pdf(_main_obs.get()), 'filename': 'planobs_summary.pdf'}, html.Div()
             return dcc.send_file(outputs.summary_pdf(_main_obs.get()), #.getvalue(),
-                                 filename="planobs_summary.pdf"), html.Div(), #no_update
+                                 filename="planobs_summary.pdf"), html.Div(), no_update
         except ValueError as e:
             print(f"An error occurred: {e}")
             logger.exception(f"While downloading the PDF: {e}", colorize=True)
-            return no_update, no_update #, outputs.error_card("Error during the PDF creation",
-                                                            # "Re-calculate a full observation and try again")
+            return no_update, no_update, outputs.error_card("Error during the PDF creation",
+                                                            "Re-calculate a full observation and try again")
 
-    return no_update, no_update #, no_update
+    return no_update, no_update, no_update
 
 
 @app.callback([Output('user-message', 'children'),
@@ -295,11 +296,13 @@ app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-10
 
 
 def main(debug: bool = False):
-    return app.run(debug=debug)
+    usage = "%(prog)s [-h]  OPTIONS"
+    description = "EVN Observation Planner (GUI)"
+    parser = argparse.ArgumentParser(description=description, prog="planobs-server", usage=usage)
+    parser.add_argument('-d', '--debug', action='store_true', default=False, help="Enable debug mode")
+    args = parser.parse_args()
+    return app.run(debug=args.debug)
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="EVN Observation Planner (PlanObs)")
-    parser.add_argument('-d', '--debug', action='store_true', default=False, help="Enable debug mode")
-    args = parser.parse_args()
-    main(debug=args.debug)
+    main(debug=False)

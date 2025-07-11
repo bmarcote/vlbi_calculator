@@ -185,11 +185,11 @@ def summary_freq_res(o: Optional[cli.VLBIObs] = None) -> html.Div:
         return html.Div()
 
     return card_result(f"{chan_f.value:.3g} {chan_f.unit.to_string('unicode')}",
-                       "Frequency resolution", id='freq-res-frequency',
+                       "Freq. resolution", id='freq-res-frequency',
                        second_column_n=6, second_column_content=[
                             html.Div(className='numbers', children=[
                                 html.P(className='text-white text-sm mb-0 opacity-7 font-weight-bold',
-                                       children="Velocity resolution"),
+                                       children="Vel. resolution"),
                                 html.H3(className='text-white font-weight-bolder mb-0 '
                                                   'justify-content-center',
                                         id='freq-res-velocity',
@@ -245,10 +245,36 @@ def data_size(o: Optional[cli.VLBIObs] = None) -> html.Div:
                        extra_rows=[
                         html.Br(),
                         html.Div(className='col-12', style={'color': 'var(--bs-gray-100)'},
-                                 children=html.P("This is the expected size for the FITS-IDI"
-                                                 " files from the correlated data."))
+                                 children=html.P("This is the expected size that the correlated data will"
+                                                 " have in FITS format. Note that during data reduction the required "
+                                                 "space will be larger (e.g. about x3 for MS files)."))
                        ])
 
+
+def obs_time(o: Optional[cli.VLBIObs] = None) -> html.Div:
+    if o is None or o.ontarget_time is None:
+        return html.Div()
+
+    tt = cli.optimal_units(list(o.ontarget_time.values())[0], [u.h, u.min])
+    dur = cli.optimal_units(o.duration, [u.h, u.min])
+    wavelength = cli.optimal_units(o.wavelength, [u.m, u.cm, u.mm])
+    return card_result(f"{dur.value:.3g} {dur.unit.to_string('unicode')}",
+                       "Observing Time", id='obs-time-dur',
+                       second_column_n=6, second_column_content=[
+                            html.Div(className='numbers', children=[
+                                html.P(className='text-white text-sm mb-0 opacity-7 font-weight-bold',
+                                       children="Time on Source"),
+                                html.H3(className='text-white font-weight-bolder mb-0 '
+                                                  'justify-content-center',
+                                        id='obs-time-target',
+                                        children=f"{tt.value:.3g} "
+                                                 f"{tt.unit.to_string('unicode')}")])
+                       ], extra_rows=[
+                            html.Br(),
+                            html.Div(className='col-12', style={'color': 'var(--bs-gray-100)'},
+                                     children=html.P("The planned observation will be conducted at a central "
+                                                     f"frequency of {o.frequency.to(u.GHz)} "
+                                                     f"(wavelength of {wavelength})."))])
 
 def rms(o: Optional[cli.VLBIObs] = None) -> html.Div:
     if o is None:

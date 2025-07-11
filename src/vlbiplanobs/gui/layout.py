@@ -55,17 +55,21 @@ def outputs_column(app) -> html.Div:
         html.Div(id='out-phaseref', className='m-0 p-0'),
         html.Div(id='out-ant', className='m-0 p-0'),
         # Now the actual results
-        html.Div(className='col-12 m-0 p-0', children=html.Div(className='row d-flex m-0 p-0', children=[
-            html.Div(Modal(id="sensitivity-baseline-modal", size='xl', is_open=False)),
-            html.Div(outputs.rms(), className='col-6 m-0 p-0', id='card-rms'),
-            html.Div(outputs.resolution(), className='col-6 m-0 p-0', id='card-resolution')])),
+        html.Div(className='col-12 m-0 p-0', children=[
+            html.Div(className='row d-flex m-0 p-0', children=[
+                html.Div(outputs.obs_time(), className='col-6 m-0 p-0 d-flex align-items-stretch', id='div-card-time'),
+                html.Div(outputs.summary_freq_res(), className='col-6 m-0 p-0 d-flex align-items-stretch', id='div-card-vel')]),
+            html.Div(className='row d-flex m-0 p-0', children=[
+                html.Div(Modal(id="sensitivity-baseline-modal", size='xl', is_open=False)),
+                html.Div(outputs.rms(), className='col-6 m-0 p-0 d-flex align-items-stretch', id='card-rms'),
+                html.Div(outputs.resolution(), className='col-6 m-0 p-0 d-flex align-items-stretch', id='card-resolution')])]),
         # style={'align-items': 'stretch'}),
         html.Div(outputs.plot_elevations(), id='out-elevations', className='m-0 p-0', hidden=True),
         html.Div(outputs.plot_uv_coverage(), id='out-uv-coverage', className='m-0 p-0', hidden=True),
         html.Div(className='col-12 m-0 p-0', children=html.Div(className='row d-flex m-0 p-0', children=[
-                html.Div(outputs.field_of_view(), className='col-6 m-0 p-0', id='div-card-fov'),
-                html.Div(outputs.summary_freq_res(), className='col-6 m-0 p-0', id='div-card-vel')])),
-        html.Div(outputs.plot_worldmap(), id='out-worldmap', className='m-0 p-0', hidden=True),
-        html.Div(className='col-12 m-0 p-0', children=html.Div(className='row d-flex m-0 p-0', children=[
-            html.Div(outputs.data_size(), id='card-datasize', className='col-6 m-0 p-0')]))
+            html.Div(outputs.field_of_view(), className='col-6 m-0 p-0 d-flex align-items-stretch', id='div-card-fov'),
+            html.Div(outputs.data_size(), id='card-datasize', className='col-6 m-0 p-0 d-flex align-items-stretch')])),
+        html.Div(outputs.plot_worldmap(), id='out-worldmap', className='m-0 p-0', hidden=True)
+        # html.Div(className='col-12 m-0 p-0', children=html.Div(className='row d-flex m-0 p-0', children=[
+        #     ]))
     ])

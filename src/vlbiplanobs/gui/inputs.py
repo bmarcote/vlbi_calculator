@@ -244,10 +244,10 @@ def network_entry(app, network: str) -> html.Div:
     return html.Div(dbc.Card([
         dbc.CardImg(src=app.get_asset_url(f"network-{network.lower()}.png"),
                     top=False, className='full-background',
-                    style={'opacity': 1.0, 'object-fit': 'cover', 'height': '7rem'}),
+                    style={'opacity': 0.5, 'object-fit': 'cover', 'height': '7rem'}),
         dbc.CardImgOverlay(dbc.CardBody([
             html.Div(className='d-flex align-items-center', children=[
-                html.H4(network, className='text-bold text-white mb-0 mt-0 flex-grow-1',
+                html.H4(network, className='text-bold text-white px-1 mb-0 mt-0 flex-grow-1',
                         title=stations.Stations.get_network_full_name(network)),
                 dbc.Switch(label='', value=False, id=f"network-{network}",
                            className='form-check ml-auto', persistence=True)]),
@@ -256,12 +256,12 @@ def network_entry(app, network: str) -> html.Div:
             #         className='mt-0 mb-0 text-white',
             #         style={'white-space': 'nowrap', 'text-overflow': 'ellipsis',
             #                'overflow': 'hidden'}) if has_full_name else html.Br(),
-            html.Label(f"Observes at {network_band_labels(network)}",
-                       className='card-text text-white',
+            html.Label(network_band_labels(network),
+                       className='card-text text-white mt-auto',
                        id=f"network-{network}-label-band",
                        style={'line-height': '1.2'})],
-                       className='card-body text-start p-0 pt-0 w-100'))],
-                              className='m-2 card-background',
+                       className='card-body text-start p-0 pt-0 w-100 h-100 d-flex flex-column'), className='p-2')],
+                              className='m-2 card card-background',
                               style={'min-width': '11rem', 'height': '7rem',
                                      'overflow': 'hidden', 'opacity': 1.0},
                               id=f"network-{network}-card"), className='col-4')
@@ -344,14 +344,14 @@ def source_and_epoch_selection() -> html.Div:
     return html.Div([html.H4("Source  &  Epoch", className='text-dark font-weight-bold mb-1'),
                      html.Div(className='col-12', children=[
                         html.Div(className='row d-flex align-items-bottom', children=[
-                            html.Div(className='col-6', children=[
+                            html.Div(className='col-4', children=[
                                 html.Div(className='row form-group', children=[
                                     html.Label('Duration of the observation (in hours)', htmlFor='duration'),
                                     dbc.Input(id='duration', value=None, type='number', className='form-control',
-                                            placeholder="Duration of the observation (in hours)",
+                                            placeholder="Leave empty to search best time",
                                             persistence=True, debounce=False, inputMode='numeric', min=0.2, max=50),
                                     html.Small(id='error_duration', className='form-text text-muted')])]),
-                            html.Div(className='col-6', children=[
+                            html.Div(className='col-8', children=[
                                 html.Div(className='row form-group', children=[
                                     html.Label('Percentage of observing time spent on target', htmlFor='onsourcetime'),
                                     dcc.Slider(id='onsourcetime', min=20, max=100, step=10, value=70,

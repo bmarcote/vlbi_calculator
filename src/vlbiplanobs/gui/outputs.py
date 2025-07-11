@@ -178,7 +178,7 @@ def summary_freq_res(o: Optional[cli.VLBIObs] = None) -> html.Div:
         chan_f = cli.optimal_units(o.bandwidth/(o.subbands*o.channels), [u.GHz, u.MHz, u.kHz, u.Hz])
         vel = cli.optimal_units((2.9979e5*u.km/u.s)*(o.bandwidth/(2*o.frequency)).decompose(),
                                 [u.km/u.s, u.m/u.s])
-        chan_v = cli.optimal_units(2*vel/(o.subbands*o.channels), [u.km/u.s, u.m/u.s])
+        chan_v = cli.optimal_units(2*vel/(o.subbands*o.channels), [u.km/u.s])
     except Exception as e:
         # TODO: move it to a proper loggin
         print(f"Error computing frequency resolution: {e}")
@@ -193,7 +193,7 @@ def summary_freq_res(o: Optional[cli.VLBIObs] = None) -> html.Div:
                                 html.H3(className='text-white font-weight-bolder mb-0 '
                                                   'justify-content-center',
                                         id='freq-res-velocity',
-                                        children=f"{chan_v.value:.3g} "
+                                        children=f"{chan_v.value:.2g} "
                                                  f"{chan_v.unit.to_string('unicode')}")])
                        ], extra_rows=[
                             html.Br(),
@@ -273,8 +273,8 @@ def obs_time(o: Optional[cli.VLBIObs] = None) -> html.Div:
                             html.Br(),
                             html.Div(className='col-12', style={'color': 'var(--bs-gray-100)'},
                                      children=html.P("The planned observation will be conducted at a central "
-                                                     f"frequency of {o.frequency.to(u.GHz)} "
-                                                     f"(wavelength of {wavelength})."))])
+                                        f"frequency of {o.frequency.to(u.GHz):.3n} "
+                                        f"(wavelength of {wavelength:.3n})."))])
 
 def rms(o: Optional[cli.VLBIObs] = None) -> html.Div:
     if o is None:

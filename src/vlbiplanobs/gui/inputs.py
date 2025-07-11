@@ -1,4 +1,5 @@
 import functools
+import importlib
 from typing import Optional, Sequence
 from datetime import datetime as dt
 from dash import html, dcc
@@ -42,7 +43,8 @@ def modal_general_info() -> html.Div:
     """
     return html.Div(className='sidebar',
                     children=[
-                        html.H5("EVN Observation Planner"),
+                        html.H5("EVN Observation Planner", className='mb-0 pb-0'),
+                        html.H6(f"(version {importlib.metadata.version('vlbiplanobs')})", className='mt-0 pt-0'),
                         html.P(["The ", html.B('EVN Observation Planner'), " (", html.Em('PlanObs'),
                                 ") is a tool that allows users to plan very long baseline "
                                 "interferometry (VLBI) observations and verify the "

@@ -215,7 +215,7 @@ def pick_band(bands: dict[str, str]) -> html.Div:
                                               persistence=True),
                                 ])]),
                        html.Br(),
-                       html.Div(dcc.Slider(min=0, max=len(labels), step=1, value=0,
+                       html.Div(dcc.Slider(min=0, max=len(labels)-1, step=1, value=0,
                                            marks={i: label for i, label in enumerate(labels)},
                                 included=False, id='band-slider', persistence=True))])])
 
@@ -344,14 +344,14 @@ def source_and_epoch_selection() -> html.Div:
     return html.Div([html.H4("Source  &  Epoch", className='text-dark font-weight-bold mb-1'),
                      html.Div(className='col-12', children=[
                         html.Div(className='row d-flex align-items-bottom', children=[
-                            html.Div(className='col-4', children=[
+                            html.Div(className='col-5', children=[
                                 html.Div(className='row form-group', children=[
                                     html.Label('Duration of the observation (in hours)', htmlFor='duration'),
                                     dbc.Input(id='duration', value=None, type='number', className='form-control',
                                             placeholder="Leave empty to search best time",
                                             persistence=True, debounce=False, inputMode='numeric', min=0.2, max=50),
                                     html.Small(id='error_duration', className='form-text text-muted')])]),
-                            html.Div(className='col-8', children=[
+                            html.Div(className='col-7', children=[
                                 html.Div(className='row form-group', children=[
                                     html.Label('Percentage of observing time spent on target', htmlFor='onsourcetime'),
                                     dcc.Slider(id='onsourcetime', min=20, max=100, step=10, value=70,

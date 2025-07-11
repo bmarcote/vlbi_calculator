@@ -11181,6 +11181,27 @@ fieldset:disabled .btn {
   --bs-text-opacity: 1;
 }
 
+.text-evn-light {
+    color: #e2bbbd !important;
+}
+
+.text-success-light {
+  color: #bcedce !important;
+}
+
+.text-info-light {
+  color: #ceedfa !important;
+}
+
+.text-warning-light {
+  color: #faefcd !important;
+}
+
+.text-danger-light {
+  color: #fac6c6 !important;
+}
+
+
 .text-primary-emphasis {
   color: var(--bs-primary-text-emphasis) !important;
 }

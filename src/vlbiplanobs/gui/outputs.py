@@ -61,7 +61,7 @@ def message_card(title: str | list, body: str | list, mode: Literal['danger', 'i
             html.Div(className='row align-items-center', children=[
                 html.Div(className='col-2 pl-3 text-center',
                          children=html.Div(
-                            html.I(className=f"{icon} text-light text-xl",
+                            html.I(className=f"{icon} text-xl text-{mode}-light",
                                    style={'font-size': '3rem',
                                           'color': colors[mode]}))),
                 html.Div(className='col-10 text-start align-items-center', children=[

@@ -136,7 +136,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         raise PreventUpdate
 
     if band == 0 or (not selected_antennas) or (duration is None and (source == '' or not defined_source)):
-        return outputs.warning_card("Select the band, antennas, and duration",
+        return outputs.warning_card("Select the band, antennas, and source or duration",
                                     "If no source is provided, a duration for the observation "
                                     "must be set."), \
             *[no_update]*(n_outputs - 1)

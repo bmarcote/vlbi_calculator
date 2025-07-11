@@ -49,8 +49,13 @@ def outputs_column(app) -> html.Div:
     return html.Div(children=[
         # First just the warnings
         html.Div(id='user-message', className='m-0 p-0',
-                 children=outputs.info_card(["Set your VLBI observation and press ", html.Em('CALCULATE!')],
-                                            "The details of the expected outcome will appear here.")),
+                 children=html.Blockquote(className='text-secondary text-bold ms-2 px-2',
+                                          children=["Set your VLBI observation on the left and the press ",
+                                                    html.Em('CALCULATE!'),
+                                                    html.Footer(className='text-sm pt-2',
+                                                                children="The details of the expected outcome will "
+                                                                         "appear here")])),
+
         html.Div(id='out-sun', className='m-0 p-0'),
         html.Div(id='out-phaseref', className='m-0 p-0'),
         html.Div(id='out-ant', className='m-0 p-0'),

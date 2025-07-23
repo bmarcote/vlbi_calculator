@@ -703,9 +703,11 @@ def summary_pdf(o: cli.VLBIObs):
     if len(o.scans) > 0:
         fig = plots.elevation_plot(o, show_colorbar=True)
         assert fig is not None, "An image could not be created for the PDF"
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tempfig:
-            fig.write_image(tempfig.name)
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tempfig:
+            fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='black')
+            fig.write_image(tempfig.name, scale=2, width=800)
             figpath = Path(tempfig.name)
+            print(tempfig.name)
 
         # layout.append_layout_element(pdf.Image(figpath, width=414, height=265, horizontal_alignment=pdf.Alignment.CENTERED))
         layout.append_layout_element(pdf.Image(figpath, size=(414, 265)))

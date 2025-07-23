@@ -2,6 +2,7 @@ from dash import html, dcc
 from dash_bootstrap_components import Modal
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs.gui import inputs, outputs
+from vlbiplanobs import observation
 
 
 def top_banner(app) -> html.Div:
@@ -13,7 +14,8 @@ def top_banner(app) -> html.Div:
                                                  src=app.get_asset_url("logo_evn.png"),
                                                  alt='European VLBI Network (EVN)',
                                                  className="d-inline-block align-middle")]),
-                       html.Div(html.H2('EVN Observation Planner'),
+                       html.Div(html.H2('EVN Observation Planner',
+                                        html.Span(' (v4.6 beta)', style={'color': '#a01d26'})]),
                                 className='d-inline-block align-middle mx-auto mb-0 font-weight-bolder',
                                 style={'text-align': 'center', 'margin': '0', "flex": "1"}),
                        html.A(className='d-inline-block ml-auto pull-right',

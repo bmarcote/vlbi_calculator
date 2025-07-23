@@ -75,8 +75,8 @@ def download_pdf_summary(n_clicks):
         try:
             logger.info("PDF has been requested and created.")
             # return {'content': outputs.summary_pdf(_main_obs.get()), 'filename': 'planobs_summary.pdf'}, html.Div()
-            return dcc.send_file(outputs.summary_pdf(_main_obs.get()), #.getvalue(),
-                                 filename="planobs_summary.pdf"), html.Div(), no_update
+            tmpfile = outputs.summary_pdf(_main_obs.get())
+            return dcc.send_file(tmpfile, filename=tmpfile), html.Div(), no_update
         except ValueError as e:
             print(f"An error occurred: {e}")
             logger.exception(f"While downloading the PDF: {e}", colorize=True)

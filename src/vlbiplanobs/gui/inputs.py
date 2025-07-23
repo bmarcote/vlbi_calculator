@@ -106,11 +106,11 @@ def antenna_card_hover(app, target, ant: stations.Station, show_wavelengths: boo
     """Creates a Card showing all the relevant information for a given antenna, which
     will be displayed as a pop up window when hovering the name of a given antenna.
     """
-    return html.Div(dmc.HoverCard(shadow="md", withArrow=True, width=300,
-                                  openDelay=300, position='right', classNames='col-12 p-0 m-0',
+    return html.Div(dmc.HoverCard(shadow="lg", radius="lg",
+                                  openDelay=700, position='right',
                     children=[dmc.HoverCardTarget(target),
-                              dmc.HoverCardDropdown([antenna_card(app, ant, show_wavelengths)],
-                                                    className='col-12 m-0 p-0')]),
+                              dmc.HoverCardDropdown(antenna_card(app, ant, show_wavelengths),
+                                                    className='m-0 p-0')]),
                     style={'display': 'inline-flex', 'flex-wrap': 'wrap',
                            'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'})
 
@@ -140,14 +140,14 @@ def antenna_card(app, ant: stations.Station, show_wavelengths: bool = True) -> h
     return html.Div(dmc.Card(children=[html.Div(
                         dmc.CardSection(
                             dmc.Image(src=app.get_asset_url(
-                                f"ant-{ant.name.replace(' ', '_').lower()}.jpg"), h='300px', alt=ant.name),
+                                f"ant-{ant.name.replace(' ', '_').lower()}.jpg"), h='200px', alt=ant.name),
                         ), className='col-12 p-0 m-0'),
                         html.Div([
                             dmc.Group([
-                                dmc.Text(f"{ant.name} ({ant.codename})", className='text-bolder'),
+                                dmc.Text(f"{ant.name} ({ant.codename})", className='text-bolder', size='sm'),
                                 dmc.Badge(ant.diameter, color='#9DB7C4', style={'text-transform': 'none'}),
-                            ], justify='space-between', mt='md', pt='1rem', mb='0'),
-                            dmc.Text(ant.fullname, mb='0', c='#004990') if ant.fullname != ant.name
+                            ], justify='space-between', mt='md', pt='0.5rem', mb='0'),
+                            dmc.Text(ant.fullname, mb='0', c='#004990', size='sm') if ant.fullname != ant.name
                             else None,
                             dmc.Text(ant.country, c='dimmed', mt='0', mb='1rem'),
                             dmc.Text(f"Default antenna in {parse_str_list(ant.networks)}.", mb='1rem',
@@ -157,11 +157,11 @@ def antenna_card(app, ant: stations.Station, show_wavelengths: bool = True) -> h
                             dmc.Text("Can observe at the following bands (System Equivalent Flux "
                                      "Density, SEFD, values in brackets):", size='sm',
                                      id=f"ant-{ant.codename}-band-spec"),
-                            html.Div(className='container col-12 row mx-0 px-0',
+                            html.Div(className='container col-12 row mx-0 px-0 text-xs',
                                      id=f"badge-band-ant-{ant.codename}",
                                      children=print_table_bands_sefds(ant, show_wavelengths))
-                        ], className='col-12 px-2 pb-2 m-0')
-                    ], withBorder=False), className='col-12 p-0 m-0', style={'width': '300px'})
+                        ], className='col-12 px-1 pb-2 m-0')
+                    ], withBorder=False), className='col-12 p-0 m-0 text-sm', style={'width': '200px'})
 
 
 def compute_button() -> html.Div:

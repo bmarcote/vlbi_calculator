@@ -235,28 +235,28 @@ class Source(FixedTarget):
             return coord.get_icrs_coordinates(src_name)
 
     @classmethod
-    def source_from_name(cls, src_name: str) -> Self:
+    def source_from_name(cls, src_name: str, source_type: SourceType = SourceType.TARGET) -> Self:
         """Returns a Source object by finding the coordinates from its name.
         It first searches wihtin the RFC catalog, and if not found, through the
         'astropy.coordinates.get_icrs_coordinates' function through the RFC catalogs.
         """
-        return cls(src_name, coordinates=Source.get_coordinates_from_name(src_name))
+        return cls(src_name, coordinates=Source.get_coordinates_from_name(src_name), source_type=source_type)
 
     @classmethod
-    def source_from_str(cls, src: str) -> Self:
+    def source_from_str(cls, src: str, source_type: SourceType = SourceType.TARGET) -> Self:
         """Returns a Source object from the given string. This can be either the source name, and then it
         will retrieve the coordinates from the SIMBAD/NED/VizieR databases, if it's known, or the source
         coordinates (in either 'XXhXXmXXs XXdXXmXXs' or 'HH:MM:SS DD:MM:SS' formats).
         """
         if all([char in src for char in ('h', 'm', 'd', 's')]):
-            return cls('target', coordinates=coord.SkyCoord(src), source_type=SourceType.TARGET)
+            return cls('target', coordinates=coord.SkyCoord(src), source_type=source_type)
         elif ':' in src:
             for char in ('h', 'm', 'd', 'm'):
                 src = src.replace(':', char, 1)
 
-            return cls('target', coordinates=coord.SkyCoord(src), source_type=SourceType.TARGET)
+            return cls('target', coordinates=coord.SkyCoord(src), source_type=source_type)
         else:
-            return cls.source_from_name(src)
+            return cls.source_from_name(src, source_type)
 
     @staticmethod
     def get_rfc_coordinates(src_name: str) -> coord.SkyCoord:

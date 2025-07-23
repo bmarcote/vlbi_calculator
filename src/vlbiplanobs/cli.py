@@ -68,7 +68,7 @@ class VLBIObs(obs.Observation):
             val = optimal_units(self.datarate, [u.Gbit/u.s, u.Mbit/u.s])
             rprint(f"\nData rate of {val.value:.0f} {val.unit.to_string('unicode')}, "
                    f"producing a total bandwidth of {optimal_units(self.bandwidth, [u.MHz, u.GHz])}, "
-                   f" divided in {self.subbands} x {int(self.bandwidth.value/self.subbands)}-"
+                   f"divided in {self.subbands} x {int(self.bandwidth.value/self.subbands)}-"
                    f"{self.bandwidth.unit} subbands, with {self.channels} channels each, "  # type: ignore
                    f"{self.polarizations} polarization.")
         else:
@@ -172,7 +172,7 @@ class VLBIObs(obs.Observation):
                                                         return_gst=True)[ablockname]
                 if len(when_everyone) > 0:
                     rprint("\n[bold]Everyone can observe the source at: [/bold]", end='')
-                    rprint(', '.join([t1.to_string(sep=':', fields=2, pad=True) + '--' +
+                    rprint(', '.join([t1.to_string(sep=':', fields=2, pad=True) + '-' +
                            t2.to_string(sep=':', fields=2, pad=True) +
                            ' GST' for t1, t2 in when_everyone]))
                 else:
@@ -181,7 +181,7 @@ class VLBIObs(obs.Observation):
                 when_everyone = self.when_is_observable(mandatory_stations='all')[ablockname]
                 if len(when_everyone) > 0:
                     rprint("\n[bold]Everyone can observe the source at: [/bold]", end='')
-                    rprint(', '.join([t1.strftime('%d %b %Y %H:%M')+'--'+t2.strftime('%H:%M') +
+                    rprint(', '.join([t1.strftime('%d %b %Y %H:%M')+'-'+t2.strftime('%H:%M') +
                            ' UTC' for t1, t2 in when_everyone]))
                 else:
                     rprint("\nThe source cannot be observed by all stations at the same time.")
@@ -232,7 +232,8 @@ class VLBIObs(obs.Observation):
                                f"(assuming the total observing time).[/dim]")
                 else:
                     if src in self.sourcenames_in_block(ablockname):
-                        rprint(f"{src}: {optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam]):.02f}")
+                        val = optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
+                        rprint(f"{src}: {val.value:.2f} {val.unit.to_string('unicode')}.")
 
             print('\n')
 

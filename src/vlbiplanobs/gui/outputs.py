@@ -20,7 +20,7 @@ card = inputs.card
 
 def card_result(number: str | list, label: str | list, id: str, extra_rows: Optional[list] = None,
                 second_column_n: int = 0, second_column_content: Optional[list] = None) -> html.Div:
-    return card(className='bg-primary opacity-10 p-0 m-0', style={'height': '100%', 'min-width': '200px'}, children=[
+    return card(className='bg-primary opacity-10 p-0 m-0 card-text-shadow', style={'height': '100%', 'min-width': '200px'}, children=[
         html.Div(className='row', children=[
             html.Div(className=f'col-{12-second_column_n} text-start text-wrap: pretty', children=[
                 html.Div(className='numbers', children=[
@@ -566,10 +566,10 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
     text = f"Observation to be conducted at {o.band.replace('cm', ' cm')}"
     if o.fixed_time:
         if o.times[0].datetime.date() == o.times[-1].datetime.date():
-            layout.append_layout_element(pdf.Paragraph(f"{text} from {o.times[0].strftime('%d %b %Y %H:%M')}–"
+            layout.append_layout_element(pdf.Paragraph(f"{text} from {o.times[0].strftime('%d %b %Y %H:%M')}-"
                                      f"{o.times[-1].strftime('%H:%M')} UTC."))
         elif (o.times[-1] - o.times[0]) < 24*u.h:
-            layout.append_layout_element(pdf.Paragraph(f"{text} from {o.times[0].strftime('%d %b %Y %H:%M')}–"
+            layout.append_layout_element(pdf.Paragraph(f"{text} from {o.times[0].strftime('%d %b %Y %H:%M')}-"
                                      f"{o.times[-1].strftime('%H:%M')} (+1d) UTC."))
         else:
             layout.append_layout_element(pdf.Paragraph(f"{text} from {o.times[0].strftime('%d %b %Y %H:%M')} to "
@@ -705,6 +705,7 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
     layout.append_layout_element(pdf.Paragraph(f"Field of view limited to {bw_smearing:.2g} (from frequency smearing) "
                              f"and {tm_smearing:.2g} (from time smearing), considering 10% loss."))
 
+    print(f"{len(o.scans)=}, {show_figure=}")
     if len(o.scans) > 0 and show_figure:
         fig = plots.elevation_plot(o, show_colorbar=True)
         assert fig is not None, "An image could not be created for the PDF"
@@ -712,7 +713,7 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
             fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='black')
             fig.write_image(tempfig.name, scale=2, width=800)
             figpath = Path(tempfig.name)
-            print(tempfig.name)
+            print(f"Image file: {tempfig.name}")
 
         # layout.append_layout_element(pdf.Image(figpath, width=414, height=265, horizontal_alignment=pdf.Alignment.CENTERED))
         layout.append_layout_element(pdf.Image(figpath, size=(414, 265)))

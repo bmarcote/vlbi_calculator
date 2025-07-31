@@ -30,11 +30,10 @@ def top_banner(app) -> html.Div:
 def inputs_column(app) -> html.Div:
     return html.Div(children=[
             inputs.card(inputs.pick_band(fs.bands)),
+            inputs.card(inputs.duration()),
             inputs.card(inputs.networks(app)),
             inputs.card(inputs.antenna_list(app)),
             inputs.card(inputs.source_and_epoch_selection()),
-            # inputs.card(inputs.source_selection()),
-            # inputs.card(inputs.epoch_selection()),
             inputs.card(inputs.correlations())])
 
 

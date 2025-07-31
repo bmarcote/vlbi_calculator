@@ -127,14 +127,15 @@ def download_pdf_summary(n_clicks, linked_file: str):
                State('inttime', 'value'),
                State('switch-specify-e-evn', 'value'),
                State('switches-antennas', 'value'),
-               [State(f"network-{network}", 'value') for network in observation._NETWORKS]],
+               [State(f"network-{network}", 'value') for network in observation._NETWORKS],
+               [State(f"network-{network}", 'disabled') for network in observation._NETWORKS]],
               running=[(Output("compute-observation", "disabled"), True, False),],
               suppress_callback_exceptions=True)
 @observation.enforce_types
 def compute_observation(n_clicks, band: int, defined_source: bool, source: str, onsourcetime: float,
                         defined_epoch: bool, startdate: str, starttime: str, duration: float, datarate: int, subbands: int,
                         channels: int, pols: int, inttime: int, e_evn: bool, selected_antennas: list[str],
-                        selected_networks: list[bool]):
+                        selected_networks: list[bool], disabled_networks: list[bool]):
     """Computes all products to be shown concerning the set observation.
     """
     n_outputs = 24
@@ -162,11 +163,13 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                                   'and duration are required.'), *[no_update]*(n_outputs - 1)
 
     t0 = dt.now()
-    network_names = [nn for nb, nn in zip(selected_networks, observation._NETWORKS) if nb]
+    network_names = [nn for nb, ns, nn in zip(selected_networks, disabled_networks, observation._NETWORKS) if nb and not ns]
     try:
         logger.info(f"New Observation: Networks:{','.join(network_names)}; "
                     f"antennas: {','.join(selected_antennas)};"
-                    f"band: {inputs.band_from_index(band)}; target: {source}; duration: {duration}h;"
+                    f"datarate: {datarate};",
+                    f"band: {inputs.band_from_index(band)}; target: {source}; duration: {duration}"
+                    f"{' h' if duration is not None else ''};"
                     f"defined_epoch: {defined_epoch}.")
         _main_obs.set(cli.main(band=inputs.band_from_index(band), stations=sorted(selected_antennas),
                       targets=[source,] if defined_source and source.strip() != '' else None,
@@ -281,6 +284,8 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
     try:
         logger.info("PDF has been requested.")
         # return {'content': outputs.summary_pdf(_main_obs.get()), 'filename': 'planobs_summary.pdf'}, html.Div()
+        tmpfile = outputs.summary_pdf(_main_obs.get(), show_figure=True)
+    except RuntimeError as e:
         tmpfile = outputs.summary_pdf(_main_obs.get(), show_figure=False)
     except ValueError as e:
         logger.exception(f"While downloading the PDF: {e}", colorize=True)

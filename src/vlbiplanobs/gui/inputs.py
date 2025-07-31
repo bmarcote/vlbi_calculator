@@ -342,15 +342,16 @@ def epoch_selection() -> html.Div:
                                   persistence=True, debounce=False, inputMode='numeric', min=0.5, max=50),
                         html.Small(id='error_duration', className='form-text text-muted')])])
 
-def source_and_epoch_selection() -> html.Div:
-    return html.Div([html.H4("Source  &  Epoch", className='text-dark font-weight-bold mb-1'),
+
+def duration() -> html.Div:
+    return html.Div([html.H4("Duration of the Observation", className='text-dark font-weight-bold mb-1'),
                      html.Div(className='col-12', children=[
                         html.Div(className='row d-flex align-items-bottom', children=[
                             html.Div(className='col-5', children=[
                                 html.Div(className='row form-group', children=[
-                                    html.Label('Duration of the observation (in hours)', htmlFor='duration'),
+                                    html.Label('Leave empty to search best time', htmlFor='duration'),
                                     dbc.Input(id='duration', value=None, type='number', className='form-control',
-                                            placeholder="Leave empty to search best time",
+                                            placeholder="In hours",
                                             persistence=True, debounce=False, inputMode='numeric', min=0.2, max=50),
                                     html.Small(id='error_duration', className='form-text text-muted')])]),
                             html.Div(className='col-7', children=[
@@ -358,7 +359,10 @@ def source_and_epoch_selection() -> html.Div:
                                     html.Label('Percentage of observing time spent on target', htmlFor='onsourcetime'),
                                     dcc.Slider(id='onsourcetime', min=20, max=100, step=10, value=70,
                                                 marks={i: str(i) for i in range(20, 101, 10)},
-                                                persistence=True)])])])]),
+                                                persistence=True)])])])])])
+
+def source_and_epoch_selection() -> html.Div:
+    return html.Div([html.H4("Source  &  Epoch", className='text-dark font-weight-bold mb-1'),
                      html.Div(className='col-12', children=[
                         html.Div(className='row d-flex align-items-bottom', children=[
                             html.Div(className='col-6', children=[

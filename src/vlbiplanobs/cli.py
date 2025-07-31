@@ -1,6 +1,7 @@
 import sys
 import argparse
 from typing import Optional
+from datetime import datetime as dt
 import numpy as np
 from astropy import units as u
 from astropy.time import Time
@@ -347,6 +348,7 @@ def main(band: str, networks: Optional[list[str]] = None,
             Create plots in Plotly and show them in a browser page. If False, it will only
             print some quick plots within the terminal instead.
     """
+    t0 = dt.now()
     if networks is None and stations is None:
         rprint("[bold red]You need to provide at least a VLBI network "
                "or a list of antennas that will participate in the observation.[/bold red]")
@@ -430,6 +432,7 @@ def main(band: str, networks: Optional[list[str]] = None,
     if targets is not None or source_catalog is not None:
         o.plot_visibility(gui, tui)
 
+    print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
     # o.print_baseline_sensitivities()
     return o
 

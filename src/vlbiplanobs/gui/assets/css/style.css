@@ -117,3 +117,7 @@ input[type=time] {
 .Select-control {
     height: calc(1.5em + .75rem + 2px);
 }
+
+.card-text-shadow {
+    text-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
+}

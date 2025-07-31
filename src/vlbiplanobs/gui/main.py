@@ -138,29 +138,31 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                         selected_networks: list[bool], disabled_networks: list[bool]):
     """Computes all products to be shown concerning the set observation.
     """
-    n_outputs = 24
     if n_clicks is None:
         raise PreventUpdate
 
+    vals4error = no_update, True, no_update, *[html.Div()]*6, True, html.Div(), no_update, \
+        no_update, True, html.Div(), no_update, no_update, html.Div(), html.Div(), True, no_update, \
+        *[html.Div()]*2
     if band == 0 or (not selected_antennas) or (duration is None and (source == '' or not defined_source)):
         return outputs.warning_card("Select the band, antennas, and source or duration",
                                     "If no source is provided, a duration for the observation "
-                                    "must be set."), \
-            *[no_update]*(n_outputs - 1)
+                                    "must be set."), *vals4error
+
+              # *[no_update]*(n_outputs - 1)
 
     selected_antennas = [ant for ant in selected_antennas
                          if observation._STATIONS[ant].has_band(inputs.band_from_index(band))
                          and (not e_evn or observation._STATIONS[ant].real_time)]
     if not selected_antennas:
         return outputs.error_card("No antennas are able to observe with the current setup",
-                                  "First, select antennas that can actually observe."), \
-               *[no_update]*(n_outputs - 1)
+                                  "First, select antennas that can actually observe."), *vals4error
 
     if defined_epoch and ((startdate is not None and duration is None) or
                           (startdate is None and duration is not None)) == 1:
         return outputs.error_card('The observing epoch is partially defined',
                                   'If you define the observing epoch, then all start date, time, '
-                                  'and duration are required.'), *[no_update]*(n_outputs - 1)
+                                  'and duration are required.'), *vals4error
 
     t0 = dt.now()
     network_names = [nn for nb, ns, nn in zip(selected_networks, disabled_networks, observation._NETWORKS) if nb and not ns]
@@ -195,15 +197,15 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
     except ValueError:
         logger.exception("An error has occured: {e}.")
         return outputs.error_card("Could not plan the observation",
-                                  "Your source is not visible during the defined time."), *[no_update]*(n_outputs - 1)
+                                  "Your source is not visible during the defined time."), *vals4error
     except sources.SourceNotVisible:
         return outputs.error_card('Source Not Visible!',
                                   'The source cannot be observed by the given antennas and/or '
-                                  'during the given observing time.'), *[no_update]*(n_outputs - 1)
+                                  'during the given observing time.'), *vals4error
     except Exception:
         logger.exception("An error has occured: {e}.")
         return outputs.error_card("Could not plan the observation",
-                                  "Missing necessary fields in the observation configuration"), *[no_update]*(n_outputs - 1)
+                                  "Missing necessary fields in the observation configuration"), *vals4error
 
     assert _main_obs.get() is not None, "Observation should have been created."
     try:
@@ -273,10 +275,10 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
     except sources.SourceNotVisible:
         return outputs.error_card('Source Not Visible!',
                                   'The source cannot be observed by the given antennas and/or '
-                                  'during the given observing time.'), *[no_update]*(n_outputs - 1)
+                                  'during the given observing time.'), *vals4error
     except Exception as e:
         logger.exception(f"While computing: {e}.")
-        return outputs.error_card("An error has occured", str(e)), *[no_update]*(n_outputs - 1)
+        return outputs.error_card("An error has occured", str(e)), *vals4error
 
     print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
     t1 = dt.now()
@@ -285,12 +287,12 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         logger.info("PDF has been requested.")
         # return {'content': outputs.summary_pdf(_main_obs.get()), 'filename': 'planobs_summary.pdf'}, html.Div()
         tmpfile = outputs.summary_pdf(_main_obs.get(), show_figure=True)
-    except RuntimeError as e:
+    except RuntimeError:
         tmpfile = outputs.summary_pdf(_main_obs.get(), show_figure=False)
     except ValueError as e:
         logger.exception(f"While downloading the PDF: {e}", colorize=True)
         return outputs.error_card("Error during the PDF creation",
-                                  "Re-calculate a full observation and try again", str(e)), *[no_update]*(n_outputs - 1)
+                                  "Re-calculate a full observation and try again", str(e)), *vals4error
 
     logger.info(f"Execution time for PDF: {(dt.now() - t1).total_seconds()} s")
 

@@ -68,15 +68,16 @@ app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_
                Output('downloading', 'children'),
                Output('user-message', 'children', allow_duplicate=True)],
               Input("button-download", "n_clicks"),
+              State("download-link", "href"),
               running=[(Output('button-download', 'disabled'), True, False),],
               prevent_initial_call=True)
-def download_pdf_summary(n_clicks):
+def download_pdf_summary(n_clicks, linked_file: str):
     if n_clicks is not None:
         try:
             logger.info("PDF has been requested and created.")
             # return {'content': outputs.summary_pdf(_main_obs.get()), 'filename': 'planobs_summary.pdf'}, html.Div()
-            tmpfile = outputs.summary_pdf(_main_obs.get())
-            return dcc.send_file(tmpfile, filename=tmpfile), html.Div(), no_update
+            # tmpfile = outputs.summary_pdf(_main_obs.get())
+            return dcc.send_file(linked_file, filename="planobs_summary.pdf"), html.Div(), no_update
         except ValueError as e:
             print(f"An error occurred: {e}")
             logger.exception(f"While downloading the PDF: {e}", colorize=True)
@@ -89,6 +90,7 @@ def download_pdf_summary(n_clicks):
 @app.callback([Output('user-message', 'children'),
                Output('loading-div', 'children'),
                Output('download-summary-div', 'hidden'),
+               Output('download-link', 'href'),
                Output('card-rms', 'children'),
                Output('sensitivity-baseline-modal', 'children'),
                Output('card-resolution', 'children'),
@@ -135,7 +137,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                         selected_networks: list[bool]):
     """Computes all products to be shown concerning the set observation.
     """
-    n_outputs = 23
+    n_outputs = 24
     if n_clicks is None:
         raise PreventUpdate
 
@@ -179,9 +181,14 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         _main_obs.prev_subbands = subbands
         # I need to run this first otherwise the other functions will fail
         # (likely partially initialized uv values)
-        _main_obs.get().thermal_noise()
+        _ = _main_obs.get().is_observable()
+        _ = _main_obs.get().is_always_observable()
+        _ = _main_obs.get().thermal_noise()
+        _ = _main_obs.get().sun_constraint()
+        _ = _main_obs.get().sun_limiting_epochs()
+        # _main_obs.get().thermal_noise()
         _main_obs.get().synthesized_beam()
-        _main_obs.get().get_uv_data()
+        # _main_obs.get().get_uv_data()
     except ValueError:
         logger.exception("An error has occured: {e}.")
         return outputs.error_card("Could not plan the observation",
@@ -269,8 +276,20 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         return outputs.error_card("An error has occured", str(e)), *[no_update]*(n_outputs - 1)
 
     print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
-    logger.info(f"Execution time: {(dt.now() - t0).total_seconds()} s")
-    return html.Div(), html.Div(), False, out_rms, out_baseline_sens, out_res, out_sun, \
+    t1 = dt.now()
+    logger.info(f"Execution time: {(t1 - t0).total_seconds()} s")
+    try:
+        logger.info("PDF has been requested.")
+        # return {'content': outputs.summary_pdf(_main_obs.get()), 'filename': 'planobs_summary.pdf'}, html.Div()
+        tmpfile = outputs.summary_pdf(_main_obs.get(), show_figure=False)
+    except ValueError as e:
+        logger.exception(f"While downloading the PDF: {e}", colorize=True)
+        return outputs.error_card("Error during the PDF creation",
+                                  "Re-calculate a full observation and try again", str(e)), *[no_update]*(n_outputs - 1)
+
+    logger.info(f"Execution time for PDF: {(dt.now() - t1).total_seconds()} s")
+
+    return html.Div(), html.Div(), False, tmpfile, out_rms, out_baseline_sens, out_res, out_sun, \
         out_phaseref, out_ant, *out_plot_elev, *out_plot_uv, out_fov, out_freq, False, out_worldmap, out_datasize, out_obstime
 
 

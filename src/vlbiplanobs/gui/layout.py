@@ -42,7 +42,7 @@ def compute_buttons(app) -> html.Div:
     return html.Div([html.Div(className='m-0 p-0', children=[
         html.Div(className='row d-flex m-0 p-0', children=[
             inputs.compute_button(),
-            outputs.download_button(),
+            outputs.download_button_div(),
             dcc.Download(id="download-data")])])])
 
 
@@ -57,6 +57,7 @@ def outputs_column(app) -> html.Div:
                                                                 children="The details of the expected outcome will "
                                                                          "appear here")])),
 
+        html.A(id='download-link'),
         html.Div(id='out-sun', className='m-0 p-0'),
         html.Div(id='out-phaseref', className='m-0 p-0'),
         html.Div(id='out-ant', className='m-0 p-0'),

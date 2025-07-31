@@ -527,25 +527,30 @@ def plot_worldmap(o: Optional[cli.VLBIObs] = None) -> html.Div:
                                    html.P("")]))
 
 
+def download_button_div() -> html.Div:
+    """Returns the placeholder for the button that allows to download the PDF with the card_results
+    of the observation.
+    """
+    # return html.Div(html.Div(html.Div(), hidden=True, id='download-summary-div'),
+    return html.Div(html.Div(download_button(), hidden=True, id='download-summary-div'),
+                    className='col-6', style={'position': 'relative'})
+
+
 def download_button() -> html.Div:
     """Returns the button to compute the observation
     """
-    return html.Div(html.Div([
-                html.Div([
-                    dbc.Spinner(id='downloading', color='#004990',
-                                children=html.Div(id='downloading-div')),
-                    dbc.Button('Export Summary as PDF',
-                               id='button-download', color='secondary', outline=True,
-                               className='btn btn-lg btn-outline-secondary text-bolder '
-                                         'mx-auto w-75 m-4 p-2',
-                               style={'position': 'sticky', 'top': '20px'})],
-                         className='d-flex align-items-center justify-content-center',
-                         style={'gap': '5px'}),
-            ], hidden=True, id='download-summary-div'),
-        className='col-6', style={'position': 'relative'})
+    return html.Div([dbc.Spinner(id='downloading', color='#004990',
+                                 children=html.Div(id='downloading-div')),
+                     dbc.Button('Export Summary as PDF',
+                                id='button-download', color='secondary', outline=True,
+                                className='btn btn-lg btn-outline-secondary text-bolder '
+                                            'mx-auto w-75 m-4 p-2',
+                                style={'position': 'sticky', 'top': '20px'})],
+                          className='d-flex align-items-center justify-content-center',
+                          style={'gap': '5px'})
 
 
-def summary_pdf(o: cli.VLBIObs):
+def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
     """Creates a PDF file with the summary of the observation and includes the elevation plot figure.
     """
     if o is None:
@@ -700,7 +705,7 @@ def summary_pdf(o: cli.VLBIObs):
     layout.append_layout_element(pdf.Paragraph(f"Field of view limited to {bw_smearing:.2g} (from frequency smearing) "
                              f"and {tm_smearing:.2g} (from time smearing), considering 10% loss."))
 
-    if len(o.scans) > 0:
+    if len(o.scans) > 0 and show_figure:
         fig = plots.elevation_plot(o, show_colorbar=True)
         assert fig is not None, "An image could not be created for the PDF"
         with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tempfig:
@@ -712,11 +717,9 @@ def summary_pdf(o: cli.VLBIObs):
         # layout.append_layout_element(pdf.Image(figpath, width=414, height=265, horizontal_alignment=pdf.Alignment.CENTERED))
         layout.append_layout_element(pdf.Image(figpath, size=(414, 265)))
 
-    # with io.BytesIO() as buffer:
     tmp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
-    # with open(tmp.name, 'wb') as temp_file:
     pdf.PDF.write(where_to=tmp.name, what=doc)
-    print(f"[green]File at {tmp.name}[/green]")
+    print(f"File at {tmp.name}.")
         # buffer.seek(0)
 
     return tmp.name

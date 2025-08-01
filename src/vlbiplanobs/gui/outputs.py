@@ -610,7 +610,7 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
                 text += f" for {ablockname}." if len(o.sun_limiting_epochs()) > 1 else "."
                 layout.append_layout_element(pdf.Paragraph(text, font_color=pdf.HexColor("#FF0000")))
         else:
-            if (sun_const[ablockname] is not None) and not (not sun_const[ablockname]):
+            if (sun_const[ablockname] is not None): # and not (not sun_const[ablockname]):
                 text = "Note the the Sun is too close to the source"
                 text += f" {ablockname}" if len(o.sun_limiting_epochs()) > 1 else " "
                 text += f"({sun_const[ablockname]:.02f} away)."

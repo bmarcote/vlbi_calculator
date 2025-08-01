@@ -353,24 +353,12 @@ class Observation(object):
         if not new_datarate.unit.is_equivalent(u.bit/u.s):
             raise TypeError("The new data rate must be a quantity with bit /s equivalent units.")
 
+        if new_datarate <= 0:
+            raise ValueError(f"datarate must be a positive number (currently {new_datarate})")
+
         the_networks = self._guess_network()
         with self._mutex:
-            if new_datarate is None:
-                self._datarate = None
-            elif isinstance(new_datarate, int):
-                if new_datarate <= 0:
-                    raise ValueError(f"datarate must be a positive number (currently {new_datarate})")
-
-                self._datarate = new_datarate * u.Mbit/u.s
-            elif isinstance(new_datarate, u.Quantity):
-                if new_datarate <= 0:
-                    raise ValueError(f"datarate must be a positive number (currently {new_datarate})")
-
-                self._datarate = new_datarate.to(u.Mbit/u.s)
-            else:
-                raise ValueError(f"Unknown type for datarate {new_datarate}"
-                                 "(int or astropy.units.Quantity (~bit/s) expected)")
-
+            self._datarate = new_datarate.to(u.Mbit/u.s)
             if 'EVN' in the_networks:
                 for s in self.stations:
                     if isinstance(s.max_datarate, dict) and 'EVN' in s.max_datarate:

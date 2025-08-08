@@ -222,6 +222,8 @@ class VLBIObs(obs.Observation):
                            f"this observation (separation of {sun_const[ablockname]:.1f}).[/bold red]")
 
             rprint("[bold]Expected rms thermal noise for the target source: [/bold]", end='')
+            # TODO: I am verifying this first and otherwise correct for it in Observation
+            print(f'Duration: {self.duration}, {self.fixed_time=}')
             for src, rms in rms_noise.items():
                 if any([s.type is sources.SourceType.TARGET for s in self.sources()]):
                     if src in self.sourcenames_in_block(ablockname, sources.SourceType.TARGET):
@@ -496,7 +498,7 @@ def cli():
                         "it will pick such pulsar(s).")
     parser.add_argument('--data-rate', type=float, default=None,
                         help="Maximum data rate of the observation, in Mb/s.")
-    parser.add_argument('--no-gui', action="store_false", default=False,
+    parser.add_argument('--gui', action="store_true", default=False,
                         help="If set, then it will not open graphical plots, but it will only\n"
                         "show the quick plots through terminal.")
     parser.add_argument('--no-tui', action="store_false", default=True,
@@ -552,7 +554,7 @@ def cli():
                " the observation.[/bold red]")
         sys.exit(1)
 
-    if (not args.no_gui) and (not args.no_tui):
+    if (not args.gui) and (not args.no_tui):
         rprint("[bold yellow]Note that you supressed both GUI and TUI.\n"
                "No output will be provided.[/bold yellow]")
 
@@ -561,7 +563,7 @@ def cli():
          targets=args.targets, start_time=Time(args.starttime, scale='utc')
          if args.starttime else None,
          duration=float(args.duration)*u.hour if args.duration is not None else None,
-         datarate=args.data_rate*u.Mbit/u.s if args.data_rate else None, gui=args.no_gui, tui=args.no_tui)
+         datarate=args.data_rate*u.Mbit/u.s if args.data_rate else None, gui=args.gui, tui=args.no_tui)
 
 
 if __name__ == '__main__':

@@ -705,7 +705,6 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
     layout.append_layout_element(pdf.Paragraph(f"Field of view limited to {bw_smearing:.2g} (from frequency smearing) "
                              f"and {tm_smearing:.2g} (from time smearing), considering 10% loss."))
 
-    print(f"{len(o.scans)=}, {show_figure=}")
     if len(o.scans) > 0 and show_figure:
         fig = plots.elevation_plot(o, show_colorbar=True)
         assert fig is not None, "An image could not be created for the PDF"
@@ -720,9 +719,6 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
 
     tmp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
     pdf.PDF.write(where_to=tmp.name, what=doc)
-    print(f"File at {tmp.name}.")
-        # buffer.seek(0)
-
     return tmp.name
 
     # def get_fig_dirty_map(self):

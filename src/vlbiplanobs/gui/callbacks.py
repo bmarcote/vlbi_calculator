@@ -33,8 +33,8 @@ def change_band_labels(show_wavelengths: bool):
 #         return True
 #
 #     return no_update
-
-
+#
+#
 # @callback(Output("welcome-modal", "is_open"),
 #           Input("close-modal", "n_clicks"),
 #           [State("welcome-modal-shown", "data"),

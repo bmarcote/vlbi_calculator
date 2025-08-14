@@ -8,6 +8,7 @@ from dash import html, dcc
 import dash_bootstrap_components as dbc
 from borb import pdf
 from vlbiplanobs import cli
+from vlbiplanobs.sources import SourceNotVisible
 from vlbiplanobs.gui import plots, inputs
 
 
@@ -210,8 +211,11 @@ def field_of_view(o: Optional[cli.VLBIObs] = None) -> html.Div:
     if o is None:
         return html.Div()
 
-    if o.bandwidth_smearing() is None or o.time_smearing() is None:
-        return html.Div()
+    try:
+        if o.bandwidth_smearing() is None or o.time_smearing() is None:
+            return html.Div()
+    except SourceNotVisible:
+        html.Div()
 
     bw_smearing = cli.optimal_units(o.bandwidth_smearing(), [u.deg, u.arcmin, u.arcsec])
     tm_smearing = cli.optimal_units(o.time_smearing(), [u.deg, u.arcmin, u.arcsec])
@@ -372,10 +376,14 @@ def resolution(o: Optional[cli.VLBIObs] = None) -> html.Div:
     if o is None:
         return html.Div()
 
-    if not o.sourcenames:
-        synth_beam = o.synthesized_beam()[list(o.synthesized_beam().keys())[0]]
-    else:
-        synth_beam = o.synthesized_beam()[o.sourcenames[0]]
+    try:
+        if not o.sourcenames:
+            synth_beam = o.synthesized_beam()[list(o.synthesized_beam().keys())[0]]
+        else:
+            synth_beam = o.synthesized_beam()[o.sourcenames[0]]
+    except ValueError:
+        # Likely not enough baselines to form a beam
+        return card_result(["N/A"], 'Angular Resolution', id='res')
 
     bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
     bmin = synth_beam['bmin'].to(bmaj.unit)

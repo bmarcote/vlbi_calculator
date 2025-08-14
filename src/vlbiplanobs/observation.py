@@ -887,9 +887,12 @@ class Observation(object):
         a reduction of a 10% in the response of the telescope. The field of view should then
         be limited to this range to avoid significant loses.
         """
-        return ((49500*u.arcsec*u.MHz*u.km)*self.channels /
-                (list(self.longest_baseline().values())[0][1] *
-                 self.bandwidth/self.subbands)).to(u.arcsec)
+        try:
+            return ((49500*u.arcsec*u.MHz*u.km)*self.channels /
+                    (list(self.longest_baseline().values())[0][1] *
+                    self.bandwidth/self.subbands)).to(u.arcsec)
+        except IndexError:
+            raise SourceNotVisible
 
     def time_smearing(self) -> u.Quantity:
         """Returns the time smearing expected for the given observation.
@@ -901,9 +904,12 @@ class Observation(object):
         a reduction of a 10% in the response of the telescope. The field of view should then
         be limited to this range to avoid significant loses.
         """
-        return ((18560*u.arcsec*u.km*u.s/u.cm) * (self.wavelength /
-                (list(self.longest_baseline().values())[0][1] *
-                 self.inttime))).to(u.arcsec)
+        try:
+            return ((18560*u.arcsec*u.km*u.s/u.cm) * (self.wavelength /
+                    (list(self.longest_baseline().values())[0][1] *
+                    self.inttime))).to(u.arcsec)
+        except IndexError:
+            raise SourceNotVisible
 
     def datasize(self) -> Optional[u.Quantity]:
         """Returns the expected size for the output FITS IDI files.

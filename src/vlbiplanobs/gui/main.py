@@ -192,15 +192,16 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         _ = _main_obs.get().sun_constraint()
         _ = _main_obs.get().sun_limiting_epochs()
         # _main_obs.get().thermal_noise()
-        _main_obs.get().synthesized_beam()
+        # _main_obs.get().synthesized_beam()
         # _main_obs.get().get_uv_data()
     except ValueError:
         logger.exception("An error has occured: {e}.")
         return outputs.error_card("Could not plan the observation",
-                                  "Your source is not visible during the defined time."), *vals4error
+                                  "Your source is not visible during the defined time by >1 antenna."), \
+            *vals4error
     except sources.SourceNotVisible:
         return outputs.error_card('Source Not Visible!',
-                                  'The source cannot be observed by the given antennas and/or '
+                                  'The source cannot be observed by at least more than one antenna '
                                   'during the given observing time.'), *vals4error
     except Exception:
         logger.exception("An error has occured: {e}.")
@@ -212,7 +213,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         futures = {}
         with ThreadPoolExecutor() as executor:
             futures['rms'] = executor.submit(_main_obs.get().thermal_noise)
-            futures['beam'] = executor.submit(_main_obs.get().synthesized_beam)
+            # futures['beam'] = executor.submit(_main_obs.get().synthesized_beam)
             futures['out-rms'] = executor.submit(outputs.rms, _main_obs.get())
             futures['out-res'] = executor.submit(outputs.resolution, _main_obs.get())
             futures['out_ant'] = executor.submit(outputs.ant_warning, _main_obs.get())

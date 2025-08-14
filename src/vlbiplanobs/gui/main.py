@@ -255,21 +255,24 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
             out_plot_elev = [True, no_update, no_update, no_update]
             #     out_sun = no_update
             out_plot_uv = [True, no_update, no_update, no_update]
+            out_worldmap = plots.plot_worldmap_stations(_main_obs.get())
         else:
-            out_plot_elev = [False,
-                             outputs.print_observability_ranges(_main_obs.get()),
-                             plots.elevation_plot(_main_obs.get()),
-                             plots.elevation_plot_curves(_main_obs.get())]
-            #     out_plot_elev = [False, outputsplot_elevations(_main_obs.get())]
-            #     out_sun = outputssun_warning(_main_obs.get())
-            out_plot_uv = [False, outputs.print_baseline_lengths(_main_obs.get()),
-                           plots.uvplot(_main_obs.get()), outputs.put_antenna_options(_main_obs.get())]
-        #
-        # out_ant = outputsant_warning(_main_obs.get())
-        # out_phaseref = outputswarning_phase_referencing_high_freq(_main_obs.get())
-        # out_fov = outputsfield_of_view(_main_obs.get())
-        # out_freq = outputssummary_freq_res(_main_obs.get())
-        out_worldmap = plots.plot_worldmap_stations(_main_obs.get())
+            with ThreadPoolExecutor() as executor:
+                futures['plot_elev'] = executor.submit(plots.elevation_plot, _main_obs.get())
+                futures['plot_elev2'] = executor.submit(plots.elevation_plot_curves, _main_obs.get())
+                futures['plot_uv'] = executor.submit(plots.uvplot, _main_obs.get())
+                futures['plot_worldmap'] = executor.submit(plots.plot_worldmap_stations, _main_obs.get())
+
+                out_plot_elev = [False,
+                                outputs.print_observability_ranges(_main_obs.get()),
+                                futures['plot_elev'].result(), futures['plot_elev2'].result()]
+                #     out_plot_elev = [False, outputsplot_elevations(_main_obs.get())]
+                #     out_sun = outputssun_warning(_main_obs.get())
+                out_plot_uv = [False, outputs.print_baseline_lengths(_main_obs.get()),
+                            futures['plot_uv'].result(), outputs.put_antenna_options(_main_obs.get())]
+                out_worldmap = futures['plot_worldmap'].result()
+
+        # out_worldmap = plots.plot_worldmap_stations(_main_obs.get())
         out_baseline_sens = outputs.baseline_sensitivities(_main_obs.get())
         out_datasize = outputs.data_size(_main_obs.get())
         out_obstime = outputs.obs_time(_main_obs.get())

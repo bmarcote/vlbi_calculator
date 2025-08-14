@@ -278,7 +278,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         out_obstime = outputs.obs_time(_main_obs.get())
     except sources.SourceNotVisible:
         return outputs.error_card('Source Not Visible!',
-                                  'The source cannot be observed by the given antennas and/or '
+                                  'The source cannot be observed by at least more than one antenna '
                                   'during the given observing time.'), *vals4error
     except Exception as e:
         logger.exception(f"While computing: {e}.")

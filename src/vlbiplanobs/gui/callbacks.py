@@ -184,17 +184,17 @@ def update_bandwidth_label(datarate: int, npols: int, chans: int, subbands: int,
     """Updates the total bandwidth label as a function of the selected datarate and number of
     polarizations. Returns a string with the value and units.
     """
-    if not do_spectral_line:
-        gui_main._main_obs.prev_datarate = datarate
-        gui_main._main_obs.prev_channels = chans
-        gui_main._main_obs.prev_subbands = subbands
-
     if None in (datarate, npols, chans, subbands):
         raise PreventUpdate
 
+    if not do_spectral_line:
+        gui_main._main_obs.prev_datarate = int(datarate)
+        gui_main._main_obs.prev_channels = chans
+        gui_main._main_obs.prev_subbands = subbands
+
     # Either 1 or 2 pols per station:
     return "The maximum bandwidth is " \
-           f"{cli.optimal_units(datarate*u.MHz/((npols % 3 + npols // 3)*2*2), [u.GHz, u.MHz, u.kHz]):.0f}."
+           f"{cli.optimal_units(int(datarate)*u.MHz/((npols % 3 + npols//3)*2*2), [u.GHz, u.MHz, u.kHz]):.0f}."
 
 
 @callback(Output("sensitivity-baseline-modal", "is_open"),

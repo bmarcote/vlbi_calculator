@@ -1089,9 +1089,9 @@ class Observation(object):
         datarates = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
                               else self.datarate.to(u.bit/u.s).value for s in self.stations])
         datarates_min = np.minimum.outer(datarates, datarates)
-        sens = (1/0.7)*(np.sqrt(np.outer(sefds, sefds) /
-                                np.sqrt(min(self.polarizations.value, 2) *
-                                        datarates_min/(2*self.bitsampling.to(u.bit).value))))
+        sens = (1/0.7)*np.sqrt(np.outer(sefds, sefds)) / \
+                                np.sqrt(datarates_min/(min(self.polarizations.value, 2) * \
+                                        self.bitsampling.to(u.bit).value))
         for i in range(len(self.stations)):
             for j in range(i, len(self.stations)):
                 basel_sens[f"{self.stations[i].codename}-{self.stations[j].codename}"] = \

@@ -303,7 +303,7 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
             n_networks = len(unknown_networks)  # type: ignore
             rprint(f"[bold red]The network{'s' if n_networks > 1 else ''} {', '.join(unknown_networks)}"
                    f" {'are' if n_networks > 1 else 'is'} not known.[/bold red]")
-            sys.exit(1)
+            raise ValueError(f"Network ({unknown_networks}) not known")
 
     if list_stations is not None:
         try:
@@ -313,7 +313,7 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
                     stations.append(a_station)
         except KeyError:
             rprint(f"[bold red]The station {a_station} is not known.[/bold red]")
-            sys.exit(1)
+            raise ValueError(f"Station ({a_station}) not known.")
 
     dropped_stations = [s for s in stations if band not in obs._STATIONS[s].bands]
     if len(dropped_stations) > 0:
@@ -323,7 +323,7 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
     final_stations = obs._STATIONS.filter_antennas(stations)
     if not final_stations:
         rprint(f"[bold red]No antennas have been selected or none can observe at {band}.[/bold red]")
-        sys.exit(1)
+        raise ValueError("Antennas must be selected.")
 
     return final_stations
 
@@ -401,12 +401,16 @@ def main(band: str, networks: Optional[list[str]] = None,
     if networks is None and stations is None:
         rprint("[bold red]You need to provide at least a VLBI network "
                "or a list of antennas that will participate in the observation.[/bold red]")
-        raise ValueError
+        raise ValueError('Either network or list of antennas must be speified.')
+
+    # This should through an error but it will make it easier for users...
+    if isinstance(networks, str):
+        networks = [networks,]
 
     if start_time is not None and start_time.scale != 'utc':
         rprint("[bold red]The start time must be in UTC[/bold red]\n"
                "[red](use 'scale' when defining the Time object)[/red]")
-        raise ValueError
+        raise ValueError('Start time must be given in UTC')
 
     if station_catalog is not None:
         obs._STATIONS = obs.Stations(filename=station_catalog)

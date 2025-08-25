@@ -180,7 +180,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                       start_time=Time(dt.strptime(f"{startdate} {starttime}", '%Y-%m-%d %H:%M'),
                                       format='datetime', scale='utc') if defined_epoch else None,
                       datarate=datarate*u.Mbit/u.s, subbands=subbands, channels=channels, polarizations=pols,
-                      gui=False, tui=False, inttime=inttime*u.s))
+                      inttime=inttime*u.s))
         _main_obs.prev_datarate = datarate
         _main_obs.prev_channels = channels
         _main_obs.prev_subbands = subbands

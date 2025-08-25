@@ -418,7 +418,7 @@ class Station(object):
         return f"<{self.codename}>"
 
     def __repr__(self):
-        return f"<Station: {self.codename}>"
+        return f"<📡 {self.codename}>"
 
 
 class Stations(object):
@@ -739,7 +739,8 @@ class Stations(object):
                         observing_bands=self.observing_bands, max_datarates=self._bands.values())
 
     @staticmethod
-    def get_networks_from_configfile(filename: Optional[str] = None) -> dict[str, Stations]:
+    def get_networks_from_configfile(filename: Optional[str] = None,
+                                     stations_filename: Optional[str] = None) -> dict[str, Stations]:
         """Reads a config file containing the different VLBI networks defined as a config parser file.
         Returns a dictionary with the nickname of the VLBI network as keys, and the information as
         keys in a second-order dict.
@@ -758,6 +759,10 @@ class Stations(object):
             - observing_bands - comma-separated list with the bands that can be observed (following
               the definition done in vlbiplanobs/freqsetups.py; e.g. 21, 18, etc, in cm).
 
+        - stations_filename: str OPTIONAL
+            If given, it will read the provided file to load all stations into the program, instead
+            of reading the default file (e.g. useful when the use has its own station catalog).
+
         Returns
         - networks : dict[str, Stations]
             Returns a dictionary containing the differnet networks.
@@ -772,7 +777,7 @@ class Stations(object):
             # Otherwise config will run smoothly and provide an empty list.
             config.read(open(filename, "r"))
 
-        all_ants: Stations = Stations()
+        all_ants: Stations = Stations(stations_filename)
         networks: dict[str, Stations] = dict()
         for networkname in config.sections():
             temp: str = config[networkname]["max_datarate"]
@@ -977,7 +982,7 @@ class Stations(object):
         else:
             # With this approach it raises a FileNotFound exception.
             # Otherwise config will run smoothly and provide an empty list.
-            config.read(open(filename, "r"))
+            config.read(filename)
 
         for stationname in config.sections():
             if (codenames is None) or (config[stationname]["code"] in codenames):

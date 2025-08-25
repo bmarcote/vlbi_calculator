@@ -329,15 +329,36 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
 
 
 def main(band: str, networks: Optional[list[str]] = None,
-         stations: Optional[list[str]] = None,
+         stations: Optional[list[str]] = None, station_catalog: Optional[str] = None,
          src_catalog: Optional[str] = None, targets: Optional[list[str]] = None,
          start_time: Optional[Time] = None,
          duration: Optional[u.Quantity] = None, datarate: Optional[u.Quantity] = None,
-         gui: bool = False, tui: bool = True, ontarget: float = 0.7, subbands: int = 4,
-         channels: int = 64, polarizations: int = 4, inttime: float = 2.0*u.s):
+         ontarget: float = 0.7, subbands: int = 4,
+         channels: int = 64, polarizations: int = 4, inttime: float = 2.0*u.s) -> VLBIObs:
     """Planner for VLBI observations.
 
-    Inputs
+    Parameters:
+    -----------
+
+        band : str
+            Observing band, as defined in the catalogs as 'XXcm', with 'XX' being
+            the wavelength in cm. See .freqsetups.bands to get a list.
+
+        stations : list of str, optional
+            List of the antennas that will participate in the observation.
+            You can use either antenna codenames or the standard name,
+            as given in the catalogs. See .STATIONS.stations to get a list.
+
+        station_catalog : str, optional
+            Path to the file containing the list of antennas that will
+            participate in the observation, if you have a local file different from the one
+            distributed by PlanObs.
+
+        src_catalog : str, optional
+            Path to the file containing the list of sources that will be observed.
+            This allows you to store a large number of sources of define them in a more detail.
+            See the documentaion for help.
+
         targets: list[str]
             List of sources to be observed. Each entry can be:
             a) the name defining a block in the source catalog file (if provided),
@@ -346,20 +367,50 @@ def main(band: str, networks: Optional[list[str]] = None,
             c) the name of the source, if it is a known one so it can be found in the
                SIMBAD/NEW/VizieR databases.
             A mix of the previous ones can also be used for each entry.
-        gui : bool  (default True)
-            Create plots in Plotly and show them in a browser page. If False, it will only
-            print some quick plots within the terminal instead.
+
+        start_time : Time, optional
+            Start of the observation, of Time class and in UTC.
+
+        duration : astropy.units.Quantity, optional
+            Total duration of the observation, as a Quantity (e.g. 1.5*u.hour).
+
+        datarate : astropy.units.Quantity, optional
+            Maximum data rate of the observation (e.g. 4*Gbit/s).
+
+        ontarget : float (default = 0.7)
+            Fraction of the total time of the observation spent on the target source.
+            If multiple sources are given (e.g. already specifying scan lengths), this will be ignored.
+
+        subbads : int (default = 4)
+            Number of subbands in which the total bandwidth is split.
+
+        channels : int (defualt = 64)
+            Number of spectral channels in which each subband is divided.
+
+        polarizations : int (defualt = 4)
+            Number of polarizations recorded. It can be 1 (single pol.), 2 (dual pol.), or 4 (full stokes
+            recorded: RR, LL, RL, LR).
+
+        inttime : astropy.units.Quantity (default 2 s)
+            Integration time used in the observations (e.g. time resolution on the correlated data).
+
+    Returns:
+    --------
+        VLBIObs: a VLBI Observation object with all defined parameters.
     """
-    t0 = dt.now()
     if networks is None and stations is None:
         rprint("[bold red]You need to provide at least a VLBI network "
                "or a list of antennas that will participate in the observation.[/bold red]")
-        sys.exit(1)
+        raise ValueError
 
     if start_time is not None and start_time.scale != 'utc':
         rprint("[bold red]The start time must be in UTC[/bold red]\n"
                "[red](use 'scale' when defining the Time object)[/red]")
-        sys.exit(1)
+        raise ValueError
+
+    if station_catalog is not None:
+        obs._STATIONS = obs.Stations(filename=station_catalog)
+        obs._NETWORKS = obs.Stations.get_networks_from_configfile(stations_filename=station_catalog)
 
     if src_catalog is not None:
         source_catalog = sources.SourceCatalog(src_catalog)
@@ -380,7 +431,7 @@ def main(band: str, networks: Optional[list[str]] = None,
                 except ValueError:
                     rprint(f"[bold red]The source {target} is not known and is not in the catalog "
                            "file.[/bold red]")
-                    sys.exit(1)
+                    raise ValueError
     elif source_catalog is None:
         # rprint("[bold red]Either a source catalog file or a list of targets must be "
         #        "provided (or both).[/bold red]")
@@ -430,12 +481,6 @@ def main(band: str, networks: Optional[list[str]] = None,
                 polarizations=polarizations,
                 inttime=inttime,
                 ontarget=ontarget)
-    o.summary(gui, tui)
-    if targets is not None or source_catalog is not None:
-        o.plot_visibility(gui, tui)
-
-    print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
-    # o.print_baseline_sensitivities()
     return o
 
 
@@ -451,10 +496,13 @@ def cli():
                         "Or if the personal source "
                         "catalog is defined by '--input', then this\nselects the block(s) defined in the "
                         "file to use, ignoring the rest of\nsources.\nMultiple sources can be provided.")
-    parser.add_argument('-i', '--input', type=str, default=None,
+    parser.add_argument('-sc', '--source-catalog', type=str, default=None,
                         help="Input file containing the personal source catalog.\n"
                         "If provided, then '--targets' will select the block(s) "
                         "defined in\nthis file, ignoring the rest.")
+    parser.add_argument('--station-catalog', type=str, default=None,
+                        help="Input file containing the personal station catalog.\n"
+                        "If provided, then the default catalog will not be read.")
     parser.add_argument('-t1', '--starttime', type=str, default=None,
                         help="Start of the observation, with the format 'YYYY-MM-DD HH:MM' "
                         "in UTC.")
@@ -503,9 +551,12 @@ def cli():
                         "show the quick plots through terminal.")
     parser.add_argument('--no-tui', action="store_false", default=True,
                         help="If set, then it will not show all the output in the terminal as default.")
+    parser.add_argument('--debug', action="store_true", default=False,
+                        help="If set, shows some debuging messages.")
     # TODO: add argument, min number of antennas possible
 
     args = parser.parse_args()
+    t0 = dt.now() if args.debug else None
 
     if args.list_networks:
         rprint("[bold]Available VLBI networks:[/bold]")
@@ -558,12 +609,23 @@ def cli():
         rprint("[bold yellow]Note that you supressed both GUI and TUI.\n"
                "No output will be provided.[/bold yellow]")
 
-    main(band=args.band, networks=args.network, stations=args.stations,
-         src_catalog=args.input,
-         targets=args.targets, start_time=Time(args.starttime, scale='utc')
-         if args.starttime else None,
-         duration=float(args.duration)*u.hour if args.duration is not None else None,
-         datarate=args.data_rate*u.Mbit/u.s if args.data_rate else None, gui=args.gui, tui=args.no_tui)
+    try:
+        o = main(band=args.band, networks=args.network, stations=args.stations,
+            src_catalog=args.source_catalog, station_catalog=args.station_catalog,
+            targets=args.targets, start_time=Time(args.starttime, scale='utc')
+            if args.starttime else None,
+            duration=float(args.duration)*u.hour if args.duration is not None else None,
+            datarate=args.data_rate*u.Mbit/u.s if args.data_rate else None)
+    except ValueError:
+        sys.exit(1)
+
+    o.summary(args.gui, args.no_tui)
+    if args.targets is not None or args.source_catalog is not None:
+        o.plot_visibility(args.gui, args.no_tui)
+
+    if args.debug:
+        print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
+    # o.print_baseline_sensitivities()
 
 
 if __name__ == '__main__':

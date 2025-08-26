@@ -86,7 +86,7 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
 
     if not [None for nb, nn in zip(network_bools, observation._NETWORKS.values())
             if nb and nn.has_band(inputs.band_from_index(band))]:
-        raise PreventUpdate
+        return no_update, no_update, no_update, no_update
 
     network_names = [nn for nb, nn in zip(network_bools, observation._NETWORKS) if nb]
     try:
@@ -199,7 +199,7 @@ def update_bandwidth_label(datarate: int, npols: int, chans: int, subbands: int,
 
 @callback(Output("sensitivity-baseline-modal", "is_open"),
           Input("button-sensitivity-baseline", "n_clicks"),
-          State("sensitivity-baseline-modal", "is_open"))
+          State("sensitivity-baseline-modal", "is_open"), suppress_callback_exceptions=True)
 def toggle_modal_baseline_sensitivity(n_clicks, is_open):
     if n_clicks is None:
         return no_update
@@ -209,7 +209,7 @@ def toggle_modal_baseline_sensitivity(n_clicks, is_open):
 
 @callback(Output("more-info-modal", "is_open"),
           Input("more-info-button", "n_clicks"),
-          State("more-info-modal", "is_open"))
+          State("more-info-modal", "is_open"), prevent_initial_call=True)
 def toggle_modal_info_button(n_clicks, is_open):
     if n_clicks is None:
         return no_update
@@ -278,7 +278,7 @@ def update_uv_figure(highlight_antennas: list[str], figure):
 @callback([Output('error_duration', 'children'),
            Output('error_duration', 'className'),
            Output('duration', 'className')],
-          Input('duration', 'value'))
+          Input('duration', 'value'), prevent_initial_call=True)
 def check_initial_obstime(duration: Optional[int | float]):
     """Verify the introduced times/dates for correct values.
     Once the user has introduced all values for the start and end of the observation,

@@ -476,6 +476,11 @@ def main(band: str, networks: Optional[list[str]] = None,
             if a_network in obs_networks:
                 datarate = obs._NETWORKS[a_network].max_datarate(band)
                 break
+    elif isinstance(datarate, int):
+        datarate = datarate*u.Mbit/u.s
+        rprint("[yellow]Dara rate as a int, assumed Mbit/s, but it should have had units[/yellow]")
+    elif isinstance(datarate, str):
+        raise ValueError("Data rate is a str! ", datarate)
 
     o = VLBIObs(band, get_stations(band, networks, stations), scans=src2observe,
                 times=start_time + np.arange(0, duration_val + 5, 10)*u.min

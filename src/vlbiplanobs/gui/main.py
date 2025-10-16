@@ -1,8 +1,7 @@
-# from dependencies import Input, Output, State
 import os
-# import random
 import threading
 import argparse
+from loguru import logger
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
@@ -13,12 +12,11 @@ import dash_mantine_components as dmc
 from astropy.utils.iers import conf as iers_conf
 from astropy import units as u
 from astropy.time import Time
-from loguru import logger
 from vlbiplanobs import sources
 from vlbiplanobs import observation
 from vlbiplanobs import cli
 from vlbiplanobs.gui import inputs, outputs, plots
-from vlbiplanobs.gui.callbacks import *
+from vlbiplanobs.gui.callbacks import *  # noqa: F403
 from vlbiplanobs.gui import layout
 
 
@@ -165,7 +163,8 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                                   'and duration are required.'), *vals4error
 
     t0 = dt.now()
-    network_names = [nn for nb, ns, nn in zip(selected_networks, disabled_networks, observation._NETWORKS) if nb and not ns]
+    network_names = [nn for nb, ns, nn in zip(selected_networks, disabled_networks, observation._NETWORKS) \
+                     if nb and not ns]
     try:
         logger.info(f"New Observation: Networks:{','.join(network_names)}; "
                     f"antennas: {','.join(selected_antennas)};"
@@ -187,14 +186,15 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         _main_obs.prev_subbands = subbands
         # I need to run this first otherwise the other functions will fail
         # (likely partially initialized uv values)
-        _ = _main_obs.get().is_observable()
-        _ = _main_obs.get().is_always_observable()
-        _ = _main_obs.get().thermal_noise()
-        _ = _main_obs.get().sun_constraint()
-        _ = _main_obs.get().sun_limiting_epochs()
-        # _main_obs.get().thermal_noise()
-        # _main_obs.get().synthesized_beam()
-        # _main_obs.get().get_uv_data()
+        if _main_obs.get() is not None:
+            _ = _main_obs.get().is_observable()
+            _ = _main_obs.get().is_always_observable()
+            _ = _main_obs.get().thermal_noise()
+            _ = _main_obs.get().sun_constraint()
+            _ = _main_obs.get().sun_limiting_epochs()
+            # _main_obs.get().thermal_noise()
+            # _main_obs.get().synthesized_beam()
+            # _main_obs.get().get_uv_data()
     except ValueError:
         logger.exception("An error has occured: {e}.")
         return outputs.error_card("Could not plan the observation",

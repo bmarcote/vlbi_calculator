@@ -169,7 +169,7 @@ def compute_button() -> html.Div:
                     html.Button('CALCULATE',
                                 id='compute-observation',
                                 className='btn btn-evn text-bolder btn-lg mx-auto w-75 m-4 p-2',
-                                style={'position': 'sticky', 'top': '20px'}),
+                                style={'position': 'sticky', 'top': '20px', 'z-index': '1000'}),
                     dbc.Spinner(id='loading', color='#a01d26',
                                 children=html.Div(id='loading-div'))
                 ], className='d-flex align-items-center justify-content-center', style={'gap': '5px'}),

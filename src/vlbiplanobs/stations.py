@@ -259,139 +259,144 @@ class Station(object):
         self._datarate = new_datarate
 
     def elevation(self, obs_times: Time, target: FixedTarget) -> coord.angles.Latitude:
-        """Returns the elevation of the target source as seen by the Station during obs_times.
+        """Returns the elevation of the target source as seen by the Station.
 
         Inputs
         - obs_times : astropy.time.Time
-            Time to compute the elevation of the source
-            (either a single timestamp or an array of times).
+            Time(s) to compute the elevation (single timestamp or array).
         - target : astroplan.FixedTarget
-             Target to observe.
+            Target source to observe.
 
-        Output
-        - elevations : astropy.coordinates.angles.Latitute
-            Elevation of the source at the given obs_times.
+        Returns
+        - astropy.coordinates.angles.Latitude
+            Elevation of the source at the given times.
         """
         return self.observer.altaz(obs_times, target).alt
 
     def altaz(self, obs_times: Time, target: FixedTarget) -> coord.SkyCoord:
-        """Returns the altaz coordinates of the target source for the given observing times.
+        """Returns altitude/azimuth coordinates of the target source.
 
         Inputs
         - obs_times : astropy.time.Time
-            Time to compute the elevation of the source
-            (either a single timestamp or an array of times).
+            Time(s) to compute coordinates (single timestamp or array).
         - target : astroplan.FixedTarget
-             Target coordinates to observe.
+            Target source to observe.
 
-        Output
-        - altaz : astropy.coordinates.sky_coordinate.SkyCoord
-            Altitude and azimuth of the source for each given time.
+        Returns
+        - astropy.coordinates.SkyCoord
+            Altitude and azimuth coordinates at each time.
         """
         return self.observer.altaz(obs_times, target)
 
     def hour_angle(self, obs_times: Time, target: FixedTarget) -> coord.Angle:
-        """Returns the local hour angle of the target at the given time."""
-        return self.observer.target_hour_angle(time=obs_times, target=target)
-
-    def is_observable(self, obs_times: Time, target: FixedTarget) -> list[bool]:
-        """Returns when the target source is observable for this station at the given times.
+        """Returns the local hour angle of the target.
 
         Inputs
         - obs_times : astropy.time.Time
-            Time to compute the elevation of the source
-            (either a single timestamp or an array of times).
+            Time(s) to compute hour angle (single timestamp or array).
         - target : astroplan.FixedTarget
-             Target coordinates to observe. If None, the target would be assumed to be visible at all times.
+            Target source to observe.
 
-        Output
-        - visible : list[list[bool]]
-            List of booleans of same length as targets for whether or not each target is ever
-            observable in the time range given the constraints.
+        Returns
+        - astropy.coordinates.Angle
+            Local hour angle of the target at each time.
+        """
+        return self.observer.target_hour_angle(time=obs_times, target=target)
+
+    def is_observable(self, obs_times: Time, target: FixedTarget) -> list[bool]:
+        """Returns visibility of target source at each time.
+
+        Inputs
+        - obs_times : astropy.time.Time
+            Time(s) to check visibility (single timestamp or array).
+        - target : astroplan.FixedTarget
+            Target source to observe.
+
+        Returns
+        - list[bool]
+            Boolean array indicating if target is visible at each time
+            given the station's constraints.
         """
         return is_event_observable(self.constraints, self.observer, target, times=obs_times)[0, :]
 
     def is_ever_observable(self, obs_times: Time, target: FixedTarget) -> list[bool]:
-        """Returns if the target source is observable for this station at least for part of the times.
+        """Returns if target is observable during any part of the time range.
 
         Inputs
         - obs_times : astropy.time.Time
-            Time to compute the elevation of the source
-            (either a single timestamp or an array of times).
+            Time range to check visibility.
         - target : astroplan.FixedTarget
-             Target coordinates to observe. If None, the target would be assumed to be visible at all times.
+            Target source to observe.
 
-        Output
-        - visible : list[bool]
-            List of booleans of same length as targets for whether or not each target is ever
-            observable in the time range given the constraints.
+        Returns
+        - list[bool]
+            Boolean array indicating if target is ever visible during the time range
+            given the station's constraints.
         """
         return is_observable(self.constraints, self.observer, target, times=obs_times)
 
     def is_always_observable(self, obs_times: Time, target: FixedTarget) -> bool:
-        """Returns whenever the target source is observable for this station at all given times.
+        """Returns if target is observable during the entire time range.
 
         Inputs
         - obs_times : astropy.time.Time
-            Time to compute the elevation of the source
-            (either a single timestamp or an array of times).
+            Time range to check visibility.
         - target : astroplan.FixedTarget
-             Target coordinates to observe. If None, the target would be assumed to be visible at all times.
+            Target source to observe.
 
-        Output
-        - visible : bool
-            Whether or not each target is observable in the time range given the constraints.
+        Returns
+        - bool
+            True if target is visible during the entire time range given
+            the station's constraints, False otherwise.
         """
         return is_always_observable(self.constraints, self.observer, target, times=obs_times)[0]
 
     def has_band(self, band: str) -> bool:
-        """Returns if the Station can observed the given band `the_band`.
+        """Returns if the station can observe at the given band.
 
         Inputs
         - band : str
-            A string representing an observing band, following the same syntax as used
-            when the station was initialized and the bands where defined in the keys of
-            the freqs_sefds attribute.
+            Observing band name, using same syntax as in freqs_sefds.
 
-        Output
-        - bool whenever the station has the given observing band.
+        Returns
+        - bool
+            True if station can observe at the given band, False otherwise.
         """
         return band in self.bands
 
     def sefd(self, band: str) -> u.Quantity:
-        """Returns the system equivalent flux density (SEFD) of the Station at the given band,
-        in Jansky (Jy) units.
+        """Returns the system equivalent flux density (SEFD) at the given band.
 
-        Input
+        Inputs
         - band : str
-            A string representing an observing band, following the same syntax as used
-            when the station was initialized and the bands where defined in the keys of
-            the freqs_sefds attribute.
+            Observing band name, using same syntax as in freqs_sefds.
 
-        Output
-        - SEFD : float
-            The SEFD at the given band, in Jy units.
+        Returns
+        - astropy.units.Quantity
+            SEFD at the given band in Jansky (Jy) units.
 
-        Exception
-        - It may raise KeyError if the given band is not available for this station.
-
+        Raises
+        - KeyError: If the given band is not available for this station.
         """
         return self._freqs_sefds[band]
 
     def slewing_time(self, coordinates1: coord.AltAz, coordinates2: coord.AltAz, time: Time) -> u.Quantity:
-        # TODO: this is not the best implementation (asking for a time). Check later.
-        """Returns the expected slewing time to move from coordinates1 to coordinates2 according to
-        the known velocity and acceleration from the mount.
+        """Returns expected slewing time between two positions.
 
-        Args
+        Inputs
         - coordinates1 : astropy.coordinates.AltAz
-            AltAz object with the coordinates of the first point. Must be in altaz coordinates.
+            Starting position in AltAz coordinates.
         - coordinates2 : astropy.coordinates.AltAz
-            AltAz object with the coordinates of the second point. Must be in altaz coordinates.
+            Ending position in AltAz coordinates.
+        - time : astropy.time.Time
+            Time at which to calculate slewing.
 
         Returns
-        - slewing_time : astropy.time.TimeDelta
-            TimeDelta object with the slewing time.
+        - astropy.units.Quantity
+            Expected slewing time given mount velocity and acceleration.
+
+        Raises
+        - AssertionError: If coordinates are not in AltAz format.
         """
         assert isinstance(coordinates1, coord.AltAz) and isinstance(coordinates2, coord.AltAz)
         # If the antenna mount is AltAz, then all the same; but if it's equatorial, then it needs to be RA/DEC.

@@ -63,15 +63,23 @@ class SourceFlux(object):
 
     def bands(self) -> tuple[str]:
         """Returns the bands at which there is flux information.
+
+        Returns
+            - tuple[str]
+                Tuple of strings representing the bands.
         """
         return tuple(self._data.keys())  # type: ignore
 
     def flux_density(self, band: str) -> FluxMeasurement:
         """Returns the flux density measurements associated to the source at the given band.
 
-        Input
-        - band : str
-            The band at which the flux density measurements are referring to.
+        Inputs
+            - band : str
+                The band at which the flux density measurements are referring to.
+
+        Returns
+            - FluxMeasurement
+                The flux density measurements.
 
         Raises
             KeyError : if band is not available.
@@ -95,18 +103,47 @@ class SourceFlux(object):
         """
         return band in self._data
 
-    def __containts__(self, band: str) -> bool:
+    def __contains__(self, band: str) -> bool:
+        """Returns if the band is present in the FluxMeasurement.
+        """
         return band in self._data
 
     def __getitem__(self, band: str) -> FluxMeasurement:
+        """Returns the flux measurements associated to the source at the given band.
+
+        Inputs
+            - band : str
+                The band at which the flux density measurements are referring to.
+
+        Returns
+            - FluxMeasurement
+                The flux density measurements.
+
+        Raises
+            KeyError : if band is not available.
+        """
         return self._data[band]
 
     def __setitem__(self, band: str, flux: FluxMeasurement):
+        """Sets the flux measurements associated to the source at the given band.
+
+        Inputs
+            - band : str
+                The band at which the flux density measurements are referring to.
+            - flux : FluxMeasurement
+                The flux density measurements.
+        """
         self._data[band] = flux
 
     def add_band(self, band: str, flux: FluxMeasurement):
         """Adds a new measurement of the flux at a new frequency, or overwrites a previous
         one if the band exists.
+
+        Inputs
+            - band : str
+                The band at which the flux density measurements are referring to.
+            - flux : FluxMeasurement
+                The flux density measurements.
         """
         if (not isinstance(band, str)) or (not isinstance(flux, FluxMeasurement)):
             raise TypeError("Expected 'band' to be a str and 'flux' to be a FluxMeasurement.")
@@ -175,7 +212,7 @@ class Source(FixedTarget):
         if coordinates is None:
             coordinates = self.get_coordinates_from_name(name)
 
-        super().__init__(coord.SkyCoord(coordinates, **kwargs), name)
+        super().__init__(coord.SkyCoord(coordinates), name)
         self._type = source_type
         self._flux = flux
         self._notes = notes
@@ -194,21 +231,25 @@ class Source(FixedTarget):
 
     @other_names.setter
     def other_names(self, other_names: list[str]):
+        """Sets a list of other possible names to refer to this source.
+        """
         self._other_names = other_names
 
     @property
     def type(self) -> SourceType:
+        """Returns the type of the source.
+        """
         return self._type
 
     @property
     def flux(self) -> Optional[SourceFlux]:
-        """Estimated flux of the source.
+        """Returns the estimated flux of the source.
         """
         return self._flux
 
     @property
     def notes(self) -> Optional[str]:
-        """Some notes on the source
+        """Returns some notes on the source.
         """
         return self._notes
 
@@ -222,12 +263,12 @@ class Source(FixedTarget):
             Name of the source to search for.
 
         Returns
-        - src_coord : astropy.coordinates.SkyCoord
+        - astropy.coordinates.SkyCoord
             The coordinates of the source, if found.
 
-        It may raise
-        - NameResolveError - if there is no connection or unable to find ICRS sources.
-        - ValueError: if the coordinates have an unrecognized format.
+        Raises
+        - NameResolveError: If there is no connection or unable to find ICRS sources.
+        - ValueError: If the coordinates have an unrecognized format.
         """
         try:
             return Source.get_rfc_coordinates(src_name)
@@ -237,16 +278,41 @@ class Source(FixedTarget):
     @classmethod
     def source_from_name(cls, src_name: str, source_type: SourceType = SourceType.TARGET) -> Self:
         """Returns a Source object by finding the coordinates from its name.
-        It first searches wihtin the RFC catalog, and if not found, through the
-        'astropy.coordinates.get_icrs_coordinates' function through the RFC catalogs.
+
+        Inputs
+        - src_name : str
+            Name of the source to search for.
+        - source_type : SourceType
+            Type of the source (default: TARGET).
+
+        Returns
+        - Self
+            A new Source object with coordinates from either RFC catalog or ICRS catalogs.
+
+        Raises
+        - NameResolveError: If the source cannot be found in any catalog.
+        - ValueError: If the coordinates have an unrecognized format.
         """
         return cls(src_name, coordinates=Source.get_coordinates_from_name(src_name), source_type=source_type)
 
     @classmethod
     def source_from_str(cls, src: str, source_type: SourceType = SourceType.TARGET) -> Self:
-        """Returns a Source object from the given string. This can be either the source name, and then it
-        will retrieve the coordinates from the SIMBAD/NED/VizieR databases, if it's known, or the source
-        coordinates (in either 'XXhXXmXXs XXdXXmXXs' or 'HH:MM:SS DD:MM:SS' formats).
+        """Returns a Source object from either a source name or coordinate string.
+
+        Inputs
+        - src : str
+            Either a source name (to be looked up in catalogs) or coordinates in
+            'XXhXXmXXs XXdXXmXXs' or 'HH:MM:SS DD:MM:SS' format.
+        - source_type : SourceType
+            Type of the source (default: TARGET).
+
+        Returns
+        - Self
+            A new Source object with the specified coordinates.
+
+        Raises
+        - ValueError: If the coordinate format is invalid.
+        - NameResolveError: If the source name cannot be found in catalogs.
         """
         if all([char in src for char in ('h', 'm', 'd', 's')]):
             return cls('target', coordinates=coord.SkyCoord(src), source_type=source_type)
@@ -261,6 +327,18 @@ class Source(FixedTarget):
     @staticmethod
     def get_rfc_coordinates(src_name: str) -> coord.SkyCoord:
         """Returns the coordinates of the object by searching the provided name through the RFC catalog.
+
+        Inputs
+        - src_name : str
+            Name of the source to search for in the RFC catalog.
+
+        Returns
+        - astropy.coordinates.SkyCoord
+            The coordinates of the source from the RFC catalog.
+
+        Raises
+        - ValueError: If the source name is not found or has multiple matches.
+        - RuntimeError: If there is an error parsing the RFC catalog file.
         """
         rfc_files = tuple((r.name for r in resources.files("vlbiplanobs.data").iterdir()
                            if r.is_file() and 'rfc' in r.name))
@@ -286,37 +364,30 @@ class Source(FixedTarget):
 
         Inputs
         - times : astropy.time.Time
-            An array of times defining the duration of the observation. That is,
-            the first time will define the start of the observation and the last one
-            will be the end of the observation. Note that the higher time resolution
-            in `times` the more precise values you will obtain for antenna source
-            visibility or determination of the rms noise levels. However, that will
-            also imply a longer computing time.
+            An array of times defining the duration of the observation. The first time
+            defines the start and the last one the end of the observation. Higher time
+            resolution provides more precise values but increases computation time.
 
-        Return
-        - astropy.units.Quantity
-            The separation between the source and the Sun at the given times.
+        Returns
+        - Sequence[astropy.units.Quantity]
+            The angular separation between the source and the Sun at each given time.
         """
         return self.coord.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
 
     def sun_constraint(self, min_separation: u.Quantity, times: Optional[Time] = None) -> Time:
-        """Checks if the Sun can be a restriction to observe the given source.
-        This is defined as if the Sun is at a separation lower than 'min_separation' from the
-        target in the sky at a given moment.
+        """Returns times when the Sun is too close to observe the source.
 
         Inputs
         - min_separation : astropy.units.Quantity
-            Minimun separation allowed for the Sun to be near the source.
-            One can make use of the default separations provided in `freqsetups.solar_separations`
-            for the different observing bands.
-        - times : astropy.time.Time  [OPTIONAL]
-            An array of times to check the separation of the Sun. If not provided, it will compute
-            the full (current) calendar year with a resolution of one day.
+            Minimum allowed angular separation between source and Sun.
+            See `freqsetups.solar_separations` for default values per band.
+        - times : astropy.time.Time
+            Times to check Sun separation. If None, checks full current year
+            at 1-day resolution.
 
         Returns
         - astropy.time.Time
-            A list of times when the Sun is closer than the minimum separation.
-            It would be an empty list if this condition never meets.
+            Times when Sun is closer than min_separation. Empty if never too close.
         """
         if times is None:
             times = Time(f"{Time.now().datetime.year}-01-01") + np.arange(0, 365, 1)*u.day
@@ -395,12 +466,16 @@ class SourceCatalog:
         raise KeyError(f"The item {item} is not in the catalog.")
 
     def read_personal_catalog(self, path: str):
-        """Reads the yaml file with the information of all sources that may be scheduled.
-        It returns the catalog as a dictionary.
+        """Reads a YAML file containing source information for scheduling.
 
-        Input
-            path : str
-                The path to the yaml file with the catalog of sources to be imported.
+        Inputs
+        - path : str
+            Path to the YAML file containing the source catalog.
+
+        Raises
+        - FileNotFoundError: If the catalog file cannot be found.
+        - yaml.YAMLError: If the YAML file is malformed.
+        - ValueError: If the source type is not recognized.
         """
         with open(path, 'r') as sources_yaml:
             catalog = yaml.safe_load(sources_yaml)
@@ -456,12 +531,15 @@ class SourceCatalog:
                     self._blocks[a_entry][a_src] = ScanBlock(scans)
 
     def read_rfc_catalog(self, path: Optional[Union[str, Path]] = None):
-        """Reads the catalog yaml file with the information of all sources that may be scheduled.
-        It returns the catalog as a dictionary.
+        """Reads the RFC catalog file.
 
-        Input
-            path : str
-                The path to the yaml file with the catalog of sources to be imported.
+        Inputs
+        - path : str or Path, optional
+            Path to the RFC catalog file. If None, uses the default catalog.
+
+        Raises
+        - FileNotFoundError: If the catalog file cannot be found.
+        - ValueError: If the catalog format is invalid.
         """
         raise NotImplementedError
         # TODO: convert this to another module and use duckDB, should be much faster

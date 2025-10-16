@@ -100,6 +100,9 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
     except AttributeError:
         raise PreventUpdate
 
+    # This is here to check if this avoids the state when somehow datarate value is None, which I do not see why
+    if datarate is None:
+        datarate = 2048
     return  \
         tuple({'value': dr, 'label': html.Span([drl], style={'color': '#888888'
                                                              if dr > max_datarate else '#000000'})}

@@ -38,38 +38,64 @@ class CalibratorCatalog:
 
 
     def brighter_than(self, flux: float, band: str) -> Self:
-        """Returns all sources that are brighter than the given amount on the
-        longest baselines.
+        """Returns all sources that are brighter than the given amount on the longest baselines.
 
-        Input
+        Inputs
         - flux : float
             Flux density on the longest baselines in Jansky units.
         - band : str
-            Band at which the flux is compared. It needs to be 'S', 'C', 'X', 'U', 'K'
+            Band at which the flux is compared. It needs to be 'S', 'C', 'X', 'U', 'K'.
+
+        Returns
+        - Self
+            A new CalibratorCatalog containing only the sources brighter than the given flux.
         """
         raise NotImplementedError
 
 
     def get(self, source_name: str) -> Source:
         """Returns the source associated to the given name.
+
+        Inputs
+        - source_name : str
+            Name of the source to retrieve.
+
+        Returns
+        - Source
+            The source object matching the given name.
+
+        Raises
+        - KeyError: If the source name is not found in the catalog.
         """
         raise NotImplementedError
 
 
     def import_rfc(self):
-        """Imports the RFC catalog of sources
+        """Imports the RFC catalog of sources.
+
+        Raises
+        - FileNotFoundError: If the RFC catalog file cannot be found.
+        - RuntimeError: If there is an error parsing the catalog file.
         """
         raise NotImplementedError
 
 
     def import_vsop(self):
-        """Imports the VSOP catalog of sources
+        """Imports the VSOP catalog of sources.
+
+        Raises
+        - FileNotFoundError: If the VSOP catalog file cannot be found.
+        - RuntimeError: If there is an error parsing the catalog file.
         """
         raise NotImplementedError
 
 
     def import_icrf(self):
-        """Imports the ICRF catalog of sources
+        """Imports the ICRF catalog of sources.
+
+        Raises
+        - FileNotFoundError: If the ICRF catalog file cannot be found.
+        - RuntimeError: If there is an error parsing the catalog file.
         """
         raise NotImplementedError
 

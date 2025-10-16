@@ -1,25 +1,11 @@
 # -*- coding: utf-8 -*-
 # Licensed under GPLv3+ - see LICENSE
 
-from typing import Optional, Union, Iterable, Sequence, Self
-from importlib import resources
-from functools import partial
-from itertools import product
-import subprocess
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import numpy as np
-import yaml
-from rich import print as rprint
-# import scipy.ndimage
-import datetime as dt
-from enum import Enum, auto
-from dataclasses import dataclass
 from astropy import units as u
-from astropy import coordinates as coord
-from astropy.time import Time, TimeDelta
+from astropy.time import Time
 from ortools.sat.python import cp_model
-from .stations import Station, Stations
-from .sources import Source, Scan, ScanBlock, SourceType, SourceNotVisible
+from .sources import SourceType
 from .observation import Observation
 
 

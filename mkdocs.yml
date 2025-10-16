@@ -1,4 +1,20 @@
-site_name: EVN Observation Planner
+site_name: EVN Observation Planner (PlanObs)
 site_url: https://vlbiplanobs.github.io
 theme:
   name: material
+
+plugins:
+  - search
+  - mkdocs-autoapi:
+      autoapi_dir: docs/api
+      # autoapi_dir: src
+  - mkdocstrings
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Tutorial: tutorial.md
+  - About:
+    - About PlanObs: about.md
+    - License: license.md
+    - Release Notes: release-notes.md

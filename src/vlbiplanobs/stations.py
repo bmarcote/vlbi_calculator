@@ -978,15 +978,10 @@ class Stations(object):
             Returns a Stations object containing the specified stations.
         """
         config = configparser.ConfigParser()
-        if filename is None:
-            #             from importlib.resources import files
-            # data_text = files('mypkg.data').joinpath('data1.txt').read_text()
-            with resources.as_file(resources.files("vlbiplanobs.data").joinpath("stations_catalog.inp")) \
-                                                                                 as stations_catalog_path:
-                config.read(stations_catalog_path)
-        else:
-            # With this approach it raises a FileNotFound exception.
-            # Otherwise config will run smoothly and provide an empty list.
+        with resources.as_file(resources.files("vlbiplanobs.data").joinpath("stations_catalog.inp")) \
+                                                                             as stations_catalog_path:
+            config.read(stations_catalog_path)
+        if filename is not None:
             config.read(filename)
 
         for stationname in config.sections():

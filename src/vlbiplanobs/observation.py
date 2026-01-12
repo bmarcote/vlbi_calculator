@@ -343,12 +343,16 @@ class Observation(object):
 
     @datarate.setter
     @enforce_types
-    def datarate(self, new_datarate: u.Quantity):
+    def datarate(self, new_datarate: Optional[u.Quantity]):
         """Sets the data rate used at each station during the observation.
 
         Inputs
         - new_datarate : astropy.units.Quantity  [e.g. Mb/s]
         """
+        if new_datarate is None:
+            self._datarate = None
+            return
+
         if not new_datarate.unit.is_equivalent(u.bit/u.s):
             raise TypeError("The new data rate must be a quantity with bit /s equivalent units.")
 

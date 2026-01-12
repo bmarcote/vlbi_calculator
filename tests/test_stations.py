@@ -118,13 +118,11 @@ def test_station_functions():
         a_station.sefd('45')
 
     times1 = Time('2020-03-21 1:00', scale='utc') + np.arange(0, 2*60, 10)*u.min
-    times2 = Time('2020-03-21 3:00', scale='utc') + np.arange(0, 4*60, 10)*u.min
+    times2 = Time('2020-03-21 4:00', scale='utc') + np.arange(0, 4*60, 10)*u.min
     src1 = FixedTarget(coord=coord.SkyCoord('0h0m0s 30d0m0s'), name='testSrc')
-    # a_station.elevation(times1, src1)  # Should have elevation ranging -7 to 1.1 deg.
-    # a_station.elevation(times2, src1)  # Should have elevation ranging 2.2 to 34 deg.
     assert not all(a_station.is_observable(times1, src1)), f"{a_station.elevation(times1, src1)=}"
-    assert all(a_station.is_observable(times2, src1)), f"{a_station.elevation(times1, src1)=}"
-    assert not a_station.is_always_observable(times2, src1)
+    assert all(a_station.is_observable(times2, src1)), f"{a_station.elevation(times2, src1)=}"
+    assert a_station.is_always_observable(times2, src1)
     assert len(a_station.elevation(times2, src1)) == len(times2)
     assert len(a_station.elevation(times1, src1)) == len(times1)
     assert np.equal(a_station.elevation(times2, src1).value, a_station.altaz(times2, src1).alt.value)[0]

@@ -16,7 +16,8 @@ def test_vlbiobs_inherits_observation():
     assert isinstance(o, obs.Observation)
 
 def test_vlbiobs_summary_methods():
-    o = VLBIObs(band='18cm', stations=obs._STATIONS.filter_antennas(['Ef']), scans={})
+    o = VLBIObs(band='18cm', stations=obs._STATIONS.filter_antennas(['Ef']), scans={},
+                datarate=1024*u.Mbit/u.s)
     # These methods should run without error
     o.summary(gui=False, tui=True)
     o.summary(gui=True, tui=False)

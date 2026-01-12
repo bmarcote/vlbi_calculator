@@ -27,7 +27,7 @@ def test_source():
         sources.Source('WQQWE')
 
     s1 = sources.Source('a_name', '10h20m10s 40d30m10s')
-    s2 = sources.Source('a_name', '10:20:10 40:30:10', unit=(u.hourangle, u.deg))
+    s2 = sources.Source('a_name', '10h20m10s +40d30m10s')
 
     with pytest.raises(ValueError):
         sources.Source(['a_name', 'a_second_name'])

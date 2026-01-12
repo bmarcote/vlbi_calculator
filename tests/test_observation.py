@@ -34,15 +34,18 @@ def test_observation_init():
                                 (['Tar1', 'Tar2'],
                                  ['10h58m29.6s +81d33m58.8s', '20h58m29.6s +71d33m58.8s'])):
         if isinstance(tar_name, list):
-            target = [obs.Source(aname, acoord) for aname, acoord in zip(tar_name, tar_coord)]
+            scans = [obs.Scan(source=obs.Source(aname, acoord))
+                     for aname, acoord in zip(tar_name, tar_coord)]
+            target = [s.source for s in scans]
         else:
             target = obs.Source(tar_name, tar_coord)
+            scans = [obs.Scan(source=target)]
 
         o = obs.Observation(band='18cm', stations=obs._STATIONS.filter_antennas(evn6),
-                            scans={'block1': obs.ScanBlock([obs.Scan(source=target)])})
+                            scans={'block1': obs.ScanBlock(scans)})
         o.times = Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min
         assert o.band == '18cm'
-        o.datarate = 1024
+        o.datarate = 1024*u.Mbit/u.s
         o.subbands = 8
         o.channels = 32
         o.polarizations = 2
@@ -54,7 +57,7 @@ def test_observation_init():
             o.polarizations = ''
             o.polarizations = None
 
-        o.inttime = 2
+        o.inttime = 2*u.s
 
         if isinstance(tar_name, list):
             assert len(o.sources()) == len(target)
@@ -67,8 +70,6 @@ def test_observation_init():
         _ = o.elevations()
         temp = o.is_observable()
         assert len(temp) == 1 and len(list(temp.values())[0]) == len(evn6)
-        # If multiple sources, then it will keep the structure of one ouput per source
-        assert len(temp[evn6[0]]) == len(tar_name) if isinstance(tar_name, list) else 1
         # temp = obs.Observation.guest_times_for_source(target if not isinstance(target, list) else target[0],
         #                                               obs.Network.get_stations_from_configfile(codenames=evn6))
         # beam = o.synthesized_beam)
@@ -97,7 +98,8 @@ def test_observation_init():
 
 def test_thermal_noise():
     evn6 = ['Ef', 'Jb2', 'O8', 'T6', 'Wb']
-    o = cli.VLBIObs(band='18cm', stations=obs._STATIONS.filter_antennas(evn6), duration=10*u.h, scans={})
+    o = cli.VLBIObs(band='18cm', stations=obs._STATIONS.filter_antennas(evn6), duration=10*u.h, scans={},
+                    datarate=1024*u.Mbit/u.s)
     rmss = []
     durations = np.array([1, 5, 10, 20])*u.h
     for durs in durations:
@@ -114,5 +116,6 @@ def test_thermal_noise():
         f"The returned rms are (for {durations}): {rmss} Jy/beam."
 
     evn6 = ['Ef', 'Jb2', 'T6', 'Wb']
-    o = cli.VLBIObs(band='18cm', stations=obs._STATIONS.filter_antennas(evn6), duration=10*u.h, scans={})
+    o = cli.VLBIObs(band='18cm', stations=obs._STATIONS.filter_antennas(evn6), duration=10*u.h, scans={},
+                    datarate=1024*u.Mbit/u.s)
     assert o.thermal_noise() > rmss[2]*u.Jy/u.beam

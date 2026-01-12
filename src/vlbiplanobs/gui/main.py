@@ -186,17 +186,18 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         _main_obs.prev_subbands = subbands
         # I need to run this first otherwise the other functions will fail
         # (likely partially initialized uv values)
-        if _main_obs.get() is not None:
-            _ = _main_obs.get().is_observable()
-            _ = _main_obs.get().is_always_observable()
-            _ = _main_obs.get().thermal_noise()
-            _ = _main_obs.get().sun_constraint()
-            _ = _main_obs.get().sun_limiting_epochs()
+        obs = _main_obs.get()
+        if obs is not None:
+            _ = obs.is_observable()
+            _ = obs.is_always_observable()
+            _ = obs.thermal_noise()
+            _ = obs.sun_constraint()
+            _ = obs.sun_limiting_epochs()
             # _main_obs.get().thermal_noise()
             # _main_obs.get().synthesized_beam()
             # _main_obs.get().get_uv_data()
-    except ValueError:
-        logger.exception("An error has occured: {e}.")
+    except ValueError as e:
+        logger.exception(f"An error has occured: {e}.")
         return outputs.error_card("Could not plan the observation",
                                   "Your source is not visible during the defined time by >1 antenna."), \
             *vals4error
@@ -204,24 +205,24 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         return outputs.error_card('Source Not Visible!',
                                   'The source cannot be observed by at least more than one antenna '
                                   'during the given observing time.'), *vals4error
-    except Exception:
-        logger.exception("An error has occured: {e}.")
+    except Exception as e:
+        logger.exception(f"An error has occured: {e}.")
         return outputs.error_card("Could not plan the observation",
                                   "Missing necessary fields in the observation configuration"), *vals4error
 
-    assert _main_obs.get() is not None, "Observation should have been created."
+    obs = _main_obs.get()
+    assert obs is not None, "Observation should have been created."
     try:
         futures = {}
         with ThreadPoolExecutor() as executor:
-            futures['rms'] = executor.submit(_main_obs.get().thermal_noise)
+            futures['rms'] = executor.submit(obs.thermal_noise)
             # futures['beam'] = executor.submit(_main_obs.get().synthesized_beam)
-            futures['out-rms'] = executor.submit(outputs.rms, _main_obs.get())
-            futures['out-res'] = executor.submit(outputs.resolution, _main_obs.get())
-            futures['out_ant'] = executor.submit(outputs.ant_warning, _main_obs.get())
-            futures['out_phaseref'] = executor.submit(outputs.warning_low_high_freq,
-                                                      _main_obs.get())
-            futures['out_fov'] = executor.submit(outputs.field_of_view, _main_obs.get())
-            futures['out_freq'] = executor.submit(outputs.summary_freq_res, _main_obs.get())
+            futures['out-rms'] = executor.submit(outputs.rms, obs)
+            futures['out-res'] = executor.submit(outputs.resolution, obs)
+            futures['out_ant'] = executor.submit(outputs.ant_warning, obs)
+            futures['out_phaseref'] = executor.submit(outputs.warning_low_high_freq, obs)
+            futures['out_fov'] = executor.submit(outputs.field_of_view, obs)
+            futures['out_freq'] = executor.submit(outputs.summary_freq_res, obs)
 
             out_rms = futures['rms'].result()
             # beam = futures['beam'].result()
@@ -233,9 +234,9 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
             out_freq = futures['out_freq'].result()
 
         with ThreadPoolExecutor() as executor:
-            if not (not _main_obs.get().sourcenames or not defined_source):
-                # futures['out_plot_elev'] = executor.submit(outputs.plot_elevations, _main_obs.get())
-                futures['out_sun'] = executor.submit(outputs.sun_warning, _main_obs.get())
+            if not (not obs.sourcenames or not defined_source):
+                # futures['out_plot_elev'] = executor.submit(outputs.plot_elevations, obs)
+                futures['out_sun'] = executor.submit(outputs.sun_warning, obs)
                 # futures['out_plot_uv'] = executor.submit(outputsplot_uv_coverage, _main_obs.get())
 
             # futures['out_worldmap'] = executor.submit(outputsworldmap_plot, _main_obs.get())
@@ -251,32 +252,25 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         # # out_rms = outputsrms(_main_obs.get())
         # # out_sens = outputsresolution(_main_obs.get())
 
-        if not _main_obs.get().sourcenames or not defined_source:
-            #     out_plot_elev = [True, no_update]
+        if not obs.sourcenames or not defined_source:
             out_plot_elev = [True, no_update, no_update, no_update]
-            #     out_sun = no_update
             out_plot_uv = [True, no_update, no_update, no_update]
-            out_worldmap = plots.plot_worldmap_stations(_main_obs.get())
+            out_worldmap = plots.plot_worldmap_stations(obs)
         else:
             with ThreadPoolExecutor() as executor:
-                futures['plot_elev'] = executor.submit(plots.elevation_plot, _main_obs.get())
-                futures['plot_elev2'] = executor.submit(plots.elevation_plot_curves, _main_obs.get())
-                futures['plot_uv'] = executor.submit(plots.uvplot, _main_obs.get())
-                futures['plot_worldmap'] = executor.submit(plots.plot_worldmap_stations, _main_obs.get())
-
-                out_plot_elev = [False,
-                                outputs.print_observability_ranges(_main_obs.get()),
+                futures['plot_elev'] = executor.submit(plots.elevation_plot, obs)
+                futures['plot_elev2'] = executor.submit(plots.elevation_plot_curves, obs)
+                futures['plot_uv'] = executor.submit(plots.uvplot, obs)
+                futures['plot_worldmap'] = executor.submit(plots.plot_worldmap_stations, obs)
+                out_plot_elev = [False, outputs.print_observability_ranges(obs),
                                 futures['plot_elev'].result(), futures['plot_elev2'].result()]
-                #     out_plot_elev = [False, outputsplot_elevations(_main_obs.get())]
-                #     out_sun = outputssun_warning(_main_obs.get())
-                out_plot_uv = [False, outputs.print_baseline_lengths(_main_obs.get()),
-                            futures['plot_uv'].result(), outputs.put_antenna_options(_main_obs.get())]
+                out_plot_uv = [False, outputs.print_baseline_lengths(obs),
+                            futures['plot_uv'].result(), outputs.put_antenna_options(obs)]
                 out_worldmap = futures['plot_worldmap'].result()
 
-        # out_worldmap = plots.plot_worldmap_stations(_main_obs.get())
-        out_baseline_sens = outputs.baseline_sensitivities(_main_obs.get())
-        out_datasize = outputs.data_size(_main_obs.get())
-        out_obstime = outputs.obs_time(_main_obs.get())
+        out_baseline_sens = outputs.baseline_sensitivities(obs)
+        out_datasize = outputs.data_size(obs)
+        out_obstime = outputs.obs_time(obs)
     except sources.SourceNotVisible:
         return outputs.error_card('Source Not Visible!',
                                   'The source cannot be observed by at least more than one antenna '
@@ -290,10 +284,9 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
     logger.info(f"Execution time: {(t1 - t0).total_seconds()} s")
     try:
         logger.info("PDF has been requested.")
-        # return {'content': outputs.summary_pdf(_main_obs.get()), 'filename': 'planobs_summary.pdf'}, html.Div()
-        tmpfile = outputs.summary_pdf(_main_obs.get(), show_figure=True)
+        tmpfile = outputs.summary_pdf(obs, show_figure=True)
     except RuntimeError:
-        tmpfile = outputs.summary_pdf(_main_obs.get(), show_figure=False)
+        tmpfile = outputs.summary_pdf(obs, show_figure=False)
     except ValueError as e:
         logger.exception(f"While downloading the PDF: {e}", colorize=True)
         return outputs.error_card("Error during the PDF creation",

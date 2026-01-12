@@ -471,7 +471,7 @@ def main(band: str, networks: Optional[list[str]] = None,
         duration_val = duration.to(u.min).value
 
     if datarate is None:
-        obs_networks = networks or obs.Observation.guess_network(band, obs._STATIONS.filter_antennas(stations))
+        obs_networks = networks or obs.Observation.guess_network(band, obs._STATIONS.filter_antennas(stations or []))
         for a_network in obs._NETWORKS:
             if a_network in obs_networks:
                 datarate = obs._NETWORKS[a_network].max_datarate(band)

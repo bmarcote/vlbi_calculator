@@ -318,7 +318,7 @@ def field_of_view(o: Optional[cli.VLBIObs] = None) -> html.Div:
         if o.bandwidth_smearing() is None or o.time_smearing() is None:
             return html.Div()
     except SourceNotVisible:
-        html.Div()
+        return html.Div()
 
     bw_smearing = cli.optimal_units(o.bandwidth_smearing(), [u.deg, u.arcmin, u.arcsec])
     tm_smearing = cli.optimal_units(o.time_smearing(), [u.deg, u.arcmin, u.arcsec])

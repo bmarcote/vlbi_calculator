@@ -88,8 +88,10 @@ class ScanBlockScheduler:
             self.model.Minimize(separation)
 
     def optimize_elevation(self):
-        time_index = lambda i: np.where(self.observation.times.mjd == min(self.observation.times.mjd,
-                                        key=lambda x: abs(x-self.start_times[i]/10)))
+        def time_index(i: int):
+            return np.where(self.observation.times.mjd == min(self.observation.times.mjd,
+                            key=lambda x: abs(x-self.start_times[i]/10)))
+
         for i, elevations in enumerate(self.observation.elevations()):
             for station, elev in self.observation.elevations()[elevations].items():
                 elevation = self.model.NewIntVar(0, 90, f'elevation_{i}_{station}')

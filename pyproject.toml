@@ -42,6 +42,7 @@ dependencies = [
   "numpy",
   "astropy>=4.0.2",
   "astroplan>=0.7",
+  "types-PyYAML",
   "rich",
   "rich_argparse",
   "plotext",

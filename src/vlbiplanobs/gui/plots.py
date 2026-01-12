@@ -168,7 +168,7 @@ def uvplot(o, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure
         "#006400",  # DarkGreen
     ]
     if filter_antennas is not None and len(filter_antennas) > len(highlight_colors):
-        highlight_colors = highlight_colors * (len(filter_antennas) // len(highlight_colors))
+        highlight_colors = highlight_colors * (len(filter_antennas) // len(highlight_colors) + 1)
 
     def get_color(baseline: str, filter_antennas: list[str]):
         for i, ant in enumerate(filter_antennas):

@@ -2,7 +2,6 @@ from dash import html, dcc
 from dash_bootstrap_components import Modal
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs.gui import inputs, outputs
-from vlbiplanobs import observation
 
 
 def top_banner(app) -> html.Div:

@@ -378,9 +378,9 @@ def source_and_epoch_selection() -> html.Div:
                                                                   minDate="1950-01-01", maxDate="2100-01-01"),
                                                     dcc.Dropdown(id='starttime', placeholder="Start time (UTC)",
                                                                  value="00:00", clearable=False,
-                                                                 options=[{'label': f"{hm//60:02n}:{hm % 60:02n}", \
-                                                                           'value': f"{hm//60:02n}:{hm % 60:02n}"} \
-                                                                          for hm in range(0, 24*60, 15)],
+                                                                 options=[{'label': f"{hm//60:02n}:{hm % 60:02n}",
+                                                                           'value': f"{hm//60:02n}:{hm % 60:02n}"}
+                                                                          for hm in range(0, 24*60, 15)],  # type: ignore[arg-type]
                                                                  persistence=True, className='form-hour')])]),
                                                     # dmc.DateTimePicker(id='starttime', className='form-picker',
                                                     #                 value=None, minDate=dt(1900, 1, 1),

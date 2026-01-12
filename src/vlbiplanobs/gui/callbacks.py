@@ -90,14 +90,16 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
 
     network_names = [nn for nb, nn in zip(network_bools, observation._NETWORKS) if nb]
     try:
-        # max_datarate is never None in the networks
-        if 'EVN' in network_names and observation._NETWORKS['EVN'].has_band(inputs.band_from_index(band)):
-            max_datarate = observation._NETWORKS['EVN'].max_datarate(inputs.band_from_index(band)).value
+        the_band = inputs.band_from_index(band)
+        if 'EVN' in network_names and observation._NETWORKS['EVN'].has_band(the_band):
+            dr = observation._NETWORKS['EVN'].max_datarate(the_band)
+            max_datarate = dr.value if dr is not None else 2048
         else:
-            max_datarate = int(min([observation._NETWORKS[net].max_datarate(inputs.band_from_index(band)).value
-                                    for net in network_names
-                                    if observation._NETWORKS[net].has_band(inputs.band_from_index(band))]))
-    except AttributeError:
+            rates = [observation._NETWORKS[net].max_datarate(the_band)
+                     for net in network_names if observation._NETWORKS[net].has_band(the_band)]
+            valid_rates = [r.value for r in rates if r is not None]
+            max_datarate = int(min(valid_rates)) if valid_rates else 2048
+    except (AttributeError, ValueError):
         raise PreventUpdate
 
     # This is here to check if this avoids the state when somehow datarate value is None, which I do not see why
@@ -250,7 +252,7 @@ def update_uv_figure(highlight_antennas: list[str], figure):
         "#006400",  # DarkGreen
     ]
     if highlight_antennas is not None and len(highlight_antennas) > len(highlight_colors):
-        highlight_colors = highlight_colors * (len(highlight_antennas) // len(highlight_colors))
+        highlight_colors = highlight_colors * (len(highlight_antennas) // len(highlight_colors) + 1)
 
     def get_color(filter_antenna: str):
         if filter_antenna in highlight_antennas:
@@ -271,7 +273,7 @@ def update_uv_figure(highlight_antennas: list[str], figure):
             updated_fig['data'][i]['marker']['color'] = get_color([a for a in trace['name'].split('-')
                                                                    if a in highlight_antennas][0])
             updated_fig['data'][i]['marker']['size'] = 4
-        elif updated_fig['data'][i]['marker']['color'] != 'black':
+        elif figure['data'][i]['marker']['color'] != 'black':
             updated_fig['data'][i]['marker']['color'] = 'black'
             updated_fig['data'][i]['marker']['size'] = 2
 

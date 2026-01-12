@@ -1,5 +1,4 @@
 import threading
-import asyncio
 from functools import wraps
 from collections import defaultdict
 from typing import Optional, Union, Tuple, Literal, get_type_hints
@@ -414,8 +413,7 @@ class Observation(object):
                                       if rating[n[0]] > 0.0]
         return sorted_networks
 
-
-
+    @staticmethod
     def _get_max_datarate(network: str, band: str) -> u.Quantity:
         return _NETWORKS[network].max_datarate(band)
 

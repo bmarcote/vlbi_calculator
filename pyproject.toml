@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vlbiplanobs"
-version = "4.6.3"
+version = "4.6.4"
 description = "Observaiton Planner for VLBI observations"
 license = "GPL-3.0-or-later"
 readme = "README.md"

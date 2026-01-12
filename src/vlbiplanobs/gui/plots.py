@@ -8,6 +8,17 @@ from plotly.subplots import make_subplots
 from vlbiplanobs import sources
 
 
+def _gst_tickvals_ticktext(o):
+    """Returns tickvals and ticktext for a GST secondary x-axis."""
+    gst = o.gstimes.hour
+    n_ticks = min(8, len(gst))
+    step = max(1, len(gst) // n_ticks)
+    indices = list(range(0, len(gst), step))
+    tickvals = [o.times.datetime[i] for i in indices]
+    ticktext = [f"{int(gst[i]):02d}:{int((gst[i] % 1) * 60):02d}" for i in indices]
+    return tickvals, ticktext
+
+
 def elevation_plot_curves(o) -> Optional[go.Figure]:
     """Creates the plot showing when the different antennas can observe a given source,
     with the old style: with the elevation in the y-axis.
@@ -46,25 +57,32 @@ def elevation_plot_curves(o) -> Optional[go.Figure]:
                                          "<b>Time</b>: %{x}",  # .strftime('%H:%M')}",
                            name=o.stations[ant].name))
 
-    fig.update_layout(
+    layout_kwargs = dict(
         showlegend=True,
-        # showgrid=False,
         hovermode='closest',
         xaxis_title="Time (GST)" if not o.fixed_time else "Time (UTC)",
         yaxis_title="Elevation (degrees)",
         title='',
-        paper_bgcolor='rgba(0,0,0,0)',   # Transparent background
+        paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
-                   mirror='allticks', ticks='inside', tickmode='auto',
+                   mirror=False, ticks='inside', tickmode='auto',
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
                    tickmode='auto', range=[0, 90],
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        margin=dict(l=2, r=2, t=1, b=0),
+        margin=dict(l=2, r=2, t=25 if o.fixed_time else 1, b=0),
         legend=dict(x=0.01, y=0.99, xanchor='left', yanchor='top', bgcolor='rgba(255, 255, 255, 0.7)',
                     bordercolor='rgba(0, 0, 0, 0.3)', borderwidth=1))
 
+    if o.fixed_time:
+        tickvals, ticktext = _gst_tickvals_ticktext(o)
+        layout_kwargs['xaxis2'] = dict(overlaying='x', side='top', type='date', tickmode='array',
+                                       tickvals=tickvals, ticktext=ticktext, showline=True,
+                                       linecolor='black', linewidth=1, ticks='inside',
+                                       title='Time (GST)')
+
+    fig.update_layout(**layout_kwargs)
     return fig
 
 
@@ -115,23 +133,32 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
                     row=src_i % 4 + 1,
                     col=src_i // 4 + 1)
 
-    fig.update_layout(
+    layout_kwargs = dict(
         showlegend=False,
         hovermode='closest',
         xaxis_title="Time (GST)" if not o.fixed_time else "Time (UTC)",
         yaxis_title="Antennas",
         title='',
-        paper_bgcolor='rgba(0,0,0,0)',   # Transparent background
+        paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
-                   mirror='allticks', ticks='inside', tickmode='auto',
+                   mirror=False, ticks='inside', tickmode='auto',
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
                    tickmode='array',
                    tickvals=len(o.stations) - np.array(range(len(srcup[src_block].keys()))),
                    ticktext=list(srcup[src_block].keys()),
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        margin=dict(l=2, r=2, t=1, b=0))
+        margin=dict(l=2, r=2, t=25 if o.fixed_time else 1, b=0))
+
+    if o.fixed_time:
+        tickvals, ticktext = _gst_tickvals_ticktext(o)
+        layout_kwargs['xaxis2'] = dict(overlaying='x', side='top', type='date', tickmode='array',
+                                       tickvals=tickvals, ticktext=ticktext, showline=True,
+                                       linecolor='black', linewidth=1, ticks='inside',
+                                       title='Time (GST)')
+
+    fig.update_layout(**layout_kwargs)
     if show_colorbar:
         fig.update_layout(coloraxis=dict(colorscale='Viridis'),
                           coloraxis_colorbar=dict(title='Elevation (degrees)'))

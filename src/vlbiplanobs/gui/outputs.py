@@ -487,11 +487,16 @@ def baseline_sensitivities(o: Optional[cli.VLBIObs] = None) -> html.Div:
         return html.Div([dbc.ModalHeader(dbc.ModalTitle("Sensitivity per baseline")),
                          dbc.ModalBody("No information provided.")], id='sens-baseline-style')
 
+    bl_sens = o.baseline_sensitivity()
+    if bl_sens is None:
+        return html.Div([dbc.ModalHeader(dbc.ModalTitle("Sensitivity per baseline")),
+                         dbc.ModalBody("Not enough stations with this band to compute baselines.")],
+                        id='sens-baseline-style')
+
     table_header = [html.Thead(html.Tr([html.Th("")] + [html.Th(s.codename,
                                                         className='text-left text-sm p-0 pb-2 ps-3')
                                                         for s in o.stations]))]
-    all_baselines = np.unique(np.array([v.to(u.mJy/u.beam).value
-                                        for v in o.baseline_sensitivity().values()]))
+    all_baselines = np.unique(np.array([v.to(u.mJy/u.beam).value for v in bl_sens.values()]))
     lower_div, higher_div = np.quantile(all_baselines, 0.33), np.quantile(all_baselines, 0.66)
     rows = []
     for i, s in enumerate(o.stations):
@@ -701,19 +706,23 @@ def print_baseline_lengths(o: Optional[cli.VLBIObs] = None) -> html.Div:
     Returns
     - dash.html.Div
         Div containing baseline length information.
-        Empty div if no observation provided.
+        Empty div if no observation provided or no baselines available.
     """
     if o is None:
         return html.Div()
 
-    longest_bl = o.longest_baseline()[list(o.longest_baseline())[0]]
+    longest_bl_dict = o.longest_baseline()
+    shortest_bl_dict = o.shortest_baseline()
+    if not longest_bl_dict or not shortest_bl_dict:
+        return html.Div()
+
+    first_key = list(longest_bl_dict)[0]
+    longest_bl = longest_bl_dict[first_key]
     ant_l1, ant_l2 = longest_bl[0].split('-')
-    # Using dummy units to allow the conversion
     longest_bl_lambda = longest_bl[1]/o.wavelength
     longest_bl_lambda = cli.optimal_units(longest_bl_lambda*u.m, [u.Gm, u.Mm, u.km])
-    shortest_bl = o.shortest_baseline()[list(o.longest_baseline())[0]]
+    shortest_bl = shortest_bl_dict[first_key]
     ant_s1, ant_s2 = shortest_bl[0].split('-')
-    # Using dummy units to allow the conversion
     shortest_bl_lambda = shortest_bl[1]/o.wavelength
     shortest_bl_lambda = cli.optimal_units(shortest_bl_lambda*u.m, [u.Gm, u.Mm, u.km])
 
@@ -929,20 +938,25 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
                 if len(o.scans) > 1:
                     layout.append_layout_element(pdf.Paragraph(f"For the source {src.name}", font='Helvetica-bold'))
 
-                rms = cli.optimal_units(o.thermal_noise()[src.name],
+                if not o.is_observable_by_network(min_stations=1)[src.name]:
+                    layout.append_layout_element(pdf.Paragraph(f"The source {src.name} is not visible from the array."))
+                    continue
+
+                rms = cli.optimal_units(o.thermal_noise()[src.name],  # type: ignore
                                         [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
                 rms_chan = cli.optimal_units(rms/np.sqrt(1*u.min /
-                                             (o.duration if o.duration is not None else 24*u.h)),
-                                             [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
-                                              u.mJy/u.beam, u.uJy/u.beam])
+                                                (o.duration if o.duration is not None else 24*u.h)),
+                                                [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
+                                            u.mJy/u.beam, u.uJy/u.beam])
                 rms_min = cli.optimal_units(rms*np.sqrt(o.subbands*o.channels),
                                             [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
-                                             u.mJy/u.beam, u.uJy/u.beam])
+                                            u.mJy/u.beam, u.uJy/u.beam])
                 layout.append_layout_element(pdf.Paragraph(f"Thermal rms noise: "
-                                         f"{rms:.3g}\n"
-                                         f" ({rms_chan:.3g} per spectral "
-                                         f"channel and {rms_min:.3g}"
-                                         " per one-minute time integration."))
+                                            f"{rms:.3g}\n"
+                                            f" ({rms_chan:.3g} per spectral "
+                                            f"channel and {rms_min:.3g}"
+                                            " per one-minute time integration."))
+
                 synth_beam = o.synthesized_beam()[src.name]
                 bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
                 bmin = synth_beam['bmin'].to(bmaj.unit)
@@ -951,10 +965,11 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
                                          f"{bmaj.value:2.1f} x {bmin:2.1f}"
                                          f", {synth_beam['pa'].value:2.0f}º."))
 
-    bw_smearing = cli.optimal_units(o.bandwidth_smearing(), [u.deg, u.arcmin, u.arcsec])
-    tm_smearing = cli.optimal_units(o.time_smearing(), [u.deg, u.arcmin, u.arcsec])
-    layout.append_layout_element(pdf.Paragraph(f"Field of view limited to {bw_smearing:.2g} (from frequency smearing) "
-                             f"and {tm_smearing:.2g} (from time smearing), considering 10% loss."))
+    if o.is_observable_by_network(min_stations=1)[src.name]:
+        bw_smearing = cli.optimal_units(o.bandwidth_smearing(), [u.deg, u.arcmin, u.arcsec])
+        tm_smearing = cli.optimal_units(o.time_smearing(), [u.deg, u.arcmin, u.arcsec])
+        layout.append_layout_element(pdf.Paragraph(f"Field of view limited to {bw_smearing:.2g} (from frequency smearing) "
+                                f"and {tm_smearing:.2g} (from time smearing), considering 10% loss."))
 
     if len(o.scans) > 0 and show_figure:
         fig = plots.elevation_plot(o, show_colorbar=True)

@@ -711,6 +711,35 @@ class Observation(object):
         """
         return {s: {k: any(v) for k, v in i.items()} for s, i in self.is_observable().items()}
 
+    def is_observable_by_network(self, min_stations: int = 2) -> dict[str, bool]:
+        """Returns whether each scan block source can be observed by at least a minimum number
+        of stations at some point during the observation.
+
+        Inputs
+        - min_stations : int  [default = 2]
+            Minimum number of stations that must be able to observe the source simultaneously
+            for it to be considered observable by the network.
+
+        Returns
+            is_observable_by_network : dict
+                Dictionary where the keys are the scan block names, and the values are
+                booleans indicating if at least `min_stations` can observe the source
+                at some point during the observation.
+        """
+        result = {}
+        is_obs = self.is_observable()
+        for ablockname, antbool in is_obs.items():
+            # For each time step, count how many stations can observe
+            n_times = len(self.times)
+            for t_idx in range(n_times):
+                count = sum(1 for ant_visible in antbool.values() if ant_visible[t_idx])
+                if count >= min_stations:
+                    result[ablockname] = True
+                    break
+            else:
+                result[ablockname] = False
+        return result
+
     def is_always_observable(self) -> dict[str, dict[str, bool]]:
         """Returns whenever the target source can be observed by each station along the whole observation.
 
@@ -978,7 +1007,7 @@ class Observation(object):
 
         return sun_seps
 
-    def thermal_noise(self) -> Union[u.Quantity, dict[str, u.Quantity]]:
+    def thermal_noise(self) -> Optional[Union[u.Quantity, dict[str, u.Quantity]]]:
         """Returns the expected rms thermal noise for the given observation.
 
         Each antenna has a different sensitivity for the observing band (established from
@@ -992,14 +1021,36 @@ class Observation(object):
         higher if an uniform roubst is used.
 
         If the source has not been set, it will assume that all antennas observe all time.
+
+        For single-antenna observations, returns the single-dish sensitivity.
+        Returns None if no stations have the required band or datarate is not set.
         """
         if self._rms is not None:
             return self._rms
 
-        # TODO: I think the n_stations = 1 may be a special case, where it requires k=0, not k=1
-        sefds = np.array([stat.sefd(self.band).to(u.Jy).value for stat in self.stations])
+        # Filter stations that have SEFD for the requested band
+        valid_stations = [stat for stat in self.stations if stat.has_band(self.band)]
+        if len(valid_stations) < 1:
+            return None
+
+        if self.datarate is None:
+            return None
+
+        # Single antenna case: use single-dish sensitivity formula
+        if len(valid_stations) == 1:
+            sefd = valid_stations[0].sefd(self.band).to(u.Jy).value
+            bandwidth = (valid_stations[0].datarate.to(u.bit/u.s).value if valid_stations[0].datarate is not None
+                         else self.datarate.to(u.bit/u.s).value) / (2 * self.bitsampling.to(u.bit).value)
+            if not self.fixed_time:
+                dt = self.duration.to(u.s).value * self.ontarget_fraction
+            else:
+                dt = (self.times[-1]-self.times[0]).to(u.s).value * self.ontarget_fraction
+            self._rms = (sefd / np.sqrt(2 * bandwidth * dt * min(self.polarizations.value, 2))) * u.Jy/u.beam
+            return self._rms
+
+        sefds = np.array([stat.sefd(self.band).to(u.Jy).value for stat in valid_stations])
         bandwidths = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
-                              else self.datarate.to(u.bit/u.s).value for s in self.stations]) / \
+                              else self.datarate.to(u.bit/u.s).value for s in valid_stations]) / \
             (2 * self.bitsampling.to(u.bit).value)  # In Hz
         bandwidth_min = np.minimum.outer(bandwidths, bandwidths)
         if not self.sources():
@@ -1025,16 +1076,24 @@ class Observation(object):
         else:
             self._rms = {}
             delta_t = (self.times[1] - self.times[0]).to(u.s).value * self.ontarget_fraction
+            obs_data = self.is_observable()
             for sourcename in self.sourcenames:
                 scanname = self._scanblock_name_from_source_name(sourcename)
                 assert scanname is not None, f"No scan found related to the source {sourcename}"
-                visible = np.array([self.is_observable()[scanname][stat.codename] for stat in self.stations])
+                visible = np.array([obs_data[scanname].get(stat.codename, np.zeros(len(self.times), dtype=bool))
+                                    for stat in valid_stations])
                 integrated_time = np.sum(visible[:, None] & visible[None, :], axis=2) * delta_t
+                if np.sum(integrated_time) == 0:
+                    self._rms[sourcename] = None
+                    continue
                 temp = np.sum((bandwidth_min*integrated_time /
                               np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=1))
-                self._rms[sourcename] = ((1/0.7)/np.sqrt(temp * min(self.polarizations.value, 2)))*u.Jy/u.beam
+                if temp <= 0:
+                    self._rms[sourcename] = None
+                else:
+                    self._rms[sourcename] = ((1/0.7)/np.sqrt(temp * min(self.polarizations.value, 2)))*u.Jy/u.beam
 
-        return self._rms
+        return self._rms if any(v is not None for v in self._rms.values()) else None
 
     @enforce_types
     def baseline_sensitivity(self, antenna1: Optional[str] = None, antenna2: Optional[str] = None,
@@ -1059,6 +1118,8 @@ class Observation(object):
         """
         if self._baseline_sensitivity is None:
             self._baseline_sensitivity = self._baseline_sensitivity_numpy()
+            if self._baseline_sensitivity is None:
+                return None
             for key in self._baseline_sensitivity:
                 self._baseline_sensitivity[key] = self._baseline_sensitivity[key] / \
                     np.sqrt(integration_time.to(u.s).value)
@@ -1084,19 +1145,22 @@ class Observation(object):
 
     # This implementation is ~5 times faster than with threads
     # Only for >20 antennas, it gets ~2 times slower. I think it's worth it.
-    def _baseline_sensitivity_numpy(self) -> dict[str, u.Quantity]:
-        basel_sens: dict[str, u.Quantity] = {}
+    def _baseline_sensitivity_numpy(self) -> Optional[dict[str, u.Quantity]]:
+        valid_stations = [stat for stat in self.stations if stat.has_band(self.band)]
+        if len(valid_stations) < 2:
+            return None
 
-        sefds = np.array([stat.sefd(self.band).to(u.Jy).value for stat in self.stations])
+        basel_sens: dict[str, u.Quantity] = {}
+        sefds = np.array([stat.sefd(self.band).to(u.Jy).value for stat in valid_stations])
         datarates = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
-                              else self.datarate.to(u.bit/u.s).value for s in self.stations])
+                              else self.datarate.to(u.bit/u.s).value for s in valid_stations])
         datarates_min = np.minimum.outer(datarates, datarates)
         sens = (1/0.7)*np.sqrt(np.outer(sefds, sefds)) / \
                                 np.sqrt(datarates_min/(min(self.polarizations.value, 2) * \
                                         self.bitsampling.to(u.bit).value))
-        for i in range(len(self.stations)):
-            for j in range(i, len(self.stations)):
-                basel_sens[f"{self.stations[i].codename}-{self.stations[j].codename}"] = \
+        for i in range(len(valid_stations)):
+            for j in range(i, len(valid_stations)):
+                basel_sens[f"{valid_stations[i].codename}-{valid_stations[j].codename}"] = \
                     sens[i, j]*u.Jy/u.beam
 
         return basel_sens

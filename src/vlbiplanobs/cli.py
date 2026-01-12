@@ -100,11 +100,15 @@ class VLBIObs(obs.Observation):
         else:
             rprint("[dim]No sources defined.[/dim]")
             if self.fixed_time or self.duration is not None:
-                rprint("\n[bold green]Expected outcome[/bold green]:")
-                val = optimal_units(self.thermal_noise(), [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
-                rprint("[bold]Thermal rms noise (for a +/- 45° elevation source)[/bold]: ", end='')
-                rprint(f"{val.value:.01f} {val.unit.to_string('unicode')}")
-                rprint("[dim](for a +/- 45° elevation source)[/dim]")
+                rms = self.thermal_noise()
+                if rms is not None:
+                    rprint("\n[bold green]Expected outcome[/bold green]:")
+                    val = optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
+                    rprint("[bold]Thermal rms noise (for a +/- 45° elevation source)[/bold]: ", end='')
+                    rprint(f"{val.value:.01f} {val.unit.to_string('unicode')}")
+                    rprint("[dim](for a +/- 45° elevation source)[/dim]")
+                else:
+                    rprint("\n[yellow]Cannot compute thermal noise (no stations with this band).[/yellow]")
 
         print('\n')
 

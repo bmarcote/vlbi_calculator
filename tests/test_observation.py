@@ -6,7 +6,7 @@ from astropy.time import Time
 # from rich import print as rprint
 from vlbiplanobs import observation as obs
 from vlbiplanobs import stations
-# from vlbiplanobs import sources
+from vlbiplanobs import sources
 from vlbiplanobs import cli
 
 
@@ -90,6 +90,24 @@ def test_observation_init():
         with pytest.raises(AssertionError):
             assert 'Cm' in o.stations.station_codenames, f"Stations found: {o.stations.station_codenames}"
             assert 'Ku' in o.stations.station_codenames, f"Stations found: {o.stations.station_codenames}"
+
+def test_observation_lba_no_visible():
+    """Test that an observation with LBA network where no antennas can observe the source."""
+    target = sources.Source('Geminga', '06h33m54.15s +17d46m12.9s')
+    lba_stations = ['At', 'Pa', 'Mp', 'Ho', 'Cd', 'Td', 'Ww']
+    available_lba = [s for s in lba_stations if s in obs._STATIONS.station_codenames]
+    o = obs.Observation(scans={'block1': obs.ScanBlock([obs.Scan(target)])},
+                        times=Time('2026-01-12 00:00', scale='utc') + np.arange(0, 180, 10)*u.min,
+                        band='18cm',
+                        stations=obs._STATIONS.filter_antennas(available_lba))
+    
+    # Check that no antennas can observe the source (all should be False or empty)
+    for ablockname, antbool in o.is_observable().items():
+        visible_antennas = [ant for ant, visible in antbool.items() if any(visible)]
+        assert len(visible_antennas) == 0, f"Expected no visible antennas, but found: {visible_antennas}"
+    
+    assert o.thermal_noise() is None
+
 
 
 # TODO:

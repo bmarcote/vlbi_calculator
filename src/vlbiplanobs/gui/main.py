@@ -213,6 +213,9 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
     obs = _main_obs.get()
     assert obs is not None, "Observation should have been created."
     try:
+        if not all(obs.is_observable_by_network(min_stations=1).values()):
+            raise sources.SourceNotVisible
+
         futures = {}
         with ThreadPoolExecutor() as executor:
             futures['rms'] = executor.submit(obs.thermal_noise)

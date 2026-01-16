@@ -201,7 +201,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         return outputs.error_card("Could not plan the observation",
                                   "Your source is not visible during the defined time by >1 antenna."), \
             *vals4error
-    except sources.SourceNotVisible:
+    except (sources.SourceNotVisible, IndexError):
         return outputs.error_card('Source Not Visible!',
                                   'The source cannot be observed by at least more than one antenna '
                                   'during the given observing time.'), *vals4error

@@ -980,9 +980,12 @@ class Observation(object):
             if len(bad_epochs[blockname]) > 0:
                 t0, t1 = min(bad_epochs[blockname]), max(bad_epochs[blockname])
                 if t0.datetime.month < 3 and t1.datetime.month > 10:
-                    mid_year = Time('2025-06-01')
-                    t1 = max([t for t in bad_epochs[blockname] if t <= mid_year])
-                    t0 = min([t for t in bad_epochs[blockname] if t >= mid_year])
+                    mid_year = Time(f'{t0.datetime.year}-06-01')
+                    before_mid = [t for t in bad_epochs[blockname] if t <= mid_year]
+                    after_mid = [t for t in bad_epochs[blockname] if t >= mid_year]
+                    if before_mid and after_mid:
+                        t1 = max(before_mid)
+                        t0 = min(after_mid)
 
                 bad_epochs[blockname] = [t0, t1]
 

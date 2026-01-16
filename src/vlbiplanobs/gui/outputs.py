@@ -965,7 +965,7 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
                                          f"{bmaj.value:2.1f} x {bmin:2.1f}"
                                          f", {synth_beam['pa'].value:2.0f}º."))
 
-    if o.is_observable_by_network(min_stations=1)[src.name]:
+    if o.sources() and o.is_observable_by_network(min_stations=1).get(o.sources()[0].name, False):
         bw_smearing = cli.optimal_units(o.bandwidth_smearing(), [u.deg, u.arcmin, u.arcsec])
         tm_smearing = cli.optimal_units(o.time_smearing(), [u.deg, u.arcmin, u.arcsec])
         layout.append_layout_element(pdf.Paragraph(f"Field of view limited to {bw_smearing:.2g} (from frequency smearing) "

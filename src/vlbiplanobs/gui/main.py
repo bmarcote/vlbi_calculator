@@ -1,8 +1,6 @@
 import os
-import threading
 import argparse
 from loguru import logger
-from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
 from dash import Dash, html, dcc, Output, Input, State, no_update
@@ -30,26 +28,6 @@ else:
 
 _LOG = logger.add(logfilename, backtrace=True, diagnose=True,
                   format="{time:YYYY-MM-DD HH:mm} |  {level} {message}")
-
-
-class Obs():
-    def __init__(self, o: Optional[cli.VLBIObs] = None):
-        self.plan_lock: threading.Lock = threading.Lock()
-        self._OBS: cli.VLBIObs | None = o
-        self.prev_datarate: int = 2048
-        self.prev_channels: int = 64
-        self.prev_subbands: int = 8
-
-    def set(self, obs: cli.VLBIObs):
-        with self.plan_lock:
-            self._OBS = obs
-
-    def get(self) -> Optional[cli.VLBIObs]:
-        # with self.plan_lock:
-        return self._OBS
-
-
-_main_obs = Obs()
 
 current_directory = os.path.dirname(os.path.realpath(__file__))
 external_stylesheets: list = ['https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css']
@@ -108,7 +86,10 @@ def download_pdf_summary(n_clicks, linked_file: str):
                Output('out-worldmap', 'hidden'),
                Output('fig-worldmap', 'figure'),
                Output('card-datasize', 'children'),
-               Output('div-card-time', 'children')],
+               Output('div-card-time', 'children'),
+               Output('store-prev-datarate', 'data'),
+               Output('store-prev-channels', 'data'),
+               Output('store-prev-subbands', 'data')],
               Input('compute-observation', 'n_clicks'),
               [State('band-slider', 'value'),
                State('switch-specify-source', 'value'),
@@ -141,7 +122,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
 
     vals4error = no_update, True, no_update, *[html.Div()]*6, True, html.Div(), no_update, \
         no_update, True, html.Div(), no_update, no_update, html.Div(), html.Div(), True, no_update, \
-        *[html.Div()]*2
+        *[html.Div()]*2, no_update, no_update, no_update
     if band == 0 or (not selected_antennas) or (duration is None and (source == '' or not defined_source)):
         return outputs.warning_card("Select the band, antennas, and source or duration",
                                     "If no source is provided, a duration for the observation "
@@ -172,7 +153,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                     f"band: {inputs.band_from_index(band)}; target: {source}; duration: {duration}"
                     f"{' h' if duration is not None else ''};"
                     f"defined_epoch: {defined_epoch}.")
-        _main_obs.set(cli.main(band=inputs.band_from_index(band), stations=sorted(selected_antennas),
+        obs = cli.main(band=inputs.band_from_index(band), stations=sorted(selected_antennas),
                       targets=[source,] if defined_source and source.strip() != '' else None,
                       duration=duration*u.h if duration is not None else None,
                       ontarget=onsourcetime/100,
@@ -180,13 +161,9 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                                       format='datetime', scale='utc') if defined_epoch else None,
                       datarate=(datarate if not isinstance(datarate, str) else int(datarate))*u.Mbit/u.s,
                       subbands=subbands, channels=channels, polarizations=pols,
-                      inttime=inttime*u.s))
-        _main_obs.prev_datarate = datarate
-        _main_obs.prev_channels = channels
-        _main_obs.prev_subbands = subbands
+                      inttime=inttime*u.s)
         # I need to run this first otherwise the other functions will fail
         # (likely partially initialized uv values)
-        obs = _main_obs.get()
         if obs is not None:
             _ = obs.is_observable()
             _ = obs.is_always_observable()
@@ -210,7 +187,6 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         return outputs.error_card("Could not plan the observation",
                                   "Missing necessary fields in the observation configuration"), *vals4error
 
-    obs = _main_obs.get()
     assert obs is not None, "Observation should have been created."
     try:
         if not all(obs.is_observable_by_network(min_stations=1).values()):
@@ -298,13 +274,18 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
     logger.info(f"Execution time for PDF: {(dt.now() - t1).total_seconds()} s")
 
     return html.Div(), html.Div(), False, tmpfile, out_rms, out_baseline_sens, out_res, out_sun, \
-        out_phaseref, out_ant, *out_plot_elev, *out_plot_uv, out_fov, out_freq, False, out_worldmap, out_datasize, out_obstime
+        out_phaseref, out_ant, *out_plot_elev, *out_plot_uv, out_fov, out_freq, False, out_worldmap, \
+        out_datasize, out_obstime, datarate, channels, subbands
 
 
 server = app.server
 app.index_string = app.index_string.replace('<body>', '<body class="g-sidenav-show bg-gray-100">')
 
 app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-100 row m-0 p-4', children=[
+                   # Stores for preserving previous values across callbacks (avoids shared state with gunicorn)
+                   dcc.Store(id='store-prev-datarate', data=2048),
+                   dcc.Store(id='store-prev-channels', data=64),
+                   dcc.Store(id='store-prev-subbands', data=8),
                    layout.top_banner(app),
                    # inputs.modal_welcome(),
                    html.Div(id='main-window', className='container-fluid d-flex row p-0 m-0',

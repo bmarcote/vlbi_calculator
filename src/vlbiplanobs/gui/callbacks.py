@@ -8,7 +8,6 @@ from vlbiplanobs import sources
 from vlbiplanobs import observation
 from vlbiplanobs import cli
 from vlbiplanobs.gui import inputs
-from vlbiplanobs.gui import main as gui_main
 
 
 @callback([Output('band-slider', 'marks'),
@@ -79,8 +78,11 @@ def enable_networks_with_band(band_index: int, *card_styles):
           [Input('switch-specify-continuum', 'value'),
            Input('band-slider', 'value'),
            [Input(f"network-{network}", 'value') for network in observation._NETWORKS]],
-          State('datarate', 'value'))
-def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: list[bool], datarate: int = 2048):
+          [State('datarate', 'value'),
+           State('store-prev-channels', 'data'),
+           State('store-prev-subbands', 'data')])
+def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: list[bool],
+                             datarate: int = 2048, prev_channels: int = 64, prev_subbands: int = 8):
     if band == 0:
         raise PreventUpdate
 
@@ -110,8 +112,8 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
                                                              if dr > max_datarate else '#000000'})}
               for dr, drl in fs.data_rates.items()), \
         32 if do_spectral_line else max_datarate if max_datarate is not None else datarate, \
-        4096 if do_spectral_line else gui_main._main_obs.prev_channels, \
-        1 if do_spectral_line else gui_main._main_obs.prev_subbands
+        4096 if do_spectral_line else prev_channels, \
+        1 if do_spectral_line else prev_subbands
 
 
 @callback([Output(f"chip-{ant.codename}", "disabled") for ant in observation._STATIONS],
@@ -191,11 +193,6 @@ def update_bandwidth_label(datarate: int, npols: int, chans: int, subbands: int,
     """
     if None in (datarate, npols, chans, subbands):
         raise PreventUpdate
-
-    if not do_spectral_line:
-        gui_main._main_obs.prev_datarate = int(datarate)
-        gui_main._main_obs.prev_channels = chans
-        gui_main._main_obs.prev_subbands = subbands
 
     # Either 1 or 2 pols per station:
     return "The maximum bandwidth is " \

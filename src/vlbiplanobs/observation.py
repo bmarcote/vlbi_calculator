@@ -5,6 +5,7 @@ from typing import Optional, Union, Tuple, Literal, get_type_hints
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from enum import Enum
+from datetime import datetime as dt
 from astropy import units as u
 from astropy import coordinates as coord
 from astropy.time import Time
@@ -76,11 +77,11 @@ class Observation(object):
 
     @property
     def _REF_TIMES(self):
-        return Time('2025-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01)*u.day
+        return Time(f'{dt.now().year}-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01)*u.day
 
     @property
     def _REF_YEAR(self):
-        return Time('2025-01-01', scale='utc') + np.arange(0.0, 365.2, 1)*u.day
+        return Time(f'{dt.now().year}-01-01', scale='utc') + np.arange(0.0, 365.2, 1)*u.day
 
     @enforce_types
     def __init__(self, band: str, stations: Stations, scans: dict[str, ScanBlock],

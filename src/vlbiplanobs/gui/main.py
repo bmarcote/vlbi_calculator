@@ -44,23 +44,42 @@ app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_
                Output('downloading', 'children'),
                Output('user-message', 'children', allow_duplicate=True)],
               Input("button-download", "n_clicks"),
-              State("download-link", "href"),
+              State("store-obs-params", "data"),
               running=[(Output('button-download', 'disabled'), True, False),],
               prevent_initial_call=True)
-def download_pdf_summary(n_clicks, linked_file: str):
-    if n_clicks is not None:
-        try:
-            logger.info("PDF has been requested and created.")
-            # return {'content': outputs.summary_pdf(_main_obs.get()), 'filename': 'planobs_summary.pdf'}, html.Div()
-            # tmpfile = outputs.summary_pdf(_main_obs.get())
-            return dcc.send_file(linked_file, filename="planobs_summary.pdf"), html.Div(), no_update
-        except ValueError as e:
-            print(f"An error occurred: {e}")
-            logger.exception(f"While downloading the PDF: {e}", colorize=True)
-            return no_update, no_update, outputs.error_card("Error during the PDF creation",
-                                                            "Re-calculate a full observation and try again")
+def download_pdf_summary(n_clicks, obs_params: dict):
+    if n_clicks is None or obs_params is None:
+        return no_update, no_update, no_update
 
-    return no_update, no_update, no_update
+    try:
+        logger.info("PDF generation started on download request.")
+        # Recreate observation from stored parameters
+        obs = cli.main(
+            band=obs_params['band'],
+            stations=obs_params['stations'],
+            targets=obs_params['targets'],
+            duration=obs_params['duration'] * u.h if obs_params['duration'] is not None else None,
+            ontarget=obs_params['ontarget'],
+            start_time=Time(dt.strptime(f"{obs_params['startdate']} {obs_params['starttime']}", '%Y-%m-%d %H:%M'),
+                           format='datetime', scale='utc') if obs_params['startdate'] else None,
+            datarate=obs_params['datarate'] * u.Mbit / u.s,
+            subbands=obs_params['subbands'],
+            channels=obs_params['channels'],
+            polarizations=obs_params['polarizations'],
+            inttime=obs_params['inttime'] * u.s
+        )
+        try:
+            tmpfile = outputs.summary_pdf(obs, show_figure=True)
+        except RuntimeError:
+            tmpfile = outputs.summary_pdf(obs, show_figure=False)
+
+        logger.info("PDF has been created.")
+        return dcc.send_file(tmpfile, filename="planobs_summary.pdf"), html.Div(), no_update
+    except ValueError as e:
+        print(f"An error occurred: {e}")
+        logger.exception(f"While downloading the PDF: {e}", colorize=True)
+        return no_update, no_update, outputs.error_card("Error during the PDF creation",
+                                                        "Re-calculate a full observation and try again")
 
 
 @app.callback([Output('user-message', 'children'),
@@ -89,7 +108,8 @@ def download_pdf_summary(n_clicks, linked_file: str):
                Output('div-card-time', 'children'),
                Output('store-prev-datarate', 'data'),
                Output('store-prev-channels', 'data'),
-               Output('store-prev-subbands', 'data')],
+               Output('store-prev-subbands', 'data'),
+               Output('store-obs-params', 'data')],
               Input('compute-observation', 'n_clicks'),
               [State('band-slider', 'value'),
                State('switch-specify-source', 'value'),
@@ -122,7 +142,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
 
     vals4error = no_update, True, no_update, *[html.Div()]*6, True, html.Div(), no_update, \
         no_update, True, html.Div(), no_update, no_update, html.Div(), html.Div(), True, no_update, \
-        *[html.Div()]*2, no_update, no_update, no_update
+        *[html.Div()]*2, no_update, no_update, no_update, no_update
     if band == 0 or (not selected_antennas) or (duration is None and (source == '' or not defined_source)):
         return outputs.warning_card("Select the band, antennas, and source or duration",
                                     "If no source is provided, a duration for the observation "
@@ -162,17 +182,36 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                       datarate=(datarate if not isinstance(datarate, str) else int(datarate))*u.Mbit/u.s,
                       subbands=subbands, channels=channels, polarizations=pols,
                       inttime=inttime*u.s)
-        # I need to run this first otherwise the other functions will fail
-        # (likely partially initialized uv values)
+        # Pre-compute all cached data BEFORE parallel execution to ensure thread safety.
+        # The Observation class methods are now thread-safe with locks, so we can
+        # parallelize calls that have no dependencies on each other.
         if obs is not None:
-            _ = obs.is_observable()
-            _ = obs.is_always_observable()
-            _ = obs.thermal_noise()
-            _ = obs.sun_constraint()
-            _ = obs.sun_limiting_epochs()
-            # _main_obs.get().thermal_noise()
-            # _main_obs.get().synthesized_beam()
-            # _main_obs.get().get_uv_data()
+            # Phase 1: Independent methods (no dependencies)
+            with ThreadPoolExecutor() as executor:
+                f_observable = executor.submit(obs.is_observable)
+                f_sun_constraint = executor.submit(obs.sun_constraint)
+                f_uv_data = executor.submit(obs.get_uv_data)
+                f_baseline_sens = executor.submit(obs.baseline_sensitivity)
+                # Wait for phase 1 to complete
+                _ = f_observable.result()
+                _ = f_sun_constraint.result()
+                _ = f_uv_data.result()
+                _ = f_baseline_sens.result()
+
+            # Phase 2: Methods that depend on phase 1
+            with ThreadPoolExecutor() as executor:
+                f_always_obs = executor.submit(obs.is_always_observable)
+                f_sun_epochs = executor.submit(obs.sun_limiting_epochs)
+                f_thermal = executor.submit(obs.thermal_noise)
+                f_uv_values = executor.submit(obs.get_uv_values)
+                # Wait for phase 2 to complete
+                _ = f_always_obs.result()
+                _ = f_sun_epochs.result()
+                _ = f_thermal.result()
+                _ = f_uv_values.result()
+
+            # Phase 3: Methods that depend on phase 2
+            _ = obs.synthesized_beam()
     except ValueError as e:
         logger.exception(f"An error has occured: {e}.")
         return outputs.error_card("Could not plan the observation",
@@ -192,64 +231,55 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         if not all(obs.is_observable_by_network(min_stations=1).values()):
             raise sources.SourceNotVisible
 
+        has_source = obs.sourcenames and defined_source
         futures = {}
+
+        # Single ThreadPoolExecutor for all parallel work
         with ThreadPoolExecutor() as executor:
-            futures['rms'] = executor.submit(obs.thermal_noise)
-            # futures['beam'] = executor.submit(_main_obs.get().synthesized_beam)
-            futures['out-rms'] = executor.submit(outputs.rms, obs)
-            futures['out-res'] = executor.submit(outputs.resolution, obs)
+            # Core output functions
+            futures['out_rms'] = executor.submit(outputs.rms, obs)
+            futures['out_res'] = executor.submit(outputs.resolution, obs)
             futures['out_ant'] = executor.submit(outputs.ant_warning, obs)
             futures['out_phaseref'] = executor.submit(outputs.warning_low_high_freq, obs)
             futures['out_fov'] = executor.submit(outputs.field_of_view, obs)
             futures['out_freq'] = executor.submit(outputs.summary_freq_res, obs)
+            futures['out_baseline_sens'] = executor.submit(outputs.baseline_sensitivities, obs)
+            futures['out_datasize'] = executor.submit(outputs.data_size, obs)
+            futures['out_obstime'] = executor.submit(outputs.obs_time, obs)
+            futures['plot_worldmap'] = executor.submit(plots.plot_worldmap_stations, obs)
 
-            out_rms = futures['rms'].result()
-            # beam = futures['beam'].result()
-            out_rms = futures['out-rms'].result()
-            out_res = futures['out-res'].result()
+            # Source-dependent functions
+            if has_source:
+                futures['out_sun'] = executor.submit(outputs.sun_warning, obs)
+                futures['plot_elev'] = executor.submit(plots.elevation_plot, obs)
+                futures['plot_elev2'] = executor.submit(plots.elevation_plot_curves, obs)
+                futures['plot_uv'] = executor.submit(plots.uvplot, obs)
+                futures['out_elev_info'] = executor.submit(outputs.print_observability_ranges, obs)
+                futures['out_uv_info'] = executor.submit(outputs.print_baseline_lengths, obs)
+                futures['out_ant_options'] = executor.submit(outputs.put_antenna_options, obs)
+
+            # Collect results
+            out_rms = futures['out_rms'].result()
+            out_res = futures['out_res'].result()
             out_ant = futures['out_ant'].result()
             out_phaseref = futures['out_phaseref'].result()
             out_fov = futures['out_fov'].result()
             out_freq = futures['out_freq'].result()
+            out_baseline_sens = futures['out_baseline_sens'].result()
+            out_datasize = futures['out_datasize'].result()
+            out_obstime = futures['out_obstime'].result()
+            out_worldmap = futures['plot_worldmap'].result()
 
-        with ThreadPoolExecutor() as executor:
-            if not (not obs.sourcenames or not defined_source):
-                # futures['out_plot_elev'] = executor.submit(outputs.plot_elevations, obs)
-                futures['out_sun'] = executor.submit(outputs.sun_warning, obs)
-                # futures['out_plot_uv'] = executor.submit(outputsplot_uv_coverage, _main_obs.get())
-
-            # futures['out_worldmap'] = executor.submit(outputsworldmap_plot, _main_obs.get())
-
-            out_sun = no_update if 'out_sun' not in futures else futures['out_sun'].result()
-        #     out_plot_uv = ['out_plot_uv' not in futures, no_update if 'out_plot_uv' not in futures \
-        #                    else futures['out_plot_uv'].result()]
-        #     out_worldmap = futures['out_worldmap'].result()
-        #
-        #
-        # out_rms = _main_obs.get().thermal_noise()
-        # beam = _main_obs.get().synthesized_beam()
-        # # out_rms = outputsrms(_main_obs.get())
-        # # out_sens = outputsresolution(_main_obs.get())
-
-        if not obs.sourcenames or not defined_source:
-            out_plot_elev = [True, no_update, no_update, no_update]
-            out_plot_uv = [True, no_update, no_update, no_update]
-            out_worldmap = plots.plot_worldmap_stations(obs)
-        else:
-            with ThreadPoolExecutor() as executor:
-                futures['plot_elev'] = executor.submit(plots.elevation_plot, obs)
-                futures['plot_elev2'] = executor.submit(plots.elevation_plot_curves, obs)
-                futures['plot_uv'] = executor.submit(plots.uvplot, obs)
-                futures['plot_worldmap'] = executor.submit(plots.plot_worldmap_stations, obs)
-                out_plot_elev = [False, outputs.print_observability_ranges(obs),
+            if has_source:
+                out_sun = futures['out_sun'].result()
+                out_plot_elev = [False, futures['out_elev_info'].result(),
                                 futures['plot_elev'].result(), futures['plot_elev2'].result()]
-                out_plot_uv = [False, outputs.print_baseline_lengths(obs),
-                            futures['plot_uv'].result(), outputs.put_antenna_options(obs)]
-                out_worldmap = futures['plot_worldmap'].result()
-
-        out_baseline_sens = outputs.baseline_sensitivities(obs)
-        out_datasize = outputs.data_size(obs)
-        out_obstime = outputs.obs_time(obs)
+                out_plot_uv = [False, futures['out_uv_info'].result(),
+                            futures['plot_uv'].result(), futures['out_ant_options'].result()]
+            else:
+                out_sun = no_update
+                out_plot_elev = [True, no_update, no_update, no_update]
+                out_plot_uv = [True, no_update, no_update, no_update]
     except sources.SourceNotVisible:
         return outputs.error_card('Source Not Visible!',
                                   'The source cannot be observed by at least more than one antenna '
@@ -259,23 +289,27 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         return outputs.error_card("An error has occured", str(e)), *vals4error
 
     print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
-    t1 = dt.now()
-    logger.info(f"Execution time: {(t1 - t0).total_seconds()} s")
-    try:
-        logger.info("PDF has been requested.")
-        tmpfile = outputs.summary_pdf(obs, show_figure=True)
-    except RuntimeError:
-        tmpfile = outputs.summary_pdf(obs, show_figure=False)
-    except ValueError as e:
-        logger.exception(f"While downloading the PDF: {e}", colorize=True)
-        return outputs.error_card("Error during the PDF creation",
-                                  "Re-calculate a full observation and try again", str(e)), *vals4error
+    logger.info(f"Execution time: {(dt.now() - t0).total_seconds()} s")
 
-    logger.info(f"Execution time for PDF: {(dt.now() - t1).total_seconds()} s")
+    # Store observation parameters for lazy PDF generation
+    obs_params = {
+        'band': inputs.band_from_index(band),
+        'stations': sorted(selected_antennas),
+        'targets': [source] if defined_source and source.strip() != '' else None,
+        'duration': duration,
+        'ontarget': onsourcetime / 100,
+        'startdate': startdate if defined_epoch else None,
+        'starttime': starttime if defined_epoch else None,
+        'datarate': datarate if not isinstance(datarate, str) else int(datarate),
+        'subbands': subbands,
+        'channels': channels,
+        'polarizations': pols,
+        'inttime': inttime
+    }
 
-    return html.Div(), html.Div(), False, tmpfile, out_rms, out_baseline_sens, out_res, out_sun, \
+    return html.Div(), html.Div(), False, None, out_rms, out_baseline_sens, out_res, out_sun, \
         out_phaseref, out_ant, *out_plot_elev, *out_plot_uv, out_fov, out_freq, False, out_worldmap, \
-        out_datasize, out_obstime, datarate, channels, subbands
+        out_datasize, out_obstime, datarate, channels, subbands, obs_params
 
 
 server = app.server
@@ -286,6 +320,7 @@ app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-10
                    dcc.Store(id='store-prev-datarate', data=2048),
                    dcc.Store(id='store-prev-channels', data=64),
                    dcc.Store(id='store-prev-subbands', data=8),
+                   dcc.Store(id='store-obs-params', data=None),
                    layout.top_banner(app),
                    # inputs.modal_welcome(),
                    html.Div(id='main-window', className='container-fluid d-flex row p-0 m-0',

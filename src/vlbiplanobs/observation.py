@@ -1,7 +1,8 @@
 import threading
-from functools import wraps
+import inspect
 from collections import defaultdict
-from typing import Optional, Union, Tuple, Literal, get_type_hints
+from functools import wraps
+from typing import Optional, Union, Tuple, Literal, get_type_hints, get_origin, get_args
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from enum import Enum
@@ -18,36 +19,79 @@ _NETWORKS = Stations.get_networks_from_configfile()
 _STATIONS = Stations()
 
 
+def _check_type(value, expected_type) -> bool:
+    """Check if value matches expected_type, handling parameterized generics."""
+    if value is None:
+        origin = get_origin(expected_type)
+        if origin is Union:
+            return type(None) in get_args(expected_type)
+        return expected_type is type(None)
+
+    origin = get_origin(expected_type)
+    if origin is None:
+        try:
+            return isinstance(value, expected_type)
+        except TypeError:
+            # Some types can't be used with isinstance
+            return True
+    elif origin is Union:
+        return any(_check_type(value, t) for t in get_args(expected_type))
+    elif origin is Literal:
+        return value in get_args(expected_type)
+    else:
+        return isinstance(value, origin)
+
+
 def enforce_types(func):
-    """Decorator that will raise TypeError if the passed attribute to a given function
-    has the wrong type.
+    """Decorator that enforces type hints at runtime.
+    
+    Checks that input parameters match their type annotations.
+    Raises TypeError if a parameter has the wrong type.
+    
+    Note: Parameters with default values can accept None even if not explicitly
+    marked as Optional, for backward compatibility.
     """
     @wraps(func)
     def wrapper(*args, **kwargs):
-        hints = get_type_hints(func)
-        # Check positional dash_bootstrap_components
-        for arg, (name, expected_type) in zip(args, hints.items()):
-            if name == 'return':
+        try:
+            hints = get_type_hints(func)
+        except Exception:
+            # If we can't get type hints, just run the function
+            return func(*args, **kwargs)
+
+        sig = inspect.signature(func)
+        params = sig.parameters
+
+        # Check positional arguments, skipping 'self' and 'cls'
+        param_names = list(params.keys())
+        start_idx = 1 if param_names and param_names[0] in ('self', 'cls') else 0
+        for i, arg in enumerate(args[start_idx:], start=start_idx):
+            if i >= len(param_names):
+                break
+            name = param_names[i]
+            if name not in hints or name == 'return':
                 continue
+            # Allow None if parameter has a default value (implicit Optional)
+            if arg is None and params[name].default is not inspect.Parameter.empty:
+                continue
+            expected_type = hints[name]
+            if not _check_type(arg, expected_type):
+                raise TypeError(f"Argument '{name}' must be of type {expected_type}, "
+                                f"but got {type(arg).__name__} with value {arg!r}")
 
-            if not isinstance(arg, expected_type):
-                raise TypeError(f"Argument '{name}' must be of type {expected_type.__name__}, "
-                                f"but got {type(arg).__name__}")
-
-        # Check kwyword arguments
         for name, arg in kwargs.items():
-            if name not in hints:
+            if name not in hints or name == 'return':
                 continue
-
-        expected_type = hints[name]
-        if not isinstance(arg, expected_type):
-            raise TypeError(f"Argument '{name}' must be of type {expected_type.__name__}, "
-                            f"but got {type(arg).__name__}")
+            if arg is None and name in params and params[name].default is not inspect.Parameter.empty:
+                continue
+            expected_type = hints[name]
+            if not _check_type(arg, expected_type):
+                raise TypeError(f"Argument '{name}' must be of type {expected_type}, "
+                                f"but got {type(arg).__name__} with value {arg!r}")
 
         return func(*args, **kwargs)
 
-    return func
-
+    return wrapper
 
 
 class Polarization(Enum):
@@ -146,8 +190,8 @@ class Observation(object):
             Number of bits at which the data have been recorded (sampled). A typical VLBI observation is
             almost always recorded with 2-bit data.
         """
-        self._mutex: threading.Lock = threading.Lock()
-        self._mutex_uv: threading.Lock = threading.Lock()
+        self._mutex: threading.RLock = threading.RLock()
+        self._mutex_uv: threading.RLock = threading.RLock()
         if isinstance(scans, dict) and all(isinstance(a_value, ScanBlock) for a_value in scans.values()):
             self.scans = scans
         else:
@@ -213,16 +257,17 @@ class Observation(object):
         if self._scans is None:
             return []
 
-        if self._source_list is not None:
+        with self._mutex:
+            if self._source_list is not None:
+                return self._source_list
+
+            self._source_list = []
+            for a_scanblock in self._scans.values():
+                for a_src in a_scanblock.sources():
+                    if (source_type is None) or (a_src.type == source_type):
+                        self._source_list.append(a_src)
+
             return self._source_list
-
-        self._source_list = []
-        for a_scanblock in self._scans.values():
-            for a_src in a_scanblock.sources():
-                if (source_type is None) or (a_src.type == source_type):
-                    self._source_list.append(a_src)
-
-        return self._source_list
 
     def _scanblock_name_from_source_name(self, source_name: str) -> str:
         if self.scans is not None:
@@ -389,17 +434,10 @@ class Observation(object):
             self._baseline_sensitivity = None
 
     def _guess_network(self) -> list[str]:
-        rating: dict = {}
-        for network in _NETWORKS:
-            if self.band in _NETWORKS[network].observing_bands:
-                rating[network] = len([s for s in self.stations
-                                       if s.codename in _NETWORKS[network].station_codenames]) / \
-                                  len(self.stations)
-
-        sorted_networks: list[str] = [n[0] for n in sorted(rating.items(), key=lambda x: rating[x[0]],
-                                                           reverse=True)
-                                      if rating[n[0]] > 0.0]
-        return sorted_networks
+        """Returns the VLBI network that is driving the observations, making a guess given
+        the antennas that are participating and the observing band.
+        """
+        return Observation.guess_network(self.band, list(self.stations))
 
     @staticmethod
     def guess_network(band: str, list_stations: list[Station]) -> list[str]:
@@ -641,10 +679,11 @@ class Observation(object):
         if not self.sources():
             return {}
 
-        if self._altaz is None:
-            self._altaz = self._altaz_threads()
+        with self._mutex:
+            if self._altaz is None:
+                self._altaz = self._altaz_threads()
 
-        return self._altaz
+            return self._altaz
 
     def _altaz_threads(self) -> dict:
         def compute_altaz_for_source(station_source: tuple) -> tuple:
@@ -684,21 +723,22 @@ class Observation(object):
         if not self.sources():
             return {}
 
-        if self._is_visible is None:
-            self._is_visible = {ablockname: {ant.codename: np.full(len(self.times), True, dtype=bool)
-                                for ant in self.stations} for ablockname in self.scans}
-            with ThreadPoolExecutor() as executor:
-                results = list(executor.map(self._compute_is_visible_for_source,
-                                            [(station, source, times if times is not None else self.times)
-                                             for station in self.stations
-                                             for source in self.sources()]))
+        with self._mutex:
+            if self._is_visible is None:
+                self._is_visible = {ablockname: {ant.codename: np.full(len(self.times), True, dtype=bool)
+                                    for ant in self.stations} for ablockname in self.scans}
+                with ThreadPoolExecutor() as executor:
+                    results = list(executor.map(self._compute_is_visible_for_source,
+                                                [(station, source, times if times is not None else self.times)
+                                                 for station in self.stations
+                                                 for source in self.sources()]))
 
-            for station_codename, source_name, visible in results:
-                for ablockname, ablock in self.scans.items():
-                    if source_name in ablock.sourcenames():
-                        self._is_visible[ablockname][station_codename] &= visible
+                for station_codename, source_name, visible in results:
+                    for ablockname, ablock in self.scans.items():
+                        if source_name in ablock.sourcenames():
+                            self._is_visible[ablockname][station_codename] &= visible
 
-        return self._is_visible
+            return self._is_visible
 
     def can_be_observed(self) -> dict[str, dict[str, bool]]:
         """Returns whenever the sources can be observed by each station at least during part
@@ -753,25 +793,26 @@ class Observation(object):
         if not self.sources():
             return {}
 
-        if self._is_always_visible is None:
-            self._is_always_visible = {ablockname: {ant.codename: True
-                                       for ant in self.stations} for ablockname in self.scans}
+        with self._mutex:
+            if self._is_always_visible is None:
+                self._is_always_visible = {ablockname: {ant.codename: True
+                                           for ant in self.stations} for ablockname in self.scans}
 
-            def compute_is_always_visible_for_source(station_source: tuple) -> tuple:
-                station, source = station_source[0], station_source[1]
-                return station.codename, source.name, station.is_always_observable(self.times, source)
+                def compute_is_always_visible_for_source(station_source: tuple) -> tuple:
+                    station, source = station_source[0], station_source[1]
+                    return station.codename, source.name, station.is_always_observable(self.times, source)
 
-            with ThreadPoolExecutor() as executor:
-                results = list(executor.map(compute_is_always_visible_for_source,
-                                            [(station, source) for station in self.stations
-                                             for source in self.sources()]))
+                with ThreadPoolExecutor() as executor:
+                    results = list(executor.map(compute_is_always_visible_for_source,
+                                                [(station, source) for station in self.stations
+                                                 for source in self.sources()]))
 
-            for station_codename, source_name, visible in results:
-                for ablockname, ablock in self.scans.items():
-                    if source_name in ablock.sourcenames():
-                        self._is_always_visible[ablockname][station_codename] &= visible
+                for station_codename, source_name, visible in results:
+                    for ablockname, ablock in self.scans.items():
+                        if source_name in ablock.sourcenames():
+                            self._is_always_visible[ablockname][station_codename] &= visible
 
-        return self._is_always_visible
+            return self._is_always_visible
 
     @enforce_types
     def when_is_observable(self, min_stations: int = 3,
@@ -1029,75 +1070,76 @@ class Observation(object):
         For single-antenna observations, returns the single-dish sensitivity.
         Returns None if no stations have the required band or datarate is not set.
         """
-        if self._rms is not None:
-            return self._rms
+        with self._mutex:
+            if self._rms is not None:
+                return self._rms
 
-        # Filter stations that have SEFD for the requested band
-        valid_stations = [stat for stat in self.stations if stat.has_band(self.band)]
-        if len(valid_stations) < 1:
-            return None
+            # Filter stations that have SEFD for the requested band
+            valid_stations = [stat for stat in self.stations if stat.has_band(self.band)]
+            if len(valid_stations) < 1:
+                return None
 
-        if self.datarate is None:
-            return None
+            if self.datarate is None:
+                return None
 
-        # Single antenna case: use single-dish sensitivity formula
-        if len(valid_stations) == 1:
-            sefd = valid_stations[0].sefd(self.band).to(u.Jy).value
-            bandwidth = (valid_stations[0].datarate.to(u.bit/u.s).value if valid_stations[0].datarate is not None
-                         else self.datarate.to(u.bit/u.s).value) / (2 * self.bitsampling.to(u.bit).value)
-            if not self.fixed_time:
-                dt = self.duration.to(u.s).value * self.ontarget_fraction
-            else:
-                dt = (self.times[-1]-self.times[0]).to(u.s).value * self.ontarget_fraction
-            self._rms = (sefd / np.sqrt(2 * bandwidth * dt * min(self.polarizations.value, 2))) * u.Jy/u.beam
-            return self._rms
+            # Single antenna case: use single-dish sensitivity formula
+            if len(valid_stations) == 1:
+                sefd = valid_stations[0].sefd(self.band).to(u.Jy).value
+                bandwidth = (valid_stations[0].datarate.to(u.bit/u.s).value if valid_stations[0].datarate is not None
+                             else self.datarate.to(u.bit/u.s).value) / (2 * self.bitsampling.to(u.bit).value)
+                if not self.fixed_time:
+                    dt = self.duration.to(u.s).value * self.ontarget_fraction
+                else:
+                    dt = (self.times[-1]-self.times[0]).to(u.s).value * self.ontarget_fraction
+                self._rms = (sefd / np.sqrt(2 * bandwidth * dt * min(self.polarizations.value, 2))) * u.Jy/u.beam
+                return self._rms
 
-        sefds = np.array([stat.sefd(self.band).to(u.Jy).value for stat in valid_stations])
-        bandwidths = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
-                              else self.datarate.to(u.bit/u.s).value for s in valid_stations]) / \
-            (2 * self.bitsampling.to(u.bit).value)  # In Hz
-        bandwidth_min = np.minimum.outer(bandwidths, bandwidths)
-        if not self.sources():
-            if not self.fixed_time:
-                dt = self.duration.to(u.s).value * self.ontarget_fraction
-            else:
-                dt = (self.times[-1]-self.times[0]).to(u.s).value * self.ontarget_fraction
+            sefds = np.array([stat.sefd(self.band).to(u.Jy).value for stat in valid_stations])
+            bandwidths = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
+                                  else self.datarate.to(u.bit/u.s).value for s in valid_stations]) / \
+                (2 * self.bitsampling.to(u.bit).value)  # In Hz
+            bandwidth_min = np.minimum.outer(bandwidths, bandwidths)
+            if not self.sources():
+                if not self.fixed_time:
+                    dt = self.duration.to(u.s).value * self.ontarget_fraction
+                else:
+                    dt = (self.times[-1]-self.times[0]).to(u.s).value * self.ontarget_fraction
 
-            temp = np.sum((bandwidth_min/np.outer(sefds, sefds)) *
-                          np.triu(np.ones_like(bandwidth_min), k=1))
-            self._rms = ((1/0.7)/np.sqrt(temp * dt * min(self.polarizations.value, 2)))*u.Jy/u.beam
-            return self._rms
-        elif not self.fixed_time:
-            self._rms = {}
-            for sourcename in self.sourcenames:
                 temp = np.sum((bandwidth_min/np.outer(sefds, sefds)) *
                               np.triu(np.ones_like(bandwidth_min), k=1))
-                self._rms[sourcename] = ((1/0.7)/np.sqrt(temp*self.duration.to(u.s).value *
-                                                         min(self.polarizations.value, 2) *
-                                                         self.ontarget_fraction))*u.Jy/u.beam
+                self._rms = ((1/0.7)/np.sqrt(temp * dt * min(self.polarizations.value, 2)))*u.Jy/u.beam
+                return self._rms
+            elif not self.fixed_time:
+                self._rms = {}
+                for sourcename in self.sourcenames:
+                    temp = np.sum((bandwidth_min/np.outer(sefds, sefds)) *
+                                  np.triu(np.ones_like(bandwidth_min), k=1))
+                    self._rms[sourcename] = ((1/0.7)/np.sqrt(temp*self.duration.to(u.s).value *
+                                                             min(self.polarizations.value, 2) *
+                                                             self.ontarget_fraction))*u.Jy/u.beam
 
-            return self._rms
-        else:
-            self._rms = {}
-            delta_t = (self.times[1] - self.times[0]).to(u.s).value * self.ontarget_fraction
-            obs_data = self.is_observable()
-            for sourcename in self.sourcenames:
-                scanname = self._scanblock_name_from_source_name(sourcename)
-                assert scanname is not None, f"No scan found related to the source {sourcename}"
-                visible = np.array([obs_data[scanname].get(stat.codename, np.zeros(len(self.times), dtype=bool))
-                                    for stat in valid_stations])
-                integrated_time = np.sum(visible[:, None] & visible[None, :], axis=2) * delta_t
-                if np.sum(integrated_time) == 0:
-                    self._rms[sourcename] = None
-                    continue
-                temp = np.sum((bandwidth_min*integrated_time /
-                              np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=1))
-                if temp <= 0:
-                    self._rms[sourcename] = None
-                else:
-                    self._rms[sourcename] = ((1/0.7)/np.sqrt(temp * min(self.polarizations.value, 2)))*u.Jy/u.beam
+                return self._rms
+            else:
+                self._rms = {}
+                delta_t = (self.times[1] - self.times[0]).to(u.s).value * self.ontarget_fraction
+                obs_data = self.is_observable()
+                for sourcename in self.sourcenames:
+                    scanname = self._scanblock_name_from_source_name(sourcename)
+                    assert scanname is not None, f"No scan found related to the source {sourcename}"
+                    visible = np.array([obs_data[scanname].get(stat.codename, np.zeros(len(self.times), dtype=bool))
+                                        for stat in valid_stations])
+                    integrated_time = np.sum(visible[:, None] & visible[None, :], axis=2) * delta_t
+                    if np.sum(integrated_time) == 0:
+                        self._rms[sourcename] = None
+                        continue
+                    temp = np.sum((bandwidth_min*integrated_time /
+                                  np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=1))
+                    if temp <= 0:
+                        self._rms[sourcename] = None
+                    else:
+                        self._rms[sourcename] = ((1/0.7)/np.sqrt(temp * min(self.polarizations.value, 2)))*u.Jy/u.beam
 
-        return self._rms if any(v is not None for v in self._rms.values()) else None
+            return self._rms if any(v is not None for v in self._rms.values()) else None
 
     @enforce_types
     def baseline_sensitivity(self, antenna1: Optional[str] = None, antenna2: Optional[str] = None,
@@ -1184,10 +1226,7 @@ class Observation(object):
         # Prepare the rotation matrix for each time
         if source is None:
             hourangle: coord.Angle = gstimes
-            hourangle = gstimes
             dec = 45 * u.deg
-            # print:"Target source is not set, thus we assume a source at +/- 45º declination"
-            #       " to estimate the (u, v) values.'")
         else:
             hourangle = (gstimes - source.ra.to(u.hourangle)).wrap_at(24 * u.hourangle)
             dec = source.dec
@@ -1244,61 +1283,6 @@ class Observation(object):
 
         return bl_uv_up
 
-    def _compute_uv_per_source_legacy(self, source: Optional[Source] = None) -> dict[str, u.Quantity]:
-        nstat = len(self.stations)
-        # Determines the xyz of all baselines. Time independent
-        bl_xyz = np.empty(((nstat*(nstat-1))//2, 3))
-        bl_names = []
-        s = [ant.location for ant in self.stations]
-        for i in range(nstat):
-            for j in range(i+1, nstat):
-                # An unique number defining a baseline
-                k = int(i*(nstat-1) - sum(range(i)) + j-i)
-                bl_xyz[k-1, :] = np.array([ii.value for ii in s[i].to_geocentric()]) - \
-                    np.array([ii.value for ii in s[j].to_geocentric()])
-                bl_names.append("{}-{}".format(self.stations[i].codename,
-                                               self.stations[j].codename))
-
-        gstimes = self.gstimes
-        if source is None:
-            hourangle: coord.Angle = gstimes
-            print("WARNING: 'target' is not set, thus we assume a source at +/- 45º declination"
-                  " to estimate the (u, v) values.'")
-            m = np.array([[np.sin(hourangle), np.cos(hourangle), np.zeros(len(hourangle))],
-                          [-np.sin(45*u.deg)*np.cos(hourangle),
-                           np.sin(45*u.deg)*np.sin(hourangle),
-                           np.cos(45*u.deg)*np.ones(len(hourangle))]])
-        else:
-            hourangle = (gstimes - source.ra.to(u.hourangle)).value % 24*u.hourangle
-            m = np.array([[np.sin(hourangle), np.cos(hourangle), np.zeros(len(hourangle))],
-                          [-np.sin(source.dec)*np.cos(hourangle),
-                           np.sin(source.dec)*np.sin(hourangle),
-                           np.cos(source.dec)*np.ones(len(hourangle))]])
-
-        bl_uv = np.array([m[:, :, i] @ bl_xyz.T for i in range(m.shape[-1])])*u.m
-        bl_uv_up: dict[str, u.Quantity] = {}
-        if source is None:
-            for i, bl_name in enumerate(bl_names):
-                ant1, ant2 = bl_name.split('-')
-                bl_uv_up[bl_name] = (bl_uv[:, :, i] / self.wavelength).decompose()
-
-            return bl_uv_up
-        else:
-            ants_up = self.is_observable()
-            blockname = [ablock for ablock in self.scans
-                         if source.name in self.scans[ablock].sourcenames()][0]
-            for i, bl_name in enumerate(bl_names):
-                ant1, ant2 = bl_name.split('-')
-                bl_up = (np.array([a for a in ants_up[blockname][ant1]
-                                   if a in ants_up[blockname][ant2]]), )
-                if len(bl_up[0]) > 0:
-                    bl_uv_up[bl_name] = (bl_uv[:, :, i][bl_up] / self.wavelength).decompose()
-
-            if len(bl_uv_up.keys()) == 0:
-                raise SourceNotVisible
-
-        return bl_uv_up
-
     def get_uv_data(self) -> dict[str, dict[str, u.Quantity]]:
         """Returns the (u, v) values for each baseline and each timestamp for which the source
         is visible.
@@ -1348,19 +1332,20 @@ class Observation(object):
         - It may raise the exception SourceNotVisible if no baselines can observe the source
           at all during the observation.
         """
-        if self._uv_array is not None:
+        with self._mutex_uv:
+            if self._uv_array is not None:
+                return self._uv_array
+
+            self._uv_array = {}
+            bl_uv_up = self.get_uv_data()
+            for src, bl_uv in bl_uv_up.items():
+                self._uv_array[src] = np.empty((np.sum([bl_uv[bl_name].shape[0] for bl_name in bl_uv]), 2))
+                last_i = 0
+                for bl_name in bl_uv:
+                    self._uv_array[src][last_i:last_i+bl_uv[bl_name].shape[0], :] = bl_uv[bl_name]
+                    last_i += bl_uv[bl_name].shape[0]
+
             return self._uv_array
-
-        self._uv_array = {}
-        bl_uv_up = self.get_uv_data()
-        for src, bl_uv in bl_uv_up.items():
-            self._uv_array[src] = np.empty((np.sum([bl_uv[bl_name].shape[0] for bl_name in bl_uv]), 2))
-            last_i = 0
-            for bl_name in bl_uv:
-                self._uv_array[src][last_i:last_i+bl_uv[bl_name].shape[0], :] = bl_uv[bl_name]
-                last_i += bl_uv[bl_name].shape[0]
-
-        return self._uv_array
 
     def synthesized_beam(self) -> dict[str, dict[str, u.Quantity]]:
         """Estimates the resulting synthesized beam of the observations based on
@@ -1380,32 +1365,33 @@ class Observation(object):
         and position angle).
         The three values are astropy.units.Quantity objects with units of angles.
         """
-        if self._synth_beam is not None:
+        with self._mutex_uv:
+            if self._synth_beam is not None:
+                return self._synth_beam
+
+            self._synth_beam = {}
+
+            def resolution(bl: float) -> u.Quantity:
+                return ((2.063e8*u.mas)/bl).to(u.mas)
+
+            uvvis = self.get_uv_values()
+            for src, uv in uvvis.items():
+                # Transform the uv points into r,theta (polar) points
+                uvvis_polar = np.empty_like(uv)
+                uvvis_polar[:, 0] = np.sqrt((uv**2).sum(axis=1))  # radius
+                uvvis_polar[:, 1] = np.arctan2(uv[:, 1], uv[:, 0])  # theta
+                # Defines the BMAJ and PA
+                bl_bmaj = np.max(uvvis_polar[:, 0])
+                bl_bmaj_theta = uvvis_polar[:, 1][np.where(uvvis_polar[:, 0] == bl_bmaj)][0]
+                # Gets the BMIN and an orthogonal projection
+                bl_bmin_theta = (bl_bmaj_theta + np.pi/2) % (2*np.pi)
+                bl_bmin = np.max(np.abs(uv.dot(np.array([np.cos(bl_bmin_theta),
+                                                         np.sin(bl_bmin_theta)]))))
+
+                self._synth_beam[src] = {'bmaj': resolution(bl_bmin), 'bmin': resolution(bl_bmaj),
+                                         'pa': (bl_bmaj_theta*u.rad).to(u.deg)}
+
             return self._synth_beam
-
-        self._synth_beam = {}
-
-        def resolution(bl: float) -> u.Quantity:
-            return ((2.063e8*u.mas)/bl).to(u.mas)
-
-        uvvis = self.get_uv_values()
-        for src, uv in uvvis.items():
-            # Transform the uv points into r,theta (polar) points
-            uvvis_polar = np.empty_like(uv)
-            uvvis_polar[:, 0] = np.sqrt((uv**2).sum(axis=1))  # radius
-            uvvis_polar[:, 1] = np.arctan2(uv[:, 1], uv[:, 0])  # theta
-            # Defines the BMAJ and PA
-            bl_bmaj = np.max(uvvis_polar[:, 0])
-            bl_bmaj_theta = uvvis_polar[:, 1][np.where(uvvis_polar[:, 0] == bl_bmaj)][0]
-            # Gets the BMIN and an orthogonal projection
-            bl_bmin_theta = (bl_bmaj_theta + np.pi/2) % (2*np.pi)
-            bl_bmin = np.max(np.abs(uv.dot(np.array([np.cos(bl_bmin_theta),
-                                                     np.sin(bl_bmin_theta)]))))
-
-            self._synth_beam[src] = {'bmaj': resolution(bl_bmin), 'bmin': resolution(bl_bmaj),
-                                     'pa': (bl_bmaj_theta*u.rad).to(u.deg)}
-
-        return self._synth_beam
 
     @enforce_types
     def get_dirtymap(self, pixsize: int = 1024, robust: str = "natural", oversampling: int = 4):
@@ -1529,63 +1515,3 @@ class Observation(object):
                                         self.times[0].datetime.strftime('%H:%M'),
                                         self.times[-1].datetime.strftime(date_format),
                                         self.times[-1].datetime.strftime('%H:%M'), gsttext)
-
-    # def get_fig_dirty_map(self):
-    #     raise NotImplementedError
-    #     # Right now I only leave the natural weighting map (the uniform does not always correspond to the true one)
-    #     dirty_map_nat, laxis = self.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
-    #     # TODO: uncomment these two lines and move them outside observation. Flexibility
-    #     # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
-    #     #         aspect='equal')
-    #     # fig = make_subplots(rows=1, cols=1, subplot_titles=('Natural weighting',),
-    #     #                     shared_xaxes=True, shared_yaxes=True)
-    #     fig.add_trace(fig1.data[0], row=1, col=1)
-    #     mapsize = 30*self.synthesized_beam()['bmaj'].to(u.mas).value
-    #     fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
-    #                       xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
-    #                       yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
-    #     fig.update_xaxes(title_text="RA (mas)", constrain="domain")
-    #     fig.update_yaxes(title_text="Dec (mas)", scaleanchor="x", scaleratio=1)
-    #     # dirty_map_nat, laxis = obs.get_dirtymap(pixsize=1024, robust='natural', oversampling=4)
-    #     # dirty_map_uni, laxis = obs.get_dirtymap(pixsize=1024, robust='uniform', oversampling=4)
-    #     # fig1 = px.imshow(img=dirty_map_nat, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
-    #     #         aspect='equal')
-    #     # fig2 = px.imshow(img=dirty_map_uni, x=laxis, y=laxis[::-1], labels={'x': 'RA (mas)', 'y': 'Dec (mas)'}, \
-    #     #         aspect='equal')
-    #     # fig = make_subplots(rows=1, cols=2, subplot_titles=('Natural weighting', 'Uniform weighting'),
-    #     #                     shared_xaxes=True, shared_yaxes=True)
-    #     # fig.add_trace(fig1.data[0], row=1, col=1)
-    #     # fig.add_trace(fig2.data[0], row=1, col=2)
-    #     # mapsize = 30*obs.synthesized_beam()['bmaj'].to(u.mas).value
-    #     # fig.update_layout(coloraxis={'showscale': False, 'colorscale': 'Inferno'}, showlegend=False,
-    #     #                   xaxis={'autorange': False, 'range': [mapsize, -mapsize]},
-    #     #                   # This xaxis2 represents the xaxis for fig2.
-    #     #                   xaxis2={'autorange': False, 'range': [mapsize, -mapsize]},
-    #     #                   yaxis={'autorange': False, 'range': [-mapsize, mapsize]}, autosize=False)
-    #     # fig.update_xaxes(title_text="RA (mas)", constrain="domain")
-    #     # fig.update_yaxes(title_text="Dec (mas)", row=1, col=1, scaleanchor="x", scaleratio=1)
-    #
-    #     return fig
-
-    # def export_to_pdf(self, outputname):
-    #     """Exports the basic information of the observation into a PDF file.
-    #     """
-    # https://towardsdatascience.com/creating-pdf-files-with-python-ad3ccadfae0f
-    #     from fpdf import FPDF
-    #     pdf = FPDF(orientation='P', unit='cm', format='A4')
-    #     # pdf_w = 21.0
-    #     # pdf_h = 29.7
-    #     pdf.add_page()
-    #
-    #     plotly.io.write_image(pltx,file='pltx.png',format='png',width=700, height=450)
-    #     pltx=(os.getcwd()+'/'+"pltx.png")
-    #
-    #     pdf.image(sctplt,  link='', type='', w=1586/80, h=1920/80)
-    #     self.set_font('Arial', 'B', 16)
-    #     self.set_text_color(220, 50, 50)
-    #     self.cell(w=210.0, h=40.0, align='C', txt="LORD OF THE PDFS", border=0)
-    #     self.set_font('Arial', '', 12)
-    #     self.multi_cell(0,10,txt)
-    #
-    #     pdf.output('test.pdf','F')
-    #

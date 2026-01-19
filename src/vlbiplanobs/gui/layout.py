@@ -44,6 +44,15 @@ def compute_buttons(app) -> html.Div:
             dcc.Download(id="download-data")])])])
 
 
+def compute_buttons_realtime(app) -> html.Div:
+    """Simplified button area for real-time mode (no compute button needed)."""
+    return html.Div([html.Div(className='m-0 p-0', children=[
+        html.Div(className='row d-flex m-0 p-0', children=[
+            html.Div(className='col-6 m-0 p-0'),  # Empty space where compute button was
+            outputs.download_button_div(),
+            dcc.Download(id="download-data")])])])
+
+
 def outputs_column(app) -> html.Div:
     return html.Div(children=[
         # First just the warnings

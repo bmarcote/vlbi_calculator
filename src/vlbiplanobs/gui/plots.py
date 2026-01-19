@@ -436,9 +436,12 @@ def plot_worldmap_stations(o) -> Optional[go.Figure]:
         # lonaxis_range=[avg_lon-90, avg_lon+90],
         showland=True,
         landcolor='#9DB7C4',
-        projection_rotation=dict(lon=avg_lon, lat=0)
+        projection_rotation=dict(lon=avg_lon, lat=0),
+        bgcolor='rgba(0,0,0,0)'
     )
 
     fig.update_layout(autosize=True, hovermode='closest', showlegend=False,
-                      margin={'l': 0, 't': 0, 'b': 0, 'r': 0})
+                      margin={'l': 0, 't': 0, 'b': 0, 'r': 0},
+                      paper_bgcolor='rgba(0,0,0,0)',
+                      plot_bgcolor='rgba(0,0,0,0)')
     return fig

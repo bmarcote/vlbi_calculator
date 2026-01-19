@@ -42,6 +42,17 @@ def modal_general_info() -> html.Div:
                     children=[
                         html.H5("EVN Observation Planner", className='mb-0 pb-0'),
                         html.H6(f"(version {importlib.metadata.version('vlbiplanobs')})", className='mt-0 pt-0'),
+                        # Theme toggle button
+                        html.Button(
+                            id='theme-toggle-btn',
+                            className='theme-toggle-btn',
+                            children=[
+                                html.I(className='fas fa-sun theme-icon-light'),
+                                html.I(className='fas fa-moon theme-icon-dark'),
+                                html.Span('Toggle Dark Mode', id='theme-toggle-text')
+                            ]
+                        ),
+                        html.Hr(className='horizontal mb-1 d-xl-block d-none dark'),
                         html.P(["The ", html.B('EVN Observation Planner'), " (", html.Em('PlanObs'),
                                 ") is a tool that allows users to plan very long baseline "
                                 "interferometry (VLBI) observations and verify the "

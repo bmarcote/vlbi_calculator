@@ -85,3 +85,4 @@ where = ["src"]
 [project.scripts]
 planobs = "vlbiplanobs.cli:cli"
 planobs-server = "vlbiplanobs.gui.main:main"
+planobs-server-real = "vlbiplanobs.gui.main_real:main"

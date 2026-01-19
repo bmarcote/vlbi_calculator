@@ -250,3 +250,23 @@ def check_initial_obstime(duration: Optional[int | float]):
         return 'Must be shorter than 4 days',  'form-text text-danger', 'form-control is-invalid'
 
     return "", no_update, 'form-control'
+
+
+# Theme toggle callback
+clientside_callback(
+    """
+    function(n_clicks) {
+        if (!n_clicks) {
+            return dash_clientside.no_update;
+        }
+        if (window.planobsTheme) {
+            const newTheme = window.planobsTheme.toggle();
+            return newTheme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+        }
+        return dash_clientside.no_update;
+    }
+    """,
+    Output("theme-toggle-text", "children"),
+    Input("theme-toggle-btn", "n_clicks"),
+    prevent_initial_call=True
+)

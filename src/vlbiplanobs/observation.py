@@ -1,5 +1,6 @@
 import threading
 import inspect
+import types
 from collections import defaultdict
 from functools import wraps
 from typing import Optional, Union, Tuple, Literal, get_type_hints, get_origin, get_args
@@ -21,6 +22,10 @@ _STATIONS = Stations()
 
 def _check_type(value, expected_type) -> bool:
     """Check if value matches expected_type, handling parameterized generics."""
+    # Handle types.UnionType (int | float syntax from Python 3.10+)
+    if isinstance(expected_type, types.UnionType):
+        return any(_check_type(value, t) for t in get_args(expected_type))
+
     if value is None:
         origin = get_origin(expected_type)
         if origin is Union:
@@ -32,7 +37,6 @@ def _check_type(value, expected_type) -> bool:
         try:
             return isinstance(value, expected_type)
         except TypeError:
-            # Some types can't be used with isinstance
             return True
     elif origin is Union:
         return any(_check_type(value, t) for t in get_args(expected_type))
@@ -129,7 +133,7 @@ class Observation(object):
 
     @enforce_types
     def __init__(self, band: str, stations: Stations, scans: dict[str, ScanBlock],
-                 times: Optional[Time] = None, duration: u.Quantity = 24*u.h,
+                 times: Optional[Time] = None, duration: Optional[u.Quantity] = None,
                  datarate: Optional[u.Quantity] = None,
                  subbands: int = 8, channels: int = 64,
                  polarizations: Union[int, str] = 4,

@@ -1,5 +1,5 @@
 from typing import Optional
-from dash import html, Output, Input, State, callback, no_update, Patch
+from dash import html, Output, Input, State, callback, no_update, clientside_callback, ALL
 from dash.exceptions import PreventUpdate
 from astropy import coordinates as coord
 from astropy import units as u
@@ -11,17 +11,15 @@ from vlbiplanobs.gui import inputs
 
 
 @callback([Output('band-slider', 'marks'),
-           [Output(f"network-{network}-label-band", 'children')
-            for network in observation._NETWORKS],
-           [Output(f"badge-band-ant-{ant.codename}", 'children')
-            for ant in observation._STATIONS]],
+           Output({'type': 'network-label-band', 'index': ALL}, 'children'),
+           Output({'type': 'badge-band-ant', 'index': ALL}, 'children')],
           Input('switch-band-label', 'value'))
 def change_band_labels(show_wavelengths: bool):
     return {i: label for i, label in enumerate(inputs.pick_band_labels(show_wavelengths))}, \
-           tuple(inputs.network_band_labels(network, show_wavelengths)
-                 for network in observation._NETWORKS), \
-           tuple(inputs.print_table_bands_sefds(ant, show_wavelengths)
-                 for ant in observation._STATIONS)
+           [inputs.network_band_labels(network, show_wavelengths)
+            for network in observation._NETWORKS], \
+           [inputs.print_table_bands_sefds(ant, show_wavelengths)
+            for ant in observation._STATIONS]
 
 
 # @callback(Output("welcome-modal-shown", "data"),
@@ -48,11 +46,11 @@ def change_band_labels(show_wavelengths: bool):
 #     raise PreventUpdate
 
 
-@callback([[Output(f"network-{network}", 'disabled') for network in observation._NETWORKS],
-           [Output(f"network-{network}-card", 'style') for network in observation._NETWORKS]],
+@callback([Output({'type': 'network-switch', 'index': ALL}, 'disabled'),
+           Output({'type': 'network-card', 'index': ALL}, 'style')],
           Input('band-slider', 'value'),
-          [State(f"network-{network}-card", 'style') for network in observation._NETWORKS])
-def enable_networks_with_band(band_index: int, *card_styles):
+          State({'type': 'network-card', 'index': ALL}, 'style'))
+def enable_networks_with_band(band_index: int, card_styles):
     if band_index == 0:
         return tuple(False for _ in observation._NETWORKS), \
                      tuple({k: v if k != 'opacity' else 1.0 for k, v in card_style.items()}
@@ -77,7 +75,7 @@ def enable_networks_with_band(band_index: int, *card_styles):
            Output('subbands', 'value')],
           [Input('switch-specify-continuum', 'value'),
            Input('band-slider', 'value'),
-           [Input(f"network-{network}", 'value') for network in observation._NETWORKS]],
+           Input({'type': 'network-switch', 'index': ALL}, 'value')],
           [State('datarate', 'value'),
            State('store-prev-channels', 'data'),
            State('store-prev-subbands', 'data')])
@@ -116,22 +114,22 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
         1 if do_spectral_line else prev_subbands
 
 
-@callback([Output(f"chip-{ant.codename}", "disabled") for ant in observation._STATIONS],
+@callback(Output({'type': 'antenna-chip', 'index': ALL}, 'disabled'),
           [Input('band-slider', 'value'),
            Input('switch-specify-e-evn', 'value')])
 def enable_antennas_with_band(band_index: int, do_e_evn: bool):
     if band_index == 0:
-        return tuple(False for _ in observation._STATIONS)
+        return [False for _ in observation._STATIONS]
 
-    return tuple(not ant.has_band(inputs.band_from_index(band_index)) or (do_e_evn and not ant.real_time)
-                 for ant in observation._STATIONS)
+    return [not ant.has_band(inputs.band_from_index(band_index)) or (do_e_evn and not ant.real_time)
+            for ant in observation._STATIONS]
 
 
 @callback(Output('switches-antennas', 'value'),
-          [Input(f"network-{network}", 'value') for network in observation._NETWORKS],
+          Input({'type': 'network-switch', 'index': ALL}, 'value'),
           State('switches-antennas', 'value'))
-def update_selected_antennas_from_networks(*args):
-    networks, current_antennas = args[:-1], set(args[-1])
+def update_selected_antennas_from_networks(networks, current_antennas):
+    current_antennas = set(current_antennas)
     ants2include = set()
     ants2exclude = set()
 
@@ -146,16 +144,18 @@ def update_selected_antennas_from_networks(*args):
     return tuple(current_antennas - ants2exclude | ants2include)
 
 
-@callback(Output('source-selection-div', 'hidden'),
-          Input('switch-specify-source', 'value'))
-def toggle_source_field(pick_source: bool):
-    return not pick_source
+# Clientside callbacks for faster UI toggle responses
+clientside_callback(
+    "function(value) { return !value; }",
+    Output('source-selection-div', 'hidden'),
+    Input('switch-specify-source', 'value')
+)
 
-
-@callback(Output('epoch-selection-div', 'hidden'),
-          Input('switch-specify-epoch', 'value'))
-def toggle_epoch_field(define_epoch: bool):
-    return not define_epoch
+clientside_callback(
+    "function(value) { return !value; }",
+    Output('epoch-selection-div', 'hidden'),
+    Input('switch-specify-epoch', 'value')
+)
 
 
 @callback([Output('error_source', 'children'),
@@ -199,82 +199,32 @@ def update_bandwidth_label(datarate: int, npols: int, chans: int, subbands: int,
            f"{cli.optimal_units(int(datarate)*u.MHz/((npols % 3 + npols//3)*2*2), [u.GHz, u.MHz, u.kHz]):.0f}."
 
 
-@callback(Output("sensitivity-baseline-modal", "is_open"),
-          Input("button-sensitivity-baseline", "n_clicks"),
-          State("sensitivity-baseline-modal", "is_open"), suppress_callback_exceptions=True)
-def toggle_modal_baseline_sensitivity(n_clicks, is_open):
-    if n_clicks is None:
-        return no_update
+clientside_callback(
+    "function(n_clicks, is_open) { return n_clicks ? !is_open : dash_clientside.no_update; }",
+    Output("sensitivity-baseline-modal", "is_open"),
+    Input("button-sensitivity-baseline", "n_clicks"),
+    State("sensitivity-baseline-modal", "is_open"),
+    prevent_initial_call=True
+)
 
-    return not is_open
-
-
-@callback(Output("more-info-modal", "is_open"),
-          Input("more-info-button", "n_clicks"),
-          State("more-info-modal", "is_open"), prevent_initial_call=True)
-def toggle_modal_info_button(n_clicks, is_open):
-    if n_clicks is None:
-        return no_update
-
-    return not is_open
+clientside_callback(
+    "function(n_clicks, is_open) { return n_clicks ? !is_open : dash_clientside.no_update; }",
+    Output("more-info-modal", "is_open"),
+    Input("more-info-button", "n_clicks"),
+    State("more-info-modal", "is_open"),
+    prevent_initial_call=True
+)
 
 
 @callback(Output('fig-uv-coverage', 'figure', allow_duplicate=True),
           Input('select-antenna-uv-plot', 'value'),
-          State('fig-uv-coverage', 'figure'), prevent_initial_call='initial_duplicate')
-def update_uv_figure(highlight_antennas: list[str], figure):
-    if figure is None:
+          State('store-uv-data', 'data'), prevent_initial_call='initial_duplicate')
+def update_uv_figure(highlight_antennas: list[str], uv_data: dict):
+    if uv_data is None:
         raise PreventUpdate
 
-    highlight_colors = [
-        "#FF0000",  # Red
-        "#0000FF",  # Blue
-        "#008000",  # Green
-        "#FFA500",  # Orange
-        "#800080",  # Purple
-        "#00FFFF",  # Cyan
-        "#FF00FF",  # Magenta
-        "#FFD700",  # Gold
-        "#00FF00",  # Lime
-        "#A52A2A",  # Brown
-        "#FFC0CB",  # Pink
-        "#808000",  # Olive
-        "#008080",  # Teal
-        "#000080",  # Navy
-        "#FF7F50",  # Coral
-        "#4B0082",  # Indigo
-        "#FF8C00",  # DarkOrange
-        "#40E0D0",  # Turquoise
-        "#6A5ACD",  # SlateBlue
-        "#006400",  # DarkGreen
-    ]
-    if highlight_antennas is not None and len(highlight_antennas) > len(highlight_colors):
-        highlight_colors = highlight_colors * (len(highlight_antennas) // len(highlight_colors) + 1)
-
-    def get_color(filter_antenna: str):
-        if filter_antenna in highlight_antennas:
-            return highlight_colors[highlight_antennas.index(filter_antenna)]
-
-        return 'black'
-
-    def get_size(filter_antenna: str):
-        if filter_antenna in highlight_antennas:
-            return 4
-
-        return 2
-
-    updated_fig = Patch()
-    for i, trace in enumerate(figure['data']):
-        # trace is a dictionary
-        if any(a in highlight_antennas for a in trace['name'].split('-')):
-            updated_fig['data'][i]['marker']['color'] = get_color([a for a in trace['name'].split('-')
-                                                                   if a in highlight_antennas][0])
-            updated_fig['data'][i]['marker']['size'] = 4
-        elif figure['data'][i]['marker']['color'] != 'black':
-            updated_fig['data'][i]['marker']['color'] = 'black'
-            updated_fig['data'][i]['marker']['size'] = 2
-
-    return updated_fig
+    from vlbiplanobs.gui import plots
+    return plots.uvplot_from_data(uv_data, highlight_antennas)
 
 
 @callback([Output('error_duration', 'children'),

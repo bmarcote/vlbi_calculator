@@ -152,10 +152,9 @@ def antenna_card(app, ant: stations.Station, show_wavelengths: bool = True) -> h
                             dmc.Text("No longer operational.", mb='1rem', c='#a01d26', size='sm')
                             if ant.decommissioned else None,
                             dmc.Text("Can observe at the following bands (System Equivalent Flux "
-                                     "Density, SEFD, values in brackets):", size='sm',
-                                     id=f"ant-{ant.codename}-band-spec"),
+                                     "Density, SEFD, values in brackets):", size='sm'),
                             html.Div(className='container col-12 row mx-0 px-0 text-xs',
-                                     id=f"badge-band-ant-{ant.codename}",
+                                     id={'type': 'badge-band-ant', 'index': ant.codename},
                                      children=print_table_bands_sefds(ant, show_wavelengths))
                         ], className='col-12 px-1 pb-2 m-0')
                     ], withBorder=False), className='col-12 p-0 m-0 text-sm', style={'width': '200px'})
@@ -248,7 +247,7 @@ def network_entry(app, network: str) -> html.Div:
             html.Div(className='d-flex align-items-center', children=[
                 html.H4(network, className='text-bold text-white px-1 mb-0 mt-0 flex-grow-1',
                         title=stations.Stations.get_network_full_name(network)),
-                dbc.Switch(label='', value=False, id=f"network-{network}",
+                dbc.Switch(label='', value=False, id={'type': 'network-switch', 'index': network},
                            className='form-check ml-auto', persistence=True)]),
             # html.Br(),
             # html.H6(stations.Stations.get_network_full_name(network),
@@ -257,13 +256,13 @@ def network_entry(app, network: str) -> html.Div:
             #                'overflow': 'hidden'}) if has_full_name else html.Br(),
             html.Label(network_band_labels(network),
                        className='card-text text-white mt-auto',
-                       id=f"network-{network}-label-band",
+                       id={'type': 'network-label-band', 'index': network},
                        style={'line-height': '1.2'})],
                        className='card-body text-start p-0 pt-0 w-100 h-100 d-flex flex-column'), className='p-2')],
                               className='m-2 card card-background',
                               style={'min-width': '11rem', 'height': '7rem',
                                      'overflow': 'hidden', 'opacity': 1.0},
-                              id=f"network-{network}-card"), className='col-4')
+                              id={'type': 'network-card', 'index': network}), className='col-4')
 
 
 def networks(app) -> html.Div:
@@ -281,7 +280,7 @@ def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
                                              multiple=True, deselectable=True, children=[
                                   antenna_card_hover(app,
                                                      dmc.Chip(s.name, value=s.codename,
-                                                              id=f"chip-{s.codename}",
+                                                              id={'type': 'antenna-chip', 'index': s.codename},
                                                               color='#004990',
                                                               persistence=True,
                                                               styles={'display': 'grid',

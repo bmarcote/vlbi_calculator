@@ -1,21 +1,42 @@
 from collections import defaultdict
 from typing import Optional
 import numpy as np
-from matplotlib import cm
-from matplotlib.colors import Normalize
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from vlbiplanobs import sources
 
 
 def _gst_tickvals_ticktext(o):
-    """Returns tickvals and ticktext for a GST secondary x-axis."""
-    gst = o.gstimes.hour
-    n_ticks = min(8, len(gst))
-    step = max(1, len(gst) // n_ticks)
-    indices = list(range(0, len(gst), step))
+    """Returns tickvals and ticktext for a GST secondary x-axis.
+    
+    The tickvals are datetime positions on the x-axis, and ticktext shows
+    the corresponding GST time at each position.
+    
+    When fixed_time is False, the x-axis datetimes already represent GST hours
+    (synthetic times), so both axes should show the same values.
+    When fixed_time is True, the x-axis shows real UTC times, and we need to
+    show the corresponding GST times on the secondary axis.
+    """
+    n_times = len(o.times.datetime)
+    
+    # Select evenly spaced indices across the full time range
+    n_ticks = min(8, n_times)
+    if n_ticks <= 1:
+        indices = [0]
+    else:
+        indices = [int(i * (n_times - 1) / (n_ticks - 1)) for i in range(n_ticks)]
+    
+    # tickvals are the x-axis positions (datetime)
     tickvals = [o.times.datetime[i] for i in indices]
-    ticktext = [f"{int(gst[i]):02d}:{int((gst[i] % 1) * 60):02d}" for i in indices]
+    
+    if o.fixed_time:
+        # Real UTC times - show corresponding GST
+        gst = o.gstimes.hour
+        ticktext = [f"{int(gst[i]):02d}:{int((gst[i] % 1) * 60):02d}" for i in indices]
+    else:
+        # Synthetic times representing GST - extract hour:minute from datetime
+        ticktext = [o.times.datetime[i].strftime('%H:%M') for i in indices]
+    
     return tickvals, ticktext
 
 
@@ -57,6 +78,12 @@ def elevation_plot_curves(o) -> Optional[go.Figure]:
                                          "<b>Time</b>: %{x}",  # .strftime('%H:%M')}",
                            name=o.stations[ant].name))
 
+    # Add invisible trace for secondary x-axis (GST) to make it visible
+    tickvals, ticktext = _gst_tickvals_ticktext(o)
+    fig.add_trace(go.Scatter(x=o.times.datetime, y=[None]*len(o.times.datetime),
+                             mode='markers', marker=dict(opacity=0), showlegend=False,
+                             xaxis='x2', hoverinfo='skip'))
+
     layout_kwargs = dict(
         showlegend=True,
         hovermode='closest',
@@ -68,34 +95,28 @@ def elevation_plot_curves(o) -> Optional[go.Figure]:
         xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
                    mirror=False, ticks='inside', tickmode='auto',
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
+        xaxis2=dict(overlaying='x', side='top', type='date', tickmode='array',
+                    tickvals=tickvals, ticktext=ticktext, showline=True,
+                    linecolor='black', linewidth=1, ticks='inside',
+                    title='Time (GST)'),
         yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
                    tickmode='auto', range=[0, 90],
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        margin=dict(l=2, r=2, t=25 if o.fixed_time else 1, b=0),
+        margin=dict(l=2, r=2, t=45, b=0),
         legend=dict(x=0.01, y=0.99, xanchor='left', yanchor='top', bgcolor='rgba(255, 255, 255, 0.7)',
                     bordercolor='rgba(0, 0, 0, 0.3)', borderwidth=1))
-
-    if o.fixed_time:
-        tickvals, ticktext = _gst_tickvals_ticktext(o)
-        layout_kwargs['xaxis2'] = dict(overlaying='x', side='top', type='date', tickmode='array',
-                                       tickvals=tickvals, ticktext=ticktext, showline=True,
-                                       linecolor='black', linewidth=1, ticks='inside',
-                                       title='Time (GST)')
 
     fig.update_layout(**layout_kwargs)
     return fig
 
 
 def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
-    """Creates the plot showing when the different antennas can observe a given
-    source,
+    """Creates the plot showing when the different antennas can observe a given source.
+    Optimized version using Heatmap instead of individual traces.
     """
     if o is None or not o.scans:
         return None
 
-    # Normalize the color array to [0, 1] and map it to the viridis colormap
-    norm = Normalize(vmin=5, vmax=90)  # Normalize values between 0 and 90
-    viridis = cm.get_cmap('viridis')
     srcup = o.is_observable()
     elevs = o.elevations()
 
@@ -104,39 +125,54 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
                         if len(srcup) > 1 else '')
 
     for src_i, src_block in enumerate(srcup):
-        for anti, ant in enumerate(srcup[src_block]):
+        ant_names = list(srcup[src_block].keys())
+        n_ants = len(ant_names)
+        n_times = len(o.times.datetime)
+
+        # Build elevation matrix (antennas x times)
+        z_matrix = np.full((n_ants, n_times), np.nan)
+        for anti, ant in enumerate(ant_names):
             targets = o.scans[src_block].sources(sources.SourceType.TARGET)
             if len(targets) > 0:
-                colors = elevs[targets[0].name][ant].value
+                elev_values = elevs[targets[0].name][ant].value
             else:
-                colors = elevs[o.scans[src_block].sources()[0].name][ant].value
+                elev_values = elevs[o.scans[src_block].sources()[0].name][ant].value
 
-            colors_cm = viridis(norm(colors))
-            color_str = np.array([f"rgba({r}, {g}, {b}, {a})" for r, g, b, a in colors_cm])
             visibility = np.array(srcup[src_block][ant], dtype=bool)
-            color_str[~visibility] = 'rgba(0, 0, 0, 0)'
-            y_value = np.zeros(2) + (len(o.stations) - anti)
-            visible_indices = np.where(visibility[:-1] & visibility[1:])[0]
-            for i in visible_indices:
-                fig.add_trace(
-                    go.Scatter(
-                        x=o.times.datetime[i:i + 2],
-                        y=y_value,
-                        mode="lines",
-                        line=dict(color=color_str[i], width=10),
-                        showlegend=False,
-                        marker=dict(showscale=show_colorbar),
-                        hovertemplate=f"<b>{o.stations[ant].name} ({o.stations[ant].codename})</b><br>"
-                                    "<b>Elevation</b>: "
-                                    f"{colors[i]:.0f}º<extra></extra><br><b>Time</b>: "
-                                    f"{o.times.datetime[i].strftime('%H:%M')}"),
-                    row=src_i % 4 + 1,
-                    col=src_i // 4 + 1)
+            z_matrix[n_ants - 1 - anti, visibility] = elev_values[visibility]
+
+        # Create hover text matrix
+        hover_text = [[f"<b>{o.stations[ant_names[n_ants - 1 - ai]].name}</b><br>"
+                       f"Elevation: {z_matrix[ai, ti]:.0f}º<br>"
+                       f"Time: {o.times.datetime[ti].strftime('%H:%M')}"
+                       if not np.isnan(z_matrix[ai, ti]) else ""
+                       for ti in range(n_times)] for ai in range(n_ants)]
+
+        fig.add_trace(
+            go.Heatmap(
+                x=o.times.datetime,
+                y=list(range(1, n_ants + 1)),
+                z=z_matrix,
+                colorscale='Viridis',
+                zmin=5, zmax=90,
+                showscale=show_colorbar,
+                hoverinfo='text',
+                text=hover_text,
+                xgap=0, ygap=1
+            ),
+            row=src_i % 4 + 1,
+            col=src_i // 4 + 1)
+
+    # Add invisible trace for secondary x-axis (GST) to make it visible
+    tickvals, ticktext = _gst_tickvals_ticktext(o)
+    fig.add_trace(go.Scatter(x=o.times.datetime, y=[None]*len(o.times.datetime),
+                             mode='markers', marker=dict(opacity=0), showlegend=False,
+                             xaxis='x2', hoverinfo='skip'))
 
     layout_kwargs = dict(
         showlegend=False,
         hovermode='closest',
-        xaxis_title="Time (GST)" if not o.fixed_time else "Time (UTC)",
+        xaxis_title="Time (UTC)" if o.fixed_time else "Time (GST)",
         yaxis_title="Antennas",
         title='',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -144,19 +180,17 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
         xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
                    mirror=False, ticks='inside', tickmode='auto',
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
+        xaxis2=dict(overlaying='x', side='top', type='date', tickmode='array',
+                    tickvals=tickvals, ticktext=ticktext, showline=True,
+                    linecolor='black', linewidth=1, mirror=False, ticks='inside',
+                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False),
+                    title='Time (GST)'),
         yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
                    tickmode='array',
-                   tickvals=len(o.stations) - np.array(range(len(srcup[src_block].keys()))),
-                   ticktext=list(srcup[src_block].keys()),
+                   tickvals=list(range(1, n_ants + 1)),
+                   ticktext=list(reversed(ant_names)),
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        margin=dict(l=2, r=2, t=25 if o.fixed_time else 1, b=0))
-
-    if o.fixed_time:
-        tickvals, ticktext = _gst_tickvals_ticktext(o)
-        layout_kwargs['xaxis2'] = dict(overlaying='x', side='top', type='date', tickmode='array',
-                                       tickvals=tickvals, ticktext=ticktext, showline=True,
-                                       linecolor='black', linewidth=1, ticks='inside',
-                                       title='Time (GST)')
+        margin=dict(l=2, r=2, t=45, b=0))
 
     fig.update_layout(**layout_kwargs)
     if show_colorbar:
@@ -166,63 +200,163 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
     return fig
 
 
+def serialize_uv_data(o) -> Optional[dict]:
+    """Serialize UV data for storage in dcc.Store.
+    Returns dict of baseline -> {'x': [...], 'y': [...]} with both +/- uv points.
+    """
+    if o is None or not o.scans:
+        return None
+    
+    bl_uv = o.get_uv_data()
+    serialized = {}
+    for key, arr in bl_uv[list(bl_uv.keys())[0]].items():
+        arr_values = arr.value if hasattr(arr, 'value') else arr
+        serialized[key] = {
+            'x': arr_values[:, 0].tolist() + (-arr_values[:, 0]).tolist(),
+            'y': arr_values[:, 1].tolist() + (-arr_values[:, 1]).tolist()
+        }
+    return serialized
+
+
+def uvplot_from_data(uv_data: dict, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure]:
+    """Creates UV coverage plot from serialized UV data."""
+    if uv_data is None:
+        return None
+    
+    highlight_colors = [
+        "#FF0000", "#0000FF", "#008000", "#FFA500", "#800080",
+        "#00FFFF", "#FF00FF", "#FFD700", "#00FF00", "#A52A2A",
+        "#FFC0CB", "#808000", "#008080", "#000080", "#FF7F50",
+        "#4B0082", "#FF8C00", "#40E0D0", "#6A5ACD", "#006400",
+    ]
+
+    # Group points by color for batching
+    color_groups: dict[str, dict] = {'black': {'x': [], 'y': [], 'text': []}}
+    if filter_antennas:
+        for i, ant in enumerate(filter_antennas):
+            color_groups[highlight_colors[i % len(highlight_colors)]] = {'x': [], 'y': [], 'text': []}
+
+    def get_color(baseline: str) -> str:
+        if filter_antennas:
+            for i, ant in enumerate(filter_antennas):
+                if ant in baseline:
+                    return highlight_colors[i % len(highlight_colors)]
+        return 'black'
+
+    for baseline, points in uv_data.items():
+        color = get_color(baseline)
+        color_groups[color]['x'].extend(points['x'])
+        color_groups[color]['y'].extend(points['y'])
+        color_groups[color]['text'].extend([baseline] * len(points['x']))
+
+    # Create one trace per color
+    data = []
+    for color, points in color_groups.items():
+        if points['x']:
+            data.append(go.Scattergl(
+                x=points['x'],
+                y=points['y'],
+                mode='markers',
+                marker=dict(color=color, size=2 if color == 'black' else 4),
+                hovertext=points['text'],
+                hoverinfo='text',
+                showlegend=False
+            ))
+
+    fig = go.Figure(data=data)
+    fig.update_layout(
+        showlegend=False,
+        hovermode='closest',
+        xaxis_title='u (λ)',
+        yaxis_title='v (λ)',
+        title='',
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(
+            showline=True,
+            linecolor='black',
+            linewidth=1,
+            mirror='allticks',
+            ticks='inside',
+            tickmode='auto',
+            minor=dict(
+                ticks='inside',
+                ticklen=4,
+                tickcolor='black',
+                showgrid=False
+            )
+        ),
+        yaxis=dict(
+            showline=True,
+            linecolor='black',
+            linewidth=1,
+            mirror='allticks',
+            ticks='inside',
+            scaleanchor="x",
+            scaleratio=1,
+            tickmode='auto',
+            minor=dict(
+                ticks='inside',
+                ticklen=4,
+                tickcolor='black',
+                showgrid=False
+            )
+        ),
+        margin=dict(l=0, r=0, t=0, b=0)
+    )
+    fig.update_xaxes(constrain='domain')
+    return fig
+
+
 def uvplot(o, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure]:
+    """Creates UV coverage plot. Optimized to batch all points into fewer traces."""
     if o is None or not o.scans:
         return None
 
     bl_uv = o.get_uv_data()
-    data = []
     highlight_colors = [
-        "#FF0000",  # Red
-        "#0000FF",  # Blue
-        "#008000",  # Green
-        "#FFA500",  # Orange
-        "#800080",  # Purple
-        "#00FFFF",  # Cyan
-        "#FF00FF",  # Magenta
-        "#FFD700",  # Gold
-        "#00FF00",  # Lime
-        "#A52A2A",  # Brown
-        "#FFC0CB",  # Pink
-        "#808000",  # Olive
-        "#008080",  # Teal
-        "#000080",  # Navy
-        "#FF7F50",  # Coral
-        "#4B0082",  # Indigo
-        "#FF8C00",  # DarkOrange
-        "#40E0D0",  # Turquoise
-        "#6A5ACD",  # SlateBlue
-        "#006400",  # DarkGreen
+        "#FF0000", "#0000FF", "#008000", "#FFA500", "#800080",
+        "#00FFFF", "#FF00FF", "#FFD700", "#00FF00", "#A52A2A",
+        "#FFC0CB", "#808000", "#008080", "#000080", "#FF7F50",
+        "#4B0082", "#FF8C00", "#40E0D0", "#6A5ACD", "#006400",
     ]
-    if filter_antennas is not None and len(filter_antennas) > len(highlight_colors):
-        highlight_colors = highlight_colors * (len(filter_antennas) // len(highlight_colors) + 1)
 
-    def get_color(baseline: str, filter_antennas: list[str]):
+    # Group points by color for batching
+    color_groups: dict[str, dict] = {'black': {'x': [], 'y': [], 'text': []}}
+    if filter_antennas:
         for i, ant in enumerate(filter_antennas):
-            if ant in baseline:
-                return highlight_colors[i]
+            color_groups[highlight_colors[i % len(highlight_colors)]] = {'x': [], 'y': [], 'text': []}
 
+    def get_color(baseline: str) -> str:
+        if filter_antennas:
+            for i, ant in enumerate(filter_antennas):
+                if ant in baseline:
+                    return highlight_colors[i % len(highlight_colors)]
         return 'black'
 
     for key, arr in bl_uv[list(bl_uv.keys())[0]].items():
-        if filter_antennas is not None:
-            color = get_color(key, filter_antennas)
-        else:
-            color = 'black'
+        color = get_color(key)
+        # Add both +uv and -uv points (use .value for Quantity arrays)
+        arr_values = arr.value if hasattr(arr, 'value') else arr
+        color_groups[color]['x'].extend(arr_values[:, 0].tolist())
+        color_groups[color]['x'].extend((-arr_values[:, 0]).tolist())
+        color_groups[color]['y'].extend(arr_values[:, 1].tolist())
+        color_groups[color]['y'].extend((-arr_values[:, 1]).tolist())
+        color_groups[color]['text'].extend([key] * (2 * len(arr_values)))
 
-        uv = np.empty((2*len(arr), 2))
-        uv[:len(arr), :] = arr
-        uv[len(arr):, :] = -arr
-        hover_text = [key] * len(uv)
-        data.append(go.Scatter(
-            x=uv[:, 0],
-            y=uv[:, 1],
-            mode='markers',
-            marker=dict(color=color, size=2 if color == 'black' else 4),
-            name=key,
-            hovertext=hover_text,
-            hoverinfo='text'
-        ))
+    # Create one trace per color (much fewer traces)
+    data = []
+    for color, points in color_groups.items():
+        if points['x']:
+            data.append(go.Scattergl(  # Use Scattergl for WebGL rendering - faster
+                x=points['x'],
+                y=points['y'],
+                mode='markers',
+                marker=dict(color=color, size=2 if color == 'black' else 4),
+                hovertext=points['text'],
+                hoverinfo='text',
+                showlegend=False
+            ))
 
     fig = go.Figure(data=data)
     fig.update_layout(

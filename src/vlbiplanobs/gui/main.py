@@ -3,7 +3,7 @@ import argparse
 from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
-from dash import Dash, html, dcc, Output, Input, State, no_update
+from dash import Dash, html, dcc, Output, Input, State, no_update, ALL
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
@@ -109,7 +109,8 @@ def download_pdf_summary(n_clicks, obs_params: dict):
                Output('store-prev-datarate', 'data'),
                Output('store-prev-channels', 'data'),
                Output('store-prev-subbands', 'data'),
-               Output('store-obs-params', 'data')],
+               Output('store-obs-params', 'data'),
+               Output('store-uv-data', 'data')],
               Input('compute-observation', 'n_clicks'),
               [State('band-slider', 'value'),
                State('switch-specify-source', 'value'),
@@ -126,13 +127,13 @@ def download_pdf_summary(n_clicks, obs_params: dict):
                State('inttime', 'value'),
                State('switch-specify-e-evn', 'value'),
                State('switches-antennas', 'value'),
-               [State(f"network-{network}", 'value') for network in observation._NETWORKS],
-               [State(f"network-{network}", 'disabled') for network in observation._NETWORKS]],
+               State({'type': 'network-switch', 'index': ALL}, 'value'),
+               State({'type': 'network-switch', 'index': ALL}, 'disabled')],
               running=[(Output("compute-observation", "disabled"), True, False),],
               suppress_callback_exceptions=True, prevent_initial_call=True)
 @observation.enforce_types
-def compute_observation(n_clicks, band: int, defined_source: bool, source: str, onsourcetime: float,
-                        defined_epoch: bool, startdate: str, starttime: str, duration: float, datarate: int, subbands: int,
+def compute_observation(n_clicks, band: int, defined_source: bool, source: str, onsourcetime: int,
+                        defined_epoch: bool, startdate: str, starttime: str, duration: int | float, datarate: int, subbands: int,
                         channels: int, pols: int, inttime: int, e_evn: bool, selected_antennas: list[str],
                         selected_networks: list[bool], disabled_networks: list[bool]):
     """Computes all products to be shown concerning the set observation.
@@ -142,7 +143,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
 
     vals4error = no_update, True, no_update, *[html.Div()]*6, True, html.Div(), no_update, \
         no_update, True, html.Div(), no_update, no_update, html.Div(), html.Div(), True, no_update, \
-        *[html.Div()]*2, no_update, no_update, no_update, no_update
+        *[html.Div()]*2, no_update, no_update, no_update, no_update, no_update
     if band == 0 or (not selected_antennas) or (duration is None and (source == '' or not defined_source)):
         return outputs.warning_card("Select the band, antennas, and source or duration",
                                     "If no source is provided, a duration for the observation "
@@ -254,6 +255,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                 futures['plot_elev'] = executor.submit(plots.elevation_plot, obs)
                 futures['plot_elev2'] = executor.submit(plots.elevation_plot_curves, obs)
                 futures['plot_uv'] = executor.submit(plots.uvplot, obs)
+                futures['uv_data'] = executor.submit(plots.serialize_uv_data, obs)
                 futures['out_elev_info'] = executor.submit(outputs.print_observability_ranges, obs)
                 futures['out_uv_info'] = executor.submit(outputs.print_baseline_lengths, obs)
                 futures['out_ant_options'] = executor.submit(outputs.put_antenna_options, obs)
@@ -276,10 +278,12 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                                 futures['plot_elev'].result(), futures['plot_elev2'].result()]
                 out_plot_uv = [False, futures['out_uv_info'].result(),
                             futures['plot_uv'].result(), futures['out_ant_options'].result()]
+                uv_data = futures['uv_data'].result()
             else:
                 out_sun = no_update
                 out_plot_elev = [True, no_update, no_update, no_update]
                 out_plot_uv = [True, no_update, no_update, no_update]
+                uv_data = no_update
     except sources.SourceNotVisible:
         return outputs.error_card('Source Not Visible!',
                                   'The source cannot be observed by at least more than one antenna '
@@ -309,7 +313,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
 
     return html.Div(), html.Div(), False, None, out_rms, out_baseline_sens, out_res, out_sun, \
         out_phaseref, out_ant, *out_plot_elev, *out_plot_uv, out_fov, out_freq, False, out_worldmap, \
-        out_datasize, out_obstime, datarate, channels, subbands, obs_params
+        out_datasize, out_obstime, datarate, channels, subbands, obs_params, uv_data
 
 
 server = app.server
@@ -321,6 +325,7 @@ app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-10
                    dcc.Store(id='store-prev-channels', data=64),
                    dcc.Store(id='store-prev-subbands', data=8),
                    dcc.Store(id='store-obs-params', data=None),
+                   dcc.Store(id='store-uv-data', data=None),
                    layout.top_banner(app),
                    # inputs.modal_welcome(),
                    html.Div(id='main-window', className='container-fluid d-flex row p-0 m-0',

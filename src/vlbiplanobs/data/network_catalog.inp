@@ -19,7 +19,7 @@ observing_bands = 92cm, 49cm, 30cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 1.3cm, 0.
 name = eMERLIN
 default_antennas = Cm, Kn, Pi, Da, De, Jb2
 max_datarate = 4096
-observing_bands = 92cm, 49cm, 21cm, 18cm, 13cm, 6cm, 5cm, 3.6cm, 2cm, 1.3cm, 0.7cm, 0.348cm
+observing_bands = 21cm, 18cm, 6cm, 5cm, 1.3cm
 
 
 [VLBA]

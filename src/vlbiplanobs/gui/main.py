@@ -246,18 +246,18 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
             futures['out_baseline_sens'] = executor.submit(outputs.baseline_sensitivities, obs)
             futures['out_datasize'] = executor.submit(outputs.data_size, obs)
             futures['out_obstime'] = executor.submit(outputs.obs_time, obs)
-            futures['plot_worldmap'] = executor.submit(plots.plot_worldmap_stations, obs)
+            futures['plot_worldmap'] = executor.submit(plots.plot_worldmap_stations, obs)  # type: ignore[arg-type]
 
             # Source-dependent functions
             if has_source:
                 futures['out_sun'] = executor.submit(outputs.sun_warning, obs)
-                futures['plot_elev'] = executor.submit(plots.elevation_plot, obs)
-                futures['plot_elev2'] = executor.submit(plots.elevation_plot_curves, obs)
-                futures['plot_uv'] = executor.submit(plots.uvplot, obs)
-                futures['uv_data'] = executor.submit(plots.serialize_uv_data, obs)
+                futures['plot_elev'] = executor.submit(plots.elevation_plot, obs)  # type: ignore[arg-type]
+                futures['plot_elev2'] = executor.submit(plots.elevation_plot_curves, obs)  # type: ignore[arg-type]
+                futures['plot_uv'] = executor.submit(plots.uvplot, obs)  # type: ignore[arg-type]
+                futures['uv_data'] = executor.submit(plots.serialize_uv_data, obs)  # type: ignore[arg-type]
                 futures['out_elev_info'] = executor.submit(outputs.print_observability_ranges, obs)
                 futures['out_uv_info'] = executor.submit(outputs.print_baseline_lengths, obs)
-                futures['out_ant_options'] = executor.submit(outputs.put_antenna_options, obs)
+                futures['out_ant_options'] = executor.submit(outputs.put_antenna_options, obs)  # type: ignore[arg-type]
 
             # Collect results
             out_rms = futures['out_rms'].result()
@@ -279,10 +279,10 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                             futures['plot_uv'].result(), futures['out_ant_options'].result()]
                 uv_data = futures['uv_data'].result()
             else:
-                out_sun = no_update
+                out_sun = no_update  # type: ignore[assignment]
                 out_plot_elev = [True, no_update, no_update, no_update]
                 out_plot_uv = [True, no_update, no_update, no_update]
-                uv_data = no_update
+                uv_data = no_update  # type: ignore[assignment]
     except sources.SourceNotVisible:
         return outputs.error_card('Source Not Visible!',
                                   'The source cannot be observed by at least more than one antenna '

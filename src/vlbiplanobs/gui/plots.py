@@ -6,38 +6,54 @@ from plotly.subplots import make_subplots
 from vlbiplanobs import sources
 
 
-def _gst_tickvals_ticktext(o):
-    """Returns tickvals and ticktext for a GST secondary x-axis.
-    
-    The tickvals are datetime positions on the x-axis, and ticktext shows
-    the corresponding GST time at each position.
-    
-    When fixed_time is False, the x-axis datetimes already represent GST hours
-    (synthetic times), so both axes should show the same values.
-    When fixed_time is True, the x-axis shows real UTC times, and we need to
-    show the corresponding GST times on the secondary axis.
+def _get_axis_config(o):
+    """Returns axis configuration for elevation plots based on observation time mode.
+
+    Inputs
+    - o : VLBIObs
+        VLBI observation object with times and gstimes attributes.
+
+    Returns
+    - dict with keys:
+        - xaxis_range: [start, end] datetime range for x-axis
+        - xaxis_title: title for x-axis
+        - xaxis2_config: dict for secondary x-axis (or None if not needed)
     """
-    n_times = len(o.times.datetime)
-    
-    # Select evenly spaced indices across the full time range
-    n_ticks = min(8, n_times)
-    if n_ticks <= 1:
-        indices = [0]
-    else:
-        indices = [int(i * (n_times - 1) / (n_ticks - 1)) for i in range(n_ticks)]
-    
-    # tickvals are the x-axis positions (datetime)
-    tickvals = [o.times.datetime[i] for i in indices]
-    
+    time_range = [o.times.datetime[0], o.times.datetime[-1]]
+
     if o.fixed_time:
-        # Real UTC times - show corresponding GST
+        # Epoch is defined: x-axis shows UTC, x-axis2 shows GST
+        n_times = len(o.times.datetime)
+        n_ticks = min(8, n_times)
+        if n_ticks <= 1:
+            indices = [0]
+        else:
+            indices = [int(i * (n_times - 1) / (n_ticks - 1)) for i in range(n_ticks)]
+
+        tickvals = [o.times.datetime[i] for i in indices]
         gst = o.gstimes.hour
         ticktext = [f"{int(gst[i]):02d}:{int((gst[i] % 1) * 60):02d}" for i in indices]
+
+        xaxis2_config = dict(
+            overlaying='x', side='top', type='date', tickmode='array',
+            tickvals=tickvals, ticktext=ticktext, showline=True,
+            linecolor='black', linewidth=1, ticks='inside',
+            range=time_range, title='Time (GST)'
+        )
+        return {
+            'xaxis_range': time_range,
+            'xaxis_title': 'Time (UTC)',
+            'xaxis2_config': xaxis2_config,
+            'show_xaxis2': True
+        }
     else:
-        # Synthetic times representing GST - extract hour:minute from datetime
-        ticktext = [o.times.datetime[i].strftime('%H:%M') for i in indices]
-    
-    return tickvals, ticktext
+        # No epoch defined: x-axis shows GST directly, no secondary axis
+        return {
+            'xaxis_range': time_range,
+            'xaxis_title': 'Time (GST)',
+            'xaxis2_config': None,
+            'show_xaxis2': False
+        }
 
 
 def elevation_plot_curves(o) -> Optional[go.Figure]:
@@ -78,33 +94,35 @@ def elevation_plot_curves(o) -> Optional[go.Figure]:
                                          "<b>Time</b>: %{x}",  # .strftime('%H:%M')}",
                            name=o.stations[ant].name))
 
-    # Add invisible trace for secondary x-axis (GST) to make it visible
-    tickvals, ticktext = _gst_tickvals_ticktext(o)
-    fig.add_trace(go.Scatter(x=o.times.datetime, y=[None]*len(o.times.datetime),
-                             mode='markers', marker=dict(opacity=0), showlegend=False,
-                             xaxis='x2', hoverinfo='skip'))
+    # Get axis configuration based on observation time mode
+    axis_cfg = _get_axis_config(o)
+
+    # Add invisible trace for secondary x-axis (GST) only when needed
+    if axis_cfg['show_xaxis2']:
+        fig.add_trace(go.Scatter(x=o.times.datetime, y=[None]*len(o.times.datetime),
+                                 mode='markers', marker=dict(opacity=0), showlegend=False,
+                                 xaxis='x2', hoverinfo='skip'))
 
     layout_kwargs = dict(
         showlegend=True,
         hovermode='closest',
-        xaxis_title="Time (GST)" if not o.fixed_time else "Time (UTC)",
+        xaxis_title=axis_cfg['xaxis_title'],
         yaxis_title="Elevation (degrees)",
         title='',
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
-                   mirror=False, ticks='inside', tickmode='auto',
+                   mirror=False, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        xaxis2=dict(overlaying='x', side='top', type='date', tickmode='array',
-                    tickvals=tickvals, ticktext=ticktext, showline=True,
-                    linecolor='black', linewidth=1, ticks='inside',
-                    title='Time (GST)'),
         yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
                    tickmode='auto', range=[0, 90],
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         margin=dict(l=2, r=2, t=45, b=0),
         legend=dict(x=0.01, y=0.99, xanchor='left', yanchor='top', bgcolor='rgba(255, 255, 255, 0.7)',
                     bordercolor='rgba(0, 0, 0, 0.3)', borderwidth=1))
+
+    if axis_cfg['xaxis2_config']:
+        layout_kwargs['xaxis2'] = axis_cfg['xaxis2_config']
 
     fig.update_layout(**layout_kwargs)
     return fig
@@ -163,34 +181,35 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
             row=src_i % 4 + 1,
             col=src_i // 4 + 1)
 
-    # Add invisible trace for secondary x-axis (GST) to make it visible
-    tickvals, ticktext = _gst_tickvals_ticktext(o)
-    fig.add_trace(go.Scatter(x=o.times.datetime, y=[None]*len(o.times.datetime),
-                             mode='markers', marker=dict(opacity=0), showlegend=False,
-                             xaxis='x2', hoverinfo='skip'))
+    # Get axis configuration based on observation time mode
+    axis_cfg = _get_axis_config(o)
+
+    # Add invisible trace for secondary x-axis (GST) only when needed
+    if axis_cfg['show_xaxis2']:
+        fig.add_trace(go.Scatter(x=o.times.datetime, y=[None]*len(o.times.datetime),
+                                 mode='markers', marker=dict(opacity=0), showlegend=False,
+                                 xaxis='x2', hoverinfo='skip'))
 
     layout_kwargs = dict(
         showlegend=False,
         hovermode='closest',
-        xaxis_title="Time (UTC)" if o.fixed_time else "Time (GST)",
+        xaxis_title=axis_cfg['xaxis_title'],
         yaxis_title="Antennas",
         title='',
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
-                   mirror=False, ticks='inside', tickmode='auto',
+                   mirror=False, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        xaxis2=dict(overlaying='x', side='top', type='date', tickmode='array',
-                    tickvals=tickvals, ticktext=ticktext, showline=True,
-                    linecolor='black', linewidth=1, mirror=False, ticks='inside',
-                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False),
-                    title='Time (GST)'),
         yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
                    tickmode='array',
                    tickvals=list(range(1, n_ants + 1)),
                    ticktext=list(reversed(ant_names)),
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         margin=dict(l=2, r=2, t=45, b=0))
+
+    if axis_cfg['xaxis2_config']:
+        layout_kwargs['xaxis2'] = axis_cfg['xaxis2_config']
 
     fig.update_layout(**layout_kwargs)
     if show_colorbar:

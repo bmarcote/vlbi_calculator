@@ -972,13 +972,23 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
 
     if len(o.scans) > 0 and show_figure:
         fig = plots.elevation_plot(o, show_colorbar=True)
-        assert fig is not None, "An image could not be created for the PDF"
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tempfig:
-            fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='black')
-            fig.write_image(tempfig.name, scale=2, width=800)
-            figpath = Path(tempfig.name)
+        if fig is not None:
+            try:
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tempfig:
+                    fig.update_layout(
+                        plot_bgcolor='white',
+                        paper_bgcolor='white',
+                        font_color='black',
+                        margin=dict(l=60, r=20, t=50, b=50)
+                    )
+                    fig.write_image(tempfig.name, scale=2, width=800, height=400)
+                    figpath = Path(tempfig.name)
 
-        layout.append_layout_element(pdf.Image(figpath, size=(414, 265)))
+                layout.append_layout_element(pdf.Image(figpath, size=(414, 265)))
+            except Exception as e:
+                layout.append_layout_element(pdf.Paragraph(
+                    f"[Figure could not be generated: {type(e).__name__}]",
+                    font_color=pdf.HexColor("#999999")))
 
     tmp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
     pdf.PDF.write(where_to=tmp.name, what=doc)

@@ -377,7 +377,7 @@ def correlations() -> html.Div:
                                            id='switch-specify-continuum', persistence=True),
                                 dcc.Dropdown(id='datarate', placeholder="Maximum observing data rate...",
                                              options=tuple({'label': drl, 'value': dr}
-                                                           for dr, drl in fs.data_rates.items()),
+                                                           for dr, drl in fs.data_rates.items()),  # type: ignore[arg-type]
                                              value=2048, persistence=True, clearable=False),
                                 html.Label(id='bandwidth-label', style={'color': '#999999'}, children='',
                                            htmlFor="datarate")]),

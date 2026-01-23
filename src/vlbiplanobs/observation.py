@@ -774,15 +774,9 @@ class Observation(object):
         result = {}
         is_obs = self.is_observable()
         for ablockname, antbool in is_obs.items():
-            # For each time step, count how many stations can observe
-            n_times = len(self.times)
-            for t_idx in range(n_times):
-                count = sum(1 for ant_visible in antbool.values() if ant_visible[t_idx])
-                if count >= min_stations:
-                    result[ablockname] = True
-                    break
-            else:
-                result[ablockname] = False
+            visibility_matrix = np.array(list(antbool.values()))
+            station_counts = np.sum(visibility_matrix, axis=0)
+            result[ablockname] = bool(np.any(station_counts >= min_stations))
         return result
 
     def is_always_observable(self) -> dict[str, dict[str, bool]]:
@@ -872,23 +866,23 @@ class Observation(object):
             within_time_range = within_time_range[0] + \
                 np.arange((within_time_range[1] - within_time_range[0]).to(u.day).value, 0.01)*u.day
 
-        # TODO: I can likely optimize this function. And continue from here on
         if mandatory_stations == 'all':
             mandatory_stations = self.stations.station_codenames
             min_stations = len(mandatory_stations)
 
         result: dict[str, list[Time | u.Quantity]] = {}
         for blockname, station_visibility in self.is_observable(times=within_time_range).items():
-            visible_times = [False]*len(within_time_range)
-            for i, time in enumerate(within_time_range):
-                if ((sum(vis[i] for vis in station_visibility.values()) >= min_stations)
-                    and ((mandatory_stations is None)
-                         or all(station_visibility[station][i] for station in mandatory_stations))):
-                    visible_times[i] = True
+            visibility_matrix = np.array(list(station_visibility.values()))
+            station_counts = np.sum(visibility_matrix, axis=0)
+            visible_times = station_counts >= min_stations
+            if mandatory_stations is not None:
+                mandatory_mask = np.all([station_visibility[s] for s in mandatory_stations], axis=0)
+                visible_times = visible_times & mandatory_mask
 
-            diff = [i + 1*(not value) for i, value in enumerate(visible_times)
-                    if value != (visible_times + [False])[i+1] or (i == 0 and value)]
-            result[blockname] = list(zip(within_time_range[diff[::2]], within_time_range[diff[1::2]]))
+            transitions = np.diff(np.concatenate([[False], visible_times, [False]]).astype(int))
+            starts = np.where(transitions == 1)[0]
+            ends = np.where(transitions == -1)[0]
+            result[blockname] = list(zip(within_time_range[starts], within_time_range[ends - 1]))
             # It may happen that the first and last times are contiguous
             if len(result[blockname]) > 1 and \
                np.abs(result[blockname][0][0].mjd - result[blockname][-1][1].mjd) % 1 < 0.01:

@@ -21,7 +21,12 @@ def top_banner(app) -> html.Div:
                               href="https://www.jive.eu",
                               children=[html.Img(src=app.get_asset_url("logo_jive.png"),
                                                  height='70px',
-                                                 alt='Joint Institute for VLBI ERIC (JIVE)')])],
+                                                 alt='Joint Institute for VLBI ERIC (JIVE)',
+                                                 className='logo-light'),
+                                        html.Img(src=app.get_asset_url("logo_jive_white.png"),
+                                                 height='70px',
+                                                 alt='Joint Institute for VLBI ERIC (JIVE)',
+                                                 className='logo-dark')])],
                                        style={'display': 'flex', 'align-items': 'center',
                                               'justify-content': 'space-between'})])
 

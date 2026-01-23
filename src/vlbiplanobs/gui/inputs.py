@@ -103,10 +103,10 @@ def modal_general_info() -> html.Div:
 
 
 def card(children: Optional[list | html.Div] = None, className: Optional[str] = None,
-         classNameDiv: Optional[str] = None, style: dict = {}) -> html.Div:
+         classNameDiv: Optional[str] = None, style: Optional[dict] = None) -> html.Div:
     return html.Div(className='m-0 p-2' if classNameDiv is None else classNameDiv,
                     children=html.Div(className='card m-0 p-0' if className is None else 'card ' + className,
-                                      style={'margin': '10px'} if not style else style,
+                                      style={'margin': '10px'} if style is None else style,
                                       children=html.Div(className='card-body', children=children)))
 
 
@@ -286,7 +286,8 @@ def networks(app) -> html.Div:
 def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
     """Returns the DIV that shows all the antennas that can be selected, and allows searching through them
     """
-    return html.Div([html.H4('Manual Selection of Antennas   '),
+    return html.Div([html.H4("Manual Selection of Antennas   ",
+                             className='text-dark font-weight-bold mb-2 pl-2 ml-4'),
                      dmc.Group(dmc.ChipGroup(value=[], id='switches-antennas', persistence=True,
                                              multiple=True, deselectable=True, children=[
                                   antenna_card_hover(app,
@@ -303,51 +304,6 @@ def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
                                className='mb-2 flex',
                                style={'display': 'inline-flex', 'gap': '5px', 'justify-content': 'center',
                                       'flex-wrap': 'wrap'})])
-
-
-def source_selection() -> html.Div:
-    return html.Div([html.H4("Target Source", className='text-dark font-weight-bold mb-1'),
-                     dbc.Switch(label='Specify a name or coordinates', value=False,
-                                id='switch-specify-source', persistence=True),
-                     html.Div(id='source-selection-div', hidden=True,
-                              children=html.Div(className='row', children=[
-                                dcc.Input(id='source-input', value=None, type='text',
-                                          className='form-control', placeholder="hh:mm:ss dd:mm:ss",
-                                          persistence=True, debounce=True),
-                                html.Small(id='error_source', className='form-text text-muted')])),
-                     html.Br(),
-                     html.Div(className='row form-group', children=[
-                         html.Label('Percentage of observing time spent on target', htmlFor='onsourcetime'),
-                         dcc.Slider(id='onsourcetime', min=20, max=100, step=10, value=70,
-                                    marks={i: str(i) for i in range(20, 101, 10)},
-                                    persistence=True)])])
-
-
-def epoch_selection() -> html.Div:
-    return html.Div([html.H4("Define Observing Epoch", className='text-dark font-weight-bold mb-1'),
-                     dbc.Switch(label='Specify epoch', value=False,
-                                id='switch-specify-epoch', persistence=True),
-                     html.Div(id='epoch-selection-div', hidden=True, children=[
-                        html.Div(className='row', children=[
-                            html.Label('Start of observation (UTC)', htmlFor='starttime'),
-                            html.Div(className='row mx-0', children=[
-                                html.Div(className='col-12 px-0 mx-0', children=[
-                                    dmc.DateTimePicker(id='starttime', className='form-picker',
-                                                       value=None, minDate=dt(1900, 1, 1),
-                                                       maxDate=dt(2100, 1, 1),
-                                                       valueFormat='DD-MM-YYYY HH:mm',
-                                                       placeholder='Start time', withSeconds=False,
-                                                       persistence=True, clearable=True,
-                                                       style={'width': '100%'})])]),
-                            html.Div(className='row', children=[
-                                html.Small(id='error_starttime', style={'color': 'red'},
-                                           className='form-text text-muted')])])]),
-                    html.Div(className='row form-group', children=[
-                        html.Label('Duration of the observation (in hours)', htmlFor='duration'),
-                        dbc.Input(id='duration', value=None, type='number', className='form-control',
-                                  placeholder="Duration of the observation (in hours)",
-                                  persistence=True, debounce=False, inputMode='numeric', min=0.5, max=50),
-                        html.Small(id='error_duration', className='form-text text-muted')])])
 
 
 def duration() -> html.Div:
@@ -392,13 +348,6 @@ def source_and_epoch_selection() -> html.Div:
                                                                            'value': f"{hm//60:02n}:{hm % 60:02n}"}
                                                                           for hm in range(0, 24*60, 15)],  # type: ignore[arg-type]
                                                                  persistence=True, className='form-hour')])]),
-                                                    # dmc.DateTimePicker(id='starttime', className='form-picker',
-                                                    #                 value=None, minDate=dt(1900, 1, 1),
-                                                    #                 maxDate=dt(2100, 1, 1),
-                                                    #                 valueFormat='DD-MM-YYYY HH:mm',
-                                                    #                 placeholder='Start time', withSeconds=False,
-                                                    #                 persistence=True, clearable=True,
-                                                    #                 style={'width': '100%'})])]),
                                             html.Div(className='row', children=[
                                                 html.Small(id='error_starttime', style={'color': 'red'},
                                                         className='form-text text-muted')])])])])]),
@@ -408,7 +357,7 @@ def source_and_epoch_selection() -> html.Div:
                                                 id='switch-specify-source', persistence=True),
                                     html.Div(id='source-selection-div', hidden=True,
                                             children=html.Div(className='row', children=[
-                                                html.Label('Source name or coordinates', htmlFor='starttime'),
+                                                html.Label('Source name or coordinates', htmlFor='source-input'),
                                                 dcc.Input(id='source-input', value=None, type='text',
                                                         className='form-control', placeholder="hh:mm:ss dd:mm:ss",
                                                         persistence=True, debounce=True),
@@ -427,8 +376,8 @@ def correlations() -> html.Div:
                                 dbc.Switch(label='Optimize for spectral line', value=False,
                                            id='switch-specify-continuum', persistence=True),
                                 dcc.Dropdown(id='datarate', placeholder="Maximum observing data rate...",
-                                             options=tuple({'label': drl, 'value': str(dr)}
-                                                           for dr, drl in fs.data_rates.items()),  # type: ignore
+                                             options=tuple({'label': drl, 'value': dr}
+                                                           for dr, drl in fs.data_rates.items()),
                                              value=2048, persistence=True, clearable=False),
                                 html.Label(id='bandwidth-label', style={'color': '#999999'}, children='',
                                            htmlFor="datarate")]),

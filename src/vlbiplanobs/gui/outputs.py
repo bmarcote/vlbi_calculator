@@ -1,4 +1,3 @@
-# import io
 import tempfile
 from pathlib import Path
 from typing import Optional, Literal
@@ -330,7 +329,7 @@ def field_of_view(o: Optional[cli.VLBIObs] = None) -> html.Div:
                                        children="Time smearing"),
                                 html.H3(className='text-white font-weight-bolder mb-0 '
                                                   'justify-content-center',
-                                        id=f'{id}-value',
+                                        id='fov-time-smearing-value',
                                         children=f"{tm_smearing.value:.2n} "
                                                  f"{tm_smearing.unit.to_string('unicode')}")])],
                        extra_rows=[
@@ -978,9 +977,7 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
             fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='black')
             fig.write_image(tempfig.name, scale=2, width=800)
             figpath = Path(tempfig.name)
-            print(f"Image file: {tempfig.name}")
 
-        # layout.append_layout_element(pdf.Image(figpath, width=414, height=265, horizontal_alignment=pdf.Alignment.CENTERED))
         layout.append_layout_element(pdf.Image(figpath, size=(414, 265)))
 
     tmp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)

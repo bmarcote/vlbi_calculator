@@ -70,7 +70,8 @@ def download_pdf_summary(n_clicks, obs_params: dict):
         )
         try:
             tmpfile = outputs.summary_pdf(obs, show_figure=True)
-        except RuntimeError:
+        except Exception as fig_error:
+            logger.warning(f"Could not include figure in PDF: {fig_error}")
             tmpfile = outputs.summary_pdf(obs, show_figure=False)
 
         logger.info("PDF has been created.")
@@ -149,8 +150,6 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                                     "If no source is provided, a duration for the observation "
                                     "must be set."), *vals4error
 
-              # *[no_update]*(n_outputs - 1)
-
     selected_antennas = [ant for ant in selected_antennas
                          if observation._STATIONS[ant].has_band(inputs.band_from_index(band))
                          and (not e_evn or observation._STATIONS[ant].real_time)]
@@ -159,7 +158,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
                                   "First, select antennas that can actually observe."), *vals4error
 
     if defined_epoch and ((startdate is not None and duration is None) or
-                          (startdate is None and duration is not None)) == 1:
+                          (startdate is None and duration is not None)):
         return outputs.error_card('The observing epoch is partially defined',
                                   'If you define the observing epoch, then all start date, time, '
                                   'and duration are required.'), *vals4error
@@ -292,7 +291,6 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: str, 
         logger.exception(f"While computing: {e}.")
         return outputs.error_card("An error has occured", str(e)), *vals4error
 
-    print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
     logger.info(f"Execution time: {(dt.now() - t0).total_seconds()} s")
 
     # Store observation parameters for lazy PDF generation

@@ -1,20 +1,83 @@
 site_name: EVN Observation Planner (PlanObs)
 site_url: https://vlbiplanobs.github.io
+site_description: VLBI observation planning tool for the European VLBI Network
+site_author: Benito Marcote
+repo_url: https://github.com/bmarcote/vlbi_calculator
+repo_name: bmarcote/vlbi_calculator
+
 theme:
   name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+  icon:
+    repo: fontawesome/brands/github
 
 plugins:
   - search
-  - mkdocs-autoapi:
-      autoapi_dir: docs/api
-      # autoapi_dir: src
-  - mkdocstrings
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: numpy
+            show_source: true
+            show_root_heading: true
+            members_order: source
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
 
 nav:
   - Home: index.md
-  - Installation: installation.md
-  - Tutorial: tutorial.md
+  - Getting Started:
+    - Installation: installation.md
+    - Quick Start: quickstart.md
+  - User Guide:
+    - Tutorial: tutorial.md
+    - CLI Reference: cli.md
+    - Scheduling: scheduling.md
+  - API Reference:
+    - Overview: api/index.md
+    - Observation: api/observation.md
+    - Stations: api/stations.md
+    - Sources: api/sources.md
+    - Scheduler: api/scheduler.md
   - About:
     - About PlanObs: about.md
     - License: license.md
     - Release Notes: release-notes.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/bmarcote/vlbi_calculator

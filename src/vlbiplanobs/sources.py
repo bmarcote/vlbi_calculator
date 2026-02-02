@@ -3,7 +3,7 @@ from importlib import resources
 import subprocess
 import functools
 import numpy as np
-import yaml
+import tomllib
 import operator
 from functools import reduce
 from pathlib import Path
@@ -466,69 +466,135 @@ class SourceCatalog:
         raise KeyError(f"The item {item} is not in the catalog.")
 
     def read_personal_catalog(self, path: str):
-        """Reads a YAML file containing source information for scheduling.
+        """Reads a TOML file containing source information for scheduling.
 
         Inputs
         - path : str
-            Path to the YAML file containing the source catalog.
+            Path to the TOML containing the source catalog.
 
         Raises
         - FileNotFoundError: If the catalog file cannot be found.
-        - yaml.YAMLError: If the YAML file is malformed.
+        - tomllib.TOMLDecodeError: If the TOML file is malformed.
         - ValueError: If the source type is not recognized.
         """
-        with open(path, 'r') as sources_yaml:
-            catalog = yaml.safe_load(sources_yaml)
-            for a_entry in catalog:
-                if a_entry not in self._blocks:
-                    self._blocks[a_entry] = dict()
-
-                match a_entry:
-                    case 'pulsars':
-                        src_type = SourceType.PULSAR
-                    case 'targets':
-                        src_type = SourceType.TARGET
-                    case 'ampcals':
-                        src_type = SourceType.AMPLITUDECAL
-                    # case 'checksources':
-                    #     src_type = SourceType.CHECKSOURCE
-                    # case 'phasecals':
-                    #     src_type = SourceType.PHASECAL
-                    case 'fringefinders':
-                        src_type = SourceType.FRINGEFINDER
-                    case 'polcals':
-                        src_type = SourceType.POLCAL
-                    case _:
-                        src_type = SourceType.UNKNOWN
-
-                for a_src in catalog[a_entry]:
-                    src = catalog[a_entry][a_src]
+        with open(path, 'rb') as sources_toml:
+            catalog = tomllib.load(sources_toml)
+            
+            # Handle [[pulsar]] arrays
+            if 'pulsar' in catalog:
+                if 'pulsars' not in self._blocks:
+                    self._blocks['pulsars'] = dict()
+                
+                for src in catalog['pulsar']:
+                    name = src.get('name', 'unknown')
                     scans = []
-                    if 'phasecal' in src:
-                        scans.append(Scan(source=Source(name=src['phasecal']['name'],
-                                                        coordinates=src['phasecal']['coordinates'],
+                    
+                    # Handle phasecal if present
+                    if 'phasecal' in src and src['phasecal'].get('name'):
+                        pc = src['phasecal']
+                        pc_coords = pc['coordinates']
+                        # Convert RA:Dec format to SkyCoord format
+                        ra = pc_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
+                        dec = pc_coords['Dec'].replace(':', 'd', 1).replace(':', 'm') + 's'
+                        dec = dec.replace('+', '+').replace('-', '-')
+                        pc_coord_str = f"{ra} {dec}"
+                        scans.append(Scan(source=Source(name=pc['name'],
+                                                        coordinates=pc_coord_str,
                                                         source_type=SourceType.PHASECAL),
-                                          duration=float(src['phasecal']['duration'])*u.min
-                                          if 'duration' in src['phasecal'] else None,
-                                          every=int(src['phasecal']['every'])
-                                          if 'every' in src['phasecal'] else -1))
-
-                    if 'checkSource' in src:
-                        scans.append(Scan(source=Source(name=src['checkSource']['name'],
-                                                        coordinates=src['checkSource']['coordinates'],
+                                          duration=float(pc['duration'])*u.min
+                                          if 'duration' in pc else None,
+                                          every=int(pc['every'])
+                                          if 'every' in pc else -1))
+                    
+                    # Handle checksource if present
+                    if 'checksource' in src and src['checksource'].get('name'):
+                        cs = src['checksource']
+                        cs_coords = cs['coordinates']
+                        # Convert RA:Dec format to SkyCoord format
+                        ra = cs_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
+                        dec = cs_coords['Dec'].replace(':', 'd', 1).replace(':', 'm') + 's'
+                        dec = dec.replace('+', '+').replace('-', '-')
+                        cs_coord_str = f"{ra} {dec}"
+                        scans.append(Scan(source=Source(name=cs['name'],
+                                                        coordinates=cs_coord_str,
                                                         source_type=SourceType.CHECKSOURCE),
-                                          duration=float(src['checkSource']['duration'])*u.min
-                                          if 'duration' in src['checkSource'] else None,
-                                          every=int(src['checkSource']['every'])
-                                          if 'every' in src['checkSource'] else -1))
-
-                    scans.append(Scan(source=Source(name=src['name'] if 'name' in src else a_src,
-                                                    coordinates=src['coordinates'],
-                                                    source_type=src_type),
+                                          duration=float(cs['duration'])*u.min
+                                          if 'duration' in cs else None,
+                                          every=int(cs['every'])
+                                          if 'every' in cs else -1))
+                    
+                    # Main source
+                    src_coords = src['coordinates']
+                    # Convert RA:Dec format to SkyCoord format
+                    ra = src_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
+                    dec = src_coords['Dec'].replace(':', 'd', 1).replace(':', 'm') + 's'
+                    dec = dec.replace('+', '+').replace('-', '-')
+                    src_coord_str = f"{ra} {dec}"
+                    scans.append(Scan(source=Source(name=name,
+                                                    coordinates=src_coord_str,
+                                                    source_type=SourceType.PULSAR),
                                       duration=float(src['duration'])*u.min if 'duration' in src else None,
                                       every=int(src['every']) if 'every' in src else -1))
-
-                    self._blocks[a_entry][a_src] = ScanBlock(scans)
+                    
+                    self._blocks['pulsars'][name] = ScanBlock(scans)
+            
+            # Handle [[target]] arrays
+            if 'target' in catalog:
+                if 'targets' not in self._blocks:
+                    self._blocks['targets'] = dict()
+                
+                for src in catalog['target']:
+                    name = src.get('name', 'unknown')
+                    scans = []
+                    
+                    # Handle phasecal if present
+                    if 'phasecal' in src and src['phasecal'].get('name'):
+                        pc = src['phasecal']
+                        pc_coords = pc['coordinates']
+                        # Convert RA:Dec format to SkyCoord format
+                        ra = pc_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
+                        dec = pc_coords['Dec'].replace(':', 'd', 1).replace(':', 'm') + 's'
+                        dec = dec.replace('+', '+').replace('-', '-')
+                        pc_coord_str = f"{ra} {dec}"
+                        scans.append(Scan(source=Source(name=pc['name'],
+                                                        coordinates=pc_coord_str,
+                                                        source_type=SourceType.PHASECAL),
+                                          duration=float(pc['duration'])*u.min
+                                          if 'duration' in pc else None,
+                                          every=int(pc['every'])
+                                          if 'every' in pc else -1))
+                    
+                    # Handle checksource if present
+                    if 'checksource' in src and src['checksource'].get('name'):
+                        cs = src['checksource']
+                        cs_coords = cs['coordinates']
+                        # Convert RA:Dec format to SkyCoord format
+                        ra = cs_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
+                        dec = cs_coords['Dec'].replace(':', 'd', 1).replace(':', 'm') + 's'
+                        dec = dec.replace('+', '+').replace('-', '-')
+                        cs_coord_str = f"{ra} {dec}"
+                        scans.append(Scan(source=Source(name=cs['name'],
+                                                        coordinates=cs_coord_str,
+                                                        source_type=SourceType.CHECKSOURCE),
+                                          duration=float(cs['duration'])*u.min
+                                          if 'duration' in cs else None,
+                                          every=int(cs['every'])
+                                          if 'every' in cs else -1))
+                    
+                    # Main source
+                    src_coords = src['coordinates']
+                    # Convert RA:Dec format to SkyCoord format
+                    ra = src_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
+                    dec = src_coords['Dec'].replace(':', 'd', 1).replace(':', 'm') + 's'
+                    dec = dec.replace('+', '+').replace('-', '-')
+                    src_coord_str = f"{ra} {dec}"
+                    scans.append(Scan(source=Source(name=name,
+                                                    coordinates=src_coord_str,
+                                                    source_type=SourceType.TARGET),
+                                      duration=float(src['duration'])*u.min if 'duration' in src else None,
+                                      every=int(src['every']) if 'every' in src else -1))
+                    
+                    self._blocks['targets'][name] = ScanBlock(scans)
 
     def read_rfc_catalog(self, path: Optional[Union[str, Path]] = None):
         """Reads the RFC catalog file.
@@ -672,14 +738,27 @@ class ScanBlock:
         if len(self._frac_time.keys()) > 0:
             return self._frac_time
 
-        total_duration = sum([s.duration for s in self.scans if s.every <= 0])
-        mcm_every = np.lcm.reduce([s.every for s in self.scans if s.every > 0])
-        total_duration = total_duration*mcm_every + \
-            sum([s.duration*(s.every/mcm_every) for s in self.scans if s.every > 0])
+        # Get scans with valid durations
+        valid_scans = [s for s in self.scans if s.duration is not None]
+        
+        if not valid_scans:
+            return {}
+        
+        total_duration = sum([s.duration for s in valid_scans if s.every <= 0])
+        
+        # Get positive every values
+        positive_every = [s.every for s in valid_scans if s.every > 0]
+        if positive_every:
+            mcm_every = np.lcm.reduce(positive_every)
+            total_duration = total_duration*mcm_every + \
+                sum([s.duration*(s.every/mcm_every) for s in valid_scans if s.every > 0])
+        else:
+            mcm_every = 1
 
-        for ascan in self.scans:
-            self._frac_time[ascan.source.name] = ascan.duration*mcm_every / \
-                                                 (ascan.every if ascan.every >= 0 else 1) / total_duration
+        for ascan in valid_scans:
+            if ascan.duration is not None:
+                self._frac_time[ascan.source.name] = ascan.duration*mcm_every / \
+                                                     (ascan.every if ascan.every >= 0 else 1) / total_duration
 
         return self._frac_time
 

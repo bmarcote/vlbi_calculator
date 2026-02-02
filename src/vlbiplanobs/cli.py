@@ -359,7 +359,7 @@ def main(band: str, networks: Optional[list[str]] = None,
             distributed by PlanObs.
 
         src_catalog : str, optional
-            Path to the file containing the list of sources that will be observed.
+            Path to the toml file containing the list of sources that will be observed.
             This allows you to store a large number of sources of define them in a more detail.
             See the documentaion for help.
 
@@ -437,9 +437,8 @@ def main(band: str, networks: Optional[list[str]] = None,
                         sources.Scan(a_source, duration=freqsetups.phaseref_cycle(band)
                                      if freqsetups.phaseref_cycle(band) is not None else 5*u.min)])
                 except ValueError:
-                    rprint(f"[bold red]The source {target} is not known and is not in the catalog "
-                           "file.[/bold red]")
-                    raise ValueError
+                    raise ValueError(f"The source '{target}' is not found in the catalog and could not "
+                                     "be resolved (not in SIMBAD/NED/VizieR)")
     elif source_catalog is None:
         # rprint("[bold red]Either a source catalog file or a list of targets must be "
         #        "provided (or both).[/bold red]")
@@ -619,7 +618,7 @@ def cli():
         sys.exit(1)
 
     if (not args.gui) and (not args.no_tui):
-        rprint("[bold yellow]Note that you supressed both GUI and TUI.\n"
+        rprint("[bold yellow]Note that you supressed both GUI and TUI. "
                "No output will be provided.[/bold yellow]")
 
     try:
@@ -629,12 +628,20 @@ def cli():
             if args.starttime else None,
             duration=float(args.duration)*u.hour if args.duration is not None else None,
             datarate=args.data_rate*u.Mbit/u.s if args.data_rate else None)
-    except ValueError:
+    except ValueError as e:
+        rprint(f"[bold red]Error: {e}[/bold red]")
         sys.exit(1)
 
     o.summary(args.gui, args.no_tui)
     if args.targets is not None or args.source_catalog is not None:
         o.plot_visibility(args.gui, args.no_tui)
+
+    if args.sched is not None:
+        key_filename = args.sched if args.sched.endswith('.key') else f"{args.sched}.key"
+        key_content = o.schedule_file(experiment_code=args.sched.replace('.key', '').upper())
+        with open(key_filename, 'w') as f:
+            f.write(key_content)
+        rprint(f"[green]Schedule file written to: {key_filename}[/green]")
 
     if args.debug:
         print(f"Execution time: {(dt.now() - t0).total_seconds()} s")

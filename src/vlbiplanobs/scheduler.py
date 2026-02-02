@@ -1,304 +1,299 @@
 # -*- coding: utf-8 -*-
 # Licensed under GPLv3+ - see LICENSE
-"""VLBI Observation Scheduler using Constraint Programming.
+"""VLBI Observation Scheduler.
 
-This module provides a scheduler that uses OR-Tools CP-SAT solver to find optimal
-schedules for VLBI observations with multiple scan blocks. The scheduler optimizes for:
-- Maximum antenna participation (more antennas observing each block)
-- Maximum elevation (better signal quality)
-- Minimum slewing time between blocks (minimize time lost to antenna movement)
+This module provides scheduling functionality for VLBI observations, arranging
+scan blocks optimally across the observation time range.
+
+Features
+--------
+- Fringe finder scheduling: 2 at start, 1 at end, every ~2h if observation > 3h
+- Science block scheduling: optimized for antenna participation and elevation
+- Support for all-antenna constraints
+
+Classes
+-------
+ScheduledScanBlock
+    Dataclass representing a scheduled scan block with timing metadata.
+ObservationScheduler
+    Main scheduler class for arranging scan blocks.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 import numpy as np
 from astropy import units as u
 from astropy.time import Time
-from ortools.sat.python import cp_model
-from .sources import SourceType
+from .sources import SourceType, ScanBlock, Scan
 from .observation import Observation
 
 
 @dataclass
-class ScheduledBlock:
-    """Represents a scheduled scan block with timing information.
+class ScheduledScanBlock:
+    """A scan block scheduled at a specific time with timing and quality metrics.
 
     Attributes
-    - name : str
-        Name/identifier of the scan block.
-    - start_time : Time
-        Start time of the scheduled block.
-    - end_time : Time
-        End time of the scheduled block.
-    - duration_minutes : float
-        Duration of the block in minutes.
-    - n_antennas : int
+    ----------
+    name : str
+        Identifier for this scheduled instance (e.g., 'FF_start_1', 'Target_A').
+    block : ScanBlock
+        The original ScanBlock being scheduled.
+    start_time : Time
+        Start time of this scheduled block.
+    end_time : Time
+        End time of this scheduled block.
+    scans : list[Scan]
+        The expanded list of scans filling this time slot.
+    n_antennas : int
         Number of antennas that can observe during this block.
-    - mean_elevation : float
-        Mean elevation across all observing antennas (degrees).
+    mean_elevation : float
+        Mean elevation across observing antennas (degrees).
     """
     name: str
+    block: ScanBlock
     start_time: Time
     end_time: Time
-    duration_minutes: float
-    n_antennas: int
-    mean_elevation: float
+    scans: list[Scan] = field(default_factory=list)
+    n_antennas: int = 0
+    mean_elevation: float = 0.0
+
+    @property
+    def duration(self) -> u.Quantity:
+        return (self.end_time - self.start_time).to(u.min)
 
 
-class ScanBlockScheduler:
-    """Scheduler for VLBI scan blocks using constraint programming.
+class ObservationScheduler:
+    """Schedules VLBI scan blocks across the observation time range.
 
-    Uses OR-Tools CP-SAT solver to find optimal schedules that maximize antenna
-    participation and elevation while minimizing slewing time between blocks.
+    Arranges fringe finders and science blocks following standard VLBI conventions,
+    optimizing for antenna participation and source elevation.
+
+    Parameters
+    ----------
+    observation : Observation
+        The observation containing scan blocks to schedule.
+    min_antennas : int, default=2
+        Minimum antennas required for valid observation.
+    require_all_antennas : bool, default=False
+        If True, only schedule when all antennas can observe.
+
+    Attributes
+    ----------
+    FF_DUR : Quantity
+        Fringe finder scan duration (5 minutes).
+    FF_INTERVAL : Quantity
+        Interval between fringe finders for long observations (2 hours).
+
+    Examples
+    --------
+    >>> scheduler = ObservationScheduler(observation, min_antennas=3)
+    >>> schedule = scheduler.schedule()
+    >>> scheduler.print_schedule()
     """
 
-    def __init__(self, observation: Observation, min_antennas: int = 2,
-                 min_elevation: float = 10.0, max_elevation: float = 85.0):
-        """Initialize the scheduler with an observation.
+    FF_DUR, FF_INTERVAL = 5 * u.min, 2 * u.h
 
-        Inputs
-        - observation : Observation
-            The VLBI observation containing scan blocks to schedule.
-        - min_antennas : int
-            Minimum number of antennas required to observe each block (default: 2).
-        - min_elevation : float
-            Minimum elevation angle in degrees for valid observations (default: 10.0).
-        - max_elevation : float
-            Maximum elevation angle in degrees for valid observations (default: 85.0).
+    def __init__(self, observation: Observation, min_antennas: int = 2, require_all_antennas: bool = False):
+        self.obs, self.min_ant, self.require_all = observation, min_antennas, require_all_antennas
+        self._precompute()
+
+    def _precompute(self):
+        """Pre-compute visibility and elevation arrays for all scan blocks.
+
+        Populates internal dictionaries `_vis`, `_elev`, and `_is_ff` with
+        time-series data for each block.
         """
-        self.observation = observation
-        self.min_antennas = min_antennas
-        self.min_elevation = min_elevation
-        self.max_elevation = max_elevation
-        self.model = cp_model.CpModel()
-        self.solver = cp_model.CpSolver()
-        self.solution: Optional[list[ScheduledBlock]] = None
-        self._block_names = list(observation.scans.keys())
-        self._n_blocks = len(self._block_names)
-        self._n_times = len(observation.times)
-        self._n_antennas = len(observation.stations)
-        self._precompute_data()
+        self._blocks = list(self.obs.scans.keys())
+        self._n_times, self._n_ant = len(self.obs.times), len(self.obs.stations)
+        self._dt = (self.obs.times[1] - self.obs.times[0]).to(u.min).value
+        is_obs, elevs = self.obs.is_observable(), self.obs.elevations()
+        self._vis, self._elev, self._is_ff = {}, {}, {}
 
-    def _precompute_data(self):
-        """Pre-compute visibility and elevation data for use in CP model.
-
-        CP-SAT requires integer arithmetic, so we pre-compute lookup tables for
-        visibility (boolean) and elevation (scaled to integers).
-        """
-        is_obs = self.observation.is_observable()
-        self._visibility = np.zeros((self._n_blocks, self._n_times), dtype=int)
-        for bi, block_name in enumerate(self._block_names):
-            if block_name in is_obs:
-                self._visibility[bi, :] = np.sum(np.array(list(is_obs[block_name].values())), axis=0)
-
-        elevs = self.observation.elevations()
-        self._elevation = np.zeros((self._n_blocks, self._n_times), dtype=int)
-        for bi, block_name in enumerate(self._block_names):
-            block = self.observation.scans[block_name]
-            targets = block.sources(SourceType.TARGET)
-            if not targets:
-                targets = block.sources()
+        for name in self._blocks:
+            block = self.obs.scans[name]
+            self._is_ff[name] = block.has(SourceType.FRINGEFINDER)
+            self._vis[name] = np.sum(np.array(list(is_obs[name].values())), axis=0) if name in is_obs else np.zeros(self._n_times, dtype=int)
+            targets = block.sources(SourceType.TARGET) or block.sources(SourceType.FRINGEFINDER) or block.sources()
             if targets and targets[0].name in elevs:
-                src_elevs = elevs[targets[0].name]
-                mean_elev = np.nanmean(np.array([src_elevs[ant].value for ant in src_elevs]), axis=0)
-                self._elevation[bi, :] = np.where(np.isnan(mean_elev), 0, (mean_elev * 10).astype(int))
-
-        self._separation = np.zeros((self._n_blocks, self._n_blocks), dtype=int)
-        for bi, name_i in enumerate(self._block_names):
-            block_i = self.observation.scans[name_i]
-            targets_i = block_i.sources(SourceType.TARGET) or block_i.sources()
-            if not targets_i:
-                continue
-            coord_i = targets_i[0].coord
-            for bj, name_j in enumerate(self._block_names):
-                if bi == bj:
-                    continue
-                block_j = self.observation.scans[name_j]
-                targets_j = block_j.sources(SourceType.TARGET) or block_j.sources()
-                if not targets_j:
-                    continue
-                coord_j = targets_j[0].coord
-                sep = coord_i.separation(coord_j).arcmin
-                self._separation[bi, bj] = int(sep)
-
-        time_step = (self.observation.times[1] - self.observation.times[0]).to(u.min).value
-        self._time_step_minutes = time_step
-        self._block_durations = {}
-        for bi, block_name in enumerate(self._block_names):
-            block = self.observation.scans[block_name]
-            total_min = sum(s.duration.to(u.min).value for s in block.scans)
-            self._block_durations[bi] = max(1, int(np.ceil(total_min / time_step)))
-
-    def _create_variables(self):
-        """Create CP-SAT variables for the scheduling problem."""
-        self._start_vars = {}
-        self._end_vars = {}
-        self._interval_vars = {}
-        self._order_vars = {}
-
-        for bi in range(self._n_blocks):
-            duration = self._block_durations[bi]
-            max_start = self._n_times - duration
-
-            self._start_vars[bi] = self.model.NewIntVar(0, max_start, f'start_{bi}')
-            self._end_vars[bi] = self.model.NewIntVar(duration, self._n_times, f'end_{bi}')
-            self.model.Add(self._end_vars[bi] == self._start_vars[bi] + duration)
-            self._interval_vars[bi] = self.model.NewIntervalVar(
-                self._start_vars[bi], duration, self._end_vars[bi], f'interval_{bi}')
-
-        for bi in range(self._n_blocks):
-            self._order_vars[bi] = self.model.NewIntVar(0, self._n_blocks - 1, f'order_{bi}')
-
-        self._before_vars = {}
-        for bi in range(self._n_blocks):
-            for bj in range(self._n_blocks):
-                if bi != bj:
-                    self._before_vars[(bi, bj)] = self.model.NewBoolVar(f'before_{bi}_{bj}')
-
-    def _add_constraints(self):
-        """Add constraints to the CP model."""
-        self.model.AddNoOverlap(list(self._interval_vars.values()))
-        self.model.AddAllDifferent(list(self._order_vars.values()))
-
-        for bi in range(self._n_blocks):
-            for bj in range(self._n_blocks):
-                if bi != bj:
-                    self.model.Add(self._order_vars[bi] < self._order_vars[bj]).OnlyEnforceIf(
-                        self._before_vars[(bi, bj)])
-                    self.model.Add(self._order_vars[bi] >= self._order_vars[bj]).OnlyEnforceIf(
-                        self._before_vars[(bi, bj)].Not())
-                    self.model.Add(self._end_vars[bi] <= self._start_vars[bj]).OnlyEnforceIf(
-                        self._before_vars[(bi, bj)])
-
-        for bi in range(self._n_blocks):
-            valid_starts = [ti for ti in range(self._n_times - self._block_durations[bi])
-                            if self._visibility[bi, ti] >= self.min_antennas]
-            if valid_starts:
-                self.model.AddAllowedAssignments([self._start_vars[bi]], [[t] for t in valid_starts])
+                self._elev[name] = np.nanmean([elevs[targets[0].name][a].value for a in elevs[targets[0].name]], axis=0)
             else:
-                print(f"Warning: Block {self._block_names[bi]} has no valid start times with "
-                      f"{self.min_antennas}+ antennas. Relaxing constraint.")
+                self._elev[name] = np.zeros(self._n_times)
 
-    def _add_objectives(self, weight_antennas: int = 100, weight_elevation: int = 10,
-                        weight_slewing: int = 1):
-        """Add optimization objectives to the CP model.
+    def _ff_blocks(self) -> list[str]:
+        return [n for n in self._blocks if self._is_ff[n]]
 
-        Inputs
-        - weight_antennas : int
-            Weight for antenna participation objective (higher = more important).
-        - weight_elevation : int
-            Weight for elevation objective (higher = more important).
-        - weight_slewing : int
-            Weight for slewing minimization (higher = more important).
-        """
-        objective_terms = []
+    def _sci_blocks(self) -> list[str]:
+        return [n for n in self._blocks if not self._is_ff[n]]
 
-        for bi in range(self._n_blocks):
-            antenna_score = self.model.NewIntVar(0, self._n_antennas * 10, f'ant_score_{bi}')
-            self.model.AddElement(self._start_vars[bi], self._visibility[bi].tolist(), antenna_score)
-            objective_terms.append(weight_antennas * antenna_score)
+    def _t2i(self, t: Time) -> int:
+        return int(np.argmin(np.abs(self.obs.times.mjd - t.mjd)))
 
-        for bi in range(self._n_blocks):
-            elev_score = self.model.NewIntVar(0, 900, f'elev_score_{bi}')
-            self.model.AddElement(self._start_vars[bi], self._elevation[bi].tolist(), elev_score)
-            objective_terms.append(weight_elevation * elev_score)
+    def _i2t(self, i: int) -> Time:
+        return self.obs.times[min(i, self._n_times - 1)]
 
-        for bi in range(self._n_blocks):
-            for bj in range(self._n_blocks):
-                if bi != bj:
-                    separation_penalty = self.model.NewIntVar(0, 360 * 60, f'sep_penalty_{bi}_{bj}')
-                    self.model.Add(separation_penalty == self._separation[bi, bj]).OnlyEnforceIf(
-                        self._before_vars[(bi, bj)])
-                    self.model.Add(separation_penalty == 0).OnlyEnforceIf(
-                        self._before_vars[(bi, bj)].Not())
-                    objective_terms.append(-weight_slewing * separation_penalty)
+    def _vis_at(self, name: str, t: Time) -> int:
+        return int(self._vis[name][self._t2i(t)])
 
-        self.model.Maximize(sum(objective_terms))
+    def _elev_at(self, name: str, t: Time) -> float:
+        return float(self._elev[name][self._t2i(t)])
 
-    def solve(self, time_limit_seconds: float = 60.0, weight_antennas: int = 100,
-              weight_elevation: int = 10, weight_slewing: int = 1) -> Optional[list[ScheduledBlock]]:
-        """Solve the scheduling problem and return the optimal schedule.
+    def _find_best(self, name: str, t0: Time, t1: Time, dur: u.Quantity) -> Optional[tuple[Time, Time, int, float]]:
+        """Find optimal time slot for a block within a time range.
 
-        Inputs
-        - time_limit_seconds : float
-            Maximum time to spend solving (default: 60 seconds).
-        - weight_antennas : int
-            Weight for antenna participation objective.
-        - weight_elevation : int
-            Weight for elevation objective.
-        - weight_slewing : int
-            Weight for slewing minimization objective.
+        Parameters
+        ----------
+        name : str
+            Block name to schedule.
+        t0 : Time
+            Earliest allowed start time.
+        t1 : Time
+            Latest allowed end time.
+        dur : Quantity
+            Required duration for the block.
 
         Returns
-        - list[ScheduledBlock] or None
-            List of scheduled blocks in temporal order, or None if no solution found.
+        -------
+        tuple or None
+            (start_time, end_time, n_antennas, mean_elevation) if found, else None.
         """
-        self._create_variables()
-        self._add_constraints()
-        self._add_objectives(weight_antennas, weight_elevation, weight_slewing)
-
-        self.solver.parameters.max_time_in_seconds = time_limit_seconds
-        status = self.solver.Solve(self.model)
-
-        if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            self.solution = self._extract_solution()
-            return self.solution
-        else:
-            self.solution = None
+        i0, i1, steps = self._t2i(t0), self._t2i(t1), max(1, int(np.ceil(dur.to(u.min).value / self._dt)))
+        if i1 - i0 < steps:
             return None
 
-    def _extract_solution(self) -> list[ScheduledBlock]:
-        """Extract the solution from the solver and return ordered ScheduledBlock list."""
-        blocks_with_order = []
-        for bi in range(self._n_blocks):
-            start_idx = self.solver.Value(self._start_vars[bi])
-            end_idx = self.solver.Value(self._end_vars[bi])
-            order = self.solver.Value(self._order_vars[bi])
+        vis, elev, min_req = self._vis[name], self._elev[name], self._n_ant if self.require_all else self.min_ant
+        best_score, best_i = -1, -1
+        for i in range(i0, i1 - steps + 1):
+            n, e = int(np.min(vis[i:i+steps])), float(np.mean(elev[i:i+steps]))
+            if n >= min_req and not np.isnan(e) and (s := int(n * 100 + e)) > best_score:
+                best_score, best_i = s, i
+        if best_i < 0:
+            return None
 
-            start_time = self.observation.times[start_idx]
-            end_time = self.observation.times[min(end_idx, self._n_times - 1)]
-            duration = self._block_durations[bi] * self._time_step_minutes
-            n_antennas = int(self._visibility[bi, start_idx])
-            mean_elev = self._elevation[bi, start_idx] / 10.0
+        return self._i2t(best_i), self._i2t(best_i + steps), int(np.min(vis[best_i:best_i+steps])), float(np.mean(elev[best_i:best_i+steps]))
 
-            scheduled = ScheduledBlock(
-                name=self._block_names[bi],
-                start_time=start_time,
-                end_time=end_time,
-                duration_minutes=duration,
-                n_antennas=n_antennas,
-                mean_elevation=mean_elev
-            )
-            blocks_with_order.append((order, scheduled))
+    def _schedule_ff(self, ff_names: list[str], t0: Time, t1: Time) -> list[ScheduledScanBlock]:
+        """Schedule fringe finder blocks according to VLBI conventions.
 
-        blocks_with_order.sort(key=lambda x: x[0])
-        return [block for _, block in blocks_with_order]
+        Parameters
+        ----------
+        ff_names : list[str]
+            Names of fringe finder blocks.
+        t0 : Time
+            Observation start time.
+        t1 : Time
+            Observation end time.
+
+        Returns
+        -------
+        list[ScheduledScanBlock]
+            Scheduled fringe finder blocks (2 at start, 1 at end, ~2h intervals if >3h).
+        """
+        if not ff_names:
+            return []
+        block, dur = self.obs.scans[ff_names[0]], self.FF_DUR
+        times = [(t0 + i*dur, t0 + (i+1)*dur, f"FF_start_{i+1}") for i in range(2)]
+        if (t1 - t0).to(u.h) > 3 * u.h:
+            t_cur, remaining = t0 + 2*dur, t1 - t0 - 3*dur
+            n_mid = max(0, int(remaining.to(u.h).value / self.FF_INTERVAL.to(u.h).value))
+            if n_mid > 0:
+                gap = remaining / (n_mid + 1)
+                times += [(t_cur + gap*(i+1), t_cur + gap*(i+1) + dur, f"FF_mid_{i+1}") for i in range(n_mid)]
+        times.append((t1 - dur, t1, "FF_end"))
+        return [ScheduledScanBlock(name=n, block=block, start_time=s, end_time=e,
+                scans=block.fill((e-s).to(u.min)), n_antennas=self._vis_at(ff_names[0], s),
+                mean_elevation=self._elev_at(ff_names[0], s)) for s, e, n in times]
+
+    def _get_slots(self, sched: list[ScheduledScanBlock], t0: Time, t1: Time) -> list[tuple[Time, Time]]:
+        """Get available time slots between already scheduled blocks.
+
+        Parameters
+        ----------
+        sched : list[ScheduledScanBlock]
+            Already scheduled blocks.
+        t0 : Time
+            Observation start time.
+        t1 : Time
+            Observation end time.
+
+        Returns
+        -------
+        list[tuple[Time, Time]]
+            Available (start, end) time slots.
+        """
+        if not sched:
+            return [(t0, t1)]
+        s = sorted(sched, key=lambda b: b.start_time.mjd)
+        slots = ([(t0, s[0].start_time)] if s[0].start_time > t0 else []) + \
+                [(s[i].end_time, s[i+1].start_time) for i in range(len(s)-1) if s[i+1].start_time > s[i].end_time] + \
+                ([(s[-1].end_time, t1)] if s[-1].end_time < t1 else [])
+        return slots
+
+    def _schedule_sci(self, names: list[str], slots: list[tuple[Time, Time]]) -> list[ScheduledScanBlock]:
+        """Schedule science blocks in available time slots.
+
+        Optimizes placement for maximum antenna participation and elevation.
+
+        Parameters
+        ----------
+        names : list[str]
+            Names of science blocks to schedule.
+        slots : list[tuple[Time, Time]]
+            Available time slots.
+
+        Returns
+        -------
+        list[ScheduledScanBlock]
+            Scheduled science blocks.
+        """
+        scheduled, remaining = [], list(slots)
+        for name in names:
+            block = self.obs.scans[name]
+            min_dur = sum(s.duration.to(u.min).value for s in block.scans) * u.min
+            best = None
+            for s0, s1 in remaining:
+                if (s1 - s0).to(u.min) >= min_dur and (r := self._find_best(name, s0, s1, (s1-s0).to(u.min))):
+                    if not best or r[2]*100 + r[3] > best[2]*100 + best[3]:
+                        best = r
+            if best:
+                t0, t1, n, e = best
+                scheduled.append(ScheduledScanBlock(name=name, block=block, start_time=t0, end_time=t1,
+                                  scans=block.fill((t1-t0).to(u.min)), n_antennas=n, mean_elevation=e))
+                remaining = [(a, b) for a, b in remaining if b <= t0 or a >= t1] + \
+                            [(a, t0) for a, b in remaining if a < t0 < b] + \
+                            [(t1, b) for a, b in remaining if a < t1 < b]
+        return scheduled
+
+    def schedule(self) -> dict[str, ScanBlock]:
+        """Generate the complete observation schedule.
+
+        Returns
+        -------
+        dict[str, ScanBlock]
+            Ordered dictionary with keys like '001_FF_start_1' and ScanBlock values,
+            covering the entire observation time range.
+        """
+        t0, t1 = self.obs.times[0], self.obs.times[-1]
+        ff = self._schedule_ff(self._ff_blocks(), t0, t1)
+        sci = self._schedule_sci(self._sci_blocks(), self._get_slots(ff, t0, t1))
+        self._scheduled = sorted(ff + sci, key=lambda b: b.start_time.mjd)
+        return {f"{i+1:03d}_{b.name}": b.block for i, b in enumerate(self._scheduled)}
+
+    def get_scheduled_blocks(self) -> list[ScheduledScanBlock]:
+        """Return the list of scheduled blocks with full timing metadata.
+
+        Returns
+        -------
+        list[ScheduledScanBlock]
+            All scheduled blocks in chronological order.
+        """
+        return getattr(self, '_scheduled', [])
 
     def print_schedule(self):
-        """Print the schedule in a human-readable format."""
-        if self.solution is None:
-            print("No schedule available. Run solve() first.")
-            return
-
-        print("\n" + "=" * 70)
-        print("VLBI OBSERVATION SCHEDULE")
-        print("=" * 70)
-        total_slew = 0.0
-        for i, block in enumerate(self.solution):
-            print(f"\n{i + 1}. {block.name}")
-            print(f"   Start: {block.start_time.iso}")
-            print(f"   End:   {block.end_time.iso}")
-            print(f"   Duration: {block.duration_minutes:.1f} min")
-            print(f"   Antennas: {block.n_antennas}")
-            print(f"   Mean elevation: {block.mean_elevation:.1f}°")
-            if i > 0:
-                prev_block = self.solution[i - 1]
-                bi = self._block_names.index(prev_block.name)
-                bj = self._block_names.index(block.name)
-                slew = self._separation[bi, bj] / 60.0
-                total_slew += slew
-                print(f"   Slew from previous: {slew:.1f}°")
-
-        print("\n" + "-" * 70)
-        print(f"Total angular slewing: {total_slew:.1f}°")
-        print("=" * 70)
+        """Print the schedule in a human-readable format to stdout."""
+        if not (s := self.get_scheduled_blocks()):
+            return print("No schedule. Run schedule() first.")
+        print("\n" + "="*70 + "\nVLBI OBSERVATION SCHEDULE\n" + "="*70)
+        for i, b in enumerate(s):
+            print(f"\n{i+1}. {b.name}\n   {b.start_time.iso} - {b.end_time.iso}\n   "
+                  f"{b.duration.value:.1f}min | {b.n_antennas} ant | {b.mean_elevation:.1f}° | {len(b.scans)} scans")
+        print("\n" + "="*70)

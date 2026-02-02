@@ -1,22 +1,64 @@
 # Installation
 
-If you want to install PlanObs in your own machine, then you can simply run:
+## Requirements
+
+- **Python 3.11+** (required)
+- pip or conda package manager
+
+## Install from PyPI
+
+The recommended way to install PlanObs:
 
 ```bash
-python3 -m pip install vlbiplanobs
+pip install vlbiplanobs
 ```
+
+## Install from Source
+
+For development or the latest features:
+
+```bash
+git clone https://github.com/bmarcote/vlbi_calculator.git
+cd vlbi_calculator
+pip install -e .
 ```
 
-Or via any other way you are used to do to install Python PyPy packages.
+## Verify Installation
 
-This should install all necesary dependencies and vlbliplanobs.
+After installation, verify the binaries are available:
 
-**Note that the current PlanObs version requires Python > 3.11.**
+```bash
+planobs --help
+planobs-server --help
+```
 
+## Available Commands
 
+| Command | Description |
+|---------|-------------|
+| `planobs` | Command-line interface for observation planning |
+| `planobs-server` | Launch the web-based GUI |
 
-Once installed, you should find two binaries in your terminal:
+## Dependencies
 
-* `planobs` - the version running through the CLI.
-* `planobs-server` - the version running through the GUI.
+PlanObs automatically installs these dependencies:
+
+- **numpy** – Numerical computing
+- **astropy** – Astronomical calculations
+- **astroplan** – Observation planning
+- **plotly/dash** – Interactive visualizations
+- **rich** – Terminal formatting
+
+## Troubleshooting
+
+!!! warning "Python Version"
+    PlanObs requires Python 3.11 or higher. Check your version with `python --version`.
+
+!!! tip "Virtual Environment"
+    We recommend using a virtual environment:
+    ```bash
+    python -m venv planobs-env
+    source planobs-env/bin/activate  # Linux/macOS
+    pip install vlbiplanobs
+    ```
 

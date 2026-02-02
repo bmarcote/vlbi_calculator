@@ -1,0 +1,658 @@
+/* Theme CSS - Light/Dark mode support */
+
+/* CSS Variables for theming */
+:root {
+    /* Light mode (default) */
+    --bg-primary: #f8f9fa;
+    --bg-secondary: #ffffff;
+    --bg-card: #ffffff;
+    --bg-input: #ffffff;
+    --bg-hover: #e9ecef;
+    
+    --text-primary: #344767;
+    --text-secondary: #67748e;
+    --text-muted: #8392ab;
+    
+    --border-color: #ced4da;
+    --border-light: #dee2e6;
+    
+    --shadow-sm: 0 0.3125rem 0.625rem 0 rgba(0, 0, 0, 0.12);
+    --shadow-md: 0 0.25rem 0.375rem -0.0625rem rgba(0, 0, 0, 0.12), 0 0.125rem 0.25rem -0.0625rem rgba(0, 0, 0, 0.07);
+    --shadow-lg: 0 8px 26px -4px rgba(0, 0, 0, 0.15), 0 8px 9px -5px rgba(0, 0, 0, 0.06);
+    
+    --card-bg: #ffffff;
+    --card-border: rgba(0, 0, 0, 0.125);
+    
+    --plot-bg: rgba(255, 255, 255, 0);
+    --plot-paper-bg: rgba(255, 255, 255, 0);
+    --plot-grid: #e0e0e0;
+    --plot-text: #344767;
+    
+    --link-color: #004990;
+    --link-hover: #003366;
+    
+    --btn-primary-bg: #cb0c9f;
+    --btn-secondary-bg: #8392ab;
+    
+    color-scheme: light;
+}
+
+/* Dark mode */
+[data-theme="dark"] {
+    --bg-primary: #1a1d21;
+    --bg-secondary: #212529;
+    --bg-card: #2d3238;
+    --bg-input: #343a40;
+    --bg-hover: #3d444b;
+    
+    --text-primary: #e9ecef;
+    --text-secondary: #adb5bd;
+    --text-muted: #6c757d;
+    
+    --border-color: #495057;
+    --border-light: #3d444b;
+    
+    --shadow-sm: 0 0.3125rem 0.625rem 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 0.25rem 0.375rem -0.0625rem rgba(0, 0, 0, 0.3), 0 0.125rem 0.25rem -0.0625rem rgba(0, 0, 0, 0.2);
+    --shadow-lg: 0 8px 26px -4px rgba(0, 0, 0, 0.4), 0 8px 9px -5px rgba(0, 0, 0, 0.2);
+    
+    --card-bg: #2d3238;
+    --card-border: rgba(255, 255, 255, 0.1);
+    
+    /* Bootstrap card cap background override */
+    --bs-card-cap-bg: #2d3238;
+    
+    --plot-bg: rgba(0, 0, 0, 0);
+    --plot-paper-bg: rgba(0, 0, 0, 0);
+    --plot-grid: #495057;
+    --plot-text: #e9ecef;
+    
+    --link-color: #69b3ff;
+    --link-hover: #99ccff;
+    
+    --btn-primary-bg: #e040b0;
+    --btn-secondary-bg: #6c757d;
+    
+    color-scheme: dark;
+}
+
+/* Auto dark mode based on system preference */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg-primary: #1a1d21;
+        --bg-secondary: #212529;
+        --bg-card: #2d3238;
+        --bg-input: #343a40;
+        --bg-hover: #3d444b;
+        
+        --text-primary: #e9ecef;
+        --text-secondary: #adb5bd;
+        --text-muted: #6c757d;
+        
+        --border-color: #495057;
+        --border-light: #3d444b;
+        
+        --shadow-sm: 0 0.3125rem 0.625rem 0 rgba(0, 0, 0, 0.3);
+        --shadow-md: 0 0.25rem 0.375rem -0.0625rem rgba(0, 0, 0, 0.3), 0 0.125rem 0.25rem -0.0625rem rgba(0, 0, 0, 0.2);
+        --shadow-lg: 0 8px 26px -4px rgba(0, 0, 0, 0.4), 0 8px 9px -5px rgba(0, 0, 0, 0.2);
+        
+        --card-bg: #2d3238;
+        --card-border: rgba(255, 255, 255, 0.1);
+        
+        /* Bootstrap card cap background override */
+        --bs-card-cap-bg: #2d3238;
+        
+        --plot-bg: rgba(0, 0, 0, 0);
+        --plot-paper-bg: rgba(0, 0, 0, 0);
+        --plot-grid: #495057;
+        --plot-text: #e9ecef;
+        
+        --link-color: #69b3ff;
+        --link-hover: #99ccff;
+        
+        --btn-primary-bg: #e040b0;
+        --btn-secondary-bg: #6c757d;
+        
+        color-scheme: dark;
+    }
+}
+
+/* Apply theme variables to elements */
+body,
+.bg-gray-100 {
+    background-color: var(--bg-primary) !important;
+    color: var(--text-primary);
+}
+
+/* Only apply card bg to cards WITHOUT colored backgrounds */
+.card:not(.bg-primary):not(.bg-secondary):not(.bg-success):not(.bg-danger):not(.bg-warning):not(.bg-info):not(.bg-dark):not(.bg-light):not([class*="bg-gradient"]) {
+    background-color: var(--card-bg) !important;
+    border-color: var(--card-border) !important;
+    box-shadow: var(--shadow-md);
+}
+
+.card-body {
+    color: var(--text-primary);
+}
+
+/* Don't override text color in colored cards */
+.card:not(.bg-primary):not(.bg-secondary):not(.bg-success):not(.bg-danger):not(.bg-warning):not(.bg-info) h1,
+.card:not(.bg-primary):not(.bg-secondary):not(.bg-success):not(.bg-danger):not(.bg-warning):not(.bg-info) h2,
+.card:not(.bg-primary):not(.bg-secondary):not(.bg-success):not(.bg-danger):not(.bg-warning):not(.bg-info) h3,
+.card:not(.bg-primary):not(.bg-secondary):not(.bg-success):not(.bg-danger):not(.bg-warning):not(.bg-info) h4,
+.card:not(.bg-primary):not(.bg-secondary):not(.bg-success):not(.bg-danger):not(.bg-warning):not(.bg-info) h5,
+.card:not(.bg-primary):not(.bg-secondary):not(.bg-success):not(.bg-danger):not(.bg-warning):not(.bg-info) h6 {
+    color: var(--text-primary);
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: var(--text-primary);
+}
+
+.text-secondary {
+    color: var(--text-secondary) !important;
+}
+
+.text-muted {
+    color: var(--text-muted) !important;
+}
+
+/* Dark mode: colored cards - darken backgrounds and ensure light text */
+[data-theme="dark"] .card.bg-primary,
+[data-theme="dark"] .card.bg-secondary,
+[data-theme="dark"] .card.bg-success,
+[data-theme="dark"] .card.bg-info {
+    filter: brightness(0.7) saturate(0.9);
+}
+
+[data-theme="dark"] .card.bg-warning {
+    filter: brightness(0.75) saturate(0.85);
+}
+
+[data-theme="dark"] .card.bg-danger {
+    filter: brightness(0.65) saturate(0.9);
+}
+
+/* Ensure text inside colored cards is always light in dark mode */
+[data-theme="dark"] .card.bg-primary,
+[data-theme="dark"] .card.bg-primary *,
+[data-theme="dark"] .card.bg-secondary,
+[data-theme="dark"] .card.bg-secondary *,
+[data-theme="dark"] .card.bg-success,
+[data-theme="dark"] .card.bg-success *,
+[data-theme="dark"] .card.bg-danger,
+[data-theme="dark"] .card.bg-danger *,
+[data-theme="dark"] .card.bg-warning,
+[data-theme="dark"] .card.bg-warning *,
+[data-theme="dark"] .card.bg-info,
+[data-theme="dark"] .card.bg-info * {
+    color: #ffffff !important;
+}
+
+/* Dark mode: ensure all text elements are light */
+[data-theme="dark"] p,
+[data-theme="dark"] span,
+[data-theme="dark"] div,
+[data-theme="dark"] label,
+[data-theme="dark"] .card-body,
+[data-theme="dark"] .numbers {
+    color: var(--text-primary);
+}
+
+/* Dark mode: force card titles and headers to be light */
+[data-theme="dark"] .card h1,
+[data-theme="dark"] .card h2,
+[data-theme="dark"] .card h3,
+[data-theme="dark"] .card h4,
+[data-theme="dark"] .card h5,
+[data-theme="dark"] .card h6,
+[data-theme="dark"] .card .h1,
+[data-theme="dark"] .card .h2,
+[data-theme="dark"] .card .h3,
+[data-theme="dark"] .card .h4,
+[data-theme="dark"] .card .h5,
+[data-theme="dark"] .card .h6,
+[data-theme="dark"] .card-title,
+[data-theme="dark"] .card-header,
+[data-theme="dark"] .card-header h1,
+[data-theme="dark"] .card-header h2,
+[data-theme="dark"] .card-header h3,
+[data-theme="dark"] .card-header h4,
+[data-theme="dark"] .card-header h5,
+[data-theme="dark"] .card-header h6 {
+    color: #e9ecef !important;
+}
+
+/* Dark mode: card header background - force transparent/inherit */
+[data-theme="dark"] .card-header {
+    background-color: transparent !important;
+}
+
+/* Dark mode: ensure text-dark class is overridden */
+[data-theme="dark"] .text-dark {
+    color: #e9ecef !important;
+}
+
+/* Dark mode: override inline styles on labels */
+[data-theme="dark"] label[style*="color"],
+[data-theme="dark"] #bandwidth-label {
+    color: #adb5bd !important;
+}
+
+/* Same for auto dark mode */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .card.bg-primary,
+    :root:not([data-theme="light"]) .card.bg-secondary,
+    :root:not([data-theme="light"]) .card.bg-success,
+    :root:not([data-theme="light"]) .card.bg-info {
+        filter: brightness(0.7) saturate(0.9);
+    }
+    
+    :root:not([data-theme="light"]) .card.bg-warning {
+        filter: brightness(0.75) saturate(0.85);
+    }
+    
+    :root:not([data-theme="light"]) .card.bg-danger {
+        filter: brightness(0.65) saturate(0.9);
+    }
+    
+    :root:not([data-theme="light"]) .card.bg-primary,
+    :root:not([data-theme="light"]) .card.bg-primary *,
+    :root:not([data-theme="light"]) .card.bg-secondary,
+    :root:not([data-theme="light"]) .card.bg-secondary *,
+    :root:not([data-theme="light"]) .card.bg-success,
+    :root:not([data-theme="light"]) .card.bg-success *,
+    :root:not([data-theme="light"]) .card.bg-danger,
+    :root:not([data-theme="light"]) .card.bg-danger *,
+    :root:not([data-theme="light"]) .card.bg-warning,
+    :root:not([data-theme="light"]) .card.bg-warning *,
+    :root:not([data-theme="light"]) .card.bg-info,
+    :root:not([data-theme="light"]) .card.bg-info * {
+        color: #ffffff !important;
+    }
+    
+    :root:not([data-theme="light"]) p,
+    :root:not([data-theme="light"]) span,
+    :root:not([data-theme="light"]) div,
+    :root:not([data-theme="light"]) label,
+    :root:not([data-theme="light"]) .card-body,
+    :root:not([data-theme="light"]) .numbers {
+        color: #e9ecef;
+    }
+    
+    :root:not([data-theme="light"]) .card h1,
+    :root:not([data-theme="light"]) .card h2,
+    :root:not([data-theme="light"]) .card h3,
+    :root:not([data-theme="light"]) .card h4,
+    :root:not([data-theme="light"]) .card h5,
+    :root:not([data-theme="light"]) .card h6,
+    :root:not([data-theme="light"]) .card .h1,
+    :root:not([data-theme="light"]) .card .h2,
+    :root:not([data-theme="light"]) .card .h3,
+    :root:not([data-theme="light"]) .card .h4,
+    :root:not([data-theme="light"]) .card .h5,
+    :root:not([data-theme="light"]) .card .h6,
+    :root:not([data-theme="light"]) .card-title,
+    :root:not([data-theme="light"]) .card-header,
+    :root:not([data-theme="light"]) .card-header h1,
+    :root:not([data-theme="light"]) .card-header h2,
+    :root:not([data-theme="light"]) .card-header h3,
+    :root:not([data-theme="light"]) .card-header h4,
+    :root:not([data-theme="light"]) .card-header h5,
+    :root:not([data-theme="light"]) .card-header h6 {
+        color: #e9ecef !important;
+    }
+    
+    :root:not([data-theme="light"]) .card-header {
+        background-color: transparent !important;
+    }
+    
+    :root:not([data-theme="light"]) .text-dark {
+        color: #e9ecef !important;
+    }
+    
+    :root:not([data-theme="light"]) label[style*="color"],
+    :root:not([data-theme="light"]) #bandwidth-label {
+        color: #adb5bd !important;
+    }
+}
+
+/* Form controls */
+.form-control,
+.form-picker,
+.form-hour,
+input[type=time],
+.SingleDatePickerInput,
+.DateInput_input {
+    background-color: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-color) !important;
+}
+
+.form-control:focus {
+    background-color: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--link-color) !important;
+}
+
+/* Mantine components */
+.mantine-Switch-track,
+.mantine-Chip-label {
+    background-color: var(--bg-input);
+    border-color: var(--border-color);
+}
+
+.mantine-Chip-label {
+    color: var(--text-primary);
+}
+
+/* Antenna chips - unselected: transparent background */
+.mantine-Chip-label:not([data-checked]):not([data-disabled]) {
+    background-color: transparent !important;
+    color: var(--text-primary) !important;
+    border-color: #69b3ff !important;
+}
+
+/* Antenna chips - disabled: darker background and dimmer font */
+.mantine-Chip-label[data-disabled] {
+    background-color: var(--bg-hover) !important;
+    color: var(--text-muted) !important;
+    opacity: 0.7;
+}
+
+/* Dark mode overrides for chips */
+[data-theme="dark"] .mantine-Chip-label:not([data-checked]):not([data-disabled]) {
+    background-color: transparent !important;
+    color: #6c757d !important;
+    border-color: #69b3ff !important;
+}
+
+[data-theme="dark"] .mantine-Chip-label[data-disabled] {
+    background-color: #3d444b !important;
+    color: #6c757d !important;
+    opacity: 0.7;
+}
+
+/* Auto dark mode - chips */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .mantine-Chip-label:not([data-checked]):not([data-disabled]) {
+        background-color: transparent !important;
+        color: #6c757d !important;
+        border-color: #69b3ff !important;
+    }
+    
+    :root:not([data-theme="light"]) .mantine-Chip-label[data-disabled] {
+        background-color: #3d444b !important;
+        color: #6c757d !important;
+        opacity: 0.7;
+    }
+}
+
+/* Mantine input components - comprehensive list */
+.mantine-Select-input,
+.mantine-NumberInput-input,
+.mantine-TextInput-input,
+.mantine-DatePicker-input,
+.mantine-DateInput-input,
+.mantine-DateTimePicker-input,
+.mantine-TimeInput-input,
+.mantine-Input-input,
+[class*="mantine-"][class*="-input"] {
+    background-color: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* Mantine input wrappers */
+.mantine-Input-wrapper,
+.mantine-DateInput-wrapper,
+.mantine-DateTimePicker-wrapper,
+.mantine-Select-wrapper,
+.mantine-NumberInput-wrapper {
+    background-color: transparent !important;
+}
+
+/* Mantine dropdowns and popups */
+.mantine-Select-dropdown,
+.mantine-DatePicker-dropdown,
+.mantine-DateInput-dropdown,
+.mantine-DateTimePicker-dropdown,
+.mantine-Popover-dropdown,
+[class*="mantine-"][class*="-dropdown"] {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-color) !important;
+}
+
+.mantine-Select-item,
+.mantine-DatePicker-day,
+.mantine-Select-option {
+    color: var(--text-primary) !important;
+}
+
+.mantine-Select-item:hover,
+.mantine-Select-item[data-selected],
+.mantine-Select-option:hover,
+.mantine-Select-option[data-selected] {
+    background-color: var(--bg-hover) !important;
+}
+
+.mantine-HoverCard-dropdown {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* Dash core components dropdown - comprehensive selectors */
+.Select-control,
+.Select-menu-outer,
+.Select-menu,
+.Select-option,
+.Select-input,
+.Select-input input,
+.Select--single > .Select-control .Select-value,
+.VirtualizedSelectOption,
+.VirtualizedSelectFocusedOption {
+    background-color: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-color) !important;
+}
+
+.Select-value-label,
+.Select-placeholder,
+.Select-value .Select-value-label,
+.Select--single .Select-value .Select-value-label {
+    color: var(--text-primary) !important;
+}
+
+.Select-option:hover,
+.Select-option.is-focused,
+.VirtualizedSelectOption:hover,
+.VirtualizedSelectFocusedOption {
+    background-color: var(--bg-hover) !important;
+}
+
+/* Dash dropdown arrow and clear icons */
+.Select-arrow-zone,
+.Select-clear-zone {
+    color: var(--text-secondary) !important;
+}
+
+.Select-arrow {
+    border-color: var(--text-secondary) transparent transparent !important;
+}
+
+/* Bootstrap components */
+.btn-secondary {
+    background-color: var(--btn-secondary-bg) !important;
+    border-color: var(--btn-secondary-bg) !important;
+}
+
+.modal-content,
+.offcanvas {
+    background-color: var(--bg-card) !important;
+    color: var(--text-primary) !important;
+}
+
+.offcanvas-body {
+    color: var(--text-primary);
+}
+
+/* Sidebar/side panel */
+.sidebar {
+    background-color: var(--bg-card);
+    color: var(--text-primary);
+}
+
+.sidebar h5, .sidebar h6, .sidebar p {
+    color: var(--text-primary);
+}
+
+.sidebar a {
+    color: var(--link-color);
+}
+
+.sidebar a:hover {
+    color: var(--link-hover);
+}
+
+/* Horizontal rules */
+hr, .horizontal {
+    border-color: var(--border-light) !important;
+    opacity: 0.5;
+}
+
+/* Links */
+a {
+    color: var(--link-color);
+}
+
+a:hover {
+    color: var(--link-hover);
+}
+
+/* Blockquotes */
+blockquote {
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+}
+
+/* Tables */
+table {
+    color: var(--text-primary);
+}
+
+th, td {
+    border-color: var(--border-color) !important;
+}
+
+/* Slider styles - keep same blueish color in dark mode, just adjust rail/handle bg */
+[data-theme="dark"] .rc-slider-rail {
+    background-color: #495057 !important;
+}
+
+[data-theme="dark"] .rc-slider-handle {
+    background-color: #2d3238 !important;
+}
+
+[data-theme="dark"] .rc-slider-mark-text {
+    color: #adb5bd !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .rc-slider-rail {
+        background-color: #495057 !important;
+    }
+    :root:not([data-theme="light"]) .rc-slider-handle {
+        background-color: #2d3238 !important;
+    }
+    :root:not([data-theme="light"]) .rc-slider-mark-text {
+        color: #adb5bd !important;
+    }
+}
+
+/* Plotly chart backgrounds - handled via JS but provide fallback */
+.js-plotly-plot .plotly .main-svg {
+    background-color: var(--plot-paper-bg) !important;
+}
+
+/* Theme toggle button styling */
+.theme-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    margin: 1rem 0;
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.theme-toggle-btn:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--link-color);
+}
+
+.theme-toggle-btn i {
+    font-size: 1.2rem;
+}
+
+/* Icon visibility based on theme */
+.theme-icon-light,
+.theme-icon-dark {
+    display: none;
+}
+
+:root:not([data-theme]) .theme-icon-light,
+[data-theme="light"] .theme-icon-light {
+    display: inline;
+}
+
+[data-theme="dark"] .theme-icon-dark {
+    display: inline;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .theme-icon-dark {
+        display: inline;
+    }
+    :root:not([data-theme="light"]) .theme-icon-light {
+        display: none;
+    }
+}
+
+/* Tooltip styling */
+.tooltip-inner {
+    background-color: var(--bg-card) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Badge/chip colors for dark mode */
+[data-theme="dark"] .badge,
+[data-theme="dark"] .mantine-Badge-root {
+    filter: brightness(1.1);
+}
+
+/* Dropdown menus */
+.dropdown-menu {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-color) !important;
+}
+
+.dropdown-item {
+    color: var(--text-primary) !important;
+}
+
+.dropdown-item:hover {
+    background-color: var(--bg-hover) !important;
+}
+
+/* Theme-based logo switching */
+.logo-dark { display: none; }
+.logo-light { display: inline-block; }
+
+[data-theme="dark"] .logo-dark { display: inline-block; }
+[data-theme="dark"] .logo-light { display: none; }

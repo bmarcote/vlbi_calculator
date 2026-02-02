@@ -1513,3 +1513,102 @@ class Observation(object):
                                         self.times[0].datetime.strftime('%H:%M'),
                                         self.times[-1].datetime.strftime(date_format),
                                         self.times[-1].datetime.strftime('%H:%M'), gsttext)
+
+    def schedule_file(self, experiment_code: str = 'EXCODE', pi_name: str = 'PI Name',
+                      pi_email: str = 'pi@example.com', pi_institute: str = 'Institute',
+                      setup_file: Optional[str] = None, comments: str = '') -> str:
+        """Generate a pySCHED .key file for scheduling the observation.
+
+        Creates a SCHED-compatible key file for EVN observations, using the
+        observation's stations, sources, and scheduled scans.
+
+        Inputs
+        - experiment_code : str
+            The experiment code (e.g., 'EG123A').
+        - pi_name : str
+            Principal Investigator name.
+        - pi_email : str
+            PI email address.
+        - pi_institute : str
+            PI institution name.
+        - setup_file : str or None
+            Name of the frequency setup file (e.g., 'evn6cm-2Gbps-32MHz.set').
+            If None, a placeholder will be used.
+        - comments : str
+            Comments that the PI wants to write in the cover letter of the key file.
+
+        Returns
+        - key_content : str
+            The complete .key file content as a string.
+        """
+        from importlib import resources
+        from datetime import datetime
+
+        template_path = resources.files('vlbiplanobs.data').joinpath('key_file.key.template')
+        with open(template_path, 'r') as f:  # type: ignore
+            template = f.read()
+
+        sources_lines = []
+        all_sources = self.sources()
+        for src in all_sources:
+            ra_str = src.coord.ra.to_string(unit=u.hourangle, sep=':', precision=4, pad=True)
+            dec_str = src.coord.dec.to_string(unit=u.degree, sep=':', precision=3, pad=True, alwayssign=True)
+            sources_lines.append(f"  source='{src.name}' ra={ra_str} dec={dec_str} equinox='J2000' /")
+
+        sources_str = '\n'.join(sources_lines)
+
+        stations_list = ', '.join(s.codename.upper() for s in self.stations)
+
+        scans_lines = []
+        from .scheduler import ObservationScheduler
+        scheduler = ObservationScheduler(self)
+        scheduler.schedule()
+        scheduled_blocks = scheduler.get_scheduled_blocks()
+
+        if scheduled_blocks:
+            for sched_block in scheduled_blocks:
+                for scan in sched_block.scans:
+                    dur_min = int(scan.duration.to(u.min).value)
+                    dur_sec = int((scan.duration.to(u.s).value) % 60)
+                    scans_lines.append(f"source='{scan.source.name}' gap=0:00 dur={dur_min}:{dur_sec:02d} /")
+        else:
+            for block_name, block in self.scans.items():
+                for scan in block.scans:
+                    dur_min = int(scan.duration.to(u.min).value)
+                    dur_sec = int((scan.duration.to(u.s).value) % 60)
+                    scans_lines.append(f"source='{scan.source.name}' gap=0:00 dur={dur_min}:{dur_sec:02d} /")
+
+        scans_str = '\n'.join(scans_lines)
+
+        setup_str = f"setup = '{setup_file}'" if setup_file else "nosetup   ! TODO: Add frequency setup"
+
+        obs_mode = f"{self.band} {int(self.datarate.to(u.Mbit/u.s).value)} Mbps" \
+            if self.band and (self.datarate is not None) else "VLBI"
+
+        replacements = {
+            '{GENERATION_DATE}': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            '{EXPERIMENT_CODE}': experiment_code.upper(),
+            '{PI_NAME}': pi_name,
+            '{PI_EMAIL}': pi_email,
+            '{PI_INSTITUTE}': pi_institute,
+            '{OBS_MODE}': obs_mode,
+            '{COMMENTS}': comments,
+            '{CORAVG}': str(int(self.inttime.to(u.s).value)),
+            '{CORCHAN}': str(self.channels) if self.channels else '32',
+            '{CORNANT}': str(len(self.stations)),
+            '{STATIONS_CATALOG}': 'none',
+            '{SOURCES}': sources_str,
+            '{SETUP}': setup_str,
+            '{YEAR}': str(self.times[0].datetime.year),
+            '{MONTH}': str(self.times[0].datetime.month),
+            '{DAY}': str(self.times[0].datetime.day),
+            '{START_TIME}': self.times[0].datetime.strftime('%H:%M:%S'),
+            '{STATIONS}': stations_list,
+            '{SCANS}': scans_str,
+        }
+
+        key_content = template
+        for placeholder, value in replacements.items():
+            key_content = key_content.replace(placeholder, value)
+
+        return key_content

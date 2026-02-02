@@ -944,11 +944,11 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
 
                 rms = cli.optimal_units(o.thermal_noise()[src.name],  # type: ignore
                                         [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
-                rms_chan = cli.optimal_units(rms/np.sqrt(1*u.min /
+                rms_min = cli.optimal_units(rms/np.sqrt(1*u.min /
                                                 (o.duration if o.duration is not None else 24*u.h)),
                                                 [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
                                             u.mJy/u.beam, u.uJy/u.beam])
-                rms_min = cli.optimal_units(rms*np.sqrt(o.subbands*o.channels),
+                rms_chan = cli.optimal_units(rms*np.sqrt(o.subbands*o.channels),
                                             [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
                                             u.mJy/u.beam, u.uJy/u.beam])
                 layout.append_layout_element(pdf.Paragraph(f"Thermal rms noise: "

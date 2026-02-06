@@ -73,6 +73,8 @@ def outputs_column(app) -> html.Div:
                                                                          "appear here")])),
 
         html.A(id='download-link'),
+        dcc.Location(id='url', refresh=False),
+        html.Button('Export', id='export-state-of-the-system', n_clicks=0),
         html.Div(id='out-sun', className='m-0 p-0'),
         html.Div(id='out-phaseref', className='m-0 p-0'),
         html.Div(id='out-ant', className='m-0 p-0'),

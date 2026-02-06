@@ -58,6 +58,8 @@ dependencies = [
   "kaleido",
   "loguru",
   "borb",  # only for macOS (case-insensitive). Newer versions would work with GNU/Linux
+  "furl",
+  "packaging",
 ]
 
 

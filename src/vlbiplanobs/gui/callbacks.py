@@ -46,15 +46,16 @@ def enable_networks_with_band(band_index: int, card_styles):
 
 
 @callback([Output('datarate', 'options'),
-           Output('datarate', 'value'),
-           Output('channels', 'value'),
-           Output('subbands', 'value')],
+           Output('datarate', 'value', allow_duplicate=True),
+           Output('channels', 'value', allow_duplicate=True),
+           Output('subbands', 'value', allow_duplicate=True)],
           [Input('switch-specify-continuum', 'value'),
            Input('band-slider', 'value'),
            Input({'type': 'network-switch', 'index': ALL}, 'value')],
           [State('datarate', 'value'),
            State('store-prev-channels', 'data'),
-           State('store-prev-subbands', 'data')])
+           State('store-prev-subbands', 'data')],
+          prevent_initial_call=True)
 def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: list[bool],
                              datarate: int = 2048, prev_channels: int = 64, prev_subbands: int = 8):
     if band == 0:
@@ -101,9 +102,10 @@ def enable_antennas_with_band(band_index: int, do_e_evn: bool):
             for ant in observation._STATIONS]
 
 
-@callback(Output('switches-antennas', 'value'),
+@callback(Output('switches-antennas', 'value', allow_duplicate=True),
           Input({'type': 'network-switch', 'index': ALL}, 'value'),
-          State('switches-antennas', 'value'))
+          State('switches-antennas', 'value'),
+          prevent_initial_call=True)
 def update_selected_antennas_from_networks(networks, current_antennas):
     current_antennas = set(current_antennas)
     ants2include = set()

@@ -40,8 +40,8 @@ class FluxMeasurement:
     - flux_density : u.Quantity
         Refers to the total flux density of the source. Meaning the observed flux on the shortest baselines.
     """
-    peak_flux: u.Quantity
-    flux_density: u.Quantity
+    resolved: u.Quantity
+    unresolved: u.Quantity
 
 
 class SourceFlux(object):
@@ -84,7 +84,7 @@ class SourceFlux(object):
         Raises
             KeyError : if band is not available.
         """
-        return self._data[band].flux_density
+        return self._data[band].unresolved
 
     def peak_flux(self, band: str) -> FluxMeasurement:
         """Returns the peak flux (brightness) measurements associated to the source at the given band.
@@ -96,7 +96,7 @@ class SourceFlux(object):
         Raises
             KeyError : if band is not available.
         """
-        return self._data[band].peak_flux
+        return self._data[band].resolved
 
     def has_band(self, band: str) -> bool:
         """Returns if the band is present in the FluxMeasurement.

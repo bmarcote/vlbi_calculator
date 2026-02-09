@@ -1,5 +1,6 @@
 from collections import defaultdict
 from typing import Optional
+from datetime import datetime, timedelta
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -21,38 +22,28 @@ def _get_axis_config(o):
     """
     time_range = [o.times.datetime[0], o.times.datetime[-1]]
 
-    if True: #o.fixed_time:
-        # Epoch is defined: x-axis shows UTC, x-axis2 shows GST
-        n_times = len(o.times.datetime)
-        n_ticks = min(8, n_times)
-        if n_ticks <= 1:
-            indices = [0]
-        else:
-            indices = [int(i * (n_times - 1) / (n_ticks - 1)) for i in range(n_ticks)]
-
-        tickvals = [o.times.datetime[i] for i in indices]
-        gst = o.gstimes.hour
-        ticktext = [f"{int(gst[i]):02d}:{int((gst[i] % 1) * 60):02d}" for i in indices]
-
-        xaxis2_config = dict(overlaying='x', side='top', type='date', tickmode='array',
-                            #  tickvals=tickvals, ticktext=ticktext, showline=True,
-                             linecolor='black', linewidth=2, ticks='inside',
-                             range=time_range, title='Time (GST)', showgrid=False, zeroline=False)
+    if o.fixed_time:
+        # For xaxis (UTC): datetime values are used directly in time_range
+        
+        # For xaxis2 (GST): convert gstimes to datetime format for the range
+        gst_start = datetime.combine(o.times.datetime[0].date(), datetime.min.time()) + timedelta(hours=o.gstimes[0].hour)
+        gst_end = datetime.combine(o.times.datetime[0].date(), datetime.min.time()) + timedelta(hours=o.gstimes[-1].hour)
+        gst_range = [gst_start, gst_end]
+        
+        # xaxis2_config = dict(overlaying='x', side='top', type='date', tickmode='auto',
+        #                      showline=True, linecolor='black', linewidth=2, ticks='inside',
+        #                      range=gst_range, title='Time (GST)', showgrid=False, zeroline=False,
+        #                      tickformat='%H:%M')
         return {
             'xaxis_range': time_range,
             'xaxis_title': 'Time (UTC)',
-            'xaxis2_range': time_range,
-            'xaxis2_config': xaxis2_config,
-            'show_xaxis2': True
+            # 'xaxis2_range': gst_range,
+            # 'xaxis2_config': xaxis2_config,
+            # 'show_xaxis2': True
         }
     else:
-        # No epoch defined: x-axis shows GST directly, no secondary axis
-        return {
-            'xaxis_range': time_range,
-            'xaxis_title': 'Time (GST)',
-            'xaxis2_config': None,
-            'show_xaxis2': True
-        }
+        # No epoch defined: x-axis shows GST directly, x-axis2 shows GST too
+        return {'xaxis_range': time_range, 'xaxis_title': 'Time (GST)'}
 
 
 def elevation_plot_curves(o) -> Optional[go.Figure]:
@@ -101,28 +92,17 @@ def elevation_plot_curves(o) -> Optional[go.Figure]:
                          yaxis_title="Elevation (degrees)", title='', paper_bgcolor='rgba(0,0,0,0)',
                          plot_bgcolor='rgba(0,0,0,0)',
                          xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
-                                    mirror=False, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
-                                    showgrid=False, zeroline=False,
-                                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-                         xaxis2=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
-                                    mirror=False, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
+                                    mirror='allticks', ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
                                     showgrid=False, zeroline=False,
                                     minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
                          yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks',
                                     ticks='inside', tickmode='auto', range=[0, 90],
                                     showgrid=False, zeroline=False,
                                     minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-                         yaxis2=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks',
-                                     ticks='inside', tickmode='auto', range=[0, 90],
-                                     showgrid=False, zeroline=False,
-                                     minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
                          margin=dict(l=2, r=2, t=45, b=0),
                          legend=dict(x=0.01, y=0.99, xanchor='left', yanchor='top',
                                      bgcolor='rgba(255, 255, 255, 0.7)',
                                      bordercolor='rgba(0, 0, 0, 0.3)', borderwidth=1))
-
-    # if axis_cfg['xaxis2_config']:
-    #     layout_kwargs['xaxis2'] = axis_cfg['xaxis2_config']
 
     fig.update_layout(**layout_kwargs)
     return fig
@@ -184,12 +164,6 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
     # Get axis configuration based on observation time mode
     axis_cfg = _get_axis_config(o)
 
-    # Add invisible trace for secondary x-axis (GST) only when needed
-    if axis_cfg['show_xaxis2']:
-        fig.add_trace(go.Scatter(x=o.times.datetime, y=[None]*len(o.times.datetime),
-                                 mode='markers', marker=dict(opacity=0), showlegend=False,
-                                 xaxis='x2', hoverinfo='skip'))
-
     layout_kwargs = dict(
         showlegend=False,
         hovermode='closest',
@@ -199,7 +173,7 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
-                   mirror=False, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
+                   mirror='allticks', ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
                    showgrid=False, zeroline=False,
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
@@ -209,9 +183,6 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
                    showgrid=False, zeroline=False,
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         margin=dict(l=2, r=2, t=45, b=0))
-
-    if axis_cfg['xaxis2_config']:
-        layout_kwargs['xaxis2'] = axis_cfg['xaxis2_config']
 
     fig.update_layout(**layout_kwargs)
     if show_colorbar:

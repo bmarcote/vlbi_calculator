@@ -8,7 +8,8 @@ from urllib.parse import quote, unquote
 from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
-from dash import Dash, html, dcc, Output, Input, State, no_update, ALL
+from dash import Dash, html, dcc, Output, Input, State, no_update, ALL, \
+    clientside_callback
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
@@ -386,7 +387,8 @@ export_component_ids = [
 current_version = Version(importlib.metadata.version('vlbiplanobs'))
 
 @app.callback(
-    Output('url', 'href', allow_duplicate=True),
+    Output('url', 'search', allow_duplicate=True),
+    Output('url-store', 'data'),
     Input('export-state-of-the-system', 'n_clicks'),
     [State(id_, 'value') for id_ in export_component_ids],
     prevent_initial_call=True
@@ -396,7 +398,27 @@ def clicked_export(n_clicks, *args):
         return no_update
     config = quote(json.dumps(
         [(id_, value) for id_, value in zip(export_component_ids, args)]))
-    return f'?targetversion={quote(str(current_version))}&config={config}'
+    search = f'?targetversion={quote(str(current_version))}&config={config}'
+    return search, search
+
+clientside_callback(
+    """
+    function(value) {
+        if (window.opener && !window.opener.closed) {
+            window.opener.postMessage(value, '*'); // FIX set the true targetOrigin
+            return [true, "Configuration sent to Polaris"];
+        }
+        else {
+            navigator.clipboard.writeText(value);
+            return [true, "Configuration copied to clipboard, paste in Polaris"];
+        }
+    }
+    """,
+    Output('export-alert', 'is_open'),
+    Output('export-alert', 'children'),
+    Input('url-store', 'data'),
+    prevent_initial_call=True
+    )
 
 @app.callback(
     [Output(id_, 'value') for id_ in export_component_ids],

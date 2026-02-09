@@ -185,6 +185,18 @@ def compute_button() -> html.Div:
                 ], className='d-flex align-items-center justify-content-center', style={'gap': '5px'}),
         className='col-6', style={'position': 'relative'})
 
+def export_button() -> html.Div:
+    """Returns the button to export the observation to Polaris
+    """
+    return html.Div(
+                html.Div([
+                    html.Button('Export to Polaris',
+                                id='export-state-of-the-system',
+                                className='btn btn-evn text-bolder btn-lg mx-auto w-75 m-4 p-2',
+                                style={'position': 'sticky', 'top': '20px', 'z-index': '1000'}),
+                ], className='d-flex align-items-center justify-content-center', style={'gap': '5px'}),
+        className='col-6', style={'position': 'relative'})
+
 
 @functools.cache
 def pick_band_labels(show_wavelengths: bool) -> list:

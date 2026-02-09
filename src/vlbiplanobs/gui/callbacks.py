@@ -309,7 +309,6 @@ export_component_ids = [
 current_version = Version(importlib.metadata.version('vlbiplanobs'))
 
 @callback(
-    Output('url', 'search', allow_duplicate=True),
     Output('url-store', 'data'),
     Input('export-state-of-the-system', 'n_clicks'),
     [State(id_, 'value') for id_ in export_component_ids],
@@ -321,7 +320,7 @@ def clicked_export(n_clicks, *args):
     config = quote(json.dumps(
         [(id_, value) for id_, value in zip(export_component_ids, args)]))
     search = f'?targetversion={quote(str(current_version))}&config={config}'
-    return search, search
+    return search
 
 clientside_callback(
     """

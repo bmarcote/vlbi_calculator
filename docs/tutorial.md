@@ -19,15 +19,52 @@ planobs --band 6cm --target 'Altair' --stations Ef Hh Ir Mc Tr Hh T6 O8 Wb Cm --
 ```
 
 
+## Finding Fringe Finder Sources
 
+For VLBI observations, you need bright calibrator sources to find and correct instrumental delays. These are called fringe finder sources. You can find suitable ones using:
 
+```bash
+planobs_fringefinder -s Ef Hh Mc Tr -t '2025-03-15 08:00' -d 8 -b 6cm
+```
 
+This command will:
+- Search the RFC catalog for bright calibrator sources
+- Check visibility for the specified stations during the observation time
+- Show flux densities, elevation information, and links to detailed source data
 
+### Fringe Finder Options
 
+- `-s/--stations`: List of antenna codenames that will participate
+- `-t/--starttime`: Start time in 'YYYY-MM-DD HH:MM' format (UTC)
+- `-d/--duration`: Duration of the observation in hours
+- `-b/--band`: Observing band (e.g., '18cm', '21cm', '13cm', '6cm', '5cm', '3.6cm', '2cm', '1.3cm', '0.7cm')
+- `--min-flux`: Minimum unresolved flux threshold in Jy (default: 0.5)
+- `--min-elevation`: Minimum elevation in degrees (default: 20)
+- `-l/--max-lines`: Maximum number of sources to return (default: 20)
+- `--require-all`: Require source to be visible by ALL stations (default: False)
 
+## Finding Phase Calibrators
 
+Phase referencing requires finding bright calibrator sources near your target source. You can find these using:
 
+```bash
+planobs_phasecal -t 'M87' -b 6cm --max-separation 5 --min-flux 0.1
+```
 
+This command will:
+- Search for calibrator sources near your target
+- Show angular separation from the target
+- Display flux information at the specified band
+- Provide links to detailed source information
+
+### Phase Calibrator Options
+
+- `-t/--target`: Target source name (J2000 or IVS name from RFC catalog)
+- `-b/--band`: Observing band (optional, checks all bands if not provided)
+- `--max-separation`: Maximum angular separation in degrees (default: 5.0)
+- `--min-flux`: Minimum unresolved flux threshold in Jy (default: 0.1)
+- `-n/--n-sources`: Maximum number of sources to return (default: all)
+- `--catalog-file`: Path to custom RFC catalog file
 
 ## Customizing the stations' catalog
 

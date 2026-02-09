@@ -67,6 +67,34 @@ print(obs.sensitivity())
 print(obs.angular_resolution())
 ```
 
+## Finding Fringe Finder Sources
+
+Find suitable fringe finder sources for your observation:
+
+```bash
+planobs_fringefinder -s Ef Hh Mc Tr -t '2025-03-15 08:00' -d 8 -b 6cm
+```
+
+This will show:
+
+- Bright calibrator sources visible by all specified stations
+- Flux densities and elevation information
+- Links to detailed source information
+
+## Finding Phase Calibrators
+
+Find phase calibrator sources near your target:
+
+```bash
+planobs_phasecal -t 'M87' -b 6cm --max-separation 5 --min-flux 0.1
+```
+
+This will show:
+
+- Nearby calibrator sources within specified angular separation
+- Flux information at the observing band
+- Separation angles from your target
+
 ## Generate a Schedule File
 
 Create a pySCHED-compatible `.key` file:

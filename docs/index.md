@@ -69,6 +69,8 @@ The **EVN Observation Planner** determines source visibility, estimates sensitiv
 - :material-rocket-launch: **[Quick Start](quickstart.md)** – Your first observation in 5 minutes
 - :material-book-open: **[Tutorial](tutorial.md)** – Detailed usage guide
 - :material-api: **[API Reference](api/index.md)** – Full Python API documentation
+- :material-satellite-antenna: **[Fringe Finders](fringefinder.md)** – Find bright calibrator sources
+- :material-target-account: **[Phase Calibrators](phasecal.md)** – Find nearby phase calibrators
 
 </div>
 

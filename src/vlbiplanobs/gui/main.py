@@ -1,22 +1,16 @@
 import os
 import argparse
 from typing import Optional
-import json
-import importlib.metadata
-from packaging.version import Version
-from urllib.parse import quote, unquote
 from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
-from dash import Dash, html, dcc, Output, Input, State, no_update, ALL, \
-    clientside_callback
+from dash import Dash, html, dcc, Output, Input, State, no_update, ALL
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from astropy.utils.iers import conf as iers_conf
 from astropy import units as u
 from astropy.time import Time
-from furl import furl
 from vlbiplanobs import sources
 from vlbiplanobs import observation
 from vlbiplanobs import cli
@@ -358,93 +352,6 @@ app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-10
                    dbc.Offcanvas(children=inputs.modal_general_info(), id='more-info-modal',
                                  is_open=False, className='shadow-lg blur', placement='end'),
                    html.Div(id='bottom-banner', children=[html.Br(), html.Br(), html.Br()])]))
-
-# list of component IDs that constitute the user's configuration
-export_component_ids = [
-    'switch-band-label',
-    'band-slider',
-    'duration',
-    'onsourcetime',
-] + [
-    {'type': 'network-switch', 'index': network_name}
-    for network_name in observation._NETWORKS
-] + [
-    'switches-antennas',
-    'switch-specify-epoch',
-    'startdate',
-    'starttime',
-    'switch-specify-source',
-    'source-input',
-    'switch-specify-e-evn',
-    'switch-specify-continuum',
-    'datarate',
-    'subbands',
-    'channels',
-    'pols',
-    'inttime',
-]
-
-current_version = Version(importlib.metadata.version('vlbiplanobs'))
-
-@app.callback(
-    Output('url', 'search', allow_duplicate=True),
-    Output('url-store', 'data'),
-    Input('export-state-of-the-system', 'n_clicks'),
-    [State(id_, 'value') for id_ in export_component_ids],
-    prevent_initial_call=True
-    )
-def clicked_export(n_clicks, *args):
-    if not n_clicks:
-        return no_update
-    config = quote(json.dumps(
-        [(id_, value) for id_, value in zip(export_component_ids, args)]))
-    search = f'?targetversion={quote(str(current_version))}&config={config}'
-    return search, search
-
-clientside_callback(
-    """
-    function(value) {
-        if (window.opener && !window.opener.closed) {
-            window.opener.postMessage(value, '*'); // FIX set the true targetOrigin
-            return [true, "Configuration sent to Polaris"];
-        }
-        else {
-            navigator.clipboard.writeText(value);
-            return [true, "Configuration copied to clipboard, paste in Polaris"];
-        }
-    }
-    """,
-    Output('export-alert', 'is_open'),
-    Output('export-alert', 'children'),
-    Input('url-store', 'data'),
-    prevent_initial_call=True
-    )
-
-@app.callback(
-    [Output(id_, 'value') for id_ in export_component_ids],
-    # delete targetversion and config from the url parameters after parsing it
-    Output('url', 'href'),
-    Input('url', 'href')
-    )
-def url_open(href):
-    parsed_href = furl(href)
-    target_version = parsed_href.args.get('targetversion')
-    config = parsed_href.args.get('config')
-    if (target_version is None) or (config is None):
-        raise PreventUpdate
-    target_version = Version(unquote(target_version))
-    if target_version > current_version:
-        # current running version too old??
-        raise PreventUpdate
-    config_list = json.loads(unquote(config))
-    id_list, value_list = map(list, zip(*config_list))
-    if id_list != export_component_ids:
-        # mismatch in expected IDs, since only one version is supported,
-        # this is currently an input error
-        raise PreventUpdate
-    del parsed_href.args['targetversion']
-    del parsed_href.args['config']
-    return value_list + [parsed_href.url]
 
 
 def main(debug: bool = False, host: str = '127.0.0.1', port: int = 8050):

@@ -50,10 +50,6 @@ def compute_buttons(app) -> html.Div:
             dcc.Download(id="download-data")])]),
             html.Div(className='m-0 p-0', children=[
                 dcc.Location(id='url', refresh=False),
-                # intermediate store for the configuration,
-                # to compute the string value server side,
-                # then export the value to Polaris client side
-                dcc.Store(id='url-store'),
                 inputs.export_button(),
                 Alert("Nothing to see here", id='export-alert',
                       is_open=False, color='success',

@@ -308,36 +308,26 @@ export_component_ids = [
 
 current_version = Version(importlib.metadata.version('vlbiplanobs'))
 
-@callback(
-    Output('url-store', 'data'),
-    Input('export-state-of-the-system', 'n_clicks'),
-    [State(id_, 'value') for id_ in export_component_ids],
-    prevent_initial_call=True
-    )
-def clicked_export(n_clicks, *args):
-    if not n_clicks:
-        return no_update
-    config = quote(json.dumps(
-        [(id_, value) for id_, value in zip(export_component_ids, args)]))
-    search = f'?targetversion={quote(str(current_version))}&config={config}'
-    return search
-
-clientside_callback(
-    """
-    function(value) {
-        if (window.opener && !window.opener.closed) {
+json_config = '[' + ','.join(f'[{json.dumps(export_component_ids[i])}, args[{i}]]' for i in range(len(export_component_ids))) + ']'
+callback_javascript = f"""
+    function(n_clicks, ...args) {{
+        const value = '?targetversion={quote(str(current_version))}&config=' + encodeURIComponent(JSON.stringify({json_config}));
+        if (window.opener && !window.opener.closed) {{
             window.opener.postMessage(value, '*'); // FIX set the true targetOrigin
             return [true, "Configuration sent to Polaris"];
-        }
-        else {
+        }}
+        else {{
             navigator.clipboard.writeText(value);
             return [true, "Configuration copied to clipboard, paste in Polaris"];
-        }
-    }
-    """,
+        }}
+    }}
+"""
+clientside_callback(
+    callback_javascript,
     Output('export-alert', 'is_open'),
     Output('export-alert', 'children'),
-    Input('url-store', 'data'),
+    Input('export-state-of-the-system', 'n_clicks'),
+    [State(id_, 'value') for id_ in export_component_ids],
     prevent_initial_call=True
     )
 

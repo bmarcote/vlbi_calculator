@@ -87,7 +87,3 @@ where = ["src"]
 
 [project.scripts]
 planobs = "vlbiplanobs.cli:cli"
-planobs-server = "vlbiplanobs.gui.main:main"
-planobs-server-real = "vlbiplanobs.gui.main_real:main"
-planobs_fringefinder = "vlbiplanobs.calibrators:main_fringe"
-planobs_phasecal = "vlbiplanobs.calibrators:main_phasecal"

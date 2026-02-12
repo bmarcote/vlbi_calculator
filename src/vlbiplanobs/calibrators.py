@@ -200,7 +200,7 @@ class RFCCatalog:
                 lines = fin.readlines()
             
             valid_lines = [line for line in lines 
-                          if line and line[0] not in '#NU' and len(line) >= 100]
+                          if line and line[0] not in '#U' and len(line) >= 100]
             
             parsed_data = []
             for line in valid_lines:
@@ -216,8 +216,17 @@ class RFCCatalog:
                         flux_values.extend([flux_res, flux_unres])
                     
                     flux_array = np.array(flux_values, dtype=np.float32).reshape(5, 2)
-                    if flux_array[band_idx, 1] < self._min_flux:
-                        continue
+                    # Skip sources with flux below threshold
+                    # For phase calibrator searches (min_flux=0.0), include sources with missing data (-1.0)
+                    # For fringe finder searches (min_flux>0.0), exclude sources with missing data
+                    if self._min_flux > 0:
+                        # Fringe finder mode: exclude missing data and low flux
+                        if flux_array[band_idx, 1] < 0 or flux_array[band_idx, 1] < self._min_flux:
+                            continue
+                    else:
+                        # Phase calibrator mode: include missing data, exclude only low positive flux
+                        if flux_array[band_idx, 1] >= 0 and flux_array[band_idx, 1] < self._min_flux:
+                            continue
                 except (ValueError, IndexError):
                     continue
                 
@@ -256,7 +265,41 @@ class RFCCatalog:
         return len(self._sources)
 
     def get_source(self, name: str) -> Optional[CalibratorSource]:
-        return self._name_index.get(name) or self._ivsname_index.get(name)
+        """Get a source by name, IVS name, or other names.
+        
+        Searches in multiple fields:
+        - Primary name (case-insensitive)
+        - IVS name (case-insensitive) 
+        - Other names/aliases (case-insensitive)
+        """
+        name_upper = name.upper()
+        
+        # First try exact matches (case-insensitive)
+        for source_name, source in self._name_index.items():
+            if source_name.upper() == name_upper:
+                return source
+                
+        for ivs_name, source in self._ivsname_index.items():
+            if ivs_name.upper() == name_upper:
+                return source
+        
+        # Then search in other names
+        for source in self._sources:
+            if source.other_names:
+                for other_name in source.other_names:
+                    if other_name.upper() == name_upper:
+                        return source
+        
+        # Finally, try partial matches (e.g., if name is contained in a longer name)
+        for source_name, source in self._name_index.items():
+            if name_upper in source_name.upper() or source_name.upper() in name_upper:
+                return source
+                
+        for ivs_name, source in self._ivsname_index.items():
+            if name_upper in ivs_name.upper() or ivs_name.upper() in name_upper:
+                return source
+        
+        return None
 
     def calibrators_only(self) -> Self:
         new_catalog = object.__new__(self.__class__)
@@ -313,47 +356,32 @@ def get_fringe_finder_sources(stations: Stations, times: Time,
                            min_flux: u.Quantity = _DEFAULT_MIN_FLUX, 
                            catalog: Optional[RFCCatalog] = None, 
                            require_all_stations: bool = True) -> tuple[list[CalibratorSource], list[float], Optional[list[tuple[int, int, bool, float]]]]:
-    """Find fringe finder sources visible by the given stations.
-    
-    Args:
-        stations: List of observing stations
-        times: Observation times
-        min_elevation: Minimum elevation requirement
-        min_flux: Minimum flux requirement
-        catalog: RFC catalog (created if None)
-        require_all_stations: If True, source must be visible by all stations
-        
-    Returns:
-        Tuple of (sources, minimum_elevations, antenna_visibility) where antenna_visibility is None if require_all_stations is True, otherwise a list of (visible_count, total_count, visible_all_times, min_elev_all_antennas) tuples.
-    """
     if catalog is None:
         catalog = RFCCatalog(min_flux=min_flux, band='c')
     
-    if len(stations.stations) == 0:
+    station_list = stations.stations
+    n_stations = len(station_list)
+    if n_stations == 0:
         return [], [], None
     
-    min_el_deg = min_elevation.to(u.deg).value if hasattr(min_elevation, 'to') else min_elevation
-    
-    # Use all sources without band filtering
+    min_el_deg = float(min_elevation.to(u.deg).value) if hasattr(min_elevation, 'to') else float(min_elevation)
     valid_sources = catalog.sources
     
     if not valid_sources:
         return [], [], None if not require_all_stations else None
     
-    # Pre-compute station list for efficiency
-    station_list = stations.stations
+    # Pre-compute targets and coordinates for vectorized operations
+    n_sources = len(valid_sources)
+    ra_coords = np.array([src.ra_deg for src in valid_sources]) * u.deg
+    dec_coords = np.array([src.dec_deg for src in valid_sources]) * u.deg
+    targets = [FixedTarget(coord.SkyCoord(ra=ra_coords[i], dec=dec_coords[i]), name=valid_sources[i].name) for i in range(n_sources)]
     
     visible_sources = []
     min_elevations = []
     antenna_visibility = [] if not require_all_stations else None
     
-    # Create targets once for all sources
-    targets = [FixedTarget(coord.SkyCoord(ra=src.ra_deg * u.deg, dec=src.dec_deg * u.deg), name=src.name) 
-               for src in valid_sources]
-    
-    # Optimized sequential processing with early exits
-    for src, target in zip(valid_sources, targets):
-        if require_all_stations:
+    if require_all_stations:
+        for src_idx, (src, target) in enumerate(zip(valid_sources, targets)):
             all_visible = True
             src_min_elevs = []
             for station in station_list:
@@ -361,14 +389,16 @@ def get_fringe_finder_sources(stations: Stations, times: Time,
                     all_visible = False
                     break
                 elevations = station.elevation(times, target)
-                if not np.all(elevations.value >= min_el_deg):
+                elev_values = elevations.value
+                if not np.all(elev_values >= min_el_deg):
                     all_visible = False
                     break
-                src_min_elevs.append(np.min(elevations.value))
+                src_min_elevs.append(float(np.min(elev_values)))
             if all_visible:
                 visible_sources.append(src)
-                min_elevations.append(np.min(src_min_elevs))
-        else:
+                min_elevations.append(min(src_min_elevs))
+    else:
+        for src_idx, (src, target) in enumerate(zip(valid_sources, targets)):
             visible_count = 0
             min_elev_for_source = None
             visible_all_times = True
@@ -377,62 +407,46 @@ def get_fringe_finder_sources(stations: Stations, times: Time,
             for station in station_list:
                 if station.is_ever_observable(times, target):
                     elevations = station.elevation(times, target)
-                    if np.any(elevations.value >= min_el_deg):
+                    elev_values = elevations.value
+                    mask = elev_values >= min_el_deg
+                    
+                    if np.any(mask):
                         visible_count += 1
                         if min_elev_for_source is None:
-                            min_elev_for_source = np.min(elevations.value)
+                            min_elev_for_source = float(np.min(elev_values[mask]))
                         
-                        # Check if visible at all times above min elevation
-                        if not np.all(elevations.value >= min_el_deg):
+                        if not np.all(mask):
                             visible_all_times = False
                         
-                        min_elev_all_antennas.append(np.min(elevations.value))
+                        min_elev_all_antennas.append(float(np.min(elev_values)))
             
             if visible_count > 0:
                 visible_sources.append(src)
                 min_elevations.append(min_elev_for_source)
-                min_elev_all = np.min(min_elev_all_antennas) if min_elev_all_antennas else 0.0
-                antenna_visibility.append((visible_count, len(station_list), visible_all_times, min_elev_all))
-    
-    # Sort according to the new algorithm:
-    # 1. Sources visible by all antennas all time
-    # 2. Sources visible by all antennas at some times  
-    # 3. Decrease by number of antennas that can observe the source
-    # 4. For equal number of antennas, group by higher minimum elevation among all antennas
+                antenna_visibility.append((visible_count, n_stations, visible_all_times, 
+                                         float(np.min(min_elev_all_antennas)) if min_elev_all_antennas else 0.0))
     
     if antenna_visibility is not None:
-        # Create sorting key for each source
-        def sort_key(item):
-            src, min_elev, (visible_count, total_count, visible_all_times, min_elev_all) = item
-            
-            # Category 1: visible by all antennas all time
-            if visible_count == total_count and visible_all_times:
-                category = 0
-            # Category 2: visible by all antennas at some times
-            elif visible_count == total_count:
-                category = 1
-            # Category 3: others, sorted by antenna count (descending)
-            else:
-                category = 2
-            
-            # Within category 3, sort by antenna count (descending), then by min elevation (descending)
-            if category == 2:
-                return (category, -visible_count, -min_elev_all)
-            else:
-                return (category, -min_elev_all)
+        n_visible = len(visible_sources)
+        visible_counts = np.array([antenna_visibility[i][0] for i in range(n_visible)])
+        visible_all_times_arr = np.array([antenna_visibility[i][2] for i in range(n_visible)])
+        min_elev_all_arr = np.array([antenna_visibility[i][3] for i in range(n_visible)])
         
-        # Sort together with antenna visibility
-        sorted_data = sorted(zip(visible_sources, min_elevations, antenna_visibility), 
-                            key=sort_key)
-        visible_sources = [x[0] for x in sorted_data]
-        min_elevations = [x[1] for x in sorted_data]
-        antenna_visibility = [x[2] for x in sorted_data]
+        # Create category array: 0=all all time, 1=all some time, 2=partial
+        categories = np.where((visible_counts == n_stations) & visible_all_times_arr, 0,
+                     np.where(visible_counts == n_stations, 1, 2))
+        
+        # Sort using numpy for better performance
+        sort_indices = np.lexsort((-min_elev_all_arr, -visible_counts, categories))
+        
+        visible_sources = [visible_sources[i] for i in sort_indices]
+        min_elevations = [min_elevations[i] for i in sort_indices]
+        antenna_visibility = [antenna_visibility[i] for i in sort_indices]
     else:
-        # For require_all_stations=True, sort by minimum elevation (descending)
-        sorted_data = sorted(zip(visible_sources, min_elevations), 
-                            key=lambda x: x[1], reverse=True)
-        visible_sources = [x[0] for x in sorted_data]
-        min_elevations = [x[1] for x in sorted_data]
+        # Sort by minimum elevation (descending) using numpy
+        sort_indices = np.argsort(-np.array(min_elevations))
+        visible_sources = [visible_sources[i] for i in sort_indices]
+        min_elevations = [min_elevations[i] for i in sort_indices]
     
     return visible_sources, min_elevations, antenna_visibility
 
@@ -476,6 +490,8 @@ def main_fringe():
                         help="Maximum number of sources to return (default: 20).")
     parser.add_argument('--require-all', action='store_true', default=False, 
                         help="Require source to be visible by ALL stations (default: False).")
+    parser.add_argument('-b', '--band', type=str, default=None,
+                        help="Observing band for flux display (e.g., '18cm', '6cm'). If not provided, shows flux for all available bands.")
     parser.add_argument('--station-catalog', type=str, default=None, help="Path to custom station catalog file.")
     parser.add_argument('--json', action='store_true', default=False, 
                         help="Output results in JSON format instead of a table.")
@@ -484,16 +500,39 @@ def main_fringe():
     stations_list = []
     for s in args.stations:
         try:
+            # Try case-sensitive lookup first
             a_station = obs._STATIONS[s.strip()].codename
-            if a_station not in stations_list:
-                stations_list.append(a_station)
         except KeyError:
-            error_msg = f"The station {s} is not known."
-            if args.json:
-                print(json.dumps({"error": error_msg}, indent=2))
-            else:
-                rprint(f"[bold red]{error_msg}[/bold red]")
-            sys.exit(1)
+            try:
+                # Try case-insensitive lookup by searching through all stations
+                s_upper = s.strip().upper()
+                found_station = None
+                for codename in obs._STATIONS.station_codenames:
+                    if codename.upper() == s_upper:
+                        found_station = obs._STATIONS[codename].codename
+                        break
+                
+                if found_station is None:
+                    # Also try full station names (case insensitive)
+                    for name in obs._STATIONS.station_names:
+                        if name.upper() == s_upper:
+                            found_station = obs._STATIONS[name].codename
+                            break
+                
+                if found_station is None:
+                    raise KeyError(f"Station {s} not found")
+                
+                a_station = found_station
+            except KeyError:
+                error_msg = f"The station {s} is not known."
+                if args.json:
+                    print(json.dumps({"error": error_msg}, indent=2))
+                else:
+                    rprint(f"[bold red]{error_msg}[/bold red]")
+                sys.exit(1)
+        
+        if a_station not in stations_list:
+            stations_list.append(a_station)
 
     stations_obj = obs._STATIONS.filter_antennas(stations_list)
     if not stations_obj:
@@ -517,29 +556,60 @@ def main_fringe():
             rprint(f"[bold red]No fringe finder candidates found above {args.min_elevation} degrees elevation and with a unresolved flux above {args.min_flux} Jy.[/bold red]")
         sys.exit(0)
 
+    max_display = min(args.max_lines, len(sources))
+    sources_slice = sources[:max_display]
+    min_elevs_slice = min_elevs[:max_display]
+    
     result_data = []
-    for i, (src, min_elev) in enumerate(zip(sources[:args.max_lines], min_elevs[:args.max_lines])):
-        data = {"name": src.name, "ivs_name": src.ivsname,
-                "min_elevation_deg": min_elev if min_elev > 0.0 else 0,
-                "bands": src.get_observed_bands(),
-                "astrogeo_url": src.get_astrogeo_link()}
-        
-        if antenna_visibility is not None:
+    if antenna_visibility is not None:
+        for i in range(max_display):
+            src = sources_slice[i]
+            min_elev = min_elevs_slice[i]
             visible_count, total_count, visible_all_times, min_elev_all = antenna_visibility[i]
+            
             if visible_count == total_count and visible_all_times:
                 visibility_text = "all ant. all time"
             elif visible_count == total_count:
-                visibility_text = "all ant. some time"
+                visibility_text = "all ant. partial time"
             else:
                 visibility_text = f"{visible_count}/{total_count} ant."
-
-            data["antenna_visibility"] = visibility_text
-        
-        result_data.append(data)
+            
+            # Get flux information for the specified band
+            if args.band:
+                total_flux, unresolved_flux = src.get_flux_at_band(args.band)
+            else:
+                # Use first available band for total flux display
+                total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
+                unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
+            
+            result_data.append({"name": src.name, "ivs_name": src.ivsname,
+                            "min_elevation_deg": min_elev if min_elev > 0.0 else 0,
+                            "total_flux_jy": total_flux, "unresolved_flux_jy": unresolved_flux,
+                            "bands": src.get_observed_bands(),
+                            "astrogeo_url": src.get_astrogeo_link(),
+                            "antenna_visibility": visibility_text})
+    else:
+        for i in range(max_display):
+            src = sources_slice[i]
+            min_elev = min_elevs_slice[i]
+            
+            # Get flux information for the specified band
+            if args.band:
+                total_flux, unresolved_flux = src.get_flux_at_band(args.band)
+            else:
+                # Use first available band for total flux display
+                total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
+                unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
+            
+            result_data.append({"name": src.name, "ivs_name": src.ivsname,
+                            "min_elevation_deg": min_elev if min_elev > 0.0 else 0,
+                            "total_flux_jy": total_flux, "unresolved_flux_jy": unresolved_flux,
+                            "bands": src.get_observed_bands(),
+                            "astrogeo_url": src.get_astrogeo_link()})
     
     result = {"min_elevation_deg": args.min_elevation, "min_flux_jy": args.min_flux,
               "require_all_stations": args.require_all, "sources": result_data,
-              "total_found": len(sources), "shown": min(len(sources), args.max_lines)}
+              "total_found": len(sources), "shown": max_display}
     
     if args.json:
         print(json.dumps(result, indent=2))
@@ -548,17 +618,32 @@ def main_fringe():
                f"{args.min_elevation} degrees elevation and with a unresolved flux above {args.min_flux} Jy:[/bold green]")
         
         table = Table(show_header=True, header_style="bold", show_lines=False, box=box.SIMPLE)
-        table.add_column("Name", style="")
-        table.add_column("IVS Name", style="")
-        table.add_column("Min elev. (deg)", justify="right", style="")
-        table.add_column("Bands", justify="right", style="")
-        table.add_column("url", style="")
+        table.add_column("Name", style="", width=17)
+        table.add_column("IVS Name", style="", width=10)
+        table.add_column("Min elev. (deg)", justify="right", style="", width=10)
+        table.add_column("Total flux (Jy)", justify="right", style="", width=12)
+        table.add_column("Unresolved (Jy)", justify="right", style="", width=13)
+        table.add_column("Bands", justify="right", style="", width=10)
+        table.add_column("url", style="", width=10)
         
         if antenna_visibility is not None:
-            table.add_column("Antenna Visibility", justify="center", style="")
+            table.add_column("Antenna Visibility", justify="center", style="", width=15)
         
-        for i, (src, min_elev) in enumerate(zip(sources[:args.max_lines], min_elevs[:args.max_lines])):
+        for i in range(max_display):
+            src = sources_slice[i]
+            min_elev = min_elevs_slice[i]
+            
+            # Get flux information for the specified band
+            if args.band:
+                total_flux, unresolved_flux = src.get_flux_at_band(args.band)
+            else:
+                # Use first available band for total flux display
+                total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
+                unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
+            
             row = [src.name, src.ivsname, f"{min_elev if min_elev > 0.0 else 0:>6.1f}",
+                   f"{total_flux:>8.2f}" if total_flux > 0 else "N/A",
+                   f"{unresolved_flux:>8.2f}" if unresolved_flux > 0 else "N/A",
                    src.get_observed_bands(), f"[link={src.get_astrogeo_link()}]AstroGeo[/link]"]
             
             if antenna_visibility is not None:
@@ -566,17 +651,16 @@ def main_fringe():
                 if visible_count == total_count and visible_all_times:
                     visibility_text = "all, all time"
                 elif visible_count == total_count:
-                    visibility_text = "all for some time"
+                    visibility_text = "all, partial time"
                 else:
                     visibility_text = f"{visible_count}/{total_count} antennas"
-
                 row.append(visibility_text)
             
             table.add_row(*row)
         
         rprint(table)
-        if len(sources) > args.max_lines:
-            rprint(f"\n... and {len(sources) - args.max_lines} more sources.")
+        if len(sources) > max_display:
+            rprint(f"\n... and {len(sources) - max_display} more sources.")
     sys.exit(0)
 
 
@@ -589,10 +673,12 @@ def main_phasecal():
                         help="Target source name (J2000 or IVS name from RFC catalog).")
     parser.add_argument('--max-separation', type=float, default=5.0, 
                         help="Maximum angular separation in degrees (default: 5.0).")
-    parser.add_argument('--min-flux', type=float, default=0.1, 
+    parser.add_argument('--min-flux', type=float, default=0.0, 
                         help="Minimum unresolved flux threshold in Jy (default: 0.1).")
     parser.add_argument('-n', '--n-sources', type=int, default=None, 
                         help="Maximum number of sources to return (default: all).")
+    parser.add_argument('-b', '--band', type=str, default=None,
+                        help="Observing band for flux display (e.g., '18cm', '6cm'). If not provided, shows flux for all available bands.")
     parser.add_argument('--catalog-file', type=str, default=None, 
                         help="Path to custom RFC catalog file.")
     parser.add_argument('--json', action='store_true', default=False, 
@@ -625,7 +711,16 @@ def main_phasecal():
 
     result_data = []
     for src, sep in nearby:
+        # Get flux information for the specified band
+        if args.band:
+            total_flux, unresolved_flux = src.get_flux_at_band(args.band)
+        else:
+            # Use first available band for total flux display
+            total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
+            unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
+        
         result_data.append({"name": src.name, "ivs_name": src.ivsname, "separation_deg": sep,
+                            "total_flux_jy": total_flux, "unresolved_flux_jy": unresolved_flux,
                             "bands": src.get_observed_bands(), "astrogeo_url": src.get_astrogeo_link()})
     
     result = {"target_name": target.name, "target_coordinates": target.coord.to_string('hmsdms'),
@@ -639,14 +734,27 @@ def main_phasecal():
                f"({target.coord.to_string('hmsdms')}):[/bold green]")
         
         table = Table(show_header=True, header_style="bold", show_lines=False, box=box.SIMPLE)
-        table.add_column("Name", style="")
-        table.add_column("IVS Name", style="")
-        table.add_column("Separation (deg)", justify="right", style="")
+        table.add_column("Name", style="", width=17)
+        table.add_column("IVS Name", style="", width=10)
+        table.add_column("Separation (deg)", justify="right", style="", width=12)
+        table.add_column("Total flux (Jy)", justify="right", style="", width=12)
+        table.add_column("Unresolved (Jy)", justify="right", style="", width=13)
         table.add_column("Bands", justify="right", style="", width=10)
-        table.add_column("url", style="")
+        table.add_column("url", style="", width=10)
         
         for src, sep in nearby:
-            table.add_row(src.name, src.ivsname, f"{sep:.2f}", src.get_observed_bands(),
+            # Get flux information for the specified band
+            if args.band:
+                total_flux, unresolved_flux = src.get_flux_at_band(args.band)
+            else:
+                # Use first available band for total flux display
+                total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
+                unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
+            
+            table.add_row(src.name, src.ivsname, f"{sep:.2f}",
+                          f"{total_flux:>8.2f}" if total_flux > 0 else "N/A",
+                          f"{unresolved_flux:>8.2f}" if unresolved_flux > 0 else "N/A",
+                          src.get_observed_bands(),
                           f"[link={src.get_astrogeo_link()}]AstroGeo[/link]")
         
         rprint(table)

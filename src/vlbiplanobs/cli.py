@@ -6,10 +6,13 @@ import numpy as np
 from astropy import units as u
 from astropy.time import Time
 from rich import print as rprint
+from rich import box
+from rich.table import Table
 from rich_argparse import RawTextRichHelpFormatter
 from vlbiplanobs import stations
 from vlbiplanobs import observation as obs
 from vlbiplanobs import sources
+from vlbiplanobs import calibrators
 from vlbiplanobs import freqsetups
 from vlbiplanobs.gui import plots
 
@@ -312,12 +315,38 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
     if list_stations is not None:
         try:
             for s in list_stations:
-                a_station = obs._STATIONS[s.strip()].codename
+                try:
+                    # Try case-sensitive lookup first
+                    a_station = obs._STATIONS[s.strip()].codename
+                except KeyError:
+                    try:
+                        # Try case-insensitive lookup by searching through all stations
+                        s_upper = s.strip().upper()
+                        found_station = None
+                        for codename in obs._STATIONS.station_codenames:
+                            if codename.upper() == s_upper:
+                                found_station = obs._STATIONS[codename].codename
+                                break
+                        
+                        if found_station is None:
+                            # Also try full station names (case insensitive)
+                            for name in obs._STATIONS.station_names:
+                                if name.upper() == s_upper:
+                                    found_station = obs._STATIONS[name].codename
+                                    break
+                        
+                        if found_station is None:
+                            raise KeyError(f"Station {s} not found")
+                        
+                        a_station = found_station
+                    except KeyError:
+                        rprint(f"[bold red]The station {s} is not known.[/bold red]")
+                        raise ValueError(f"Station ({s}) not known.")
+                
                 if a_station not in stations and band in obs._STATIONS[a_station].bands:
                     stations.append(a_station)
-        except KeyError:
-            rprint(f"[bold red]The station {a_station} is not known.[/bold red]")
-            raise ValueError(f"Station ({a_station}) not known.")
+        except ValueError:
+            raise
 
     dropped_stations = [s for s in stations if band not in obs._STATIONS[s].bands]
     if len(dropped_stations) > 0:
@@ -497,10 +526,125 @@ def main(band: str, networks: Optional[list[str]] = None,
 
 
 def cli():
-    usage = "%(prog)s [-h]  OPTIONS"
-    description = "EVN Observation Planner"
-    parser = argparse.ArgumentParser(description=description, prog="planobs", usage=usage,
-                                     formatter_class=RawTextRichHelpFormatter)
+    """Main CLI entry point with subcommands."""
+    # Check if this is legacy mode (no subcommand provided)
+    if len(sys.argv) == 1:
+        # No arguments - show subcommand help
+        parser = argparse.ArgumentParser(
+            description="EVN Observation Planner\n\n"
+                       "Available modes:\n"
+                       "  planobs [options]              - Plan VLBI observations (default mode)\n"
+                       "  planobs fringefinders [options] - Find fringe finder sources\n"
+                       "  planobs phasecals [options]     - Find phase calibrator sources\n"
+                       "  planobs source [options]        - Get information about a specific source\n"
+                       "  planobs server [options]        - Start the web server\n\n"
+                       "Use 'planobs <command> --help' for detailed help on each mode.",
+            prog="planobs",
+            formatter_class=RawTextRichHelpFormatter
+        )
+        subparsers = parser.add_subparsers(dest='command', help='Available commands')
+        
+        # Add subparsers just for help display
+        obs_parser = subparsers.add_parser('observe', help='Plan VLBI observations (default mode)')
+        fringe_parser = subparsers.add_parser('fringefinders', help='Find fringe finder sources')
+        phase_parser = subparsers.add_parser('phasecals', help='Find phase calibrator sources')
+        server_parser = subparsers.add_parser('server', help='Start the web server')
+        
+        parser.print_help()
+        sys.exit(0)
+    elif len(sys.argv) > 1 and sys.argv[1] not in ['observe', 'fringefinders', 'phasecals', 'source', 'server']:
+        # Legacy mode: treat as observation planning
+        parser = argparse.ArgumentParser(
+            description="EVN Observation Planner\n\n"
+                       "Available modes:\n"
+                       "  planobs [options]              - Plan VLBI observations (default mode)\n"
+                       "  planobs fringefinders [options] - Find fringe finder sources\n"
+                       "  planobs phasecals [options]     - Find phase calibrator sources\n"
+                       "  planobs source [options]        - Get information about a specific source\n"
+                       "  planobs server [options]        - Start the web server\n\n"
+                       "Use 'planobs <command> --help' for detailed help on each mode.",
+            prog="planobs",
+            formatter_class=RawTextRichHelpFormatter
+        )
+        add_observation_arguments(parser)
+        args = parser.parse_args()
+        args.command = 'observe'
+        handle_observation_command(args)
+        return
+    
+    # Subcommand mode
+    parser = argparse.ArgumentParser(
+        description="EVN Observation Planner\n\n"
+                   "Available modes:\n"
+                   "  planobs [options]              - Plan VLBI observations (default mode)\n"
+                   "  planobs fringefinders [options] - Find fringe finder sources\n"
+                   "  planobs phasecals [options]     - Find phase calibrator sources\n"
+                   "  planobs source [options]        - Get information about a specific source\n"
+                   "  planobs server [options]        - Start the web server\n\n"
+                   "Use 'planobs <command> --help' for detailed help on each mode.",
+        prog="planobs",
+        formatter_class=RawTextRichHelpFormatter
+    )
+    
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    
+    # Default observation planner
+    obs_parser = subparsers.add_parser(
+        'observe', 
+        help='Plan VLBI observations (default mode)',
+        formatter_class=RawTextRichHelpFormatter
+    )
+    add_observation_arguments(obs_parser)
+    
+    # Fringe finder subcommand
+    fringe_parser = subparsers.add_parser(
+        'fringefinders',
+        help='Find fringe finder sources for VLBI observations',
+        formatter_class=RawTextRichHelpFormatter
+    )
+    add_fringe_finder_arguments(fringe_parser)
+    
+    # Phase calibrator subcommand
+    phase_parser = subparsers.add_parser(
+        'phasecals',
+        help='Find phase calibrator sources near a target',
+        formatter_class=RawTextRichHelpFormatter
+    )
+    add_phase_cal_arguments(phase_parser)
+    
+    # Source subcommand
+    source_parser = subparsers.add_parser(
+        'source',
+        help='Get information about a specific source',
+        formatter_class=RawTextRichHelpFormatter
+    )
+    add_source_arguments(source_parser)
+    
+    # Server subcommand
+    server_parser = subparsers.add_parser(
+        'server',
+        help='Start the PlanObs web server',
+        formatter_class=RawTextRichHelpFormatter
+    )
+    add_server_arguments(server_parser)
+    
+    args = parser.parse_args()
+    
+    # Route to appropriate handler
+    if args.command == 'observe':
+        handle_observation_command(args)
+    elif args.command == 'fringefinders':
+        handle_fringe_finder_command(args)
+    elif args.command == 'phasecals':
+        handle_phase_cal_command(args)
+    elif args.command == 'source':
+        handle_source_command(args)
+    elif args.command == 'server':
+        handle_server_command(args)
+
+
+def add_observation_arguments(parser):
+    """Add arguments for observation planning."""
     parser.add_argument('-t', '--targets', type=str, default=None, nargs='+',
                         help="Source(s) to be observed. It can be either the coordinates of the source\n"
                         "(in 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs' format), or the name of\n"
@@ -532,14 +676,12 @@ def cli():
     parser.add_argument('-b', '--band', type=str, help="Observing band, as defined "
                         "in the catalogs as 'XXcm', with 'XX' being\nthe wavelegnth in cm. "
                         "[green]See '--list-bands' to get a list.[/green]")
-    # parser.add_argument('', type=, default=, help='')
     parser.add_argument('--list-antennas', action="store_true", default=False,
                         help="Prints the list of all antennas defined in PlanObs.")
     parser.add_argument('--list-networks', action="store_true", default=False,
                         help="Prints the list of all VLBI networks defined in PlanObs.")
     parser.add_argument('--list-bands', action="store_true", default=False,
                         help="Writes the list of all observing bands defined in PlanObs.")
-    # parser.add_argument('', type=, default=, help='')
     parser.add_argument('--sched', default=None, type=str,
                         help="Produces a (SCHED) .key schedule file for "
                         "the observation with the\ngiven name.")
@@ -565,9 +707,65 @@ def cli():
                         help="If set, then it will not show all the output in the terminal as default.")
     parser.add_argument('--debug', action="store_true", default=False,
                         help="If set, shows some debuging messages.")
-    # TODO: add argument, min number of antennas possible
 
-    args = parser.parse_args()
+
+def add_fringe_finder_arguments(parser):
+    """Add arguments for fringe finder search."""
+    # Import the main_fringe function to get its argument parser
+    # We'll recreate the arguments here
+    parser.add_argument('-s', '--stations', type=str, nargs='+', required=True, 
+                        help="List of antenna codenames or names that will participate in the observation.")
+    parser.add_argument('-t', '--starttime', type=str, required=True, 
+                        help="Start of the observation in format 'YYYY-MM-DD HH:MM' (UTC).")
+    parser.add_argument('-d', '--duration', type=float, required=True, help="Duration of the observation in hours.")
+    parser.add_argument('--min-flux', type=float, default=0.5, 
+                        help="Minimum unresolved flux threshold in Jy (default: 0.5).")
+    parser.add_argument('--min-elevation', type=float, default=20.0, 
+                        help="Minimum elevation in degrees (default: 20).")
+    parser.add_argument('-l', '--max-lines', type=int, default=20, 
+                        help="Maximum number of sources to return (default: 20).")
+    parser.add_argument('--require-all', action='store_true', default=False, 
+                        help="Require source to be visible by ALL stations (default: False).")
+    parser.add_argument('-b', '--band', type=str, default=None,
+                        help="Observing band for flux display (e.g., '18cm', '6cm'). If not provided, shows flux for all available bands.")
+    parser.add_argument('--station-catalog', type=str, default=None, help="Path to custom station catalog file.")
+    parser.add_argument('--json', action='store_true', default=False, 
+                        help="Output results in JSON format instead of a table.")
+
+
+def add_phase_cal_arguments(parser):
+    """Add arguments for phase calibrator search."""
+    parser.add_argument('-t', '--target', type=str, required=True, 
+                        help="Target source name (J2000 or IVS name from RFC catalog).")
+    parser.add_argument('--max-separation', type=float, default=5.0, 
+                        help="Maximum angular separation in degrees (default: 5.0).")
+    parser.add_argument('--min-flux', type=float, default=0.1, 
+                        help="Minimum unresolved flux threshold in Jy (default: 0.1).")
+    parser.add_argument('-n', '--n-sources', type=int, default=None, 
+                        help="Maximum number of sources to return (default: all).")
+    parser.add_argument('-b', '--band', type=str, default=None,
+                        help="Observing band for flux display (e.g., '18cm', '6cm'). If not provided, shows flux for all available bands.")
+    parser.add_argument('--catalog-file', type=str, default=None, 
+                        help="Path to custom RFC catalog file.")
+    parser.add_argument('--json', action='store_true', default=False, 
+                        help="Output results in JSON format instead of a table.")
+
+
+def add_source_arguments(parser):
+    """Add arguments for source information lookup."""
+    parser.add_argument('source_name', type=str, 
+                        help="Name of the source to get information about.")
+
+
+def add_server_arguments(parser):
+    """Add arguments for server."""
+    parser.add_argument('--host', type=str, default='127.0.0.1', help="Host address (default: 127.0.0.1)")
+    parser.add_argument('--port', type=int, default=8050, help="Port number (default: 8050)")
+    parser.add_argument('--debug', action='store_true', default=False, help="Enable debug mode")
+
+
+def handle_observation_command(args):
+    """Handle the observation planning command."""
     t0 = dt.now() if args.debug else None
 
     if args.list_networks:
@@ -596,7 +794,6 @@ def cli():
         sys.exit(0)
 
     if args.band is None:
-        parser.print_help()
         rprint("\n\n[bold red]The observing band (-b/--band) and either '--network' and/or "
                "'--stations' are mandatory.[/bold red]")
         exit(1)
@@ -645,7 +842,137 @@ def cli():
 
     if args.debug:
         print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
-    # o.print_baseline_sensitivities()
+
+
+def handle_fringe_finder_command(args):
+    """Handle the fringe finder command."""
+    # Import here to avoid circular imports
+    from . import calibrators
+    
+    # Set up sys.argv for the main_fringe function
+    original_argv = sys.argv.copy()
+    sys.argv = [
+        'planobs_fringefinder',
+        '-s'] + args.stations + [
+        '-t', args.starttime,
+        '-d', str(args.duration)
+    ]
+    
+    if args.min_flux != 0.5:
+        sys.argv.extend(['--min-flux', str(args.min_flux)])
+    if args.min_elevation != 20.0:
+        sys.argv.extend(['--min-elevation', str(args.min_elevation)])
+    if args.max_lines != 20:
+        sys.argv.extend(['-l', str(args.max_lines)])
+    if args.require_all:
+        sys.argv.append('--require-all')
+    if args.band is not None:
+        sys.argv.extend(['-b', args.band])
+    if args.station_catalog is not None:
+        sys.argv.extend(['--station-catalog', args.station_catalog])
+    if args.json:
+        sys.argv.append('--json')
+    
+    try:
+        calibrators.main_fringe()
+    finally:
+        sys.argv = original_argv
+
+
+def handle_phase_cal_command(args):
+    """Handle the phase calibrator command."""
+    # Import here to avoid circular imports
+    from . import calibrators
+    
+    # Set up sys.argv for the main_phasecal function
+    original_argv = sys.argv.copy()
+    sys.argv = [
+        'planobs_phasecal',
+        '-t', args.target
+    ]
+    
+    if args.max_separation != 5.0:
+        sys.argv.extend(['--max-separation', str(args.max_separation)])
+    if args.min_flux != 0.1:
+        sys.argv.extend(['--min-flux', str(args.min_flux)])
+    if args.n_sources is not None:
+        sys.argv.extend(['-n', str(args.n_sources)])
+    if args.band is not None:
+        sys.argv.extend(['-b', args.band])
+    if args.catalog_file is not None:
+        sys.argv.extend(['--catalog-file', args.catalog_file])
+    if args.json:
+        sys.argv.append('--json')
+    
+    try:
+        calibrators.main_phasecal()
+    finally:
+        sys.argv = original_argv
+
+
+def handle_source_command(args):
+    """Handle the source information command."""
+    try:
+        calibrator = calibrators.RFCCatalog(min_flux=0.0).get_source(args.source_name)
+        if calibrator:
+            # Source found in RFC catalog
+            rprint(f"[bold]{calibrator.name}[/bold] (also known as {calibrator.ivsname})")
+            rprint(f"[bold]Coordinates:[/bold] {calibrator.coord.to_string('hmsdms')}")
+            
+            rprint(f"\n[bold green]AstroGeo Information[/bold green]")
+            rprint(f"[bold]Number of Observations:[/bold] {calibrator.n_observations}")
+            bands = ['s', 'c', 'x', 'u', 'k']
+            band_names = {'s': '18/21cm', 'c': '13/6/5cm', 'x': '3.6cm', 'u': '2cm', 'k': '1.3/0.7cm'}
+            table = Table(box=box.SIMPLE)
+            table.add_column("Band", style="cyan", justify="center")
+            table.add_column("Wavelength", style="white", justify="center")
+            table.add_column("Total Flux (Jy)", style="green", justify="right")
+            table.add_column("Unresolved Flux (Jy)", style="yellow", justify="right")
+            for band in bands:
+                total_flux, unresolved_flux = calibrator.get_flux_at_band(band)
+                if total_flux > 0 or unresolved_flux > 0:
+                    table.add_row(band.upper(), band_names[band], f"{total_flux:.2f}", f"{unresolved_flux:.2f}")
+            
+            rprint(table)
+            rprint(f"\n[bold][link={calibrator.get_astrogeo_link()}]AstroGeo Link[/bold]")
+        else:
+            # Source not in RFC catalog, try external services
+            try:
+                source = sources.Source.source_from_str(args.source_name)
+                rprint(f"\n[bold green]Source Information[/bold green]")
+                rprint(f"[bold]Name:[/bold] {source.name}")
+                rprint(f"[bold]Coordinates:[/bold] {source.coord.to_string('hmsdms')}")
+                rprint(f"\n[yellow]Source '{args.source_name}' not found in RFC calibrators catalog[/yellow]")
+            except Exception as e:
+                rprint(f"[bold red]Source '{args.source_name}' not found in RFC catalog or external services[/bold red]")
+                rprint(f"[bold red]Error:[/bold red] {e}")
+                sys.exit(1)
+        
+    except Exception as e:
+        rprint(f"[bold red]Error:[/bold red] {e}")
+        sys.exit(1)
+
+
+def handle_server_command(args):
+    """Handle the server command."""
+    # Import here to avoid circular imports
+    from .gui.main import main
+    
+    # Set up sys.argv for the server
+    original_argv = sys.argv.copy()
+    sys.argv = [
+        'planobs-server',
+        '--host', args.host,
+        '--port', str(args.port)
+    ]
+    
+    if args.debug:
+        sys.argv.append('--debug')
+    
+    try:
+        main()
+    finally:
+        sys.argv = original_argv
 
 
 if __name__ == '__main__':

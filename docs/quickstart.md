@@ -1,112 +1,95 @@
 # Quick Start
 
-Get started with PlanObs in under 5 minutes.
+Get started with PlanObs in under 5 minutes. The `planobs` command provides five modes, each designed for a specific task in the VLBI observation planning workflow.
 
-## Your First Observation
+## Modes Overview
 
-### Using the CLI
+| Mode | Command | Purpose |
+|------|---------|---------|
+| **Observe** | `planobs -b BAND ...` or `planobs observe ...` | Plan a VLBI observation: visibility, sensitivity, scheduling |
+| **Fringe Finders** | `planobs fringefinders ...` | Find bright calibrator sources for fringe detection |
+| **Phase Calibrators** | `planobs phasecals ...` | Find compact calibrators near your target |
+| **Source** | `planobs source <name>` | Look up detailed information about a source |
+| **Server** | `planobs server` | Launch the web-based GUI |
 
-Check when a source is visible with the EVN:
+!!! tip "Legacy syntax"
+    Running `planobs` without a subcommand (e.g. `planobs -b 6cm ...`) is equivalent to `planobs observe -b 6cm ...`. Both forms work.
+
+---
+
+## 1. Observe – Plan a VLBI Observation
+
+Check when a source is visible with the EVN and estimate the expected sensitivity:
 
 ```bash
 planobs -b 6cm -t 'M87' --network EVN
 ```
 
-This will show:
+This prints source visibility per antenna, expected thermal noise, and optimal observing windows.
 
-- Source visibility for each antenna
-- Expected sensitivity (RMS noise)
-- Angular resolution
+:material-arrow-right: **[Full observe reference](mode-observe.md)**
 
-### Specify a Time
+---
 
-Plan an observation at a specific date:
+## 2. Fringe Finders – Find Calibrator Sources
+
+Find bright, compact sources visible by your stations during the observation, suitable for fringe detection:
 
 ```bash
-planobs -b 6cm -t 'Cygnus A' --network EVN --starttime '2025-03-15 08:00' --duration 8
+planobs fringefinders -s Ef Hh Mc Tr -t '2025-03-15 08:00' -d 8 -b 6cm
 ```
 
-### Add More Stations
+Returns a ranked table of candidates with flux densities, elevations, and AstroGeo links.
 
-Combine networks and individual antennas:
+:material-arrow-right: **[Full fringefinders reference](fringefinder.md)**
+
+---
+
+## 3. Phase Calibrators – Find Nearby Calibrators
+
+Search for phase calibrator candidates close to your target:
 
 ```bash
-planobs -b 6cm -t 'M87' --network EVN eMERLIN --stations Ar Ys
+planobs phasecals -t 'M87' -b 6cm
 ```
 
-## Using the GUI
+Returns calibrators within the default 5° separation, sorted by distance.
 
-Launch the web interface:
+:material-arrow-right: **[Full phasecals reference](phasecal.md)**
+
+---
+
+## 4. Source – Look Up Source Information
+
+Retrieve RFC catalog data (flux densities, coordinates, AstroGeo link) for any known source:
 
 ```bash
-planobs-server
+planobs source '3C273'
+```
+
+If the source is not in the RFC catalog, PlanObs resolves it via SIMBAD/NED/VizieR.
+
+:material-arrow-right: **[Full source reference](mode-source.md)**
+
+---
+
+## 5. Server – Launch the Web GUI
+
+Start the interactive web interface (identical to [planobs.jive.eu](https://planobs.jive.eu)):
+
+```bash
+planobs server
 ```
 
 Then open your browser to `http://localhost:8050`.
 
-## Using Python
+:material-arrow-right: **[Full server reference](mode-server.md)**
 
-```python
-from vlbiplanobs import Observation
-from astropy.time import Time
-from astropy import units as u
-
-# Create observation
-obs = Observation()
-obs.band = '6cm'
-obs.times = Time('2025-03-15 08:00') + (range(0, 481, 5) * u.min)
-
-# Add EVN stations
-obs.stations = obs.stations.filter_by_network('EVN')
-
-# Add a target
-obs.add_target('M87')
-
-# View results
-print(obs.sensitivity())
-print(obs.angular_resolution())
-```
-
-## Finding Fringe Finder Sources
-
-Find suitable fringe finder sources for your observation:
-
-```bash
-planobs_fringefinder -s Ef Hh Mc Tr -t '2025-03-15 08:00' -d 8 -b 6cm
-```
-
-This will show:
-
-- Bright calibrator sources visible by all specified stations
-- Flux densities and elevation information
-- Links to detailed source information
-
-## Finding Phase Calibrators
-
-Find phase calibrator sources near your target:
-
-```bash
-planobs_phasecal -t 'M87' -b 6cm --max-separation 5 --min-flux 0.1
-```
-
-This will show:
-
-- Nearby calibrator sources within specified angular separation
-- Flux information at the observing band
-- Separation angles from your target
-
-## Generate a Schedule File
-
-Create a pySCHED-compatible `.key` file:
-
-```bash
-planobs -b 6cm -t 'M87' --network EVN --starttime '2025-03-15 08:00' --duration 8 --sched my_observation
-```
-
-This creates `my_observation.key` ready for pySCHED.
+---
 
 ## Next Steps
 
-- [Tutorial](tutorial.md) – Complete usage guide
-- [CLI Reference](cli.md) – All command-line options
-- [API Reference](api/index.md) – Python API documentation
+- **[Observation Planning](mode-observe.md)** – Complete guide to the observe mode
+- **[Scheduling](scheduling.md)** – Generate pySCHED `.key` files
+- **[CLI Overview](cli.md)** – All modes and common patterns at a glance
+- **[API Reference](api/index.md)** – Python API documentation

@@ -361,13 +361,87 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
     return final_stations
 
 
+def _resolve_calibrators(names: list[str], target: sources.Source, band: str,
+                         source_type: sources.SourceType,
+                         auto_func: str = 'phasecal',
+                         phase_cal_ref: Optional[sources.Source] = None) -> list[sources.Source]:
+    """Resolve calibrator source names or auto-select them from the RFC catalog.
+
+    Parameters
+    ----------
+    names : list[str]
+        Source names to look up.  If empty, auto-selection is used.
+    target : Source
+        The target source (used for proximity search).
+    band : str
+        Observing band (e.g. '6cm').
+    source_type : SourceType
+        Type to assign (PHASECAL or CHECKSOURCE).
+    auto_func : str
+        'phasecal' or 'check' — selects which auto-selection algorithm to use.
+    phase_cal_ref : Source or None
+        Required when auto_func='check'; the already-selected phase calibrator.
+
+    Returns
+    -------
+    list[Source]
+        Resolved Source objects with the given source_type assigned.
+    """
+    resolved: list[sources.Source] = []
+    rfc_band = calibrators._wavelength_to_rfc_band(band)
+    cat = calibrators.RFCCatalog(min_flux=0.0 * u.Jy, band=rfc_band)
+
+    if not names:
+        # Auto-select
+        if auto_func == 'phasecal':
+            rprint("[yellow]No phase calibrator name given — auto-selecting the best candidate. "
+                   "A better source may be found manually via 'planobs phasecals'.[/yellow]")
+            src = calibrators.select_phase_calibrator(target, band, catalog=cat)
+        else:
+            rprint("[yellow]No check source name given — auto-selecting the best candidate. "
+                   "A better source may be found manually via 'planobs phasecals'.[/yellow]")
+            if phase_cal_ref is None:
+                phase_cal_ref = target
+            src = calibrators.select_check_source(target, phase_cal_ref, band, catalog=cat)
+
+        if src is not None:
+            rprint(f"[green]  → Selected {src.name} (sep "
+                   f"{target.coord.separation(src.coord).deg:.2f}°, "
+                   f"unresolved {src.unresolved_flux(rfc_band):.2f} Jy)[/green]")
+            resolved.append(sources.Source(
+                name=src.name, coordinates=src.coord,
+                source_type=source_type, other_names=[src.ivsname]))
+        else:
+            rprint(f"[bold red]Could not auto-select a {source_type.name.lower()} "
+                   f"near {target.name}.[/bold red]")
+    else:
+        for sname in names:
+            rfc_src = cat.get_source(sname)
+            if rfc_src is not None:
+                resolved.append(sources.Source(
+                    name=rfc_src.name, coordinates=rfc_src.coord,
+                    source_type=source_type, other_names=[rfc_src.ivsname]))
+            else:
+                try:
+                    resolved.append(sources.Source.source_from_str(sname, source_type=source_type))
+                except ValueError:
+                    rprint(f"[bold red]Source '{sname}' not found in RFC catalog or external "
+                           f"services — skipping.[/bold red]")
+
+    return resolved
+
+
 def main(band: str, networks: Optional[list[str]] = None,
          stations: Optional[list[str]] = None, station_catalog: Optional[str] = None,
          src_catalog: Optional[str] = None, targets: Optional[list[str]] = None,
          start_time: Optional[Time] = None,
          duration: Optional[u.Quantity] = None, datarate: Optional[u.Quantity] = None,
          ontarget: float = 0.7, subbands: int = 4,
-         channels: int = 64, polarizations: int = 4, inttime: float = 2.0*u.s) -> VLBIObs:
+         channels: int = 64, polarizations: int = 4, inttime: float = 2.0*u.s,
+         phasecal_names: Optional[list[str]] = None,
+         check_source_names: Optional[list[str]] = None,
+         fringefinder_spec: Optional[list[str]] = None,
+         polcal: bool = False) -> VLBIObs:
     """Planner for VLBI observations.
 
     Parameters:
@@ -462,9 +536,45 @@ def main(band: str, networks: Optional[list[str]] = None,
             else:
                 try:
                     a_source = sources.Source.source_from_str(target)
-                    src2observe[a_source.name] = sources.ScanBlock([
-                        sources.Scan(a_source, duration=freqsetups.phaseref_cycle(band)
-                                     if freqsetups.phaseref_cycle(band) is not None else 5*u.min)])
+                    scans_for_block: list[sources.Scan] = []
+
+                    # Resolve phase calibrator(s)
+                    if phasecal_names is not None:
+                        pc_sources = _resolve_calibrators(
+                            phasecal_names, a_source, band,
+                            sources.SourceType.PHASECAL, auto_func='phasecal')
+                        pc_dur = 1.5 * u.min
+                        for pc in pc_sources:
+                            scans_for_block.append(sources.Scan(pc, duration=pc_dur))
+
+                    # Resolve check source(s)
+                    if check_source_names is not None:
+                        # Need a phase cal reference for geometry; use first resolved pc or target
+                        pc_ref = (scans_for_block[0].source
+                                  if scans_for_block else a_source)
+                        cs_sources = _resolve_calibrators(
+                            check_source_names, a_source, band,
+                            sources.SourceType.CHECKSOURCE, auto_func='check',
+                            phase_cal_ref=pc_ref)
+                        cs_dur = 1.5 * u.min
+                        for cs in cs_sources:
+                            scans_for_block.append(
+                                sources.Scan(cs, duration=cs_dur, every=4))
+
+                    # Target scan
+                    target_dur = freqsetups.phaseref_cycle(band)
+                    if target_dur is not None and scans_for_block:
+                        # Subtract phase-cal time from cycle to get target time
+                        pc_time = sum((s.duration for s in scans_for_block
+                                       if s.source.type == sources.SourceType.PHASECAL),
+                                      start=0.0 * u.min)
+                        target_dur = max(target_dur - pc_time, 1.0 * u.min)
+                    elif target_dur is None:
+                        target_dur = 5.0 * u.min
+                    scans_for_block.append(
+                        sources.Scan(a_source, duration=target_dur))
+
+                    src2observe[a_source.name] = sources.ScanBlock(scans_for_block)
                 except ValueError:
                     raise ValueError(f"The source '{target}' is not found in the catalog and could not "
                                      "be resolved (not in SIMBAD/NED/VizieR)")
@@ -543,16 +653,13 @@ def cli():
             formatter_class=RawTextRichHelpFormatter
         )
         subparsers = parser.add_subparsers(dest='command', help='Available commands')
-        
-        # Add subparsers just for help display
-        obs_parser = subparsers.add_parser('observe', help='Plan VLBI observations (default mode)')
-        fringe_parser = subparsers.add_parser('fringefinders', help='Find fringe finder sources')
-        phase_parser = subparsers.add_parser('phasecals', help='Find phase calibrator sources')
-        server_parser = subparsers.add_parser('server', help='Start the web server')
-        
+        subparsers.add_parser('observe', help='Plan VLBI observations (default mode)')
+        subparsers.add_parser('fringefinders', help='Find fringe finder sources')
+        subparsers.add_parser('phasecals', help='Find phase calibrator sources')
+        subparsers.add_parser('server', help='Start the web server')
         parser.print_help()
         sys.exit(0)
-    elif len(sys.argv) > 1 and sys.argv[1] not in ['observe', 'fringefinders', 'phasecals', 'source', 'server']:
+    elif len(sys.argv) > 1 and sys.argv[1] not in ('observe', 'fringefinders', 'phasecals', 'source', 'server'):
         # Legacy mode: treat as observation planning
         parser = argparse.ArgumentParser(
             description="EVN Observation Planner\n\n"
@@ -587,50 +694,29 @@ def cli():
     )
     
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
-    
-    # Default observation planner
-    obs_parser = subparsers.add_parser(
-        'observe', 
-        help='Plan VLBI observations (default mode)',
-        formatter_class=RawTextRichHelpFormatter
-    )
+
+    obs_parser = subparsers.add_parser('observe', help='Plan VLBI observations (default mode)',
+                                       formatter_class=RawTextRichHelpFormatter)
     add_observation_arguments(obs_parser)
-    
-    # Fringe finder subcommand
-    fringe_parser = subparsers.add_parser(
-        'fringefinders',
-        help='Find fringe finder sources for VLBI observations',
-        formatter_class=RawTextRichHelpFormatter
-    )
+
+    fringe_parser = subparsers.add_parser('fringefinders', help='Find fringe finder sources',
+                                          formatter_class=RawTextRichHelpFormatter)
     add_fringe_finder_arguments(fringe_parser)
-    
-    # Phase calibrator subcommand
-    phase_parser = subparsers.add_parser(
-        'phasecals',
-        help='Find phase calibrator sources near a target',
-        formatter_class=RawTextRichHelpFormatter
-    )
+
+    phase_parser = subparsers.add_parser('phasecals', help='Find phase calibrator sources near a target',
+                                         formatter_class=RawTextRichHelpFormatter)
     add_phase_cal_arguments(phase_parser)
-    
-    # Source subcommand
-    source_parser = subparsers.add_parser(
-        'source',
-        help='Get information about a specific source',
-        formatter_class=RawTextRichHelpFormatter
-    )
+
+    source_parser = subparsers.add_parser('source', help='Get information about a specific source',
+                                          formatter_class=RawTextRichHelpFormatter)
     add_source_arguments(source_parser)
-    
-    # Server subcommand
-    server_parser = subparsers.add_parser(
-        'server',
-        help='Start the PlanObs web server',
-        formatter_class=RawTextRichHelpFormatter
-    )
+
+    server_parser = subparsers.add_parser('server', help='Start the PlanObs web server',
+                                          formatter_class=RawTextRichHelpFormatter)
     add_server_arguments(server_parser)
-    
+
     args = parser.parse_args()
-    
-    # Route to appropriate handler
+
     if args.command == 'observe':
         handle_observation_command(args)
     elif args.command == 'fringefinders':
@@ -693,6 +779,14 @@ def add_observation_arguments(parser):
                         "finders, and it will automatically select the most suitable sources.")
     parser.add_argument('--polcal', action="store_true", default=False,
                         help="Requires polarization calibration for the observation.")
+    parser.add_argument('--phasecal', default=None, type=str, nargs='*',
+                        help="Phase calibrator source(s) for the target. If no names are given\n"
+                        "(just --phasecal), the best candidate is picked automatically.\n"
+                        "One or more source names can be provided (RFC J2000 or IVS names).")
+    parser.add_argument('--check-source', default=None, type=str, nargs='*',
+                        help="Check source(s) for the target. If no names are given\n"
+                        "(just --check-source), the best candidate is picked automatically.\n"
+                        "One or more source names can be provided (RFC J2000 or IVS names).")
     parser.add_argument('--pulsar', default=None, type=str,
                         help="Sets to schedule at least a scan on a pulsar source. "
                         "If a number,\nit will select a pulsar from the personal "
@@ -818,13 +912,23 @@ def handle_observation_command(args):
         rprint("[bold yellow]Note that you supressed both GUI and TUI. "
                "No output will be provided.[/bold yellow]")
 
+    # Resolve phasecal / check-source arguments (None = not requested, [] = auto-select)
+    phasecal_arg = getattr(args, 'phasecal', None)
+    check_source_arg = getattr(args, 'check_source', None)
+    fringefinder_arg = getattr(args, 'fringefinders', ['2'])
+    polcal_arg = getattr(args, 'polcal', False)
+
     try:
         o = main(band=args.band, networks=args.network, stations=args.stations,
             src_catalog=args.source_catalog, station_catalog=args.station_catalog,
             targets=args.targets, start_time=Time(args.starttime, scale='utc')
             if args.starttime else None,
             duration=float(args.duration)*u.hour if args.duration is not None else None,
-            datarate=args.data_rate*u.Mbit/u.s if args.data_rate else None)
+            datarate=args.data_rate*u.Mbit/u.s if args.data_rate else None,
+            phasecal_names=phasecal_arg,
+            check_source_names=check_source_arg,
+            fringefinder_spec=fringefinder_arg,
+            polcal=polcal_arg)
     except ValueError as e:
         rprint(f"[bold red]Error: {e}[/bold red]")
         sys.exit(1)
@@ -834,11 +938,17 @@ def handle_observation_command(args):
         o.plot_visibility(args.gui, args.no_tui)
 
     if args.sched is not None:
+        from .scheduler import ObservationScheduler
         key_filename = args.sched if args.sched.endswith('.key') else f"{args.sched}.key"
-        key_content = o.schedule_file(experiment_code=args.sched.replace('.key', '').upper())
+        scheduler = ObservationScheduler(
+            o, fringefinder_spec=fringefinder_arg, polcal=polcal_arg)
+        scheduler.schedule()
+        key_content = scheduler.generate_key_file(
+            experiment_code=args.sched.replace('.key', '').upper())
         with open(key_filename, 'w') as f:
             f.write(key_content)
         rprint(f"[green]Schedule file written to: {key_filename}[/green]")
+        scheduler.print_schedule()
 
     if args.debug:
         print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
@@ -846,18 +956,9 @@ def handle_observation_command(args):
 
 def handle_fringe_finder_command(args):
     """Handle the fringe finder command."""
-    # Import here to avoid circular imports
     from . import calibrators
-    
-    # Set up sys.argv for the main_fringe function
     original_argv = sys.argv.copy()
-    sys.argv = [
-        'planobs_fringefinder',
-        '-s'] + args.stations + [
-        '-t', args.starttime,
-        '-d', str(args.duration)
-    ]
-    
+    sys.argv = ['planobs_fringefinder', '-s'] + args.stations + ['-t', args.starttime, '-d', str(args.duration)]
     if args.min_flux != 0.5:
         sys.argv.extend(['--min-flux', str(args.min_flux)])
     if args.min_elevation != 20.0:
@@ -872,7 +973,6 @@ def handle_fringe_finder_command(args):
         sys.argv.extend(['--station-catalog', args.station_catalog])
     if args.json:
         sys.argv.append('--json')
-    
     try:
         calibrators.main_fringe()
     finally:
@@ -881,16 +981,9 @@ def handle_fringe_finder_command(args):
 
 def handle_phase_cal_command(args):
     """Handle the phase calibrator command."""
-    # Import here to avoid circular imports
     from . import calibrators
-    
-    # Set up sys.argv for the main_phasecal function
     original_argv = sys.argv.copy()
-    sys.argv = [
-        'planobs_phasecal',
-        '-t', args.target
-    ]
-    
+    sys.argv = ['planobs_phasecal', '-t', args.target]
     if args.max_separation != 5.0:
         sys.argv.extend(['--max-separation', str(args.max_separation)])
     if args.min_flux != 0.1:
@@ -903,7 +996,6 @@ def handle_phase_cal_command(args):
         sys.argv.extend(['--catalog-file', args.catalog_file])
     if args.json:
         sys.argv.append('--json')
-    
     try:
         calibrators.main_phasecal()
     finally:
@@ -915,39 +1007,33 @@ def handle_source_command(args):
     try:
         calibrator = calibrators.RFCCatalog(min_flux=0.0).get_source(args.source_name)
         if calibrator:
-            # Source found in RFC catalog
             rprint(f"[bold]{calibrator.name}[/bold] (also known as {calibrator.ivsname})")
             rprint(f"[bold]Coordinates:[/bold] {calibrator.coord.to_string('hmsdms')}")
-            
-            rprint(f"\n[bold green]AstroGeo Information[/bold green]")
+            rprint("\n[bold green]AstroGeo Information[/bold green]")
             rprint(f"[bold]Number of Observations:[/bold] {calibrator.n_observations}")
-            bands = ['s', 'c', 'x', 'u', 'k']
             band_names = {'s': '18/21cm', 'c': '13/6/5cm', 'x': '3.6cm', 'u': '2cm', 'k': '1.3/0.7cm'}
             table = Table(box=box.SIMPLE)
             table.add_column("Band", style="cyan", justify="center")
             table.add_column("Wavelength", style="white", justify="center")
             table.add_column("Total Flux (Jy)", style="green", justify="right")
             table.add_column("Unresolved Flux (Jy)", style="yellow", justify="right")
-            for band in bands:
+            for band in ('s', 'c', 'x', 'u', 'k'):
                 total_flux, unresolved_flux = calibrator.get_flux_at_band(band)
                 if total_flux > 0 or unresolved_flux > 0:
-                    table.add_row(band.upper(), band_names[band], f"{total_flux:.2f}", f"{unresolved_flux:.2f}")
-            
+                    table.add_row(band.upper(), band_names[band], f"{total_flux:.2f}",
+                                  f"{unresolved_flux:.2f}")
             rprint(table)
             rprint(f"\n[bold][link={calibrator.get_astrogeo_link()}]AstroGeo Link[/bold]")
         else:
-            # Source not in RFC catalog, try external services
             try:
                 source = sources.Source.source_from_str(args.source_name)
-                rprint(f"\n[bold green]Source Information[/bold green]")
+                rprint("\n[bold green]Source Information[/bold green]")
                 rprint(f"[bold]Name:[/bold] {source.name}")
                 rprint(f"[bold]Coordinates:[/bold] {source.coord.to_string('hmsdms')}")
-                rprint(f"\n[yellow]Source '{args.source_name}' not found in RFC calibrators catalog[/yellow]")
             except Exception as e:
-                rprint(f"[bold red]Source '{args.source_name}' not found in RFC catalog or external services[/bold red]")
-                rprint(f"[bold red]Error:[/bold red] {e}")
+                rprint(f"[bold red]Source '{args.source_name}' not recognized[/bold red]")
+                rprint(f"[red]Error: Not found in the RFC Catalog and {e} [/red]")
                 sys.exit(1)
-        
     except Exception as e:
         rprint(f"[bold red]Error:[/bold red] {e}")
         sys.exit(1)
@@ -955,24 +1041,8 @@ def handle_source_command(args):
 
 def handle_server_command(args):
     """Handle the server command."""
-    # Import here to avoid circular imports
-    from .gui.main import main
-    
-    # Set up sys.argv for the server
-    original_argv = sys.argv.copy()
-    sys.argv = [
-        'planobs-server',
-        '--host', args.host,
-        '--port', str(args.port)
-    ]
-    
-    if args.debug:
-        sys.argv.append('--debug')
-    
-    try:
-        main()
-    finally:
-        sys.argv = original_argv
+    from .gui.main import main as gui_main
+    gui_main(debug=args.debug, host=args.host, port=args.port)
 
 
 if __name__ == '__main__':

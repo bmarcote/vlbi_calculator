@@ -31,21 +31,17 @@ The **EVN Observation Planner** determines source visibility, estimates sensitiv
 
 ---
 
-## Usage Options
+## CLI Modes
 
-=== "GUI (Web Interface)"
+The `planobs` command is organised into five modes:
 
-    ```bash
-    planobs-server
-    ```
-    Launches a graphical interface identical to the JIVE-hosted version.
-
-=== "CLI (Command Line)"
-
-    ```bash
-    planobs -b 6cm -t 'M87' --network EVN
-    ```
-    Flexible command-line interface for scripting and automation.
+| Mode | Command | Description |
+|------|---------|-------------|
+| **Observe** | `planobs -b 6cm -t 'M87' --network EVN` | Plan a VLBI observation |
+| **Fringe Finders** | `planobs fringefinders -s Ef Hh Mc -t '2025-03-15 08:00' -d 8` | Find bright calibrators for fringe detection |
+| **Phase Calibrators** | `planobs phasecals -t 'M87' -b 6cm` | Find compact calibrators near a target |
+| **Source** | `planobs source '3C273'` | Look up source information |
+| **Server** | `planobs server` | Launch the web GUI |
 
 === "Python API"
 
@@ -66,11 +62,11 @@ The **EVN Observation Planner** determines source visibility, estimates sensitiv
 <div class="grid cards" markdown>
 
 - :material-download: **[Installation](installation.md)** – Get PlanObs running locally
-- :material-rocket-launch: **[Quick Start](quickstart.md)** – Your first observation in 5 minutes
-- :material-book-open: **[Tutorial](tutorial.md)** – Detailed usage guide
-- :material-api: **[API Reference](api/index.md)** – Full Python API documentation
+- :material-rocket-launch: **[Quick Start](quickstart.md)** – All five modes in 5 minutes
+- :material-telescope: **[Observation Planning](mode-observe.md)** – Full observe mode reference
 - :material-satellite-antenna: **[Fringe Finders](fringefinder.md)** – Find bright calibrator sources
 - :material-target-account: **[Phase Calibrators](phasecal.md)** – Find nearby phase calibrators
+- :material-api: **[API Reference](api/index.md)** – Full Python API documentation
 
 </div>
 

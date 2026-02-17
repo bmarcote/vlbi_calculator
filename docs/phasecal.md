@@ -1,173 +1,152 @@
 # Phase Calibrator Sources
 
-The `planobs_phasecal` tool helps you find phase calibrator sources near your target for phase-referenced VLBI observations. Phase calibrators are bright, compact sources used to correct atmospheric and instrumental phase variations.
-
-## Overview
-
-Phase calibrators must be:
-- Close to your target source (typically <10 degrees)
-- Bright enough to detect on short timescales
-- Compact (point-like) to avoid structure phase errors
-- Observable at the same time as your target
+The **phasecals** mode searches the RFC catalog for compact calibrator sources near your target, suitable for phase-referenced VLBI observations. Phase calibrators correct atmospheric and instrumental phase variations.
 
 ## Usage
 
-### Basic Usage
-
 ```bash
-planobs_phasecal -t 'M87' -b 6cm
+planobs phasecals -t TARGET [OPTIONS]
 ```
 
-### Advanced Usage
+### Quick Example
 
 ```bash
-planobs_phasecal -t 'M87' -b 6cm --max-separation 3 --min-flux 0.2 -n 5
+planobs phasecals -t 'M87' -b 6cm
 ```
 
-## Command Line Options
+---
 
-### Required Options
+## Required Options
 
-- `-t, --target`: Target source name
-  - Can be a J2000 coordinate name from the RFC catalog
-  - Can be an IVS name from the RFC catalog
-  - Can be coordinates in various formats (handled by the main planobs tool)
+| Argument | Description |
+|----------|-------------|
+| `-t`, `--target` | Target source name. Accepts J2000 names, IVS names from the RFC catalog, or any name resolvable by SIMBAD/NED/VizieR. |
 
-### Optional Options
+---
 
-- `-b, --band`: Observing band (optional)
-  - Supported bands: '18cm', '21cm', '13cm', '6cm', '5cm', '3.6cm', '2cm', '1.3cm', '0.7cm'
-  - If not provided, the tool searches all bands and shows average fluxes
-  - When provided, shows flux information specific to that band
+## Optional Options
 
-- `--max-separation`: Maximum angular separation in degrees (default: 5.0)
-  - Searches for calibrators within this distance from the target
-  - Smaller values find closer calibrators (better for phase calibration)
-  - Larger values provide more options but may be less optimal
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `-b`, `--band` | all bands | Observing band (e.g. `6cm`, `1.3cm`). When omitted, shows average flux across all bands. |
+| `--max-separation` | `5.0` | Maximum angular separation from the target in degrees. |
+| `--min-flux` | `0.1` | Minimum unresolved flux threshold in Jy. |
+| `-n`, `--n-sources` | all | Maximum number of sources to return (sorted by separation). |
+| `--catalog-file` | built-in | Path to a custom RFC catalog file. |
+| `--json` | off | Output results in JSON format instead of a table. |
 
-- `--min-flux`: Minimum unresolved flux threshold in Jy (default: 0.1)
-  - Higher values return fewer, brighter sources
-  - Lower values return more candidates but may include weaker sources
-  - For high-frequency observations, you may want higher flux thresholds
-
-- `-n, --n-sources`: Maximum number of sources to return (default: all)
-  - Limits output to the top N candidates by separation
-  - Useful when you want to compare a few options
-
-- `--catalog-file`: Path to custom RFC catalog file
-  - Use if you have a modified or updated RFC catalog
-  - Overrides the default catalog included with PlanObs
+---
 
 ## Output
 
-The tool displays a table with the following columns:
+The tool prints a table with the following columns:
 
-- **Name**: Source name from the RFC catalog
-- **IVS Name**: International VLBI Service name
-- **Separation (deg)**: Angular separation from the target source
-- **Total Flux (Jy)**: Total flux density at the observing band
-- **Unresolved (Jy)**: Unresolved flux density (most relevant for phase calibration)
-- **Bands**: Bands where the source has been observed
-- **url**: Link to AstroGeo database for detailed information
+- **Name** – source name from the RFC catalog.
+- **IVS Name** – International VLBI Service name.
+- **Separation (deg)** – angular distance from the target.
+- **Total Flux (Jy)** – total flux density at the observing band.
+- **Unresolved (Jy)** – unresolved flux density (most relevant for phase calibration).
+- **Bands** – bands where the source has been observed.
+- **url** – link to the AstroGeo database page.
+
+When `--json` is used, the same data is printed as a JSON array.
+
+---
 
 ## Examples
 
-### Example 1: Basic Phase Calibrator Search
+### Basic search at 6 cm
 
 ```bash
-planobs_phasecal -t 'M87' -b 6cm
+planobs phasecals -t 'M87' -b 6cm
 ```
 
-This finds all phase calibrator candidates within 5 degrees of M87 at 6cm wavelength.
+Finds all calibrator candidates within 5° of M87 at 6 cm.
 
-### Example 2: Tight Separation Constraint
+### Tight separation constraint
 
 ```bash
-planobs_phasecal -t 'M87' -b 6cm --max-separation 2 --min-flux 0.2
+planobs phasecals -t 'M87' -b 6cm --max-separation 2 --min-flux 0.2
 ```
 
-This finds calibrators within 2 degrees of M87 that have at least 0.2 Jy unresolved flux.
+Calibrators within 2° with ≥ 0.2 Jy unresolved flux.
 
-### Example 3: Multiple Band Search
+### All-band search, top 10
 
 ```bash
-planobs_phasecal -t '3C273' --max-separation 10 -n 10
+planobs phasecals -t '3C273' --max-separation 10 -n 10
 ```
 
-This searches all bands for calibrators within 10 degrees of 3C273 and returns the top 10 closest candidates.
+Searches all bands for calibrators within 10° of 3C273, returns the 10 closest.
 
-### Example 4: High Frequency Requirements
+### High-frequency observation
 
 ```bash
-planobs_phasecal -t 'NGC 4258' -b 1.3cm --max-separation 3 --min-flux 0.5
+planobs phasecals -t 'NGC 4258' -b 1.3cm --max-separation 3 --min-flux 0.5
 ```
 
-This finds calibrators for a 1.3cm observation with stricter flux requirements suitable for high-frequency work.
+Stricter flux requirements for a 1.3 cm observation.
 
-## Phase Referencing Considerations
+### JSON output for scripting
 
-### Separation Distance
+```bash
+planobs phasecals -t 'M87' -b 6cm --json
+```
 
-- **< 1 degree**: Excellent for phase calibration, minimal phase decorrelation
-- **1-3 degrees**: Good, commonly used range
-- **3-5 degrees**: Acceptable for lower frequencies
-- **> 5 degrees**: May have significant phase decorrelation, especially at high frequencies
+---
 
-### Flux Requirements
+## Phase Referencing Guidelines
 
-- **Low frequencies (≥ 6cm)**: 0.1-0.2 Jy typically sufficient
-- **Mid frequencies (3-6cm)**: 0.2-0.5 Jy recommended
-- **High frequencies (≤ 2cm)**: 0.5-1.0+ Jy often needed
+### Separation distance
 
-### Source Structure
+| Separation | Quality |
+|------------|---------|
+| < 1° | Excellent — minimal phase decorrelation |
+| 1–3° | Good — commonly used range |
+| 3–5° | Acceptable at lower frequencies |
+| > 5° | Risk of significant decorrelation, especially at high frequencies |
 
-- **Unresolved/Total flux ratio**: Higher ratios indicate more compact sources
-- **Avoid extended sources**: Structure can introduce phase errors
-- **Check AstroGeo links**: Look for information on source structure
+### Flux requirements by frequency
 
-## Tips for Good Phase Calibrators
+| Frequency range | Recommended minimum flux |
+|-----------------|--------------------------|
+| ≥ 6 cm | 0.1–0.2 Jy |
+| 3–6 cm | 0.2–0.5 Jy |
+| ≤ 2 cm | 0.5–1.0+ Jy |
 
-1. **Proximity**: Choose the closest suitable calibrator
-2. **Flux**: Ensure sufficient flux for your observing band and sensitivity
-3. **Compactness**: Prefer sources with high unresolved/total flux ratios
-4. **Elevation**: Consider calibrator elevation during your observation
-5. **Multiple options**: Identify backup calibrators in case of issues
+### Source compactness
+
+A high **unresolved/total flux ratio** indicates a compact source. Extended structure introduces phase errors — always check the AstroGeo link for source maps.
+
+---
+
+## Tips
+
+1. **Proximity** – choose the closest suitable calibrator.
+2. **Flux** – ensure sufficient flux for your band and integration time.
+3. **Compactness** – prefer high unresolved/total flux ratios.
+4. **Elevation** – consider the calibrator elevation during your observation.
+5. **Backup** – identify at least one backup calibrator.
+
+---
 
 ## Troubleshooting
 
-### No Sources Found
+**No sources found** – increase `--max-separation`, lower `--min-flux`, or verify the target name.
 
-If no sources are returned, try:
+**Target not found** – check spelling, try coordinates, or verify with `planobs source <name>`.
 
-- Increasing the `--max-separation` distance
-- Lowering the `--min-flux` threshold
-- Checking if the target name is correct
-- Trying a different observing band
+**Too many weak sources** – increase `--min-flux`, reduce `--max-separation`, or use `-n` to limit output.
 
-### Target Not Found
+---
 
-If the target source is not recognized:
+## Integration with Observation Planning
 
-- Verify the target name spelling
-- Try using coordinates instead of a name
-- Check if the target is in the RFC catalog
-- Use the main `planobs` tool to verify target coordinates
+Once you have identified calibrators, add them to your source catalog file and include them in the observation plan:
 
-### Too Many Weak Sources
+```bash
+planobs -b 6cm --source-catalog my_sources.toml --network EVN \
+  --starttime '2025-06-15 08:00' --duration 8
+```
 
-If you get many sources but they're all weak:
-
-- Increase the `--min-flux` threshold
-- Reduce the `--max-separation` distance
-- Use the `-n` option to limit output to the best candidates
-
-## Integration with Observations
-
-Once you've identified suitable phase calibrators, you can:
-
-1. **Add to source catalog**: Include them in your source catalog file
-2. **Plan switching times**: Calculate slewing times between target and calibrators
-3. **Design scan strategy**: Plan calibrator scans throughout your observation
-4. **Verify with main tool**: Use the main `planobs` tool to verify visibility
-
-The phase calibrator information integrates seamlessly with the main PlanObs workflow for complete observation planning.
+PlanObs automatically computes phase-referencing cycle times based on the observing band.

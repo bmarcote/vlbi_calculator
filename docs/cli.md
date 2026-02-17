@@ -1,110 +1,103 @@
 # CLI Reference
 
-Complete reference for the `planobs` command-line interface.
+The `planobs` command-line interface is organised into **modes** (subcommands). Each mode addresses a specific task in the VLBI observation planning workflow.
 
-## Basic Usage
+## Modes at a Glance
 
-```bash
-planobs -b BAND [OPTIONS]
-```
+| Command | Purpose | Key arguments |
+|---------|---------|---------------|
+| `planobs [observe]` | Plan a VLBI observation | `-b BAND`, `-t TARGET`, `-n NETWORK` |
+| `planobs fringefinders` | Find fringe finder sources | `-s STATIONS`, `-t STARTTIME`, `-d DURATION` |
+| `planobs phasecals` | Find phase calibrator sources | `-t TARGET` |
+| `planobs source` | Look up source information | `<source_name>` |
+| `planobs server` | Launch the web GUI | `--host`, `--port` |
 
-## Required Arguments
+!!! tip "Legacy syntax"
+    Running `planobs -b 6cm ...` (without a subcommand) is equivalent to `planobs observe -b 6cm ...`.
 
-| Argument | Description |
-|----------|-------------|
-| `-b`, `--band` | Observing band (e.g., `6cm`, `18cm`, `1.3cm`) |
+---
 
-## Source Options
+## Quick Examples
 
-| Argument | Description |
-|----------|-------------|
-| `-t`, `--targets` | Source name(s) or coordinates. Resolves via SIMBAD/NED |
-| `-sc`, `--source-catalog` | Path to custom source catalog file |
-
-## Station Options
-
-| Argument | Description |
-|----------|-------------|
-| `-n`, `--network` | VLBI network(s): `EVN`, `eMERLIN`, `VLBA`, `LBA`, etc. |
-| `-s`, `--stations` | Individual station codes (e.g., `Ef`, `Wb`, `Jb`) |
-| `--station-catalog` | Path to custom station catalog file |
-
-## Time Options
-
-| Argument | Description |
-|----------|-------------|
-| `-t1`, `--starttime` | Observation start: `'YYYY-MM-DD HH:MM'` (UTC) |
-| `-d`, `--duration` | Observation duration in hours |
-
-## Scheduling Options
-
-| Argument | Description |
-|----------|-------------|
-| `--sched` | Generate pySCHED `.key` file with given name |
-| `--fringefinders` | Fringe finder sources or count (default: `2`) |
-| `--polcal` | Include polarization calibration |
-| `--pulsar` | Include pulsar source |
-
-## Output Options
-
-| Argument | Description |
-|----------|-------------|
-| `--data-rate` | Maximum data rate in Mb/s |
-| `--gui` | Show plots in browser |
-| `--no-tui` | Suppress terminal output |
-| `--debug` | Show debug messages |
-
-## Information Commands
-
-| Argument | Description |
-|----------|-------------|
-| `--list-antennas` | List all available antennas |
-| `--list-networks` | List all VLBI networks |
-| `--list-bands` | List all observing bands |
-
-## Examples
-
-### Basic Visibility Check
+### Plan an observation
 
 ```bash
 planobs -b 6cm -t 'M87' --network EVN
 ```
 
-### Full Observation Planning
+### Find fringe finders
 
 ```bash
-planobs -b 6cm \
-  -t 'Cygnus A' \
-  --network EVN eMERLIN \
-  --starttime '2025-06-15 08:00' \
-  --duration 12 \
-  --data-rate 2048
+planobs fringefinders -s Ef Hh Mc Tr -t '2025-03-15 08:00' -d 8 -b 6cm
 ```
 
-### Generate Schedule File
+### Find phase calibrators
 
 ```bash
-planobs -b 6cm \
-  -t 'M87' \
-  --network EVN \
-  --starttime '2025-03-15 08:00' \
-  --duration 8 \
-  --sched eg123a
+planobs phasecals -t 'M87' -b 6cm
 ```
 
-### Use Custom Catalogs
+### Look up a source
 
 ```bash
-planobs -b 6cm \
-  --source-catalog my_sources.inp \
-  --station-catalog my_stations.inp \
-  -t 'MyTarget'
+planobs source '3C273'
 ```
 
-### List Available Resources
+### Start the web server
 
 ```bash
-planobs --list-networks
-planobs --list-antennas
-planobs --list-bands
+planobs server
 ```
+
+---
+
+## Detailed Mode References
+
+Each mode has its own dedicated documentation page with full argument tables, output descriptions, and worked examples:
+
+- **[Observation Planning](mode-observe.md)** – `planobs [observe]`
+- **[Fringe Finders](fringefinder.md)** – `planobs fringefinders`
+- **[Phase Calibrators](phasecal.md)** – `planobs phasecals`
+- **[Source Lookup](mode-source.md)** – `planobs source`
+- **[Web Server](mode-server.md)** – `planobs server`
+
+---
+
+## Common Patterns
+
+### List available resources
+
+These flags work in the default (observe) mode and print reference data:
+
+```bash
+planobs --list-networks   # all known VLBI networks
+planobs --list-antennas   # all antennas with bands and locations
+planobs --list-bands      # all observing bands and supporting networks
+```
+
+### Custom catalogs
+
+Both the observe and fringefinders modes accept custom catalogs:
+
+```bash
+planobs -b 6cm --source-catalog my_sources.toml --station-catalog my_stations.inp \
+  -t MyTarget --network EVN
+```
+
+### JSON output
+
+The fringefinders and phasecals modes support `--json` for machine-readable output:
+
+```bash
+planobs fringefinders -s Ef Hh Mc Tr -t '2025-03-15 08:00' -d 8 -b 6cm --json
+planobs phasecals -t 'M87' -b 6cm --json
+```
+
+### Generate a schedule file
+
+```bash
+planobs -b 6cm -t 'M87' --network EVN \
+  --starttime '2025-03-15 08:00' --duration 8 --sched eg123a
+```
+
+See **[Scheduling](scheduling.md)** for details on the `.key` file format.

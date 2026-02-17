@@ -941,7 +941,7 @@ class Observation(object):
             min_temp = -1
             for a_bl, uv in src_uv.items():
                 if len(uv) > 0:
-                    bl_length = np.sqrt(np.min((uv**2).sum(axis=1)))
+                    bl_length = np.sqrt(np.max((uv**2).sum(axis=1)))
                     if bl_length < min_temp or min_temp < 0:
                         shortest_bl[src] = (a_bl, (bl_length*self.wavelength).to(u.km))
                         min_temp = bl_length

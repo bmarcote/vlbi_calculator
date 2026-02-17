@@ -584,8 +584,10 @@ def plot_elevations(o: Optional[cli.VLBIObs] = None) -> html.Div:
         Card containing elevation plots and observability info.
     """
     return card([html.Div(className='card-header pb-0', children=html.H5('Source Elevation')),
-                 dcc.Graph(id='fig-elevations', figure=plots.elevation_plot(o)),
-                 dcc.Graph(id='fig-elevations2', figure=plots.elevation_plot_curves(o)),
+                 dcc.Loading(dcc.Graph(id='fig-elevations', figure=plots.elevation_plot(o)),
+                             type='circle', color='#004990'),
+                 dcc.Loading(dcc.Graph(id='fig-elevations2', figure=plots.elevation_plot_curves(o)),
+                             type='circle', color='#004990'),
                  html.Div(print_observability_ranges(o), id='out-elevations-info')])
 
 
@@ -667,7 +669,9 @@ def plot_uv_coverage(o: Optional[cli.VLBIObs] = None) -> html.Div:
         and baseline length information.
     """
     return card([html.Div(className='card-header pb-0', children=html.H5('(u, v) Coverage')),
-                 dcc.Graph(id='fig-uv-coverage', figure=plots.uvplot(o)), html.P(""),
+                 dcc.Loading(dcc.Graph(id='fig-uv-coverage', figure=plots.uvplot(o)),
+                             type='circle', color='#004990'),
+                 html.P(""),
                  html.Label("Highlight antennas:", id='select-ant-uv-label',
                             htmlFor='select-ant-uv-plot'),
                  dcc.Dropdown(multi=True, id="select-antenna-uv-plot",
@@ -758,10 +762,12 @@ def plot_worldmap(o: Optional[cli.VLBIObs] = None) -> html.Div:
         Card containing world map plot.
     """
     return card(html.Div(className='justify-content-center',
-                         children=[dcc.Graph(figure=plots.plot_worldmap_stations(o),
-                                             id='fig-worldmap',
-                                             config={'showLink': False,
-                                                     'displaylogo': False}),
+                         children=[dcc.Loading(
+                                       dcc.Graph(figure=plots.plot_worldmap_stations(o),
+                                                 id='fig-worldmap',
+                                                 config={'showLink': False,
+                                                         'displaylogo': False}),
+                                       type='circle', color='#004990'),
                                    html.P("")]))
 
 

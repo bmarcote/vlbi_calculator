@@ -403,6 +403,205 @@ def uvplot(o, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure
     return fig
 
 
+def serialize_elevation_data(o) -> Optional[dict]:
+    """Serialize elevation/observability data for deferred plot rendering.
+
+    Returns a JSON-serializable dict with all data needed by elevation_plot_from_data
+    and elevation_curves_from_data. Returns None if no scans.
+    """
+    if o is None or not o.scans:
+        return None
+
+    srcup = o.is_observable()
+    elevs = o.elevations()
+    times_iso = [t.isoformat() for t in o.times.datetime]
+    fixed_time = o.fixed_time
+    gstimes_hours = [float(g.hour) for g in o.gstimes] if hasattr(o, 'gstimes') else []
+    first_date_iso = o.times.datetime[0].date().isoformat()
+
+    blocks = {}
+    for src_block in srcup:
+        ant_names = list(srcup[src_block].keys())
+        targets = o.scans[src_block].sources(sources.SourceType.TARGET)
+        target_name = targets[0].name if targets else o.scans[src_block].sources()[0].name
+
+        observability = {}
+        elevation_vals = {}
+        for ant in ant_names:
+            observability[ant] = [bool(v) for v in srcup[src_block][ant]]
+            elev_arr = elevs[target_name][ant].value
+            elevation_vals[ant] = [float(v) for v in elev_arr]
+
+        blocks[src_block] = {
+            'ant_names': ant_names,
+            'observability': observability,
+            'elevations': elevation_vals,
+        }
+
+    station_info = {ant.codename: {'name': ant.name, 'codename': ant.codename} for ant in o.stations}
+
+    return {
+        'times_iso': times_iso,
+        'fixed_time': fixed_time,
+        'gstimes_hours': gstimes_hours,
+        'first_date_iso': first_date_iso,
+        'blocks': blocks,
+        'station_info': station_info,
+    }
+
+
+def _get_axis_config_from_data(data: dict) -> dict:
+    """Build axis config from serialized elevation data."""
+    times = [datetime.fromisoformat(t) for t in data['times_iso']]
+    time_range = [times[0], times[-1]]
+    if data['fixed_time']:
+        return {'xaxis_range': time_range, 'xaxis_title': 'Time (UTC)'}
+    else:
+        return {'xaxis_range': time_range, 'xaxis_title': 'Time (GST)'}
+
+
+def elevation_plot_from_data(data: dict, show_colorbar: bool = False) -> Optional[go.Figure]:
+    """Render the heatmap elevation plot from serialized data (no obs object needed)."""
+    if data is None:
+        return None
+
+    times = [datetime.fromisoformat(t) for t in data['times_iso']]
+    n_times = len(times)
+    blocks = data['blocks']
+
+    fig = make_subplots(rows=min(len(blocks), 4), cols=len(blocks) // 4 + 1,
+                        subplot_titles=[f"Elevations for {sb}" for sb in blocks] if len(blocks) > 1 else '')
+
+    for src_i, (src_block, bdata) in enumerate(blocks.items()):
+        ant_names = bdata['ant_names']
+        n_ants = len(ant_names)
+        z_matrix = np.full((n_ants, n_times), np.nan)
+        for anti, ant in enumerate(ant_names):
+            vis = np.array(bdata['observability'][ant], dtype=bool)
+            elev = np.array(bdata['elevations'][ant])
+            z_matrix[n_ants - 1 - anti, vis] = elev[vis]
+
+        station_info = data['station_info']
+        hover_text = [[f"<b>{station_info[ant_names[n_ants-1-ai]]['name']}</b><br>"
+                       f"Elevation: {z_matrix[ai, ti]:.0f}º<br>"
+                       f"Time: {times[ti].strftime('%H:%M')}"
+                       if not np.isnan(z_matrix[ai, ti]) else ""
+                       for ti in range(n_times)] for ai in range(n_ants)]
+
+        fig.add_trace(go.Heatmap(x=times, y=list(range(1, n_ants + 1)), z=z_matrix,
+                                  colorscale='Viridis', zmin=5, zmax=90, showscale=show_colorbar,
+                                  hoverinfo='text', text=hover_text, xgap=0, ygap=1),
+                      row=src_i % 4 + 1, col=src_i // 4 + 1)
+
+    axis_cfg = _get_axis_config_from_data(data)
+    fig.update_layout(
+        showlegend=False, hovermode='closest', xaxis_title=axis_cfg['xaxis_title'],
+        yaxis_title="Antennas", title='', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
+                   mirror='allticks', ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
+                   showgrid=False, zeroline=False,
+                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
+        yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
+                   tickmode='array', tickvals=list(range(1, n_ants + 1)), ticktext=list(reversed(ant_names)),
+                   showgrid=False, zeroline=False,
+                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
+        margin=dict(l=2, r=2, t=45, b=0))
+    return fig
+
+
+def elevation_curves_from_data(data: dict) -> Optional[go.Figure]:
+    """Render the elevation curves plot from serialized data (no obs object needed)."""
+    if data is None:
+        return None
+
+    times = [datetime.fromisoformat(t) for t in data['times_iso']]
+    n_times = len(times)
+    blocks = data['blocks']
+
+    fig = make_subplots()
+    fig.add_shape(type="rect", xref="paper", yref="y", x0=0, y0=0, x1=1, y1=20,
+                  fillcolor="gray", opacity=0.2, layer="below", line_width=0)
+    fig.add_shape(type="rect", xref="paper", yref="y", x0=0, y0=0, x1=1, y1=10,
+                  fillcolor="gray", opacity=0.2, layer="below", line_width=0)
+
+    station_info = data['station_info']
+    for src_block, bdata in blocks.items():
+        for ant in bdata['ant_names']:
+            vis = np.array(bdata['observability'][ant], dtype=bool)
+            y = np.full(n_times, None, dtype=float)
+            y[vis] = np.array(bdata['elevations'][ant])[vis]
+            sinfo = station_info[ant]
+            fig.add_trace(go.Scatter(
+                x=times, y=y, mode='lines', connectgaps=False, hoverinfo='none',
+                hovertemplate=f"<b>{sinfo['name']} ({sinfo['codename']})</b><br><b>Time</b>: %{{x}}",
+                name=sinfo['name']))
+
+    axis_cfg = _get_axis_config_from_data(data)
+    fig.update_layout(
+        showlegend=True, hovermode='closest', xaxis_title=axis_cfg['xaxis_title'],
+        yaxis_title="Elevation (degrees)", title='', paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
+                   mirror='allticks', ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
+                   showgrid=False, zeroline=False,
+                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
+        yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
+                   tickmode='auto', range=[0, 90], showgrid=False, zeroline=False,
+                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
+        margin=dict(l=2, r=2, t=45, b=0),
+        legend=dict(x=0.01, y=0.99, xanchor='left', yanchor='top', bgcolor='rgba(255, 255, 255, 0.7)',
+                    bordercolor='rgba(0, 0, 0, 0.3)', borderwidth=1))
+    return fig
+
+
+def serialize_worldmap_data(o) -> Optional[dict]:
+    """Serialize station location/observability data for deferred worldmap rendering.
+
+    Returns a JSON-serializable dict with all data needed by worldmap_from_data.
+    """
+    if o is None:
+        return None
+
+    try:
+        ant_observes = o.can_be_observed()[list(o.can_be_observed().keys())[0]]
+    except (ValueError, IndexError):
+        ant_observes = {ant.codename: True for ant in o.stations}
+
+    stations = []
+    for ant in o.stations:
+        stations.append({
+            'lat': float(ant.location.lat.value),
+            'lon': float(ant.location.lon.value),
+            'name': ant.name,
+            'country': ant.country,
+            'diameter': ant.diameter,
+            'observes': bool(ant_observes[ant.codename]),
+        })
+    return {'stations': stations}
+
+
+def worldmap_from_data(data: dict) -> Optional[go.Figure]:
+    """Render the worldmap from serialized data (no obs object needed)."""
+    if data is None:
+        return None
+
+    stations = data['stations']
+    lats = [s['lat'] for s in stations]
+    lons = [s['lon'] for s in stations]
+    colors = ['#a01d26' if s['observes'] else '#EAB308' for s in stations]
+    hovertemplates = [f"{s['name']}<br>({s['country']})<br> {s['diameter']}<extra></extra>" for s in stations]
+    avg_lon = np.mean(lons)
+
+    fig = go.Figure(go.Scattergeo(lon=lons, lat=lats, mode='markers',
+                                   marker=dict(size=10, color=colors), hovertemplate=hovertemplates))
+    fig.update_geos(projection_type='orthographic', showland=True, landcolor='#9DB7C4',
+                    projection_rotation=dict(lon=avg_lon, lat=0), bgcolor='rgba(0,0,0,0)')
+    fig.update_layout(autosize=True, hovermode='closest', showlegend=False,
+                      margin={'l': 0, 't': 0, 'b': 0, 'r': 0},
+                      paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+    return fig
+
+
 def plot_worldmap_stations(o) -> Optional[go.Figure]:
     if o is None:
         return None

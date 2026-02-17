@@ -255,8 +255,6 @@ class TestGetNearbySources:
         nearby = calibrators.get_nearby_sources(
             reference_source,
             max_separation=2 * u.deg,
-            min_unresolved_flux=0.0,
-            band='c',
             catalog=sample_catalog
         )
         # Should find 2 nearby sources (within 2 degrees, excluding reference)
@@ -268,25 +266,21 @@ class TestGetNearbySources:
         assert "J1230+5500" not in names
 
     def test_nearby_sources_flux_filter(self, reference_source, sample_catalog):
-        """Test nearby sources with flux filtering."""
+        """Test nearby sources with flux filtering (post-filter by caller)."""
         nearby = calibrators.get_nearby_sources(
             reference_source,
             max_separation=2 * u.deg,
-            min_unresolved_flux=3.0,  # Only sources with > 3 Jy
-            band='c',
             catalog=sample_catalog
         )
-        # Only nearby1 has 4.0 Jy, nearby2 (J1230+4600) has 2.0 Jy
-        assert len(nearby) == 1
-        assert nearby[0][0].name == "J1230+4501"
+        # Flux filtering is now the caller's responsibility; we just check structure
+        assert len(nearby) == 2
+        assert all(isinstance(s, calibrators.CalibratorSource) for s, _ in nearby)
 
     def test_nearby_sources_separation_filter(self, reference_source, sample_catalog):
         """Test nearby sources with separation filtering."""
         nearby = calibrators.get_nearby_sources(
             reference_source,
             max_separation=10 * u.arcmin,  # Very small radius
-            min_unresolved_flux=0.0,
-            band='c',
             catalog=sample_catalog
         )
         # Only nearby1 (~2 arcmin away) should be found
@@ -298,8 +292,6 @@ class TestGetNearbySources:
         nearby = calibrators.get_nearby_sources(
             reference_source,
             max_separation=2 * u.deg,
-            min_unresolved_flux=0.0,
-            band='c',
             catalog=sample_catalog
         )
         # Should be sorted closest first
@@ -312,23 +304,18 @@ class TestGetNearbySources:
         nearby = calibrators.get_nearby_sources(
             reference_source,
             max_separation=2 * u.deg,
-            min_unresolved_flux=0.0,
-            band='c',
             catalog=sample_catalog,
             n_sources=1
         )
         assert len(nearby) == 1
 
     def test_nearby_sources_no_band(self, reference_source, sample_catalog):
-        """Test nearby sources without specifying a band."""
+        """Test nearby sources returns correct count."""
         nearby = calibrators.get_nearby_sources(
             reference_source,
             max_separation=2 * u.deg,
-            min_unresolved_flux=0.0,
-            band=None,  # Check all bands
             catalog=sample_catalog
         )
-        # Should still work, checking all available bands
         # With max_separation=2 deg: nearby1 and nearby2 are included, far (10 deg) is excluded
         assert len(nearby) == 2
 
@@ -354,61 +341,52 @@ class TestGetFringeFinderSources:
     def test_fringe_finder_no_stations(self, sample_times):
         """Test with empty stations list."""
         empty_stations = sts.Stations(stations=[])
-        result = calibrators.get_fringe_finder_sources(
-            empty_stations, sample_times, band='c', min_flux=5.0 * u.Jy
+        sources, min_elevs, ant_vis = calibrators.get_fringe_finder_sources(
+            empty_stations, sample_times, min_flux=5.0 * u.Jy
         )
-        # Should return empty tuple when no stations
-        assert result == ([], [])
+        assert sources == []
+        assert min_elevs == []
 
     def test_fringe_finder_single_station(self, single_station, sample_times):
         """Test fringe finder with a single station."""
         stations = sts.Stations(stations=[single_station])
-        result = calibrators.get_fringe_finder_sources(
-            stations, sample_times, band='c',
+        sources, min_elevs, ant_vis = calibrators.get_fringe_finder_sources(
+            stations, sample_times,
             min_elevation=20 * u.deg, min_flux=5.0 * u.Jy
         )
-        # Should return tuple of (sources, min_elevations)
-        assert isinstance(result, tuple)
-        assert len(result) == 2
-        sources, min_elevs = result
         assert isinstance(sources, list)
         assert isinstance(min_elevs, list)
         assert len(sources) == len(min_elevs)
-        # All returned sources should be CalibratorSource instances
         assert all(isinstance(s, calibrators.CalibratorSource) for s in sources)
-        # All min_elevations should be floats
         assert all(isinstance(e, float) for e in min_elevs)
 
-    def test_fringe_finder_sorted_by_flux(self, single_station, sample_times):
-        """Test that results are sorted by unresolved flux."""
+    def test_fringe_finder_sorted_by_elevation(self, single_station, sample_times):
+        """Test that results are sorted by min elevation (descending) when require_all."""
         stations = sts.Stations(stations=[single_station])
-        sources, min_elevs = calibrators.get_fringe_finder_sources(
-            stations, sample_times, band='c',
+        sources, min_elevs, ant_vis = calibrators.get_fringe_finder_sources(
+            stations, sample_times,
             min_elevation=20 * u.deg, min_flux=1.0 * u.Jy
         )
-        if len(sources) > 1:
-            fluxes = [s.unresolved_flux('c') for s in sources]
-            assert fluxes == sorted(fluxes, reverse=True)
+        if len(min_elevs) > 1:
+            assert min_elevs == sorted(min_elevs, reverse=True)
 
-    def test_fringe_finder_band_mapping(self, single_station, sample_times):
-        """Test that band mapping works correctly."""
+    def test_fringe_finder_deterministic(self, single_station, sample_times):
+        """Test that repeated calls give identical results."""
         stations = sts.Stations(stations=[single_station])
-        # Test with 'm' band (should map to 'c')
-        sources_m, elevs_m = calibrators.get_fringe_finder_sources(
-            stations, sample_times, band='m',
+        s1, e1, a1 = calibrators.get_fringe_finder_sources(
+            stations, sample_times,
             min_elevation=20 * u.deg, min_flux=5.0 * u.Jy
         )
-        # Test with 'c' band directly
-        sources_c, elevs_c = calibrators.get_fringe_finder_sources(
-            stations, sample_times, band='c',
+        s2, e2, a2 = calibrators.get_fringe_finder_sources(
+            stations, sample_times,
             min_elevation=20 * u.deg, min_flux=5.0 * u.Jy
         )
-        # Should get same results since 'm' maps to 'c'
-        assert len(sources_m) == len(sources_c)
+        assert len(s1) == len(s2)
+        assert [s.name for s in s1] == [s.name for s in s2]
+        assert e1 == e2
 
     def test_fringe_finder_require_all_vs_any(self, sample_times):
         """Test require_all_stations vs require only one station."""
-        # Create two stations at different locations
         ef_loc = coord.EarthLocation(
             4033949.5 * u.m, 486989.1 * u.m, 4900430.9 * u.m
         )
@@ -419,30 +397,23 @@ class TestGetFringeFinderSources:
 
         ef = sts.Station('Ef', 'Ef', ('EVN',), ef_loc, sefds)
         mc = sts.Station('Mc', 'Mc', ('EVN',), mc_loc, sefds)
-
         stations = sts.Stations(stations=[ef, mc])
 
-        # With require_all_stations=True (default)
-        sources_all, elevs_all = calibrators.get_fringe_finder_sources(
-            stations, sample_times, band='c',
+        sources_all, elevs_all, _ = calibrators.get_fringe_finder_sources(
+            stations, sample_times,
             min_elevation=20 * u.deg, min_flux=2.0 * u.Jy,
             require_all_stations=True
         )
-
-        # With require_all_stations=False
-        sources_any, elevs_any = calibrators.get_fringe_finder_sources(
-            stations, sample_times, band='c',
+        sources_any, elevs_any, ant_vis = calibrators.get_fringe_finder_sources(
+            stations, sample_times,
             min_elevation=20 * u.deg, min_flux=2.0 * u.Jy,
             require_all_stations=False
         )
-
-        # Results with require_all=False should be >= results with require_all=True
         assert len(sources_any) >= len(sources_all)
+        assert ant_vis is not None
 
     def test_fringe_finder_returns_empty_when_none_visible(self, sample_times):
         """Test that empty list is returned when no sources are visible."""
-        # Create a station and times where bright sources might not be visible
-        # Use very high elevation requirement
         ef_loc = coord.EarthLocation(
             4033949.5 * u.m, 486989.1 * u.m, 4900430.9 * u.m
         )
@@ -450,13 +421,12 @@ class TestGetFringeFinderSources:
         ef = sts.Station('Ef', 'Ef', ('EVN',), ef_loc, sefds)
         stations = sts.Stations(stations=[ef])
 
-        sources, elevs = calibrators.get_fringe_finder_sources(
-            stations, sample_times, band='c',
-            min_elevation=85 * u.deg,  # Very high elevation
-            min_flux=50.0 * u.Jy,  # Very bright
+        sources, elevs, _ = calibrators.get_fringe_finder_sources(
+            stations, sample_times,
+            min_elevation=85 * u.deg,
+            min_flux=50.0 * u.Jy,
             require_all_stations=True
         )
-        # Should return empty lists when criteria are too strict
         assert isinstance(sources, list)
         assert isinstance(elevs, list)
         assert len(sources) == len(elevs)
@@ -464,14 +434,13 @@ class TestGetFringeFinderSources:
     def test_fringe_finder_minimum_elevations(self, single_station, sample_times):
         """Test that minimum elevations are correctly calculated."""
         stations = sts.Stations(stations=[single_station])
-        sources, min_elevs = calibrators.get_fringe_finder_sources(
-            stations, sample_times, band='c',
+        sources, min_elevs, _ = calibrators.get_fringe_finder_sources(
+            stations, sample_times,
             min_elevation=10 * u.deg, min_flux=1.0 * u.Jy
         )
         if len(sources) > 0:
-            # All minimum elevations should be >= min_elevation
             for elev in min_elevs:
-                assert elev >= 10.0 or elev == 0.0  # 0.0 if not visible at all
+                assert elev >= 10.0 or elev == 0.0
 
 
 class TestCalibratorsIntegration:
@@ -479,33 +448,25 @@ class TestCalibratorsIntegration:
 
     def test_full_workflow(self):
         """Test a complete workflow: load catalog, find sources, find nearby."""
-        # Load catalog
         catalog = calibrators.RFCCatalog(min_flux=2.0 * u.Jy, band='c')
         assert catalog.n_sources > 0
 
-        # Get a bright source
         bright_source = catalog.get_source('3C454.3')
         if bright_source is not None:
             assert bright_source.unresolved_flux('c') >= 2.0
 
-            # Find nearby sources
             nearby = calibrators.get_nearby_sources(
                 bright_source,
                 max_separation=5 * u.deg,
-                min_unresolved_flux=0.5,
-                band='c',
                 catalog=catalog,
                 n_sources=10
             )
             assert isinstance(nearby, list)
-            # All nearby sources should have positive flux
             for src, sep in nearby:
-                assert src.unresolved_flux('c') > 0.5
-                assert sep <= 5 * u.deg
+                assert sep <= 5.0
 
     def test_fringe_finder_with_elevations(self):
         """Test fringe finder returns proper elevation data."""
-        # Create a simple setup
         ef_loc = coord.EarthLocation(
             4033949.5 * u.m, 486989.1 * u.m, 4900430.9 * u.m
         )
@@ -514,15 +475,12 @@ class TestCalibratorsIntegration:
         stations = sts.Stations(stations=[ef])
         times = Time("2024-06-15 12:00:00") + np.arange(0, 1, 0.25) * u.h
 
-        sources, min_elevs = calibrators.get_fringe_finder_sources(
-            stations, times, band='c',
+        sources, min_elevs, _ = calibrators.get_fringe_finder_sources(
+            stations, times,
             min_elevation=20 * u.deg, min_flux=1.0 * u.Jy
         )
 
-        # Should return matching lists
         assert len(sources) == len(min_elevs)
-        
-        # Test that sources have the expected methods
         for src in sources:
             assert hasattr(src, 'get_observed_bands')
             assert hasattr(src, 'get_astrogeo_link')

@@ -62,9 +62,15 @@ nav:
   - Getting Started:
     - Installation: installation.md
     - Quick Start: quickstart.md
+  - Modes:
+    - CLI Overview: cli.md
+    - Observation Planning: mode-observe.md
+    - Fringe Finders: fringefinder.md
+    - Phase Calibrators: phasecal.md
+    - Source Lookup: mode-source.md
+    - Web Server: mode-server.md
   - User Guide:
     - Tutorial: tutorial.md
-    - CLI Reference: cli.md
     - Scheduling: scheduling.md
   - API Reference:
     - Overview: api/index.md

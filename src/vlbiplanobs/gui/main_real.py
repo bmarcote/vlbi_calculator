@@ -83,6 +83,7 @@ def download_pdf_summary(n_clicks, obs_params: dict):
 
 
 # Real-time callback - triggers on ANY input change
+# Plot figures are rendered progressively via store-triggered callbacks in callbacks.py
 @app.callback([Output('user-message', 'children'),
                Output('loading-div', 'children'),
                Output('download-summary-div', 'hidden'),
@@ -95,26 +96,21 @@ def download_pdf_summary(n_clicks, obs_params: dict):
                Output('out-ant', 'children'),
                Output('out-elevations', 'hidden'),
                Output('out-elevations-info', 'children'),
-               Output('fig-elevations', 'figure'),
-               Output('fig-elevations2', 'figure'),
                Output('out-uv-coverage', 'hidden'),
                Output('out-uv-coverage-info', 'children'),
-               Output('fig-uv-coverage', 'figure'),
                Output('select-antenna-uv-plot', 'options'),
                Output('div-card-fov', 'children'),
                Output('div-card-vel', 'children'),
                Output('out-worldmap', 'hidden'),
-               Output('fig-worldmap', 'figure'),
                Output('card-datasize', 'children'),
                Output('div-card-time', 'children'),
                Output('store-prev-datarate', 'data'),
                Output('store-prev-channels', 'data'),
                Output('store-prev-subbands', 'data'),
                Output('store-obs-params', 'data'),
-               Output('store-uv-data', 'data')],
-              # All inputs trigger updates (changed from State to Input)
-              # Note: We don't include network-switch inputs directly - we rely on
-              # switches-antennas being updated by update_selected_antennas_from_networks callback
+               Output('store-uv-data', 'data'),
+               Output('store-elev-data', 'data'),
+               Output('store-worldmap-data', 'data')],
               [Input('band-slider', 'value'),
                Input('switch-specify-source', 'value'),
                Input('source-input', 'value'),
@@ -136,14 +132,13 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
                                   duration: int | float, datarate: int, subbands: int,
                                   channels: int, pols: int, inttime: int, e_evn: bool, 
                                   selected_antennas: list[str]):
-    """Real-time computation - updates outputs as inputs change.
-    
+    """Real-time computation - returns text outputs immediately, plots render via stores.
+
     Shows whatever outputs are possible with the current inputs:
     - No band/antennas: Show nothing
-    - Band + antennas only: Show world map
     - Band + antennas + (source OR duration): Show full observation
     """
-    # Default hidden state for all outputs
+    # Default hidden state for all outputs (27 values)
     hidden_outputs = (
         html.Div(),  # user-message
         html.Div(),  # loading-div
@@ -157,16 +152,12 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
         html.Div(),  # out-ant
         True,        # out-elevations hidden
         html.Div(),  # out-elevations-info
-        {},          # fig-elevations (empty figure)
-        {},          # fig-elevations2 (empty figure)
         True,        # out-uv-coverage hidden
         html.Div(),  # out-uv-coverage-info
-        {},          # fig-uv-coverage (empty figure)
         [],          # select-antenna-uv-plot options
         html.Div(),  # div-card-fov
         html.Div(),  # div-card-vel
         True,        # out-worldmap hidden
-        {},          # fig-worldmap (empty figure)
         html.Div(),  # card-datasize
         html.Div(),  # div-card-time
         no_update,   # store-prev-datarate
@@ -174,16 +165,16 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
         no_update,   # store-prev-subbands
         None,        # store-obs-params
         None,        # store-uv-data
+        None,        # store-elev-data
+        None,        # store-worldmap-data
     )
     
-    # Check minimum requirements: band and antennas
     if band == 0 or band is None:
         return hidden_outputs
     
     if not selected_antennas:
         return hidden_outputs
     
-    # Filter antennas that can observe at this band
     selected_antennas = [ant for ant in selected_antennas
                          if observation._STATIONS[ant].has_band(inputs.band_from_index(band))
                          and (not e_evn or observation._STATIONS[ant].real_time)]
@@ -191,22 +182,17 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
     if not selected_antennas:
         return hidden_outputs
     
-    # Check if we have enough to compute an observation
     has_source = defined_source and source and source.strip() != ''
     has_duration = duration is not None and duration > 0
     
-    # For epoch-defined observations, check completeness
     if defined_epoch:
         epoch_complete = startdate is not None and starttime is not None and has_duration
         if not epoch_complete and has_source:
-            # Can still compute with source but without specific epoch
             defined_epoch = False
         elif not epoch_complete and not has_source:
-            # Need either complete epoch+duration OR a source
             if not has_duration:
                 return hidden_outputs
     
-    # Need either source or duration to compute anything meaningful
     if not has_source and not has_duration:
         return hidden_outputs
     
@@ -233,7 +219,6 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
         if obs is None:
             return hidden_outputs
         
-        # Pre-compute cached data
         with ThreadPoolExecutor() as executor:
             f_observable = executor.submit(obs.is_observable)
             f_sun_constraint = executor.submit(obs.sun_constraint)
@@ -263,7 +248,6 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
         logger.debug(f"Error during real-time update: {e}")
         return hidden_outputs
     
-    # Observation computed successfully - generate outputs
     try:
         if not all(obs.is_observable_by_network(min_stations=1).values()):
             return hidden_outputs
@@ -272,7 +256,7 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
         can_show_source_plots = obs.sourcenames and has_source
         
         with ThreadPoolExecutor() as executor:
-            # Core outputs (always computed)
+            # Text outputs (fast)
             futures['out_rms'] = executor.submit(outputs.rms, obs)
             futures['out_res'] = executor.submit(outputs.resolution, obs)
             futures['out_ant'] = executor.submit(outputs.ant_warning, obs)
@@ -282,20 +266,19 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
             futures['out_baseline_sens'] = executor.submit(outputs.baseline_sensitivities, obs)
             futures['out_datasize'] = executor.submit(outputs.data_size, obs)
             futures['out_obstime'] = executor.submit(outputs.obs_time, obs)
-            futures['plot_worldmap'] = executor.submit(plots.plot_worldmap_stations, obs)
+
+            # Lightweight data serialization for deferred plot rendering
+            futures['worldmap_data'] = executor.submit(plots.serialize_worldmap_data, obs)
             
-            # Source-dependent outputs
             if can_show_source_plots:
                 futures['out_sun'] = executor.submit(outputs.sun_warning, obs)
-                futures['plot_elev'] = executor.submit(plots.elevation_plot, obs)
-                futures['plot_elev2'] = executor.submit(plots.elevation_plot_curves, obs)
-                futures['plot_uv'] = executor.submit(plots.uvplot, obs)
+                futures['elev_data'] = executor.submit(plots.serialize_elevation_data, obs)
                 futures['uv_data'] = executor.submit(plots.serialize_uv_data, obs)
                 futures['out_elev_info'] = executor.submit(outputs.print_observability_ranges, obs)
                 futures['out_uv_info'] = executor.submit(outputs.print_baseline_lengths, obs)
                 futures['out_ant_options'] = executor.submit(outputs.put_antenna_options, obs)
 
-            # Collect results
+            # Collect text results
             out_rms = futures['out_rms'].result()
             out_res = futures['out_res'].result()
             out_ant = futures['out_ant'].result()
@@ -305,20 +288,20 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
             out_baseline_sens = futures['out_baseline_sens'].result()
             out_datasize = futures['out_datasize'].result()
             out_obstime = futures['out_obstime'].result()
-            out_worldmap = futures['plot_worldmap'].result()
+            worldmap_data = futures['worldmap_data'].result()
 
             if can_show_source_plots:
                 out_sun = futures['out_sun'].result()
-                out_plot_elev = [False, futures['out_elev_info'].result(),
-                                futures['plot_elev'].result(), futures['plot_elev2'].result()]
-                out_plot_uv = [False, futures['out_uv_info'].result(),
-                              futures['plot_uv'].result(), futures['out_ant_options'].result()]
+                out_elev = [False, futures['out_elev_info'].result()]
+                out_uv = [False, futures['out_uv_info'].result(), futures['out_ant_options'].result()]
                 uv_data = futures['uv_data'].result()
+                elev_data = futures['elev_data'].result()
             else:
                 out_sun = html.Div()
-                out_plot_elev = [True, html.Div(), {}, {}]
-                out_plot_uv = [True, html.Div(), {}, []]
+                out_elev = [True, html.Div()]
+                out_uv = [True, html.Div(), []]
                 uv_data = None
+                elev_data = None
                 
     except Exception as e:
         logger.debug(f"Error generating outputs: {e}")
@@ -327,7 +310,6 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
     elapsed = (dt.now() - t0).total_seconds()
     logger.info(f"Real-time update completed in {elapsed:.2f}s")
 
-    # Store observation parameters for PDF generation
     obs_params = {
         'band': inputs.band_from_index(band),
         'stations': sorted(selected_antennas),
@@ -344,29 +326,30 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
     }
 
     return (
-        html.Div(),                    # user-message
-        html.Div(),                    # loading-div
-        False,                         # download-summary-div (show it)
-        None,                          # download-link
-        out_rms,                       # card-rms
-        out_baseline_sens,             # sensitivity-baseline-modal
-        out_res,                       # card-resolution
-        out_sun,                       # out-sun
-        out_phaseref,                  # out-phaseref
-        out_ant,                       # out-ant
-        *out_plot_elev,                # out-elevations (hidden, info, fig, fig2)
-        *out_plot_uv,                  # out-uv-coverage (hidden, info, fig, options)
-        out_fov,                       # div-card-fov
-        out_freq,                      # div-card-vel
-        False,                         # out-worldmap (show it)
-        out_worldmap,                  # fig-worldmap
-        out_datasize,                  # card-datasize
-        out_obstime,                   # div-card-time
-        datarate or 2048,              # store-prev-datarate
-        channels or 64,                # store-prev-channels
-        subbands or 8,                 # store-prev-subbands
-        obs_params,                    # store-obs-params
-        uv_data,                       # store-uv-data
+        html.Div(),        # user-message
+        html.Div(),        # loading-div
+        False,             # download-summary-div
+        None,              # download-link
+        out_rms,           # card-rms
+        out_baseline_sens, # sensitivity-baseline-modal
+        out_res,           # card-resolution
+        out_sun,           # out-sun
+        out_phaseref,      # out-phaseref
+        out_ant,           # out-ant
+        *out_elev,         # out-elevations (hidden, info)
+        *out_uv,           # out-uv-coverage (hidden, info, options)
+        out_fov,           # div-card-fov
+        out_freq,          # div-card-vel
+        False,             # out-worldmap
+        out_datasize,      # card-datasize
+        out_obstime,       # div-card-time
+        datarate or 2048,  # store-prev-datarate
+        channels or 64,    # store-prev-channels
+        subbands or 8,     # store-prev-subbands
+        obs_params,        # store-obs-params
+        uv_data,           # store-uv-data
+        elev_data,         # store-elev-data
+        worldmap_data,     # store-worldmap-data
     )
 
 
@@ -380,6 +363,8 @@ app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-10
                    dcc.Store(id='store-prev-subbands', data=8),
                    dcc.Store(id='store-obs-params', data=None),
                    dcc.Store(id='store-uv-data', data=None),
+                   dcc.Store(id='store-elev-data', data=None),
+                   dcc.Store(id='store-worldmap-data', data=None),
                    # Hidden compute button (needed for callback compatibility but not shown)
                    html.Div(html.Button(id='compute-observation', style={'display': 'none'})),
                    layout.top_banner(app),

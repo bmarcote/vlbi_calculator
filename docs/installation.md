@@ -34,10 +34,15 @@ planobs-server --help
 
 ## Available Commands
 
+After installation, the `planobs` command provides several modes:
+
 | Command | Description |
 |---------|-------------|
-| `planobs` | Command-line interface for observation planning |
-| `planobs-server` | Launch the web-based GUI |
+| `planobs` | Observation planning (default mode) |
+| `planobs fringefinders` | Find fringe finder sources |
+| `planobs phasecals` | Find phase calibrator sources |
+| `planobs source` | Look up source information |
+| `planobs server` | Launch the web-based GUI |
 
 ## Dependencies
 

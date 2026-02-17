@@ -69,7 +69,7 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
         the_band = inputs.band_from_index(band)
         if 'EVN' in network_names and observation._NETWORKS['EVN'].has_band(the_band):
             dr = observation._NETWORKS['EVN'].max_datarate(the_band)
-            max_datarate = dr.value if dr is not None else 2048
+            max_datarate = int(dr.value) if dr is not None else 2048
         else:
             rates = [observation._NETWORKS[net].max_datarate(the_band)
                      for net in network_names if observation._NETWORKS[net].has_band(the_band)]
@@ -192,15 +192,45 @@ clientside_callback(
 )
 
 
+@callback([Output('fig-elevations', 'figure'),
+           Output('fig-elevations2', 'figure')],
+          Input('store-elev-data', 'data'), prevent_initial_call=True)
+def render_elevation_plots(elev_data: dict):
+    """Render elevation plots progressively from serialized data."""
+    if elev_data is None:
+        raise PreventUpdate
+    from vlbiplanobs.gui import plots
+    return plots.elevation_plot_from_data(elev_data), plots.elevation_curves_from_data(elev_data)
+
+
+@callback(Output('fig-uv-coverage', 'figure'),
+          Input('store-uv-data', 'data'), prevent_initial_call=True)
+def render_uv_plot(uv_data: dict):
+    """Render UV coverage plot progressively from serialized data."""
+    if uv_data is None:
+        raise PreventUpdate
+    from vlbiplanobs.gui import plots
+    return plots.uvplot_from_data(uv_data)
+
+
 @callback(Output('fig-uv-coverage', 'figure', allow_duplicate=True),
           Input('select-antenna-uv-plot', 'value'),
           State('store-uv-data', 'data'), prevent_initial_call='initial_duplicate')
 def update_uv_figure(highlight_antennas: list[str], uv_data: dict):
     if uv_data is None:
         raise PreventUpdate
-
     from vlbiplanobs.gui import plots
     return plots.uvplot_from_data(uv_data, highlight_antennas)
+
+
+@callback(Output('fig-worldmap', 'figure'),
+          Input('store-worldmap-data', 'data'), prevent_initial_call=True)
+def render_worldmap(worldmap_data: dict):
+    """Render worldmap progressively from serialized data."""
+    if worldmap_data is None:
+        raise PreventUpdate
+    from vlbiplanobs.gui import plots
+    return plots.worldmap_from_data(worldmap_data)
 
 
 @callback([Output('error_duration', 'children'),

@@ -6,16 +6,17 @@ import json
 from typing import Optional, Self
 from importlib import resources
 import numpy as np
+import erfa
 from astropy import units as u, coordinates as coord
 from astropy.time import Time
-from astroplan import FixedTarget
+
 from rich import print as rprint, box
 from rich.table import Table
 from rich_argparse import RawTextRichHelpFormatter
 from urllib import parse
 
 from .sources import Source, SourceType
-from .stations import Stations
+from .stations import Stations, MountType
 from . import observation as obs
 
 _RFC_BANDS = {'l': 's', 's': 's', 'c': 'c', 'm': 'c', 'x': 'x', 'u': 'u', 'k': 'k', 'q': 'k'}
@@ -178,8 +179,8 @@ class RFCCatalog:
         self._catalog_filename = catalog_filename
         self._name_index: dict[str, CalibratorSource] = {}
         self._ivsname_index: dict[str, CalibratorSource] = {}
-        self._ra_arr: Optional[np.ndarray] = None
-        self._dec_arr: Optional[np.ndarray] = None
+        self._ra_arr: np.ndarray = np.array([], dtype=np.float64)
+        self._dec_arr: np.ndarray = np.array([], dtype=np.float64)
         self._load_catalog()
 
     def _get_catalog_path(self) -> str:
@@ -236,13 +237,12 @@ class RFCCatalog:
                 except (ValueError, IndexError):
                     continue
                 
-                parsed_data.append({'name': cols[2], 'ivsname': cols[1], 'ra': ra_deg, 'dec': dec_deg,
-                    'n_obs': int(cols[12]) if cols[12].lstrip('-').isdigit() else 0,
-                    'flux_resolved': flux_array[:, 0], 'flux_unresolved': flux_array[:, 1],
-                    'is_cal': cols[0] == 'C'})
-            
-            self._sources = [CalibratorSource(d['name'], d['ivsname'], d['ra'], d['dec'], d['n_obs'],
-                d['flux_resolved'], d['flux_unresolved'], d['is_cal']) for d in parsed_data]
+                n_obs = int(cols[12]) if cols[12].lstrip('-').isdigit() else 0
+                parsed_data.append((cols[2], cols[1], ra_deg, dec_deg, n_obs,
+                                    flux_array[:, 0], flux_array[:, 1], cols[0] == 'C'))
+
+            self._sources = [CalibratorSource(name, ivs, ra, dec, nobs, flux_r, flux_u, is_cal)
+                             for name, ivs, ra, dec, nobs, flux_r, flux_u, is_cal in parsed_data]
             
             self._name_index = {s.name: s for s in self._sources}
             self._ivsname_index = {s.ivsname: s for s in self._sources}
@@ -251,6 +251,9 @@ class RFCCatalog:
                 coords = np.array([(s.ra_deg, s.dec_deg) for s in self._sources], dtype=np.float64)
                 self._ra_arr = coords[:, 0].copy()
                 self._dec_arr = coords[:, 1].copy()
+            else:
+                self._ra_arr = np.array([], dtype=np.float64)
+                self._dec_arr = np.array([], dtype=np.float64)
         except FileNotFoundError:
             raise FileNotFoundError(f'RFC catalog file not found: {catalog_path}')
         except Exception as e:
@@ -351,104 +354,145 @@ def _angular_separation(ra1_deg: float, dec1_deg: float, ra2_arr: np.ndarray, de
     return np.degrees(2 * np.arcsin(np.sqrt(a)))
 
 
+def _batch_altaz_erfa(ra_rad: np.ndarray, dec_rad: np.ndarray, times: Time, station) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute elevation, azimuth, and hour angle for all sources at all times using ERFA.
+
+    Returns (elevation_deg, azimuth_deg, ha_hours) each shaped (n_times, n_sources).
+    Bypasses astroplan/astropy per-source overhead by computing ERFA astrometry params
+    once per time step, then transforming all sources vectorized.
+    """
+    loc = station.location
+    lon_rad, lat_rad = loc.lon.rad, loc.lat.rad
+    height_m = loc.height.to(u.m).value
+    utc1, utc2 = times.utc.jd1, times.utc.jd2
+    dut1 = times.delta_ut1_utc
+    n_times = len(times)
+    n_src = len(ra_rad)
+    elev_out = np.empty((n_times, n_src))
+    az_out = np.empty((n_times, n_src))
+    ha_out = np.empty((n_times, n_src))
+    for t in range(n_times):
+        astrom, eo = erfa.apco13(utc1[t], utc2[t], dut1[t], lon_rad, lat_rad, height_m, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        ri, di = erfa.atciq(ra_rad, dec_rad, 0.0, 0.0, 0.0, 0.0, astrom)
+        az, zen, ha, _dec, _ra = erfa.atioq(ri, di, astrom)
+        elev_out[t] = np.degrees(np.pi / 2.0 - zen)
+        az_out[t] = np.degrees(az)
+        ha_out[t] = (np.degrees(ha) / 15.0) % 24.0
+    return elev_out, az_out, ha_out
+
+
+def _station_observable_mask(elev: np.ndarray, az: np.ndarray, ha_hours: np.ndarray,
+                             dec_deg: np.ndarray, station) -> np.ndarray:
+    """Build boolean observable mask (n_times, n_sources) respecting station mount constraints.
+
+    Uses the same constraint logic as astroplan: for ALTAZ mounts checks azimuth and elevation
+    limits; for EQUAT mounts checks hour angle (in [0,24h) with wrapping), declination, and
+    a minimum 5-degree elevation.
+    """
+    mount = station.mount
+    if mount.mount_type == MountType.ALTAZ:
+        az_min = mount.ax1.limits[0].to(u.deg).value
+        az_max = mount.ax1.limits[1].to(u.deg).value
+        el_min = mount.ax2.limits[0].to(u.deg).value
+        el_max = mount.ax2.limits[1].to(u.deg).value
+        return (az > az_min) & (az < az_max) & (elev > el_min) & (elev < el_max)
+    else:
+        ha_min = mount.ax1.limits[0].to(u.hourangle).value
+        ha_max = mount.ax1.limits[1].to(u.hourangle).value
+        dec_min = mount.ax2.limits[0].to(u.deg).value
+        dec_max = mount.ax2.limits[1].to(u.deg).value
+        ha_ok = ((ha_min < ha_hours) & (ha_hours < ha_max)) | ((ha_min + 24.0 < ha_hours) & (ha_hours < ha_max + 24.0))
+        dec_ok = (dec_deg >= dec_min) & (dec_deg <= dec_max)
+        return ha_ok & dec_ok & (elev > 5.0)
+
+
 def get_fringe_finder_sources(stations: Stations, times: Time, 
                            min_elevation: u.Quantity = _DEFAULT_MIN_ELEVATION, 
                            min_flux: u.Quantity = _DEFAULT_MIN_FLUX, 
                            catalog: Optional[RFCCatalog] = None, 
                            require_all_stations: bool = True) -> tuple[list[CalibratorSource], list[float], Optional[list[tuple[int, int, bool, float]]]]:
+    """Find fringe finder sources visible by given stations during the given time range.
+
+    Uses ERFA directly for vectorized elevation computation across all sources,
+    replacing per-source astroplan calls for major speedup.
+    """
     if catalog is None:
         catalog = RFCCatalog(min_flux=min_flux, band='c')
-    
+
     station_list = stations.stations
     n_stations = len(station_list)
     if n_stations == 0:
         return [], [], None
-    
+
     min_el_deg = float(min_elevation.to(u.deg).value) if hasattr(min_elevation, 'to') else float(min_elevation)
     valid_sources = catalog.sources
-    
     if not valid_sources:
         return [], [], None if not require_all_stations else None
-    
-    # Pre-compute targets and coordinates for vectorized operations
+
     n_sources = len(valid_sources)
-    ra_coords = np.array([src.ra_deg for src in valid_sources]) * u.deg
-    dec_coords = np.array([src.dec_deg for src in valid_sources]) * u.deg
-    targets = [FixedTarget(coord.SkyCoord(ra=ra_coords[i], dec=dec_coords[i]), name=valid_sources[i].name) for i in range(n_sources)]
-    
-    visible_sources = []
-    min_elevations = []
-    antenna_visibility = [] if not require_all_stations else None
-    
+    n_times = len(times)
+    ra_rad = np.radians(np.array([s.ra_deg for s in valid_sources], dtype=np.float64))
+    dec_rad = np.radians(np.array([s.dec_deg for s in valid_sources], dtype=np.float64))
+
+    elev_matrices = np.empty((n_stations, n_times, n_sources))
+    meets_all = np.empty((n_stations, n_times, n_sources), dtype=bool)
+
+    dec_deg = np.degrees(dec_rad)
+    for s_idx, station in enumerate(station_list):
+        elev, az, ha_hours = _batch_altaz_erfa(ra_rad, dec_rad, times, station)
+        obs_mask = _station_observable_mask(elev, az, ha_hours, dec_deg, station)
+        elev_matrices[s_idx] = elev
+        meets_all[s_idx] = obs_mask & (elev >= min_el_deg)
+
     if require_all_stations:
-        for src_idx, (src, target) in enumerate(zip(valid_sources, targets)):
-            all_visible = True
-            src_min_elevs = []
-            for station in station_list:
-                if not station.is_ever_observable(times, target):
-                    all_visible = False
-                    break
-                elevations = station.elevation(times, target)
-                elev_values = elevations.value
-                if not np.all(elev_values >= min_el_deg):
-                    all_visible = False
-                    break
-                src_min_elevs.append(float(np.min(elev_values)))
-            if all_visible:
-                visible_sources.append(src)
-                min_elevations.append(min(src_min_elevs))
+        all_times_per_station = np.all(meets_all, axis=1)
+        passes_all = np.all(all_times_per_station, axis=0)
+        visible_idx = np.where(passes_all)[0]
+
+        if len(visible_idx) == 0:
+            return [], [], None
+
+        min_elevs = np.min(elev_matrices[:, :, visible_idx], axis=(0, 1))
+        sort_order = np.argsort(-min_elevs)
+        sorted_idx = visible_idx[sort_order]
+        return ([valid_sources[i] for i in sorted_idx],
+                min_elevs[sort_order].tolist(), None)
     else:
-        for src_idx, (src, target) in enumerate(zip(valid_sources, targets)):
-            visible_count = 0
-            min_elev_for_source = None
-            visible_all_times = True
-            min_elev_all_antennas = []
-            
-            for station in station_list:
-                if station.is_ever_observable(times, target):
-                    elevations = station.elevation(times, target)
-                    elev_values = elevations.value
-                    mask = elev_values >= min_el_deg
-                    
-                    if np.any(mask):
-                        visible_count += 1
-                        if min_elev_for_source is None:
-                            min_elev_for_source = float(np.min(elev_values[mask]))
-                        
-                        if not np.all(mask):
-                            visible_all_times = False
-                        
-                        min_elev_all_antennas.append(float(np.min(elev_values)))
-            
-            if visible_count > 0:
-                visible_sources.append(src)
-                min_elevations.append(min_elev_for_source)
-                antenna_visibility.append((visible_count, n_stations, visible_all_times, 
-                                         float(np.min(min_elev_all_antennas)) if min_elev_all_antennas else 0.0))
-    
-    if antenna_visibility is not None:
-        n_visible = len(visible_sources)
-        visible_counts = np.array([antenna_visibility[i][0] for i in range(n_visible)])
-        visible_all_times_arr = np.array([antenna_visibility[i][2] for i in range(n_visible)])
-        min_elev_all_arr = np.array([antenna_visibility[i][3] for i in range(n_visible)])
-        
-        # Create category array: 0=all all time, 1=all some time, 2=partial
-        categories = np.where((visible_counts == n_stations) & visible_all_times_arr, 0,
-                     np.where(visible_counts == n_stations, 1, 2))
-        
-        # Sort using numpy for better performance
-        sort_indices = np.lexsort((-min_elev_all_arr, -visible_counts, categories))
-        
-        visible_sources = [visible_sources[i] for i in sort_indices]
-        min_elevations = [min_elevations[i] for i in sort_indices]
-        antenna_visibility = [antenna_visibility[i] for i in sort_indices]
-    else:
-        # Sort by minimum elevation (descending) using numpy
-        sort_indices = np.argsort(-np.array(min_elevations))
-        visible_sources = [visible_sources[i] for i in sort_indices]
-        min_elevations = [min_elevations[i] for i in sort_indices]
-    
-    return visible_sources, min_elevations, antenna_visibility
+        visible_per_station = np.any(meets_all, axis=1)
+        visible_all_times_per_station = np.all(meets_all, axis=1)
+        visible_counts = np.sum(visible_per_station, axis=0).astype(np.int32)
+        any_visible = visible_counts > 0
+        visible_idx = np.where(any_visible)[0]
+
+        if len(visible_idx) == 0:
+            return [], [], []
+
+        n_vis = len(visible_idx)
+        result_min_elevs = np.empty(n_vis)
+        result_vis_all_times = np.empty(n_vis, dtype=bool)
+        result_min_elev_all = np.empty(n_vis)
+
+        for k, src_i in enumerate(visible_idx):
+            sta_mask = visible_per_station[:, src_i]
+            first_sta = np.argmax(sta_mask)
+            time_mask = meets_all[first_sta, :, src_i]
+            result_min_elevs[k] = np.min(elev_matrices[first_sta, time_mask, src_i])
+            result_vis_all_times[k] = np.all(visible_all_times_per_station[sta_mask, src_i])
+            result_min_elev_all[k] = np.min(elev_matrices[sta_mask, :, src_i])
+
+        vc = visible_counts[visible_idx]
+        categories = np.where((vc == n_stations) & result_vis_all_times, 0,
+                     np.where(vc == n_stations, 1, 2))
+        sort_order = np.lexsort((-result_min_elev_all, -vc, categories))
+
+        sorted_idx = visible_idx[sort_order]
+        sorted_sources = [valid_sources[i] for i in sorted_idx]
+        sorted_min_elevs = result_min_elevs[sort_order].tolist()
+        sorted_antenna_vis = [(int(vc[sort_order[j]]), n_stations,
+                               bool(result_vis_all_times[sort_order[j]]),
+                               float(result_min_elev_all[sort_order[j]])) for j in range(n_vis)]
+
+        return sorted_sources, sorted_min_elevs, sorted_antenna_vis
 
 
 def get_nearby_sources(source: CalibratorSource | Source, max_separation: u.Quantity = 5.0 * u.deg, 
@@ -470,6 +514,173 @@ def get_nearby_sources(source: CalibratorSource | Source, max_separation: u.Quan
     nearby = [(catalog.sources[i], separations_deg[i]) for i in valid_indices]
     nearby.sort(key=lambda x: x[1])
     return nearby[:n_sources] if n_sources is not None else nearby
+
+
+def select_phase_calibrator(target: Source, band: str, max_separation: u.Quantity = 5.0 * u.deg,
+                            catalog: Optional[RFCCatalog] = None) -> Optional[CalibratorSource]:
+    """Automatically select the best phase calibrator for a target source.
+
+    Prioritises the brightest unresolved emission among the closest sources.
+    The scoring formula is ``score = unresolved_flux / (1 + separation_deg)``
+    so that a bright, nearby, compact source is preferred.
+
+    Parameters
+    ----------
+    target : Source
+        The target source to find a phase calibrator for.
+    band : str
+        Observing band in RFC letter code (s/c/x/u/k) or wavelength string (e.g. '6cm').
+    max_separation : Quantity
+        Maximum angular separation from target (default 5 deg).
+    catalog : RFCCatalog or None
+        Pre-loaded catalog.  If None a new one is created with min_flux=0.
+
+    Returns
+    -------
+    CalibratorSource or None
+        The best phase calibrator, or None if no candidates exist.
+    """
+    rfc_band = _wavelength_to_rfc_band(band)
+    if catalog is None:
+        catalog = RFCCatalog(min_flux=0.0 * u.Jy, band=rfc_band)
+
+    nearby = get_nearby_sources(target, max_separation=max_separation, catalog=catalog)
+    if not nearby:
+        return None
+
+    target_names = {target.name.upper()}
+    if hasattr(target, 'other_names') and target.other_names:
+        target_names.update(n.upper() for n in target.other_names)
+
+    best_src, best_score = None, -1.0
+    for src, sep_deg in nearby:
+        # Skip the target source itself
+        if src.name.upper() in target_names or src.ivsname.upper() in target_names:
+            continue
+        flux_unres = src.unresolved_flux(rfc_band)
+        if flux_unres <= 0:
+            _, flux_unres = src.get_flux_at_band(band)
+        if flux_unres <= 0:
+            continue
+        # Compactness bonus: ratio of unresolved to resolved flux (capped at 1)
+        flux_res = src.resolved_flux(rfc_band)
+        compactness = min(flux_unres / flux_res, 1.0) if flux_res > 0 else 1.0
+        score = flux_unres * compactness / (1.0 + sep_deg)
+        if score > best_score:
+            best_score, best_src = score, src
+
+    return best_src
+
+
+def select_check_source(target: Source, phase_cal: Source, band: str,
+                        max_separation: u.Quantity = 5.0 * u.deg,
+                        catalog: Optional[RFCCatalog] = None) -> Optional[CalibratorSource]:
+    """Automatically select the best check source for a target/phase-cal pair.
+
+    Prefers a source that is:
+    - close to the target,
+    - at roughly the same distance from the target as the phase calibrator,
+    - on the same side of the sky (similar position angle),
+    - compact (high unresolved / resolved ratio).
+    It can be weaker than the phase calibrator.
+
+    Parameters
+    ----------
+    target : Source
+        The target source.
+    phase_cal : Source
+        The already-selected phase calibrator.
+    band : str
+        Observing band (RFC letter or wavelength string).
+    max_separation : Quantity
+        Maximum angular separation from target.
+    catalog : RFCCatalog or None
+        Pre-loaded catalog.
+
+    Returns
+    -------
+    CalibratorSource or None
+        The best check source, or None if no candidates exist.
+    """
+    rfc_band = _wavelength_to_rfc_band(band)
+    if catalog is None:
+        catalog = RFCCatalog(min_flux=0.0 * u.Jy, band=rfc_band)
+
+    nearby = get_nearby_sources(target, max_separation=max_separation, catalog=catalog)
+    if not nearby:
+        return None
+
+    # Reference geometry: target → phase_cal
+    pc_sep = float(target.coord.separation(phase_cal.coord).deg)
+    pc_pa = float(target.coord.position_angle(phase_cal.coord).deg)
+
+    # Build set of names to exclude (target + phase cal)
+    exclude_names: set[str] = {target.name.upper(), phase_cal.name.upper()}
+    if hasattr(target, 'other_names') and target.other_names:
+        exclude_names.update(n.upper() for n in target.other_names)
+    if hasattr(phase_cal, 'other_names') and phase_cal.other_names:
+        exclude_names.update(n.upper() for n in phase_cal.other_names)
+
+    best_src, best_score = None, -1.0
+    for src, sep_deg in nearby:
+        # Exclude target and phase calibrator
+        if src.name.upper() in exclude_names:
+            continue
+        if hasattr(src, 'ivsname') and src.ivsname.upper() in exclude_names:
+            continue
+        flux_unres = src.unresolved_flux(rfc_band)
+        if flux_unres <= 0:
+            _, flux_unres = src.get_flux_at_band(band)
+        if flux_unres <= 0:
+            continue
+
+        flux_res = src.resolved_flux(rfc_band)
+        compactness = min(flux_unres / flux_res, 1.0) if flux_res > 0 else 1.0
+
+        # Distance-match bonus: prefer sources at similar distance as phase cal
+        dist_match = 1.0 / (1.0 + abs(sep_deg - pc_sep))
+
+        # Direction bonus: prefer sources on the same side as the phase cal
+        src_pa = float(target.coord.position_angle(src.coord).deg)
+        pa_diff = abs(src_pa - pc_pa) % 360
+        if pa_diff > 180:
+            pa_diff = 360 - pa_diff
+        direction_bonus = 1.0 / (1.0 + pa_diff / 90.0)
+
+        # Combined score: compactness matters most, proximity next, geometry bonus
+        score = compactness * (0.3 * flux_unres + 0.7) * dist_match * direction_bonus / (1.0 + sep_deg)
+        if score > best_score:
+            best_score, best_src = score, src
+
+    return best_src
+
+
+def _wavelength_to_rfc_band(band: str) -> str:
+    """Convert a wavelength string like '6cm' to an RFC band letter like 'c'.
+
+    Also accepts bare RFC band letters ('s', 'c', 'x', 'u', 'k') unchanged.
+
+    Parameters
+    ----------
+    band : str
+        Wavelength string (e.g. '6cm', '18cm') or RFC letter.
+
+    Returns
+    -------
+    str
+        Single-letter RFC band code.
+    """
+    if band in _BAND_INDEX:
+        return band
+    if band in _RFC_BANDS:
+        return _RFC_BANDS[band]
+    if band in _WAVELENGTH_BANDS:
+        return _WAVELENGTH_BANDS[band]
+    if band.lower().endswith('cm'):
+        rounded = _round_to_nearest_wavelength(band)
+        if rounded in _WAVELENGTH_BANDS:
+            return _WAVELENGTH_BANDS[rounded]
+    return 'c'
 
 
 def main_fringe():

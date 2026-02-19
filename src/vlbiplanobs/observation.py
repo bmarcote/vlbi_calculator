@@ -220,6 +220,7 @@ class Observation(object):
         self._rms: Optional[Union[u.Quantity, dict[str, u.Quantity]]] = None
         self._synth_beam: Optional[dict[str, dict[str, u.Quantity]]] = None
         self._is_visible: Optional[dict[str, dict[str, coord.SkyCoord]]] = None
+        self._per_source_visible: Optional[dict[str, dict[str, np.ndarray]]] = None
         self._is_always_visible: Optional[dict] = None
         self._altaz: Optional[dict] = None
         self._elevations: Optional[dict] = None
@@ -239,6 +240,7 @@ class Observation(object):
             self._elevations = None
             self._altaz = None
             self._is_visible = None
+            self._per_source_visible = None
             self._is_always_observable = None
             self._rms = None
             self._uv_baseline = None
@@ -731,6 +733,7 @@ class Observation(object):
             if self._is_visible is None:
                 self._is_visible = {ablockname: {ant.codename: np.full(len(self.times), True, dtype=bool)
                                     for ant in self.stations} for ablockname in self.scans}
+                self._per_source_visible = {}
                 with ThreadPoolExecutor() as executor:
                     results = list(executor.map(self._compute_is_visible_for_source,
                                                 [(station, source, times if times is not None else self.times)
@@ -738,11 +741,46 @@ class Observation(object):
                                                  for source in self.sources()]))
 
                 for station_codename, source_name, visible in results:
+                    if source_name not in self._per_source_visible:
+                        self._per_source_visible[source_name] = {}
+                    self._per_source_visible[source_name][station_codename] = visible
                     for ablockname, ablock in self.scans.items():
                         if source_name in ablock.sourcenames():
                             self._is_visible[ablockname][station_codename] &= visible
 
             return self._is_visible
+
+    def per_source_observable(self) -> dict[str, dict[str, np.ndarray]]:
+        """Returns per-source visibility across all stations (not ANDed per block).
+
+        Unlike ``is_observable()`` which ANDs all sources in a scan block together,
+        this returns individual source visibility so the display layer can show
+        each source's observability independently.
+
+        Returns
+            dict[source_name, dict[station_codename, np.ndarray[bool]]]
+        """
+        self.is_observable()  # ensures _per_source_visible is populated
+        return self._per_source_visible if self._per_source_visible is not None else {}
+
+    def sun_constraint_per_source(self, times: Optional[Time] = None) -> dict[str, Optional[u.Quantity]]:
+        """Returns the minimum Sun separation for each individual source.
+
+        Unlike ``sun_constraint()`` which returns the worst-case separation per block,
+        this returns per-source data so the display can identify which source triggers
+        a Sun warning.
+
+        Returns
+            dict[source_name, Optional[u.Quantity]]
+                Minimum Sun separation for each source, or None if above the limit.
+        """
+        result: dict[str, Optional[u.Quantity]] = {}
+        check_times = times if times is not None else (self._REF_YEAR if not self.fixed_time else self.times)
+        min_sep_limit = freqsetups.min_separation_sun(self.band)
+        for src in self.sources():
+            sep = np.min(src.sun_separation(times=check_times))
+            result[src.name] = sep if sep <= min_sep_limit else None
+        return result
 
     def can_be_observed(self) -> dict[str, dict[str, bool]]:
         """Returns whenever the sources can be observed by each station at least during part

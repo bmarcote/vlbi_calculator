@@ -125,6 +125,11 @@ class VLBIObs(obs.Observation):
     def _plot_visibility_tui(self):
         """Show plots on the Terminal User Interface with the different sources and
         when they are visible within the observation.
+
+        Displays per-source visibility bars (not per-block AND) so the user can see
+        each source's observability independently.  The 'when everyone can observe'
+        and 'optimal visibility range' messages refer to the TARGET source only.
+        Sun proximity warnings identify the specific source that is too close.
         """
         if not self.fixed_time:
             rprint("[bold green]Searching for suitable GST range "
@@ -134,65 +139,73 @@ class VLBIObs(obs.Observation):
         else:
             doing_gst = False
 
-        srcup = self.is_observable()
-        srcupalways = self.is_always_observable()
+        per_src = self.per_source_observable()
         rms_noise = self.thermal_noise()
         ontarget_time = self.ontarget_time
-        sun_const = self.sun_constraint()
+        sun_per_src = self.sun_constraint_per_source()
         sun_limit = self.sun_limiting_epochs()
         if doing_gst:
-            # Let's put it back to the original values
             gstimes = self.gstimes
             localtimes = self.times[:]
             self.times = None
 
         rprint("[bold]The blocks are observable for:[/bold]")
-        for ablockname, antbool in srcup.items():
-            rprint(f"    - '{ablockname}':", end='')
-            if any(srcupalways[ablockname].values()):
-                ant_can = [ant for ant, b in srcupalways[ablockname].items() if b]
-                if len(ant_can) >= len(self.stations):
-                    rprint(f" [dim](always observable by {','.join(ant_can)})[/dim]")
+        for ablockname, ablock in self.scans.items():
+            rprint(f"    - '{ablockname}':")
+            block_sources = ablock.sources()
+            for src in block_sources:
+                src_vis = per_src.get(src.name, {})
+                if not src_vis:
+                    continue
+                # Check if source is always observable by all stations
+                always_all = all(np.all(v) for v in src_vis.values())
+                always_some = [ant for ant, v in src_vis.items() if np.all(v)]
+                rprint(f"      [dim]{src.name}[/dim]", end='')
+                if always_all:
+                    rprint(" [dim](always observable)[/dim]")
+                elif always_some:
+                    cant = [ant for ant in self.stations.station_codenames if ant not in always_some]
+                    rprint(f" [dim](always observable by everyone but {','.join(cant)})[/dim]")
                 else:
-                    rprint(" [dim](always observable by everyone but [/dim]", end='')
-                    rprint('[dim]' + ','.join([ant for ant in self.stations.station_codenames
-                                               if ant not in ant_can]) + '[/dim]')
-            else:
-                rprint(' [dim](nobody can observe it all the time)[/dim]')
+                    rprint(' [dim](nobody can observe it all the time)[/dim]')
 
-            for anti, ant in enumerate(antbool):
-                rprint(f"        {ant:4}| {''.join(['◼︎' if b else ' ' for b in antbool[ant]])}")
+                for ant in src_vis:
+                    rprint(f"        {ant:4}| {''.join(['◼︎' if b else ' ' for b in src_vis[ant]])}")
 
-            rprint(f"            |-{''.join(['-' for b in antbool[ant]])}|")
-            if doing_gst:
-                temp = (24*u.hourangle if np.abs(localtimes[-1].mjd - localtimes[0].mjd - 1) < 0.1
-                        else 0.0*u.hourangle)
-                rprint(f"            {gstimes[0].to_string(sep=':', fields=2, pad=True)} GST"
-                       f"{''.join([' ' for b in antbool[ant]][:-11])}"
-                       f"{(gstimes[-1] + temp).to_string(sep=':', fields=2, pad=True)}")
-            else:
-                rprint(f"            {self.times.datetime[0].strftime('%H:%M'):05} UTC"
-                       f"{''.join([' ' for b in antbool[ant]][:-11])}"
-                       f"{self.times.datetime[-1].strftime('%H:%M'):05}")
+                # Time axis under the last station row
+                last_vis = list(src_vis.values())[-1]
+                rprint(f"            |-{''.join(['-' for _ in last_vis])}|")
+                if doing_gst:
+                    temp = (24*u.hourangle
+                            if np.abs(localtimes[-1].mjd - localtimes[0].mjd - 1) < 0.1
+                            else 0.0*u.hourangle)
+                    rprint(f"            {gstimes[0].to_string(sep=':', fields=2, pad=True)} GST"
+                           f"{''.join([' ' for _ in last_vis][:-11])}"
+                           f"{(gstimes[-1] + temp).to_string(sep=':', fields=2, pad=True)}")
+                else:
+                    rprint(f"            {self.times.datetime[0].strftime('%H:%M'):05} UTC"
+                           f"{''.join([' ' for _ in last_vis][:-11])}"
+                           f"{self.times.datetime[-1].strftime('%H:%M'):05}")
 
+            # "When everyone can observe" and "optimal visibility" — use block-level
             if doing_gst:
                 when_everyone = self.when_is_observable(mandatory_stations='all',
                                                         return_gst=True)[ablockname]
                 if len(when_everyone) > 0:
-                    rprint("\n[bold]Everyone can observe the source at: [/bold]", end='')
+                    rprint("\n[bold]Everyone can observe the block at: [/bold]", end='')
                     rprint(', '.join([t1.to_string(sep=':', fields=2, pad=True) + '-' +
                            t2.to_string(sep=':', fields=2, pad=True) +
                            ' GST' for t1, t2 in when_everyone]))
                 else:
-                    rprint("\nThe source cannot be observed by all stations at the same time.")
+                    rprint("\nThe block cannot be observed by all stations at the same time.")
             else:
                 when_everyone = self.when_is_observable(mandatory_stations='all')[ablockname]
                 if len(when_everyone) > 0:
-                    rprint("\n[bold]Everyone can observe the source at: [/bold]", end='')
+                    rprint("\n[bold]Everyone can observe the block at: [/bold]", end='')
                     rprint(', '.join([t1.strftime('%d %b %Y %H:%M')+'-'+t2.strftime('%H:%M') +
                            ' UTC' for t1, t2 in when_everyone]))
                 else:
-                    rprint("\nThe source cannot be observed by all stations at the same time.")
+                    rprint("\nThe block cannot be observed by all stations at the same time.")
 
             min_stat = 3 if len(self.stations) > 3 else min(2, len(self.stations))
             if len(self.stations) > 2:
@@ -209,10 +222,12 @@ class VLBIObs(obs.Observation):
                                       ' UTC' for t1, t2
                                       in self.when_is_observable(min_stations=min_stat)[ablockname]]))
 
-            # Important verification
+            # Sun constraint — per source, so the user knows which source is the problem
             if doing_gst:
                 if len(sun_limit[ablockname]) > 0:
-                    rprint("[bold red]Note that the Sun is too close to this source[/bold red]",
+                    offending = [s.name for s in block_sources if sun_per_src.get(s.name) is not None]
+                    src_label = ', '.join(offending) if offending else 'a source in this block'
+                    rprint(f"[bold red]Note that the Sun is too close to {src_label}[/bold red]",
                            end='')
                     t0, t1 = sun_limit[ablockname][0].datetime, sun_limit[ablockname][-1].datetime
                     if t0 == t1:
@@ -220,13 +235,17 @@ class VLBIObs(obs.Observation):
                     elif t0.month == t1.month:
                         rprint(f"[bold red] on {t0.day}-{t1.day} {t0.strftime('%b')}![/bold red]")
                     elif t0.year == t1.year:
-                        rprint(f"[bold red] on {t0.strftime('%d %b')} to {t1.strftime('%d %b')}![/bold red]")
+                        rprint(f"[bold red] on {t0.strftime('%d %b')} to "
+                               f"{t1.strftime('%d %b')}![/bold red]")
                     else:
-                        rprint(f"[bold red]{t0.strftime('%d %b %Y')} to {t1.strftime('%d %b %Y')}![/bold red]")
+                        rprint(f"[bold red]{t0.strftime('%d %b %Y')} to "
+                               f"{t1.strftime('%d %b %Y')}![/bold red]")
             else:
-                if sun_const[ablockname] is not None:
-                    rprint("[bold red]Note that the Sun is too close to this source during "
-                           f"this observation (separation of {sun_const[ablockname]:.1f}).[/bold red]")
+                offending = [(s.name, sun_per_src[s.name])
+                             for s in block_sources if sun_per_src.get(s.name) is not None]
+                for src_name, sep in offending:
+                    rprint(f"[bold red]Note that the Sun is too close to {src_name} during "
+                           f"this observation (separation of {sep:.1f}).[/bold red]")
 
             rprint("[bold]Expected rms thermal noise for the target source: [/bold]", end='')
             # TODO: I am verifying this first and otherwise correct for it in Observation
@@ -948,7 +967,6 @@ def handle_observation_command(args):
         with open(key_filename, 'w') as f:
             f.write(key_content)
         rprint(f"[green]Schedule file written to: {key_filename}[/green]")
-        scheduler.print_schedule()
 
     if args.debug:
         print(f"Execution time: {(dt.now() - t0).total_seconds()} s")

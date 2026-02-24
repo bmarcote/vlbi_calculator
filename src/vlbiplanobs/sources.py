@@ -1,6 +1,5 @@
 from typing import Optional, Union, Self, Sequence
 from importlib import resources
-import subprocess
 import functools
 import numpy as np
 import tomllib
@@ -16,6 +15,9 @@ from astroplan import FixedTarget
 
 
 __all__ = ['SourceNotVisible', 'Source', 'SourceType', 'Scan', 'ScanBlock']
+
+# Module-level RFC catalog cache
+_RFC_CATALOG_CACHE: Optional[dict[str, tuple[str, str, str]]] = None
 
 """Defines an observation, which basically consist of a given network of stations,
 observing a target source for a given time range and at an observing band.
@@ -295,14 +297,69 @@ class Source(FixedTarget):
         """
         return cls(src_name, coordinates=Source.get_coordinates_from_name(src_name), source_type=source_type)
 
+    @staticmethod
+    def parse_source_spec(spec: str) -> tuple[Optional[str], Optional[str]]:
+        """Parse a source specification that may contain 'name/coordinates'.
+
+        Inputs
+        - spec : str
+            Source spec in one of these forms:
+            a) 'name/coordinates' — both a custom name and explicit coordinates.
+            b) 'coordinates' only (contains h/m/d/s or ':' patterns).
+            c) 'name' only — to be resolved via catalog lookup.
+
+        Returns
+        - tuple[str | None, str | None]
+            (name, coord_str). At least one will be non-None.
+            If '/' is present, name is the part before '/' and coord_str the part after.
+            If no '/', returns (None, spec) when spec looks like coordinates,
+            or (spec, None) when spec looks like a name.
+        """
+        if '/' in spec:
+            name, coord_str = spec.split('/', 1)
+            return name.strip(), coord_str.strip()
+
+        # No '/' — check if it looks like coordinates
+        if all(char in spec for char in ('h', 'm', 'd', 's')) or ':' in spec:
+            return None, spec
+
+        return spec, None
+
+    @classmethod
+    def _parse_coord_str(cls, coord_str: str) -> coord.SkyCoord:
+        """Parse a coordinate string in 'XXhXXmXXs XXdXXmXXs' or 'HH:MM:SS DD:MM:SS' format.
+
+        Inputs
+        - coord_str : str
+            Coordinate string to parse.
+
+        Returns
+        - astropy.coordinates.SkyCoord
+
+        Raises
+        - ValueError: If the coordinate format is invalid.
+        """
+        if all(char in coord_str for char in ('h', 'm', 'd', 's')):
+            return coord.SkyCoord(coord_str)
+
+        if ':' in coord_str:
+            temp = coord_str
+            for char in ('h', 'm', 'd', 'm'):
+                temp = temp.replace(':', char, 1)
+            return coord.SkyCoord(temp)
+
+        raise ValueError(f"Cannot parse coordinate string: '{coord_str}'")
+
     @classmethod
     def source_from_str(cls, src: str, source_type: SourceType = SourceType.TARGET) -> Self:
-        """Returns a Source object from either a source name or coordinate string.
+        """Returns a Source object from a source name, coordinate string, or 'name/coordinates'.
 
         Inputs
         - src : str
-            Either a source name (to be looked up in catalogs) or coordinates in
-            'XXhXXmXXs XXdXXmXXs' or 'HH:MM:SS DD:MM:SS' format.
+            One of:
+            a) 'name/coordinates' — use the given name with explicit coordinates.
+            b) Coordinates in 'XXhXXmXXs XXdXXmXXs' or 'HH:MM:SS DD:MM:SS' format.
+            c) A source name to be looked up in catalogs.
         - source_type : SourceType
             Type of the source (default: TARGET).
 
@@ -314,50 +371,43 @@ class Source(FixedTarget):
         - ValueError: If the coordinate format is invalid.
         - NameResolveError: If the source name cannot be found in catalogs.
         """
-        if all([char in src for char in ('h', 'm', 'd', 's')]):
-            return cls('target', coordinates=coord.SkyCoord(src), source_type=source_type)
-        elif ':' in src:
-            for char in ('h', 'm', 'd', 'm'):
-                src = src.replace(':', char, 1)
+        name, coord_str = cls.parse_source_spec(src)
 
-            return cls('target', coordinates=coord.SkyCoord(src), source_type=source_type)
-        else:
-            return cls.source_from_name(src, source_type)
+        if name is not None and coord_str is not None:
+            return cls(name, coordinates=cls._parse_coord_str(coord_str), source_type=source_type)
+
+        if coord_str is not None:
+            return cls('target', coordinates=cls._parse_coord_str(coord_str), source_type=source_type)
+
+        return cls.source_from_name(name, source_type)
 
     @staticmethod
     def get_rfc_coordinates(src_name: str) -> coord.SkyCoord:
         """Returns the coordinates of the object by searching the provided name through the RFC catalog.
 
+        This method uses an in-memory cache of the RFC catalog for fast lookups,
+        avoiding subprocess calls and file I/O on repeated accesses.
+
         Inputs
         - src_name : str
-            Name of the source to search for in the RFC catalog.
+            Name of the source to search for in the RFC catalog (case-insensitive).
 
         Returns
         - astropy.coordinates.SkyCoord
             The coordinates of the source from the RFC catalog.
 
         Raises
-        - ValueError: If the source name is not found or has multiple matches.
-        - RuntimeError: If there is an error parsing the RFC catalog file.
+        - ValueError: If the source name is not found in the RFC catalog.
+        - RuntimeError: If no RFC catalog files are found.
         """
-        rfc_files = tuple((r.name for r in resources.files("vlbiplanobs.data").iterdir()
-                           if r.is_file() and 'rfc' in r.name))
-        assert len(rfc_files) > 0, "No RFC files found under the 'data' folder."
+        catalog = _load_rfc_catalog()
+        src_upper = src_name.upper()
 
-        with resources.as_file(resources.files("vlbiplanobs.data").joinpath(sorted(rfc_files)[-1])) \
-                as rfcfile:
-            process = subprocess.run(["grep", src_name, rfcfile], capture_output=True, text=True)
-        # process = subprocess.run(["grep", src_name, "./data/rfc_2021c_cat.txt"], capture_output=True, text=True)
+        if src_upper in catalog:
+            _, _, coord_str = catalog[src_upper]
+            return coord.SkyCoord(coord_str)
 
-        if process.returncode == 1:
-            raise ValueError(f"The source {src_name} was not found in the RFC catalog.")
-        elif process.returncode != 0:
-            raise RuntimeError("A problem happened while parsing the RFC catalog file.")
-        elif process.stdout.count('\n') != 1:
-            raise ValueError(f"None or multiple coincidences for the source {src_name} in the RFC catalog.")
-
-        temp = process.stdout.split()  # Fields:  IVS  name  J2000name  h m s d m s
-        return coord.SkyCoord(f"{temp[3]}h{temp[4]}m{temp[5]}s {temp[6]}d{temp[7]}m{temp[8]}s")
+        raise ValueError(f"The source {src_name} was not found in the RFC catalog.")
 
     def sun_separation(self, times: Time) -> Sequence[u.Quantity]:
         """Returns the separation of the source to the Sun at the given epoch(s).
@@ -399,13 +449,61 @@ class Source(FixedTarget):
         return times[sun_separation < min_separation]
 
 
+def _load_rfc_catalog() -> dict[str, tuple[str, str, str]]:
+    """Load the RFC catalog file into memory and cache it.
+
+    Returns:
+        Dictionary mapping source names (uppercase) to tuples of (IVS name, J2000 name, coordinate string).
+        The coordinate string is in format 'XXhXXmXXs XXdXXmXXs'.
+
+    Raises:
+        RuntimeError: If no RFC catalog files are found.
+    """
+    global _RFC_CATALOG_CACHE
+
+    if _RFC_CATALOG_CACHE is not None:
+        return _RFC_CATALOG_CACHE
+
+    rfc_files = tuple(r.name for r in resources.files("vlbiplanobs.data").iterdir()
+                     if r.is_file() and 'rfc' in r.name)
+
+    if not rfc_files:
+        raise RuntimeError("No RFC files found under the 'data' folder.")
+
+    _RFC_CATALOG_CACHE = {}
+
+    with resources.as_file(resources.files("vlbiplanobs.data").joinpath(sorted(rfc_files)[-1])) as rfcfile:
+        with open(rfcfile, 'r') as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 9:  # IVS name J2000name h m s d m s
+                    ivs_name = parts[0]
+                    j2000_name = parts[2]
+                    coord_str = f"{parts[3]}h{parts[4]}m{parts[5]}s {parts[6]}d{parts[7]}m{parts[8]}s"
+                    # Store with multiple keys for fast lookup
+                    _RFC_CATALOG_CACHE[j2000_name.upper()] = (ivs_name, j2000_name, coord_str)
+                    _RFC_CATALOG_CACHE[ivs_name.upper()] = (ivs_name, j2000_name, coord_str)
+
+    return _RFC_CATALOG_CACHE
+
+
+def _format_dec_coordinate(dec_str: str) -> str:
+    """Ensure declination string has proper sign prefix for SkyCoord parsing.
+
+    Args:
+        dec_str: Declination string in format 'DD:MM:SS' or '+DD:MM:SS' or '-DD:MM:SS'
+
+    Returns:
+        Formatted declination string with guaranteed sign prefix
+    """
+    if not dec_str.startswith(('+', '-')):
+        dec_str = '+' + dec_str
+    return dec_str
+
+
 class SourceCatalog:
     def __init__(self, personal_catalog: Optional[str] = None):
         self._blocks: dict[str, dict[str, ScanBlock]] = dict()
-        # self._sources: dict[str, Source] = dict()
-        # self._all_names: dict[str, str] = dict()
-        # self._personal: set[str] = set()
-        # self._catalog: set[str] = set()
         if personal_catalog is not None:
             self.read_personal_catalog(personal_catalog)
 
@@ -495,47 +593,38 @@ class SourceCatalog:
                         pc_coords = pc['coordinates']
                         # Convert RA:Dec format to SkyCoord format
                         ra = pc_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
-                        dec = pc_coords['Dec'].replace(':', 'd', 1).replace(':', 'm') + 's'
-                        dec = dec.replace('+', '+').replace('-', '-')
+                        dec = _format_dec_coordinate(pc_coords['Dec']).replace(':', 'd', 1).replace(':', 'm') + 's'
                         pc_coord_str = f"{ra} {dec}"
-                        scans.append(Scan(source=Source(name=pc['name'],
-                                                        coordinates=pc_coord_str,
-                                                        source_type=SourceType.PHASECAL),
-                                          duration=float(pc['duration'])*u.min
-                                          if 'duration' in pc else None,
-                                          every=int(pc['every'])
-                                          if 'every' in pc else -1))
-                    
+                        scans.append(Scan(
+                            source=Source(name=pc['name'], coordinates=pc_coord_str, source_type=SourceType.PHASECAL),
+                            duration=float(pc['duration'])*u.min if 'duration' in pc else None,
+                            every=int(pc['every']) if 'every' in pc else -1))
+
                     # Handle checksource if present
                     if 'checksource' in src and src['checksource'].get('name'):
                         cs = src['checksource']
                         cs_coords = cs['coordinates']
                         # Convert RA:Dec format to SkyCoord format
                         ra = cs_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
-                        dec = cs_coords['Dec'].replace(':', 'd', 1).replace(':', 'm') + 's'
-                        dec = dec.replace('+', '+').replace('-', '-')
+                        dec = _format_dec_coordinate(cs_coords['Dec']).replace(':', 'd', 1).replace(':', 'm') + 's'
                         cs_coord_str = f"{ra} {dec}"
-                        scans.append(Scan(source=Source(name=cs['name'],
-                                                        coordinates=cs_coord_str,
-                                                        source_type=SourceType.CHECKSOURCE),
-                                          duration=float(cs['duration'])*u.min
-                                          if 'duration' in cs else None,
-                                          every=int(cs['every'])
-                                          if 'every' in cs else -1))
-                    
+                        scans.append(Scan(
+                            source=Source(name=cs['name'], coordinates=cs_coord_str,
+                                          source_type=SourceType.CHECKSOURCE),
+                            duration=float(cs['duration'])*u.min if 'duration' in cs else None,
+                            every=int(cs['every']) if 'every' in cs else -1))
+
                     # Main source
                     src_coords = src['coordinates']
                     # Convert RA:Dec format to SkyCoord format
                     ra = src_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
-                    dec = src_coords['Dec'].replace(':', 'd', 1).replace(':', 'm') + 's'
-                    dec = dec.replace('+', '+').replace('-', '-')
+                    dec = _format_dec_coordinate(src_coords['Dec']).replace(':', 'd', 1).replace(':', 'm') + 's'
                     src_coord_str = f"{ra} {dec}"
-                    scans.append(Scan(source=Source(name=name,
-                                                    coordinates=src_coord_str,
-                                                    source_type=SourceType.PULSAR),
-                                      duration=float(src['duration'])*u.min if 'duration' in src else None,
-                                      every=int(src['every']) if 'every' in src else -1))
-                    
+                    scans.append(Scan(
+                        source=Source(name=name, coordinates=src_coord_str, source_type=SourceType.PULSAR),
+                        duration=float(src['duration'])*u.min if 'duration' in src else None,
+                        every=int(src['every']) if 'every' in src else -1))
+
                     self._blocks['pulsars'][name] = ScanBlock(scans)
             
             # Handle [[target]] arrays
@@ -553,47 +642,38 @@ class SourceCatalog:
                         pc_coords = pc['coordinates']
                         # Convert RA:Dec format to SkyCoord format
                         ra = pc_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
-                        dec = pc_coords['Dec'].replace(':', 'd', 1).replace(':', 'm') + 's'
-                        dec = dec.replace('+', '+').replace('-', '-')
+                        dec = _format_dec_coordinate(pc_coords['Dec']).replace(':', 'd', 1).replace(':', 'm') + 's'
                         pc_coord_str = f"{ra} {dec}"
-                        scans.append(Scan(source=Source(name=pc['name'],
-                                                        coordinates=pc_coord_str,
-                                                        source_type=SourceType.PHASECAL),
-                                          duration=float(pc['duration'])*u.min
-                                          if 'duration' in pc else None,
-                                          every=int(pc['every'])
-                                          if 'every' in pc else -1))
-                    
+                        scans.append(Scan(
+                            source=Source(name=pc['name'], coordinates=pc_coord_str, source_type=SourceType.PHASECAL),
+                            duration=float(pc['duration'])*u.min if 'duration' in pc else None,
+                            every=int(pc['every']) if 'every' in pc else -1))
+
                     # Handle checksource if present
                     if 'checksource' in src and src['checksource'].get('name'):
                         cs = src['checksource']
                         cs_coords = cs['coordinates']
                         # Convert RA:Dec format to SkyCoord format
                         ra = cs_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
-                        dec = cs_coords['Dec'].replace(':', 'd', 1).replace(':', 'm') + 's'
-                        dec = dec.replace('+', '+').replace('-', '-')
+                        dec = _format_dec_coordinate(cs_coords['Dec']).replace(':', 'd', 1).replace(':', 'm') + 's'
                         cs_coord_str = f"{ra} {dec}"
-                        scans.append(Scan(source=Source(name=cs['name'],
-                                                        coordinates=cs_coord_str,
-                                                        source_type=SourceType.CHECKSOURCE),
-                                          duration=float(cs['duration'])*u.min
-                                          if 'duration' in cs else None,
-                                          every=int(cs['every'])
-                                          if 'every' in cs else -1))
-                    
+                        scans.append(Scan(
+                            source=Source(name=cs['name'], coordinates=cs_coord_str,
+                                          source_type=SourceType.CHECKSOURCE),
+                            duration=float(cs['duration'])*u.min if 'duration' in cs else None,
+                            every=int(cs['every']) if 'every' in cs else -1))
+
                     # Main source
                     src_coords = src['coordinates']
                     # Convert RA:Dec format to SkyCoord format
                     ra = src_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
-                    dec = src_coords['Dec'].replace(':', 'd', 1).replace(':', 'm') + 's'
-                    dec = dec.replace('+', '+').replace('-', '-')
+                    dec = _format_dec_coordinate(src_coords['Dec']).replace(':', 'd', 1).replace(':', 'm') + 's'
                     src_coord_str = f"{ra} {dec}"
-                    scans.append(Scan(source=Source(name=name,
-                                                    coordinates=src_coord_str,
-                                                    source_type=SourceType.TARGET),
-                                      duration=float(src['duration'])*u.min if 'duration' in src else None,
-                                      every=int(src['every']) if 'every' in src else -1))
-                    
+                    scans.append(Scan(
+                        source=Source(name=name, coordinates=src_coord_str, source_type=SourceType.TARGET),
+                        duration=float(src['duration'])*u.min if 'duration' in src else None,
+                        every=int(src['every']) if 'every' in src else -1))
+
                     self._blocks['targets'][name] = ScanBlock(scans)
 
     def read_rfc_catalog(self, path: Optional[Union[str, Path]] = None):

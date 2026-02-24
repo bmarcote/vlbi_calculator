@@ -264,40 +264,12 @@ def uvplot_from_data(uv_data: dict, filter_antennas: Optional[list[str]] = None)
         title='',
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(
-            showline=True,
-            linecolor='black',
-            linewidth=1,
-            mirror='allticks',
-            ticks='inside',
-            tickmode='auto',
-            showgrid=False,
-            zeroline=False,
-            minor=dict(
-                ticks='inside',
-                ticklen=4,
-                tickcolor='black',
-                showgrid=False
-            )
-        ),
-        yaxis=dict(
-            showline=True,
-            linecolor='black',
-            linewidth=1,
-            mirror='allticks',
-            ticks='inside',
-            scaleanchor="x",
-            scaleratio=1,
-            tickmode='auto',
-            showgrid=False,
-            zeroline=False,
-            minor=dict(
-                ticks='inside',
-                ticklen=4,
-                tickcolor='black',
-                showgrid=False
-            )
-        ),
+        xaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
+                   tickmode='auto', showgrid=False, zeroline=False,
+                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
+        yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
+                   scaleanchor="x", scaleratio=1, tickmode='auto', showgrid=False, zeroline=False,
+                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         margin=dict(l=0, r=0, t=0, b=0)
     )
     fig.update_xaxes(constrain='domain')
@@ -363,40 +335,12 @@ def uvplot(o, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure
         title='',
         paper_bgcolor='rgba(0,0,0,0)',   # Transparent background
         plot_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(
-            showline=True,
-            linecolor='black',
-            linewidth=1,
-            mirror='allticks',
-            ticks='inside',
-            tickmode='auto',
-            showgrid=False,
-            zeroline=False,
-            minor=dict(
-                ticks='inside',
-                ticklen=4,
-                tickcolor='black',
-                showgrid=False
-            )
-        ),
-        yaxis=dict(
-            showline=True,
-            linecolor='black',
-            linewidth=1,
-            mirror='allticks',
-            ticks='inside',
-            scaleanchor="x",      # Square aspect ratio
-            scaleratio=1,
-            tickmode='auto',
-            showgrid=False,
-            zeroline=False,
-            minor=dict(
-                ticks='inside',
-                ticklen=4,
-                tickcolor='black',
-                showgrid=False
-            )
-        ),
+        xaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
+                   tickmode='auto', showgrid=False, zeroline=False,
+                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
+        yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
+                   scaleanchor="x", scaleratio=1, tickmode='auto', showgrid=False, zeroline=False,  # Square aspect ratio
+                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         margin=dict(l=0, r=0, t=0, b=0)
     )
     fig.update_xaxes(constrain='domain')
@@ -629,15 +573,8 @@ def plot_worldmap_stations(o) -> Optional[go.Figure]:
         hovertemplate=data["hovertemplate"])
     )
 
-    fig.update_geos(
-        # projection_type='natural earth',
-        projection_type='orthographic',
-        # lonaxis_range=[avg_lon-90, avg_lon+90],
-        showland=True,
-        landcolor='#9DB7C4',
-        projection_rotation=dict(lon=avg_lon, lat=0),
-        bgcolor='rgba(0,0,0,0)'
-    )
+    fig.update_geos(projection_type='orthographic', showland=True, landcolor='#9DB7C4',
+                    projection_rotation=dict(lon=avg_lon, lat=0), bgcolor='rgba(0,0,0,0)')
 
     fig.update_layout(autosize=True, hovermode='closest', showlegend=False,
                       margin={'l': 0, 't': 0, 'b': 0, 'r': 0},

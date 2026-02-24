@@ -23,7 +23,7 @@ _RFC_BANDS = {'l': 's', 's': 's', 'c': 'c', 'm': 'c', 'x': 'x', 'u': 'u', 'k': '
 _DEFAULT_MIN_ELEVATION = 20 * u.deg
 _DEFAULT_MIN_FLUX = 1.0 * u.Jy
 _BAND_INDEX = {'s': 0, 'c': 1, 'x': 2, 'u': 3, 'k': 4}
-_WAVELENGTH_BANDS = {'18cm': 's', '21cm': 's', '13cm': 'c', '6cm': 'c', '5cm': 'c', 
+_WAVELENGTH_BANDS = {'18cm': 's', '21cm': 's', '13cm': 'c', '6cm': 'c', '5cm': 'c',
                        '3.6cm': 'x', '2cm': 'u', '1.3cm': 'k', '0.7cm': 'k'}
 
 
@@ -40,9 +40,9 @@ class CalibratorSource(Source):
     """Represents a calibrator source from the RFC catalog."""
     __slots__ = ('ivsname', 'n_observations', 'flux_resolved', 'flux_unresolved', 'is_calibrator')
 
-    def __init__(self, name: str, ivsname: str, ra_deg: float, dec_deg: float, n_observations: int, 
+    def __init__(self, name: str, ivsname: str, ra_deg: float, dec_deg: float, n_observations: int,
                  flux_resolved: np.ndarray, flux_unresolved: np.ndarray, is_calibrator: bool):
-        super().__init__(name=name, coordinates=coord.SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg), 
+        super().__init__(name=name, coordinates=coord.SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg),
                      source_type=SourceType.PHASECAL)
         self.ivsname = ivsname
         self.n_observations = n_observations
@@ -74,16 +74,16 @@ class CalibratorSource(Source):
             rounded_band = _round_to_nearest_wavelength(band)
             if rounded_band in _WAVELENGTH_BANDS:
                 band = _WAVELENGTH_BANDS[rounded_band]
-        
+
         idx = _BAND_INDEX.get(band)
         if idx is None:
             return 0.0, 0.0
-        
+
         if idx < len(self.flux_unresolved) and self.flux_unresolved[idx] > 0:
             return float(self.flux_resolved[idx]), float(self.flux_unresolved[idx])
-        
+
         return self._interpolate_flux(band)
-    
+
     def _interpolate_flux(self, target_band: str) -> tuple[float, float]:
         """Interpolate flux for a band using nearby bands."""
         # Find the wavelength for the target band - check both direct band and wavelength mappings
@@ -92,43 +92,44 @@ class CalibratorSource(Source):
             if band == target_band:
                 target_wavelength = float(wl[:-2])
                 break
-        
+
         # If no direct mapping found, try to find a representative wavelength for the band
         if target_wavelength is None and target_band in _BAND_INDEX:
             # Use a representative wavelength for each band
             representative_wavelengths = {'s': 18.0, 'c': 6.0, 'x': 3.6, 'u': 2.0, 'k': 1.3}
             target_wavelength = representative_wavelengths.get(target_band)
-        
+
         if target_wavelength is None:
             return 0.0, 0.0
-        
+
         # Vectorized approach: collect all available data at once
         available_data = []
         for band, idx in _BAND_INDEX.items():
             if idx < len(self.flux_unresolved) and self.flux_unresolved[idx] > 0:
                 for wl, wl_band in _WAVELENGTH_BANDS.items():
                     if wl_band == band:
-                        available_data.append((float(wl[:-2]), float(self.flux_resolved[idx]), float(self.flux_unresolved[idx])))
+                        available_data.append((float(wl[:-2]), float(self.flux_resolved[idx]),
+                                               float(self.flux_unresolved[idx])))
                         break
-        
+
         if not available_data:
             return 0.0, 0.0
-        
+
         if len(available_data) == 1:
             return available_data[0][1], available_data[0][2]
-        
+
         wavelengths, resolved_fluxes, unresolved_fluxes = map(np.array, zip(*available_data))
         distances = np.abs(wavelengths - target_wavelength)
         closest_indices = np.argsort(distances)[:2]
-        
+
         wl1, wl2 = wavelengths[closest_indices[0]], wavelengths[closest_indices[1]]
         res1, res2 = resolved_fluxes[closest_indices[0]], resolved_fluxes[closest_indices[1]]
         unres1, unres2 = unresolved_fluxes[closest_indices[0]], unresolved_fluxes[closest_indices[1]]
-        
+
         if wl1 != wl2 and target_wavelength > 0:
             log_wl1, log_wl2 = np.log10(wl1), np.log10(wl2)
             log_target_wl = np.log10(target_wavelength)
-            
+
             if res1 > 0 and res2 > 0:
                 log_res1, log_res2 = np.log10(res1), np.log10(res2)
                 log_res_interp = log_res1 + (log_res2 - log_res1) * (log_target_wl - \
@@ -136,25 +137,26 @@ class CalibratorSource(Source):
                 res_interp = 10**log_res_interp
             else:
                 res_interp = (res1 + res2) / 2
-            
+
             if unres1 > 0 and unres2 > 0:
                 log_unres1, log_unres2 = np.log10(unres1), np.log10(unres2)
-                log_unres_interp = log_unres1 + (log_unres2 - log_unres1) * (log_target_wl - log_wl1) / (log_wl2 - log_wl1)
+                log_unres_interp = log_unres1 + (log_unres2 - log_unres1) * (log_target_wl - log_wl1) / \
+                    (log_wl2 - log_wl1)
                 unres_interp = 10**log_unres_interp
             else:
                 unres_interp = (unres1 + unres2) / 2
         else:
             res_interp = (res1 + res2) / 2
             unres_interp = (unres1 + unres2) / 2
-        
+
         return res_interp, unres_interp
 
     def get_skycoord(self) -> coord.SkyCoord:
         return self.coord
 
     def get_astrogeo_link(self) -> str:
-        source_coord_str = parse.quote("ra={:02.0f}:{:02.0f}:{:06.3f}&dec={:+03.0f}:{:02.0f}:{:06.3f}&num_sou=1&format=html".format(
-            *self.coord.ra.hms, *self.coord.dec.dms), safe='=&')
+        fmt = "ra={:02.0f}:{:02.0f}:{:06.3f}&dec={:+03.0f}:{:02.0f}:{:06.3f}&num_sou=1&format=html"
+        source_coord_str = parse.quote(fmt.format(*self.coord.ra.hms, *self.coord.dec.dms), safe='=&')
         return f"http://astrogeo.org/cgi-bin/calib_search_form.csh?{source_coord_str}"
 
     def get_observed_bands(self) -> str:
@@ -168,11 +170,11 @@ class CalibratorSource(Source):
 
 class RFCCatalog:
     """RFC (Radio Fundamental Catalog) of VLBI calibrator sources."""
-    __slots__ = ('_sources', '_min_flux', '_band', '_catalog_filename', 
+    __slots__ = ('_sources', '_min_flux', '_band', '_catalog_filename',
                  '_name_index', '_ivsname_index', '_ra_arr', '_dec_arr')
 
-    def __init__(self, catalog_filename: Optional[str] = None,
-                min_flux: u.Quantity = _DEFAULT_MIN_FLUX, band: str = 'c'):
+    def __init__(self, catalog_filename: Optional[str] = None, min_flux: u.Quantity = _DEFAULT_MIN_FLUX,
+                 band: str = 'c'):
         self._sources: list[CalibratorSource] = []
         self._min_flux = min_flux.to(u.Jy).value if hasattr(min_flux, 'to') else min_flux
         self._band = band
@@ -186,7 +188,7 @@ class RFCCatalog:
     def _get_catalog_path(self) -> str:
         if self._catalog_filename is not None:
             return self._catalog_filename
-        rfc_files = tuple(r.name for r in resources.files('vlbiplanobs.data').iterdir() 
+        rfc_files = tuple(r.name for r in resources.files('vlbiplanobs.data').iterdir()
                        if r.is_file() and 'rfc' in r.name and r.name.endswith('.txt'))
         if len(rfc_files) == 0:
             raise FileNotFoundError('No RFC catalog files found in the data directory.')
@@ -199,23 +201,23 @@ class RFCCatalog:
             band_idx = _BAND_INDEX[self._band]
             with open(catalog_path, 'rt') as fin:
                 lines = fin.readlines()
-            
-            valid_lines = [line for line in lines 
+
+            valid_lines = [line for line in lines
                           if line and line[0] not in '#U' and len(line) >= 100]
-            
+
             parsed_data = []
             for line in valid_lines:
                 cols = line.split()
                 if len(cols) < 25:
                     continue
-                
+
                 try:
                     flux_values = []
                     for f_res, f_unres in zip(cols[13:23:2], cols[14:24:2]):
                         flux_res = 0.0 if f_res[0] == '<' else float(f_res)
                         flux_unres = 0.0 if f_unres[0] == '<' else float(f_unres)
                         flux_values.extend([flux_res, flux_unres])
-                    
+
                     flux_array = np.array(flux_values, dtype=np.float32).reshape(5, 2)
                     # Skip sources with flux below threshold
                     # For phase calibrator searches (min_flux=0.0), include sources with missing data (-1.0)
@@ -230,23 +232,24 @@ class RFCCatalog:
                             continue
                 except (ValueError, IndexError):
                     continue
-                
+
                 try:
                     ra_deg = (float(cols[3]) + float(cols[4]) / 60.0 + float(cols[5]) / 3600.0) * 15.0
-                    dec_deg = (1.0 if cols[6][0] != '-' else -1.0) * (abs(float(cols[6])) + float(cols[7]) / 60.0 + float(cols[8]) / 3600.0)
+                    dec_deg = (1.0 if cols[6][0] != '-' else -1.0) * \
+                        (abs(float(cols[6])) + float(cols[7]) / 60.0 + float(cols[8]) / 3600.0)
                 except (ValueError, IndexError):
                     continue
-                
+
                 n_obs = int(cols[12]) if cols[12].lstrip('-').isdigit() else 0
                 parsed_data.append((cols[2], cols[1], ra_deg, dec_deg, n_obs,
                                     flux_array[:, 0], flux_array[:, 1], cols[0] == 'C'))
 
             self._sources = [CalibratorSource(name, ivs, ra, dec, nobs, flux_r, flux_u, is_cal)
                              for name, ivs, ra, dec, nobs, flux_r, flux_u, is_cal in parsed_data]
-            
+
             self._name_index = {s.name: s for s in self._sources}
             self._ivsname_index = {s.ivsname: s for s in self._sources}
-            
+
             if self._sources:
                 coords = np.array([(s.ra_deg, s.dec_deg) for s in self._sources], dtype=np.float64)
                 self._ra_arr = coords[:, 0].copy()
@@ -269,39 +272,39 @@ class RFCCatalog:
 
     def get_source(self, name: str) -> Optional[CalibratorSource]:
         """Get a source by name, IVS name, or other names.
-        
+
         Searches in multiple fields:
         - Primary name (case-insensitive)
-        - IVS name (case-insensitive) 
+        - IVS name (case-insensitive)
         - Other names/aliases (case-insensitive)
         """
         name_upper = name.upper()
-        
+
         # First try exact matches (case-insensitive)
         for source_name, source in self._name_index.items():
             if source_name.upper() == name_upper:
                 return source
-                
+
         for ivs_name, source in self._ivsname_index.items():
             if ivs_name.upper() == name_upper:
                 return source
-        
+
         # Then search in other names
         for source in self._sources:
             if source.other_names:
                 for other_name in source.other_names:
                     if other_name.upper() == name_upper:
                         return source
-        
+
         # Finally, try partial matches (e.g., if name is contained in a longer name)
         for source_name, source in self._name_index.items():
             if name_upper in source_name.upper() or source_name.upper() in name_upper:
                 return source
-                
+
         for ivs_name, source in self._ivsname_index.items():
             if name_upper in ivs_name.upper() or ivs_name.upper() in name_upper:
                 return source
-        
+
         return None
 
     def calibrators_only(self) -> Self:
@@ -345,16 +348,17 @@ def _angular_separation(ra1_deg: float, dec1_deg: float, ra2_arr: np.ndarray, de
     """Vectorized angular separation calculation."""
     ra1_rad, dec1_rad = np.radians(ra1_deg), np.radians(dec1_deg)
     ra2_rad, dec2_rad = np.radians(ra2_arr), np.radians(dec2_arr)
-    
+
     # Vectorized haversine formula
     dlon = ra2_rad - ra1_rad
     dlat = dec2_rad - dec1_rad
-    
+
     a = np.sin(dlat / 2.0) ** 2 + np.cos(dec1_rad) * np.cos(dec2_rad) * np.sin(dlon / 2.0) ** 2
     return np.degrees(2 * np.arcsin(np.sqrt(a)))
 
 
-def _batch_altaz_erfa(ra_rad: np.ndarray, dec_rad: np.ndarray, times: Time, station) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _batch_altaz_erfa(ra_rad: np.ndarray, dec_rad: np.ndarray, times: Time,
+                      station) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute elevation, azimuth, and hour angle for all sources at all times using ERFA.
 
     Returns (elevation_deg, azimuth_deg, ha_hours) each shaped (n_times, n_sources).
@@ -406,11 +410,13 @@ def _station_observable_mask(elev: np.ndarray, az: np.ndarray, ha_hours: np.ndar
         return ha_ok & dec_ok & (elev > 5.0)
 
 
-def get_fringe_finder_sources(stations: Stations, times: Time, 
-                           min_elevation: u.Quantity = _DEFAULT_MIN_ELEVATION, 
-                           min_flux: u.Quantity = _DEFAULT_MIN_FLUX, 
-                           catalog: Optional[RFCCatalog] = None, 
-                           require_all_stations: bool = True) -> tuple[list[CalibratorSource], list[float], Optional[list[tuple[int, int, bool, float]]]]:
+def get_fringe_finder_sources(
+        stations: Stations, times: Time,
+        min_elevation: u.Quantity = _DEFAULT_MIN_ELEVATION,
+        min_flux: u.Quantity = _DEFAULT_MIN_FLUX,
+        catalog: Optional[RFCCatalog] = None,
+        require_all_stations: bool = True
+) -> tuple[list[CalibratorSource], list[float], Optional[list[tuple[int, int, bool, float]]]]:
     """Find fringe finder sources visible by given stations during the given time range.
 
     Uses ERFA directly for vectorized elevation computation across all sources,
@@ -495,21 +501,21 @@ def get_fringe_finder_sources(stations: Stations, times: Time,
         return sorted_sources, sorted_min_elevs, sorted_antenna_vis
 
 
-def get_nearby_sources(source: CalibratorSource | Source, max_separation: u.Quantity = 5.0 * u.deg, 
-                       catalog: Optional[RFCCatalog] = None, 
+def get_nearby_sources(source: CalibratorSource | Source, max_separation: u.Quantity = 5.0 * u.deg,
+                       catalog: Optional[RFCCatalog] = None,
                        n_sources: Optional[int] = None) -> list[tuple[CalibratorSource, float]]:
     """Find calibrator sources near a target source."""
     if catalog is None:
         catalog = RFCCatalog()
-    
+
     max_sep_deg = max_separation.to(u.deg).value if hasattr(max_separation, 'to') else max_separation
     ra_arr, dec_arr = catalog._get_coord_arrays()
     if len(ra_arr) == 0:
         return []
-    
+
     separations_deg = _angular_separation(source.coord.ra.deg, source.coord.dec.deg, ra_arr, dec_arr)
     valid_mask = (separations_deg <= max_sep_deg) & (separations_deg > 0)
-    
+
     valid_indices = np.where(valid_mask)[0]
     nearby = [(catalog.sources[i], separations_deg[i]) for i in valid_indices]
     nearby.sort(key=lambda x: x[1])
@@ -686,25 +692,26 @@ def _wavelength_to_rfc_band(band: str) -> str:
 def main_fringe():
     usage = "%(prog)s [-h] OPTIONS"
     description = "Find fringe finder sources for VLBI observations"
-    parser = argparse.ArgumentParser(description=description, prog="planobs_fringefinder", usage=usage, 
+    parser = argparse.ArgumentParser(description=description, prog="planobs_fringefinder", usage=usage,
                                   formatter_class=RawTextRichHelpFormatter)
-    parser.add_argument('-s', '--stations', type=str, nargs='+', required=True, 
+    parser.add_argument('-s', '--stations', type=str, nargs='+', required=True,
                         help="List of antenna codenames or names that will participate in the observation.")
-    parser.add_argument('-t', '--starttime', type=str, required=True, 
+    parser.add_argument('-t', '--starttime', type=str, required=True,
                         help="Start of the observation in format 'YYYY-MM-DD HH:MM' (UTC).")
     parser.add_argument('-d', '--duration', type=float, required=True, help="Duration of the observation in hours.")
-    parser.add_argument('--min-flux', type=float, default=0.5, 
+    parser.add_argument('--min-flux', type=float, default=0.5,
                         help="Minimum unresolved flux threshold in Jy (default: 0.5).")
-    parser.add_argument('--min-elevation', type=float, default=20.0, 
+    parser.add_argument('--min-elevation', type=float, default=20.0,
                         help="Minimum elevation in degrees (default: 20).")
-    parser.add_argument('-l', '--max-lines', type=int, default=20, 
+    parser.add_argument('-l', '--max-lines', type=int, default=20,
                         help="Maximum number of sources to return (default: 20).")
-    parser.add_argument('--require-all', action='store_true', default=False, 
+    parser.add_argument('--require-all', action='store_true', default=False,
                         help="Require source to be visible by ALL stations (default: False).")
     parser.add_argument('-b', '--band', type=str, default=None,
-                        help="Observing band for flux display (e.g., '18cm', '6cm'). If not provided, shows flux for all available bands.")
+                        help="Observing band for flux display (e.g., '18cm', '6cm'). "
+                             "If not provided, shows flux for all available bands.")
     parser.add_argument('--station-catalog', type=str, default=None, help="Path to custom station catalog file.")
-    parser.add_argument('--json', action='store_true', default=False, 
+    parser.add_argument('--json', action='store_true', default=False,
                         help="Output results in JSON format instead of a table.")
     args = parser.parse_args()
     obs._STATIONS = obs.Stations(filename=args.station_catalog)
@@ -722,17 +729,17 @@ def main_fringe():
                     if codename.upper() == s_upper:
                         found_station = obs._STATIONS[codename].codename
                         break
-                
+
                 if found_station is None:
                     # Also try full station names (case insensitive)
                     for name in obs._STATIONS.station_names:
                         if name.upper() == s_upper:
                             found_station = obs._STATIONS[name].codename
                             break
-                
+
                 if found_station is None:
                     raise KeyError(f"Station {s} not found")
-                
+
                 a_station = found_station
             except KeyError:
                 error_msg = f"The station {s} is not known."
@@ -741,7 +748,7 @@ def main_fringe():
                 else:
                     rprint(f"[bold red]{error_msg}[/bold red]")
                 sys.exit(1)
-        
+
         if a_station not in stations_list:
             stations_list.append(a_station)
 
@@ -753,38 +760,40 @@ def main_fringe():
         else:
             rprint(f"[bold red]{error_msg}[/bold red]")
         sys.exit(1)
-    
+
     times = Time(args.starttime, scale='utc') + np.arange(0, args.duration + 0.1, 0.1) * u.hour
-    sources, min_elevs, antenna_visibility = get_fringe_finder_sources(stations_obj, times, 
-                                               min_elevation=args.min_elevation * u.deg, 
-                                               min_flux=args.min_flux * u.Jy, 
+    sources, min_elevs, antenna_visibility = get_fringe_finder_sources(stations_obj, times,
+                                               min_elevation=args.min_elevation * u.deg,
+                                               min_flux=args.min_flux * u.Jy,
                                                require_all_stations=args.require_all)
     if not sources:
-        result = {"error": f"No fringe finder candidates found above {args.min_elevation} degrees elevation and with a unresolved flux above {args.min_flux} Jy."}
+        err_msg = (f"No fringe finder candidates found above {args.min_elevation} degrees elevation "
+                   f"and with a unresolved flux above {args.min_flux} Jy.")
+        result = {"error": err_msg}
         if args.json:
             print(json.dumps(result, indent=2))
         else:
-            rprint(f"[bold red]No fringe finder candidates found above {args.min_elevation} degrees elevation and with a unresolved flux above {args.min_flux} Jy.[/bold red]")
+            rprint(f"[bold red]{err_msg}[/bold red]")
         sys.exit(0)
 
     max_display = min(args.max_lines, len(sources))
     sources_slice = sources[:max_display]
     min_elevs_slice = min_elevs[:max_display]
-    
+
     result_data = []
     if antenna_visibility is not None:
         for i in range(max_display):
             src = sources_slice[i]
             min_elev = min_elevs_slice[i]
             visible_count, total_count, visible_all_times, min_elev_all = antenna_visibility[i]
-            
+
             if visible_count == total_count and visible_all_times:
                 visibility_text = "all ant. all time"
             elif visible_count == total_count:
                 visibility_text = "all ant. partial time"
             else:
                 visibility_text = f"{visible_count}/{total_count} ant."
-            
+
             # Get flux information for the specified band
             if args.band:
                 total_flux, unresolved_flux = src.get_flux_at_band(args.band)
@@ -792,7 +801,7 @@ def main_fringe():
                 # Use first available band for total flux display
                 total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
                 unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
-            
+
             result_data.append({"name": src.name, "ivs_name": src.ivsname,
                             "min_elevation_deg": min_elev if min_elev > 0.0 else 0,
                             "total_flux_jy": total_flux, "unresolved_flux_jy": unresolved_flux,
@@ -803,7 +812,7 @@ def main_fringe():
         for i in range(max_display):
             src = sources_slice[i]
             min_elev = min_elevs_slice[i]
-            
+
             # Get flux information for the specified band
             if args.band:
                 total_flux, unresolved_flux = src.get_flux_at_band(args.band)
@@ -811,23 +820,24 @@ def main_fringe():
                 # Use first available band for total flux display
                 total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
                 unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
-            
+
             result_data.append({"name": src.name, "ivs_name": src.ivsname,
                             "min_elevation_deg": min_elev if min_elev > 0.0 else 0,
                             "total_flux_jy": total_flux, "unresolved_flux_jy": unresolved_flux,
                             "bands": src.get_observed_bands(),
                             "astrogeo_url": src.get_astrogeo_link()})
-    
+
     result = {"min_elevation_deg": args.min_elevation, "min_flux_jy": args.min_flux,
               "require_all_stations": args.require_all, "sources": result_data,
               "total_found": len(sources), "shown": max_display}
-    
+
     if args.json:
         print(json.dumps(result, indent=2))
     else:
         rprint(f"\n[bold green]Found {len(sources)} fringe finder candidates above "
-               f"{args.min_elevation} degrees elevation and with a unresolved flux above {args.min_flux} Jy:[/bold green]")
-        
+               f"{args.min_elevation} degrees elevation and with a unresolved flux "
+               f"above {args.min_flux} Jy:[/bold green]")
+
         table = Table(show_header=True, header_style="bold", show_lines=False, box=box.SIMPLE)
         table.add_column("Name", style="", width=17)
         table.add_column("IVS Name", style="", width=10)
@@ -836,14 +846,14 @@ def main_fringe():
         table.add_column("Unresolved (Jy)", justify="right", style="", width=13)
         table.add_column("Bands", justify="right", style="", width=10)
         table.add_column("url", style="", width=10)
-        
+
         if antenna_visibility is not None:
             table.add_column("Antenna Visibility", justify="center", style="", width=15)
-        
+
         for i in range(max_display):
             src = sources_slice[i]
             min_elev = min_elevs_slice[i]
-            
+
             # Get flux information for the specified band
             if args.band:
                 total_flux, unresolved_flux = src.get_flux_at_band(args.band)
@@ -851,12 +861,12 @@ def main_fringe():
                 # Use first available band for total flux display
                 total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
                 unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
-            
+
             row = [src.name, src.ivsname, f"{min_elev if min_elev > 0.0 else 0:>6.1f}",
                    f"{total_flux:>8.2f}" if total_flux > 0 else "N/A",
                    f"{unresolved_flux:>8.2f}" if unresolved_flux > 0 else "N/A",
                    src.get_observed_bands(), f"[link={src.get_astrogeo_link()}]AstroGeo[/link]"]
-            
+
             if antenna_visibility is not None:
                 visible_count, total_count, visible_all_times, min_elev_all = antenna_visibility[i]
                 if visible_count == total_count and visible_all_times:
@@ -866,9 +876,9 @@ def main_fringe():
                 else:
                     visibility_text = f"{visible_count}/{total_count} antennas"
                 row.append(visibility_text)
-            
+
             table.add_row(*row)
-        
+
         rprint(table)
         if len(sources) > max_display:
             rprint(f"\n... and {len(sources) - max_display} more sources.")
@@ -878,24 +888,25 @@ def main_fringe():
 def main_phasecal():
     usage = "%(prog)s [-h] OPTIONS"
     description = "Find phase calibrator sources near a target source"
-    parser = argparse.ArgumentParser(description=description, prog="planobs_phasecal", usage=usage, 
+    parser = argparse.ArgumentParser(description=description, prog="planobs_phasecal", usage=usage,
                                   formatter_class=RawTextRichHelpFormatter)
-    parser.add_argument('-t', '--target', type=str, required=True, 
+    parser.add_argument('-t', '--target', type=str, required=True,
                         help="Target source name (J2000 or IVS name from RFC catalog).")
-    parser.add_argument('--max-separation', type=float, default=5.0, 
+    parser.add_argument('--max-separation', type=float, default=5.0,
                         help="Maximum angular separation in degrees (default: 5.0).")
-    parser.add_argument('--min-flux', type=float, default=0.0, 
+    parser.add_argument('--min-flux', type=float, default=0.0,
                         help="Minimum unresolved flux threshold in Jy (default: 0.1).")
-    parser.add_argument('-n', '--n-sources', type=int, default=None, 
+    parser.add_argument('-n', '--n-sources', type=int, default=None,
                         help="Maximum number of sources to return (default: all).")
     parser.add_argument('-b', '--band', type=str, default=None,
-                        help="Observing band for flux display (e.g., '18cm', '6cm'). If not provided, shows flux for all available bands.")
-    parser.add_argument('--catalog-file', type=str, default=None, 
+                        help="Observing band for flux display (e.g., '18cm', '6cm'). "
+                             "If not provided, shows flux for all available bands.")
+    parser.add_argument('--catalog-file', type=str, default=None,
                         help="Path to custom RFC catalog file.")
-    parser.add_argument('--json', action='store_true', default=False, 
+    parser.add_argument('--json', action='store_true', default=False,
                         help="Output results in JSON format instead of a table.")
     args = parser.parse_args()
-    
+
     catalog = RFCCatalog(catalog_filename=args.catalog_file, band='c', min_flux=0.0)
     target = catalog.get_source(args.target)
     if not target:
@@ -909,10 +920,11 @@ def main_phasecal():
                 rprint(f"[bold red]{error_msg}[/bold red]")
             sys.exit(1)
 
-    nearby = get_nearby_sources(target, max_separation=args.max_separation * u.deg, 
+    nearby = get_nearby_sources(target, max_separation=args.max_separation * u.deg,
                                catalog=catalog, n_sources=args.n_sources)
     if not nearby:
-        result = {"error": f"No phase calibrator candidates found near {target.name} ({target.coord.to_string('hmsdms')})."}
+        result = {"error": f"No phase calibrator candidates found near {target.name} "
+                           f"({target.coord.to_string('hmsdms')})."}
         if args.json:
             print(json.dumps(result, indent=2))
         else:
@@ -929,21 +941,21 @@ def main_phasecal():
             # Use first available band for total flux display
             total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
             unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
-        
+
         result_data.append({"name": src.name, "ivs_name": src.ivsname, "separation_deg": sep,
                             "total_flux_jy": total_flux, "unresolved_flux_jy": unresolved_flux,
                             "bands": src.get_observed_bands(), "astrogeo_url": src.get_astrogeo_link()})
-    
+
     result = {"target_name": target.name, "target_coordinates": target.coord.to_string('hmsdms'),
               "max_separation_deg": args.max_separation, "min_flux_jy": args.min_flux,
               "sources": result_data, "total_found": len(nearby)}
-    
+
     if args.json:
         print(json.dumps(result, indent=2))
     else:
         rprint(f"\n[bold green]Found {len(nearby)} phase calibrator candidates near {target.name} "
                f"({target.coord.to_string('hmsdms')}):[/bold green]")
-        
+
         table = Table(show_header=True, header_style="bold", show_lines=False, box=box.SIMPLE)
         table.add_column("Name", style="", width=17)
         table.add_column("IVS Name", style="", width=10)
@@ -952,7 +964,7 @@ def main_phasecal():
         table.add_column("Unresolved (Jy)", justify="right", style="", width=13)
         table.add_column("Bands", justify="right", style="", width=10)
         table.add_column("url", style="", width=10)
-        
+
         for src, sep in nearby:
             # Get flux information for the specified band
             if args.band:
@@ -961,12 +973,12 @@ def main_phasecal():
                 # Use first available band for total flux display
                 total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
                 unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
-            
+
             table.add_row(src.name, src.ivsname, f"{sep:.2f}",
                           f"{total_flux:>8.2f}" if total_flux > 0 else "N/A",
                           f"{unresolved_flux:>8.2f}" if unresolved_flux > 0 else "N/A",
                           src.get_observed_bands(),
                           f"[link={src.get_astrogeo_link()}]AstroGeo[/link]")
-        
+
         rprint(table)
     sys.exit(0)

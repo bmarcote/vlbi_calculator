@@ -1,3 +1,4 @@
+import os
 import sys
 import argparse
 from typing import Optional
@@ -8,6 +9,8 @@ from astropy.time import Time
 from rich import print as rprint
 from rich import box
 from rich.table import Table
+from rich.text import Text
+from rich.live import Live
 from rich_argparse import RawTextRichHelpFormatter
 from vlbiplanobs import stations
 from vlbiplanobs import observation as obs
@@ -15,6 +18,10 @@ from vlbiplanobs import sources
 from vlbiplanobs import calibrators
 from vlbiplanobs import freqsetups
 from vlbiplanobs.gui import plots
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+from astropy.coordinates import SkyCoord
+from .scheduler import ObservationScheduler
+from .gui.main import main as gui_main
 
 
 def optimal_units(value: u.Quantity, units: list[u.Unit]):
@@ -248,8 +255,6 @@ class VLBIObs(obs.Observation):
                            f"this observation (separation of {sep:.1f}).[/bold red]")
 
             rprint("[bold]Expected rms thermal noise for the target source: [/bold]", end='')
-            # TODO: I am verifying this first and otherwise correct for it in Observation
-            print(f'Duration: {self.duration}, {self.fixed_time=}')
             for src, rms in rms_noise.items():
                 if any([s.type is sources.SourceType.TARGET for s in self.sources()]):
                     if src in self.sourcenames_in_block(ablockname, sources.SourceType.TARGET):
@@ -346,22 +351,22 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
                             if codename.upper() == s_upper:
                                 found_station = obs._STATIONS[codename].codename
                                 break
-                        
+
                         if found_station is None:
                             # Also try full station names (case insensitive)
                             for name in obs._STATIONS.station_names:
                                 if name.upper() == s_upper:
                                     found_station = obs._STATIONS[name].codename
                                     break
-                        
+
                         if found_station is None:
                             raise KeyError(f"Station {s} not found")
-                        
+
                         a_station = found_station
                     except KeyError:
                         rprint(f"[bold red]The station {s} is not known.[/bold red]")
                         raise ValueError(f"Station ({s}) not known.")
-                
+
                 if a_station not in stations and band in obs._STATIONS[a_station].bands:
                     stations.append(a_station)
         except ValueError:
@@ -435,17 +440,26 @@ def _resolve_calibrators(names: list[str], target: sources.Source, band: str,
                    f"near {target.name}.[/bold red]")
     else:
         for sname in names:
-            rfc_src = cat.get_source(sname)
-            if rfc_src is not None:
+            parsed_name, parsed_coord = sources.Source.parse_source_spec(sname)
+            if parsed_name is not None and parsed_coord is not None:
+                # User provided 'name/coordinates' — use explicit coordinates
                 resolved.append(sources.Source(
-                    name=rfc_src.name, coordinates=rfc_src.coord,
-                    source_type=source_type, other_names=[rfc_src.ivsname]))
+                    parsed_name,
+                    coordinates=sources.Source._parse_coord_str(parsed_coord),
+                    source_type=source_type))
             else:
-                try:
-                    resolved.append(sources.Source.source_from_str(sname, source_type=source_type))
-                except ValueError:
-                    rprint(f"[bold red]Source '{sname}' not found in RFC catalog or external "
-                           f"services — skipping.[/bold red]")
+                lookup = parsed_name or sname
+                rfc_src = cat.get_source(lookup)
+                if rfc_src is not None:
+                    resolved.append(sources.Source(
+                        name=rfc_src.name, coordinates=rfc_src.coord,
+                        source_type=source_type, other_names=[rfc_src.ivsname]))
+                else:
+                    try:
+                        resolved.append(sources.Source.source_from_str(sname, source_type=source_type))
+                    except ValueError:
+                        rprint(f"[bold red]Source '{sname}' not found in RFC catalog or external "
+                               f"services — skipping.[/bold red]")
 
     return resolved
 
@@ -491,7 +505,9 @@ def main(band: str, networks: Optional[list[str]] = None,
             b) the coordinates of the source, in RA, DEC (J2000), as 'hh:mm:ss dd:mm:ss'
                or 'XXhXXmXXs XXdXXmXXs',
             c) the name of the source, if it is a known one so it can be found in the
-               SIMBAD/NEW/VizieR databases.
+               SIMBAD/NEW/VizieR databases,
+            d) 'name/coordinates' to provide both a custom name and explicit coordinates
+               (the coordinates override any catalog lookup).
             A mix of the previous ones can also be used for each entry.
 
         start_time : Time, optional
@@ -639,7 +655,7 @@ def main(band: str, networks: Optional[list[str]] = None,
                 break
     elif isinstance(datarate, int):
         datarate = datarate*u.Mbit/u.s
-        rprint("[yellow]Dara rate as a int, assumed Mbit/s, but it should have had units[/yellow]")
+        rprint("[yellow]Data rate as an int, assumed Mbit/s, but it should have had units[/yellow]")
     elif isinstance(datarate, str):
         raise ValueError("Data rate is a str! ", datarate)
 
@@ -659,18 +675,15 @@ def cli():
     # Check if this is legacy mode (no subcommand provided)
     if len(sys.argv) == 1:
         # No arguments - show subcommand help
-        parser = argparse.ArgumentParser(
-            description="EVN Observation Planner\n\n"
+        parser = argparse.ArgumentParser(description="EVN Observation Planner\n\n"
                        "Available modes:\n"
-                       "  planobs [options]              - Plan VLBI observations (default mode)\n"
-                       "  planobs fringefinders [options] - Find fringe finder sources\n"
-                       "  planobs phasecals [options]     - Find phase calibrator sources\n"
-                       "  planobs source [options]        - Get information about a specific source\n"
-                       "  planobs server [options]        - Start the web server\n\n"
+                       "  planobs [options]                          - Plan VLBI observations (default mode)\n"
+                       "  planobs fringefinders [options]            - Find fringe finder sources\n"
+                       "  planobs phasecals [options] SOURCE_NAME    - Find phase calibrator sources\n"
+                       "  planobs source [options] SOURCE_NAME       - Get information about a specific source\n"
+                       "  planobs server [options]                   - Start the web server\n\n"
                        "Use 'planobs <command> --help' for detailed help on each mode.",
-            prog="planobs",
-            formatter_class=RawTextRichHelpFormatter
-        )
+            prog="planobs", formatter_class=RawTextRichHelpFormatter)
         subparsers = parser.add_subparsers(dest='command', help='Available commands')
         subparsers.add_parser('observe', help='Plan VLBI observations (default mode)')
         subparsers.add_parser('fringefinders', help='Find fringe finder sources')
@@ -680,24 +693,20 @@ def cli():
         sys.exit(0)
     elif len(sys.argv) > 1 and sys.argv[1] not in ('observe', 'fringefinders', 'phasecals', 'source', 'server'):
         # Legacy mode: treat as observation planning
-        parser = argparse.ArgumentParser(
-            description="EVN Observation Planner\n\n"
+        parser = argparse.ArgumentParser(description="EVN Observation Planner\n\n"
                        "Available modes:\n"
                        "  planobs [options]              - Plan VLBI observations (default mode)\n"
                        "  planobs fringefinders [options] - Find fringe finder sources\n"
                        "  planobs phasecals [options]     - Find phase calibrator sources\n"
                        "  planobs source [options]        - Get information about a specific source\n"
                        "  planobs server [options]        - Start the web server\n\n"
-                       "Use 'planobs <command> --help' for detailed help on each mode.",
-            prog="planobs",
-            formatter_class=RawTextRichHelpFormatter
-        )
+                       "Use 'planobs <command> --help' for detailed help on each mode.", prog="planobs", formatter_class=RawTextRichHelpFormatter)
         add_observation_arguments(parser)
         args = parser.parse_args()
         args.command = 'observe'
         handle_observation_command(args)
         return
-    
+
     # Subcommand mode
     parser = argparse.ArgumentParser(
         description="EVN Observation Planner\n\n"
@@ -711,7 +720,7 @@ def cli():
         prog="planobs",
         formatter_class=RawTextRichHelpFormatter
     )
-    
+
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
 
     obs_parser = subparsers.add_parser('observe', help='Plan VLBI observations (default mode)',
@@ -751,12 +760,12 @@ def cli():
 def add_observation_arguments(parser):
     """Add arguments for observation planning."""
     parser.add_argument('-t', '--targets', type=str, default=None, nargs='+',
-                        help="Source(s) to be observed. It can be either the coordinates of the source\n"
-                        "(in 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs' format), or the name of\n"
-                        "the source, if it is a known source in SIMBAD/NED/VizieR databases.\n"
-                        "Or if the personal source "
-                        "catalog is defined by '--input', then this\nselects the block(s) defined in the "
-                        "file to use, ignoring the rest of\nsources.\nMultiple sources can be provided.")
+                        help="Source(s) to be observed. Each entry can be:\n"
+                        "  a) A source name (looked up in SIMBAD/NED/VizieR/RFC).\n"
+                        "  b) Coordinates: 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'.\n"
+                        "  c) 'name/coordinates' to provide both (coordinates override lookup).\n"
+                        "Or if '--source-catalog' is defined, selects the block(s) in that file.\n"
+                        "Multiple sources can be provided.")
     parser.add_argument('-sc', '--source-catalog', type=str, default=None,
                         help="Input file containing the personal source catalog.\n"
                         "If provided, then '--targets' will select the block(s) "
@@ -793,7 +802,8 @@ def add_observation_arguments(parser):
     parser.add_argument('--fringefinders', default='2', type=str, nargs='+',
                         help="Defines the fringe finder source(s) to be scheduled "
                         "in the observation.\nIt can be either a list of source names "
-                        "(as long as they\nappear in AstroGeo) "
+                        "(as long as they\nappear in AstroGeo), "
+                        "'name/coordinates' to provide both,\n"
                         "or a single number, meaning how many scans should go on\nfringe "
                         "finders, and it will automatically select the most suitable sources.")
     parser.add_argument('--polcal', action="store_true", default=False,
@@ -801,16 +811,16 @@ def add_observation_arguments(parser):
     parser.add_argument('--phasecal', default=None, type=str, nargs='*',
                         help="Phase calibrator source(s) for the target. If no names are given\n"
                         "(just --phasecal), the best candidate is picked automatically.\n"
-                        "One or more source names can be provided (RFC J2000 or IVS names).")
+                        "One or more source names or 'name/coordinates' can be provided.")
     parser.add_argument('--check-source', default=None, type=str, nargs='*',
                         help="Check source(s) for the target. If no names are given\n"
                         "(just --check-source), the best candidate is picked automatically.\n"
-                        "One or more source names can be provided (RFC J2000 or IVS names).")
+                        "One or more source names or 'name/coordinates' can be provided.")
     parser.add_argument('--pulsar', default=None, type=str,
                         help="Sets to schedule at least a scan on a pulsar source. "
                         "If a number,\nit will select a pulsar from the personal "
-                        "input source file (must be\nprovided!). If a name or list of names, "
-                        "it will pick such pulsar(s).")
+                        "input source file (must be\nprovided!). If a name, 'name/coordinates', "
+                        "or coordinates, it will\nresolve accordingly.")
     parser.add_argument('--data-rate', type=float, default=None,
                         help="Maximum data rate of the observation, in Mb/s.")
     parser.add_argument('--gui', action="store_true", default=False,
@@ -826,48 +836,50 @@ def add_fringe_finder_arguments(parser):
     """Add arguments for fringe finder search."""
     # Import the main_fringe function to get its argument parser
     # We'll recreate the arguments here
-    parser.add_argument('-s', '--stations', type=str, nargs='+', required=True, 
+    parser.add_argument('-s', '--stations', type=str, nargs='+', required=True,
                         help="List of antenna codenames or names that will participate in the observation.")
-    parser.add_argument('-t', '--starttime', type=str, required=True, 
+    parser.add_argument('-t', '--starttime', type=str, required=True,
                         help="Start of the observation in format 'YYYY-MM-DD HH:MM' (UTC).")
     parser.add_argument('-d', '--duration', type=float, required=True, help="Duration of the observation in hours.")
-    parser.add_argument('--min-flux', type=float, default=0.5, 
+    parser.add_argument('--min-flux', type=float, default=0.5,
                         help="Minimum unresolved flux threshold in Jy (default: 0.5).")
-    parser.add_argument('--min-elevation', type=float, default=20.0, 
+    parser.add_argument('--min-elevation', type=float, default=20.0,
                         help="Minimum elevation in degrees (default: 20).")
-    parser.add_argument('-l', '--max-lines', type=int, default=20, 
+    parser.add_argument('-l', '--max-lines', type=int, default=20,
                         help="Maximum number of sources to return (default: 20).")
-    parser.add_argument('--require-all', action='store_true', default=False, 
+    parser.add_argument('--require-all', action='store_true', default=False,
                         help="Require source to be visible by ALL stations (default: False).")
     parser.add_argument('-b', '--band', type=str, default=None,
                         help="Observing band for flux display (e.g., '18cm', '6cm'). If not provided, shows flux for all available bands.")
     parser.add_argument('--station-catalog', type=str, default=None, help="Path to custom station catalog file.")
-    parser.add_argument('--json', action='store_true', default=False, 
+    parser.add_argument('--json', action='store_true', default=False,
                         help="Output results in JSON format instead of a table.")
 
 
 def add_phase_cal_arguments(parser):
     """Add arguments for phase calibrator search."""
-    parser.add_argument('-t', '--target', type=str, required=True, 
+    parser.add_argument('-t', '--target', type=str, required=True,
                         help="Target source name (J2000 or IVS name from RFC catalog).")
-    parser.add_argument('--max-separation', type=float, default=5.0, 
+    parser.add_argument('--max-separation', type=float, default=5.0,
                         help="Maximum angular separation in degrees (default: 5.0).")
-    parser.add_argument('--min-flux', type=float, default=0.1, 
+    parser.add_argument('--min-flux', type=float, default=0.1,
                         help="Minimum unresolved flux threshold in Jy (default: 0.1).")
-    parser.add_argument('-n', '--n-sources', type=int, default=None, 
+    parser.add_argument('-n', '--n-sources', type=int, default=None,
                         help="Maximum number of sources to return (default: all).")
     parser.add_argument('-b', '--band', type=str, default=None,
                         help="Observing band for flux display (e.g., '18cm', '6cm'). If not provided, shows flux for all available bands.")
-    parser.add_argument('--catalog-file', type=str, default=None, 
+    parser.add_argument('--catalog-file', type=str, default=None,
                         help="Path to custom RFC catalog file.")
-    parser.add_argument('--json', action='store_true', default=False, 
+    parser.add_argument('--json', action='store_true', default=False,
                         help="Output results in JSON format instead of a table.")
 
 
 def add_source_arguments(parser):
     """Add arguments for source information lookup."""
-    parser.add_argument('source_name', type=str, 
+    parser.add_argument('source_name', type=str,
                         help="Name of the source to get information about.")
+    parser.add_argument('--no-networks', action='store_true', default=False,
+                        help="Skip the network observability table calculation and display.")
 
 
 def add_server_arguments(parser):
@@ -957,7 +969,6 @@ def handle_observation_command(args):
         o.plot_visibility(args.gui, args.no_tui)
 
     if args.sched is not None:
-        from .scheduler import ObservationScheduler
         key_filename = args.sched if args.sched.endswith('.key') else f"{args.sched}.key"
         scheduler = ObservationScheduler(
             o, fringefinder_spec=fringefinder_arg, polcal=polcal_arg)
@@ -974,7 +985,6 @@ def handle_observation_command(args):
 
 def handle_fringe_finder_command(args):
     """Handle the fringe finder command."""
-    from . import calibrators
     original_argv = sys.argv.copy()
     sys.argv = ['planobs_fringefinder', '-s'] + args.stations + ['-t', args.starttime, '-d', str(args.duration)]
     if args.min_flux != 0.5:
@@ -999,7 +1009,6 @@ def handle_fringe_finder_command(args):
 
 def handle_phase_cal_command(args):
     """Handle the phase calibrator command."""
-    from . import calibrators
     original_argv = sys.argv.copy()
     sys.argv = ['planobs_phasecal', '-t', args.target]
     if args.max_separation != 5.0:
@@ -1020,9 +1029,112 @@ def handle_phase_cal_command(args):
         sys.argv = original_argv
 
 
+def _check_obs_worker(args: tuple) -> tuple[str, str, bool]:
+    """Module-level worker for ProcessPoolExecutor: checks if a network can observe a source.
+
+    Must be defined at module level (not as a closure) to be picklable.
+    Accepts (net_key, band, source_name, ra_deg, dec_deg) and returns (net_key, band, result).
+    """
+    net_key, band, source_name, ra_deg, dec_deg = args
+    try:
+        coord = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg)
+        src = sources.Source(name=source_name, coordinates=coord)
+        network = obs._NETWORKS[net_key]
+        observation = obs.Observation(
+            band=band, stations=network, times=None, duration=1 * u.hour,
+            datarate=network.max_datarate(band),
+            scans={src.name: sources.ScanBlock([sources.Scan(src, duration=5 * u.min)])}
+        )
+        observable_times = observation.when_is_observable(min_stations=3)
+        return net_key, band, len(observable_times[src.name]) > 0
+    except Exception:
+        return net_key, band, False
+
+
+def _build_obs_table(sorted_bands: list[str],
+                     observability: dict[tuple[str, str], bool],
+                     pending: set[tuple[str, str]]) -> Table:
+    """Build the network observability Rich Table from current results.
+
+    Cells that are still being computed are shown as '…'.
+    """
+    table = Table(box=None, show_header=True, padding=0, pad_edge=False)
+    table.add_column("Network", style="cyan", justify="left", width=10, no_wrap=True)
+    for band in sorted_bands:
+        table.add_column(band.replace('cm', ''), justify="center", width=6, no_wrap=True)
+    for net_key, network in obs._NETWORKS.items():
+        row: list[Text | str] = [net_key]
+        for band in sorted_bands:
+            if band in network.observing_bands:
+                if (net_key, band) in pending:
+                    row.append(Text("  … ", style="dim", justify="center"))
+                elif observability.get((net_key, band), False):
+                    row.append(Text(" ✓ ", style="bold on #90EE90", justify="center"))
+                else:
+                    row.append("   ")
+            else:
+                row.append("   ")
+        table.add_row(*row)
+    return table
+
+
+def _show_observability_table(source: sources.Source) -> None:
+    """Compute and display the network observability table with live progressive updates.
+
+    Tries ProcessPoolExecutor first (true parallelism, bypasses GIL) and falls back
+    to ThreadPoolExecutor if process spawning fails. Results are displayed as they
+    arrive via Rich Live, so the table fills in progressively rather than all at once.
+    """
+    all_bands: set[str] = set()
+    for network in obs._NETWORKS.values():
+        all_bands.update(network.observing_bands)
+
+    def wavelength_key(band: str) -> float:
+        return -float(band[:-2]) if band.endswith('cm') else 0.0
+
+    sorted_bands = sorted(all_bands, key=wavelength_key)
+
+    tasks = [
+        (net_key, band, source.name, source.coord.ra.deg, source.coord.dec.deg)
+        for net_key, network in obs._NETWORKS.items()
+        for band in sorted_bands
+        if band in network.observing_bands
+    ]
+
+    observability: dict[tuple[str, str], bool] = {}
+    pending: set[tuple[str, str]] = {(t[0], t[1]) for t in tasks}
+    n_workers = min(len(tasks), (os.cpu_count() or 4))
+
+    def _run(executor_cls, worker_tasks: list) -> None:
+        with executor_cls(max_workers=n_workers) as executor:
+            futures = {executor.submit(_check_obs_worker, task): (task[0], task[1])
+                       for task in worker_tasks}
+            for future in as_completed(futures):
+                try:
+                    net_key, band, result = future.result()
+                except Exception:
+                    net_key, band = futures[future]
+                    result = False
+                observability[(net_key, band)] = result
+                pending.discard((net_key, band))
+                live.update(_build_obs_table(sorted_bands, observability, pending))
+
+    with Live(_build_obs_table(sorted_bands, observability, pending),
+              refresh_per_second=8) as live:
+        try:
+            _run(ProcessPoolExecutor, tasks)
+        except Exception:
+            # ProcessPoolExecutor failed (e.g. pickling issue on this platform);
+            # retry any remaining tasks with threads.
+            remaining = [t for t in tasks if (t[0], t[1]) not in observability]
+            if remaining:
+                _run(ThreadPoolExecutor, remaining)
+
+
 def handle_source_command(args):
     """Handle the source information command."""
     try:
+        source_obj = None
         calibrator = calibrators.RFCCatalog(min_flux=0.0).get_source(args.source_name)
         if calibrator:
             rprint(f"[bold]{calibrator.name}[/bold] (also known as {calibrator.ivsname})")
@@ -1042,16 +1154,27 @@ def handle_source_command(args):
                                   f"{unresolved_flux:.2f}")
             rprint(table)
             rprint(f"\n[bold][link={calibrator.get_astrogeo_link()}]AstroGeo Link[/bold]")
+            # Create source object from calibrator
+            source_obj = sources.Source(
+                name=calibrator.name,
+                coordinates=calibrator.coord,
+                other_names=[calibrator.ivsname]
+            )
         else:
             try:
-                source = sources.Source.source_from_str(args.source_name)
+                source_obj = sources.Source.source_from_str(args.source_name)
                 rprint("\n[bold green]Source Information[/bold green]")
-                rprint(f"[bold]Name:[/bold] {source.name}")
-                rprint(f"[bold]Coordinates:[/bold] {source.coord.to_string('hmsdms')}")
+                rprint(f"[bold]Name:[/bold] {source_obj.name}")
+                rprint(f"[bold]Coordinates:[/bold] {source_obj.coord.to_string('hmsdms')}")
             except Exception as e:
                 rprint(f"[bold red]Source '{args.source_name}' not recognized[/bold red]")
                 rprint(f"[red]Error: Not found in the RFC Catalog and {e} [/red]")
                 sys.exit(1)
+
+        # Show observability table for all sources
+        if source_obj and not args.no_networks:
+            rprint("\n[bold green]Observable by (bands in cm)[/bold green]")
+            _show_observability_table(source_obj)
     except Exception as e:
         rprint(f"[bold red]Error:[/bold red] {e}")
         sys.exit(1)
@@ -1059,7 +1182,6 @@ def handle_source_command(args):
 
 def handle_server_command(args):
     """Handle the server command."""
-    from .gui.main import main as gui_main
     gui_main(debug=args.debug, host=args.host, port=args.port)
 
 

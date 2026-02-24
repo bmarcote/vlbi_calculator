@@ -7,7 +7,7 @@ from vlbiplanobs import freqsetups as fs
 from vlbiplanobs import sources
 from vlbiplanobs import observation
 from vlbiplanobs import cli
-from vlbiplanobs.gui import inputs
+from vlbiplanobs.gui import inputs, plots
 
 
 @callback([Output('band-slider', 'marks'),
@@ -199,7 +199,6 @@ def render_elevation_plots(elev_data: dict):
     """Render elevation plots progressively from serialized data."""
     if elev_data is None:
         raise PreventUpdate
-    from vlbiplanobs.gui import plots
     return plots.elevation_plot_from_data(elev_data), plots.elevation_curves_from_data(elev_data)
 
 
@@ -209,7 +208,6 @@ def render_uv_plot(uv_data: dict):
     """Render UV coverage plot progressively from serialized data."""
     if uv_data is None:
         raise PreventUpdate
-    from vlbiplanobs.gui import plots
     return plots.uvplot_from_data(uv_data)
 
 
@@ -219,7 +217,6 @@ def render_uv_plot(uv_data: dict):
 def update_uv_figure(highlight_antennas: list[str], uv_data: dict):
     if uv_data is None:
         raise PreventUpdate
-    from vlbiplanobs.gui import plots
     return plots.uvplot_from_data(uv_data, highlight_antennas)
 
 
@@ -229,7 +226,6 @@ def render_worldmap(worldmap_data: dict):
     """Render worldmap progressively from serialized data."""
     if worldmap_data is None:
         raise PreventUpdate
-    from vlbiplanobs.gui import plots
     return plots.worldmap_from_data(worldmap_data)
 
 

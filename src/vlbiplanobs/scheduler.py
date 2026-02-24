@@ -16,6 +16,8 @@ ObservationScheduler
 
 from dataclasses import dataclass, field
 from typing import Optional
+from importlib import resources
+from datetime import datetime
 import logging
 import numpy as np
 from astropy import units as u
@@ -23,6 +25,7 @@ from astropy.time import Time
 from astropy.coordinates import SkyCoord
 from .sources import Source, SourceType, ScanBlock, Scan
 from .observation import Observation
+from . import calibrators
 
 log = logging.getLogger(__name__)
 
@@ -115,6 +118,8 @@ class ObservationScheduler:
     FF_INTERVAL = 2 * u.h
     POLCAL_DUR = 5 * u.min
     EMERLIN_3C286_DUR = 5 * u.min
+    GAP_DUR = 30 * u.s
+    GAP_INTERVAL = 10 * u.min
 
     def __init__(self, observation: Observation, min_antennas: int = 2,
                  require_all_antennas: bool = False,
@@ -123,6 +128,9 @@ class ObservationScheduler:
         self.min_ant = min_antennas
         self.require_all = require_all_antennas
         self._ff_spec = fringefinder_spec or ['2']
+        self._ff_n_scans: Optional[int] = None
+        if len(self._ff_spec) == 1 and self._ff_spec[0].isdigit():
+            self._ff_n_scans = int(self._ff_spec[0])
         self._polcal = polcal
         self._scheduled: list[ScheduledScanBlock] = []
         self._precompute()
@@ -267,8 +275,6 @@ class ObservationScheduler:
         if spec and not (len(spec) == 1 and spec[0].isdigit()):
             return self._register_ff_sources(self._lookup_ff_sources(spec))
 
-        from . import calibrators
-
         # Try all-antenna, all-time visibility first
         cands, _, _ = calibrators.get_fringe_finder_sources(
             self.obs.stations, self.obs.times,
@@ -332,20 +338,31 @@ class ObservationScheduler:
         return names
 
     def _lookup_ff_sources(self, names: list[str]) -> list[Source]:
-        """Look up named fringe-finder sources from the RFC catalog."""
-        from . import calibrators
+        """Look up named fringe-finder sources from the RFC catalog.
+
+        Each entry in *names* can be 'name/coordinates' to supply explicit
+        coordinates, plain coordinates, or a catalog name.
+        """
         cat = calibrators.RFCCatalog(min_flux=0.0 * u.Jy, band='c')
         result: list[Source] = []
-        for name in names:
-            rfc_src = cat.get_source(name)
-            if rfc_src is not None:
-                result.append(Source(name=rfc_src.name, coordinates=rfc_src.coord,
-                                    source_type=SourceType.FRINGEFINDER, other_names=[rfc_src.ivsname]))
+        for spec in names:
+            parsed_name, parsed_coord = Source.parse_source_spec(spec)
+            if parsed_name is not None and parsed_coord is not None:
+                result.append(Source(
+                    parsed_name, coordinates=Source._parse_coord_str(parsed_coord),
+                    source_type=SourceType.FRINGEFINDER))
             else:
-                try:
-                    result.append(Source.source_from_str(name, source_type=SourceType.FRINGEFINDER))
-                except ValueError:
-                    log.warning("Fringe-finder source '%s' not found — skipping.", name)
+                lookup = parsed_name or spec
+                rfc_src = cat.get_source(lookup)
+                if rfc_src is not None:
+                    result.append(Source(name=rfc_src.name, coordinates=rfc_src.coord,
+                                        source_type=SourceType.FRINGEFINDER,
+                                        other_names=[rfc_src.ivsname]))
+                else:
+                    try:
+                        result.append(Source.source_from_str(spec, source_type=SourceType.FRINGEFINDER))
+                    except ValueError:
+                        log.warning("Fringe-finder source '%s' not found — skipping.", spec)
         return result
 
     # ------------------------------------------------------------------
@@ -354,7 +371,6 @@ class ObservationScheduler:
 
     def _create_polcal_blocks(self) -> list[str]:
         """Create 3C84 / OQ208 / DA193 polcal blocks. Returns block names."""
-        from . import calibrators
         cat = calibrators.RFCCatalog(min_flux=0.0 * u.Jy, band='c')
         added: list[str] = []
         for polcal_name in _POLCAL_NAMES:
@@ -438,7 +454,10 @@ class ObservationScheduler:
         dur = self.FF_DUR
         obs_dur_h = (eff_t1 - eff_t0).to(u.h).value
 
-        if obs_dur_h <= 1.5:
+        if self._ff_n_scans is not None:
+            n_ff = max(1, self._ff_n_scans)
+            log.info("Using user-requested FF scan count: %d", n_ff)
+        elif obs_dur_h <= 1.5:
             n_ff = 1
         elif obs_dur_h <= 3.0:
             n_ff = 2
@@ -681,11 +700,23 @@ class ObservationScheduler:
                 return s.name
         return None
 
-    def _format_scan_line(self, scan: Scan, gap: str = '0:00', indent: str = '') -> str:
-        """Format a single scan as a SCHED source= line."""
+    def _format_scan_line(self, scan: Scan, gap: str = '0:00', indent: str = '',
+                          dur_override: Optional[u.Quantity] = None) -> str:
+        """Format a single scan as a SCHED source= line.
+
+        Parameters
+        ----------
+        scan : Scan
+        gap : str
+            Gap before scan in 'M:SS' format.
+        indent : str
+        dur_override : Quantity or None
+            If given, use this duration instead of scan.duration.
+        """
         intent = _intent_str(scan.source.type)
         intent_part = f" intent='{intent}'" if intent else ''
-        return f"{indent}source='{scan.source.name}' gap={gap} dur={_fmt_dur(scan.duration)}{intent_part} /"
+        dur = dur_override if dur_override is not None else scan.duration
+        return f"{indent}source='{scan.source.name}' gap={gap} dur={_fmt_dur(dur)}{intent_part} /"
 
     def _stations_line(self, exclude: Optional[set[str]] = None, indent: str = '') -> str:
         """Build a ``stations = ...`` line, optionally excluding codenames."""
@@ -712,36 +743,114 @@ class ObservationScheduler:
             lines.append(f"\ngroup {n_scan_lines} rep {n_reps}")
             lines.append(f"    {all_stations.strip()}")
             lines.extend(cycle_lines)
-            # Remainder (partial last cycle)
+            # Remainder (partial last cycle) — also needs gaps
             if remainder:
                 lines.append(all_stations)
-                for scan in remainder:
-                    lines.append(self._format_scan_line(scan))
+                rem_gaps = self._compute_gap_positions(remainder)
+                for idx, scan in enumerate(remainder):
+                    gap_str = '0:00'
+                    dur_ov: Optional[u.Quantity] = None
+                    if idx in rem_gaps:
+                        gap_str = _fmt_dur(self.GAP_DUR)
+                        dur_ov = scan.duration - self.GAP_DUR
+                    lines.append(self._format_scan_line(scan, gap=gap_str, dur_override=dur_ov))
         else:
-            for scan in sb.scans:
-                lines.append(self._format_scan_line(scan))
+            # No repeating cycle detected — still insert gaps
+            all_gaps = self._compute_gap_positions(sb.scans)
+            for idx, scan in enumerate(sb.scans):
+                gap_str = '0:00'
+                dur_ov = None
+                if idx in all_gaps:
+                    gap_str = _fmt_dur(self.GAP_DUR)
+                    dur_ov = scan.duration - self.GAP_DUR
+                lines.append(self._format_scan_line(scan, gap=gap_str, dur_override=dur_ov))
         return lines
 
-    def _format_cycle(self, cycle: list[Scan], handle_jb1: bool, indent: str = '') -> list[str]:
-        """Format one cycle of scans, adding Jb1-exclusion station overrides.
+    def _compute_gap_positions(self, cycle: list[Scan]) -> set[int]:
+        """Determine which scan indices in the cycle should have a gap inserted.
 
-        Every other PHASECAL scan gets a station line excluding Jb1, followed
-        by a station line restoring the full array.
+        Distributes gaps evenly across the cycle at approximately GAP_INTERVAL
+        spacing.  Only PHASECAL scans whose duration exceeds GAP_DUR are
+        eligible.  The gap duration is later subtracted from the scan duration
+        so the total time per scan slot stays the same.
+
+        Returns
+        -------
+        set[int]
+            Indices into *cycle* that should get ``gap=0:30``.
+        """
+        total_dur = sum(s.duration.to(u.min).value for s in cycle)
+        interval_min = self.GAP_INTERVAL.to(u.min).value
+        gap_dur_s = self.GAP_DUR.to(u.s).value
+
+        if total_dur < interval_min * 0.8:
+            return set()
+
+        # Find eligible phasecal positions with their cumulative start times
+        pcal_positions: list[tuple[int, float]] = []
+        cum = 0.0
+        for i, scan in enumerate(cycle):
+            if (scan.source.type == SourceType.PHASECAL
+                    and scan.duration.to(u.s).value > gap_dur_s):
+                pcal_positions.append((i, cum))
+            cum += scan.duration.to(u.min).value
+
+        if not pcal_positions:
+            return set()
+
+        # Compute how many gaps we need and their ideal positions
+        n_gaps = max(1, round(total_dur / interval_min))
+        n_gaps = min(n_gaps, len(pcal_positions))
+        ideal_times = [(k + 0.5) * total_dur / n_gaps for k in range(n_gaps)]
+
+        # Assign each ideal gap time to the nearest eligible phasecal
+        used: set[int] = set()
+        gap_positions: set[int] = set()
+        for ideal_t in ideal_times:
+            best_idx, best_dist = -1, float('inf')
+            for scan_idx, cum_t in pcal_positions:
+                if scan_idx in used:
+                    continue
+                dist = abs(cum_t - ideal_t)
+                if dist < best_dist:
+                    best_dist, best_idx = dist, scan_idx
+            if best_idx >= 0:
+                gap_positions.add(best_idx)
+                used.add(best_idx)
+        return gap_positions
+
+    def _format_cycle(self, cycle: list[Scan], handle_jb1: bool, indent: str = '') -> list[str]:
+        """Format one cycle of scans for the SCHED key file.
+
+        - Inserts ~30 s gaps on phasecal scans every ~10 min of elapsed cycle
+          time.  The gap is subtracted from the scan duration so the total time
+          per scan slot stays the same.
+        - Every other PHASECAL scan gets a station line excluding Jb1 when
+          *handle_jb1* is True (to stay under 12 source-changes / hour).
         """
         lines: list[str] = []
         pcal_idx = 0
         all_stations_line = self._stations_line(indent=indent)
         no_jb1_line = self._stations_line(exclude={'JB1'}, indent=indent)
+        gap_set = self._compute_gap_positions(cycle)
 
-        for scan in cycle:
+        for i, scan in enumerate(cycle):
+            gap_str = '0:00'
+            dur_override: Optional[u.Quantity] = None
+            if i in gap_set:
+                gap_str = _fmt_dur(self.GAP_DUR)
+                dur_override = scan.duration - self.GAP_DUR
+
             if handle_jb1 and scan.source.type == SourceType.PHASECAL:
                 pcal_idx += 1
                 if pcal_idx % 2 == 0:
                     lines.append(no_jb1_line)
-                    lines.append(self._format_scan_line(scan, indent=indent))
+                    lines.append(self._format_scan_line(scan, gap=gap_str,
+                                                        dur_override=dur_override, indent=indent))
                     lines.append(all_stations_line)
                     continue
-            lines.append(self._format_scan_line(scan, indent=indent))
+            lines.append(self._format_scan_line(scan, gap=gap_str,
+                                                dur_override=dur_override, indent=indent))
         return lines
 
     def generate_key_file(self, experiment_code: str = 'EXCODE', pi_name: str = 'PI Name',
@@ -764,9 +873,6 @@ class ObservationScheduler:
         str
             Complete .key file content.
         """
-        from importlib import resources
-        from datetime import datetime
-
         with open(resources.files('vlbiplanobs.data').joinpath('key_file.key.template'), 'r') as f:  # type: ignore
             template = f.read()
 

@@ -11,6 +11,7 @@ from datetime import datetime as dt
 from astropy import units as u
 from astropy import coordinates as coord
 from astropy.time import Time
+from importlib import resources
 from .stations import Stations, Station
 from .sources import Source, Scan, ScanBlock, SourceType, SourceNotVisible
 from . import freqsetups
@@ -18,6 +19,11 @@ from . import freqsetups
 
 _NETWORKS = Stations.get_networks_from_configfile()
 _STATIONS = Stations()
+
+# Module-level cached reference times to avoid recalculation
+_REF_TIMES_CACHE: Optional[Time] = None
+_REF_YEAR_CACHE: Optional[Time] = None
+_CACHE_YEAR: Optional[int] = None
 
 
 def _check_type(value, expected_type) -> bool:
@@ -125,11 +131,24 @@ class Observation(object):
 
     @property
     def _REF_TIMES(self):
-        return Time(f'{dt.now().year}-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01)*u.day
+        """Returns reference times for the current year, cached to avoid recalculation."""
+        global _REF_TIMES_CACHE, _CACHE_YEAR
+        current_year = dt.now().year
+        if _CACHE_YEAR != current_year or _REF_TIMES_CACHE is None:
+            _REF_TIMES_CACHE = Time(f'{current_year}-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01)*u.day
+            _CACHE_YEAR = current_year
+        return _REF_TIMES_CACHE
 
     @property
     def _REF_YEAR(self):
-        return Time(f'{dt.now().year}-01-01', scale='utc') + np.arange(0.0, 365.2, 1)*u.day
+        """Returns reference year times for the current year, cached to avoid recalculation."""
+        global _REF_YEAR_CACHE, _CACHE_YEAR
+        current_year = dt.now().year
+        if _CACHE_YEAR != current_year or _REF_YEAR_CACHE is None:
+            _REF_YEAR_CACHE = Time(f'{current_year}-01-01', scale='utc') + np.arange(0.0, 365.2, 1)*u.day
+            if _CACHE_YEAR is None:
+                _CACHE_YEAR = current_year
+        return _REF_YEAR_CACHE
 
     @enforce_types
     def __init__(self, band: str, stations: Stations, scans: dict[str, ScanBlock],
@@ -899,10 +918,10 @@ class Observation(object):
         else:
             assert len(within_time_range) == 2, \
                 "The time range must contain only two times (start and end time)"
-            assert within_time_range[1] <= within_time_range[0], \
+            assert within_time_range[1] >= within_time_range[0], \
                 "The end time must be larger than the start time"
             within_time_range = within_time_range[0] + \
-                np.arange((within_time_range[1] - within_time_range[0]).to(u.day).value, 0.01)*u.day
+                np.arange(0, (within_time_range[1] - within_time_range[0]).to(u.day).value, 0.01)*u.day
 
         if mandatory_stations == 'all':
             mandatory_stations = self.stations.station_codenames
@@ -1579,9 +1598,6 @@ class Observation(object):
         - key_content : str
             The complete .key file content as a string.
         """
-        from importlib import resources
-        from datetime import datetime
-
         template_path = resources.files('vlbiplanobs.data').joinpath('key_file.key.template')
         with open(template_path, 'r') as f:  # type: ignore
             template = f.read()
@@ -1624,7 +1640,7 @@ class Observation(object):
             if self.band and (self.datarate is not None) else "VLBI"
 
         replacements = {
-            '{GENERATION_DATE}': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            '{GENERATION_DATE}': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
             '{EXPERIMENT_CODE}': experiment_code.upper(),
             '{PI_NAME}': pi_name,
             '{PI_EMAIL}': pi_email,

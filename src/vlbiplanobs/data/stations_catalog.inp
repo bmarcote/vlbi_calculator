@@ -227,8 +227,8 @@ ax1lim = -170,300
 ax2lim = 5.0,89.0
 ax1rate = 40
 ax2rate = 40
-ax1acc = 0.02778
-ax2acc = 0.02778
+ax1acc = 0.0555
+ax2acc = 0.0555
 
 [Darnhall]
 station = Darnhall
@@ -544,8 +544,8 @@ ax1lim = -10, 370
 ax2lim = 9.0, 90
 ax1rate = 40
 ax2rate = 40
-ax1acc = 0.02778
-ax2acc = 0.02778
+ax1acc = 0.0555
+ax2acc = 0.0555
 
 [Hobart 12m]
 station = Hobart (12m)

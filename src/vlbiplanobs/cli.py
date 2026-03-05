@@ -691,7 +691,7 @@ def cli():
         subparsers.add_parser('server', help='Start the web server')
         parser.print_help()
         sys.exit(0)
-    elif len(sys.argv) > 1 and sys.argv[1] not in ('observe', 'fringefinders', 'phasecals', 'source', 'server'):
+    elif len(sys.argv) > 1 and sys.argv[1] not in ('observe', 'fringefinders', 'phasecals', 'source', 'server', 'antenna', 'ant'):
         # Legacy mode: treat as observation planning
         parser = argparse.ArgumentParser(description="EVN Observation Planner\n\n"
                        "Available modes:\n"
@@ -743,6 +743,11 @@ def cli():
                                           formatter_class=RawTextRichHelpFormatter)
     add_server_arguments(server_parser)
 
+    antenna_parser = subparsers.add_parser('antenna', aliases=['ant'],
+                                           help='Get information about a specific antenna or list antennas by band',
+                                           formatter_class=RawTextRichHelpFormatter)
+    add_antenna_arguments(antenna_parser)
+
     args = parser.parse_args()
 
     if args.command == 'observe':
@@ -755,6 +760,8 @@ def cli():
         handle_source_command(args)
     elif args.command == 'server':
         handle_server_command(args)
+    elif args.command in ('antenna', 'ant'):
+        handle_antenna_command(args)
 
 
 def add_observation_arguments(parser):
@@ -1183,6 +1190,164 @@ def handle_source_command(args):
 def handle_server_command(args):
     """Handle the server command."""
     gui_main(debug=args.debug, host=args.host, port=args.port)
+
+
+def _render_horizontal_band_table(bands_to_show: list[str], ant) -> None:
+    """Renders antenna band/SEFD info as a horizontal table, wrapping to terminal width.
+
+    First column shows row labels ('Band (cm)', 'SEFD (Jy)'); each subsequent column is one band.
+    Splits into multiple sub-tables if total width exceeds terminal width.
+    - bands_to_show: list of band strings to display (e.g. ['6cm', '18cm'])
+    - ant: Station object with sefd(band) method
+    """
+    from rich.console import Console as _Console
+    term_width = _Console().width
+
+    col_data: list[tuple[str, str]] = []
+    for b in bands_to_show:
+        sefd_val = ant.sefd(b)
+        sefd_str = f"{sefd_val.value:.0f}" if hasattr(sefd_val, 'value') else str(sefd_val)
+        col_data.append((b, sefd_str))
+
+    # Column width = widest of (band name, sefd value); +2 for Rich's cell padding (1 each side)
+    # +1 for the column separator, giving the true rendered width per data column
+    LABEL_CONTENT = max(len("Band (cm)"), len("SEFD (Jy)"))
+    CELL_OVERHEAD = 3  # 1 left-pad + 1 right-pad + 1 separator (box.SIMPLE)
+    label_width = LABEL_CONTENT + CELL_OVERHEAD
+    col_widths = [max(len(b), len(s)) + CELL_OVERHEAD for b, s in col_data]
+
+    # Split columns into chunks that each fit within terminal width
+    chunks: list[list[tuple[str, str]]] = []
+    current: list[tuple[str, str]] = []
+    used = label_width
+    for (b, s), w in zip(col_data, col_widths):
+        if current and used + w > term_width:
+            chunks.append(current)
+            current = [(b, s)]
+            used = label_width + w
+        else:
+            current.append((b, s))
+            used += w
+    if current:
+        chunks.append(current)
+
+    for chunk in chunks:
+        table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+        table.add_column("", style="bold magenta", no_wrap=True, min_width=LABEL_CONTENT)
+        for b, s in chunk:
+            cw = max(len(b), len(s))
+            table.add_column(b, justify="right", no_wrap=True, min_width=cw)
+        table.add_row("Band (cm)", *[f"[bold cyan]{b.replace('cm', '')}[/bold cyan]" for b, _ in chunk])
+        table.add_row("SEFD (Jy)", *[s for _, s in chunk])
+        rprint(table)
+
+
+def add_antenna_arguments(parser):
+    """Add arguments for the antenna info/listing command."""
+    parser.add_argument('antenna_name', type=str, nargs='?', default=None,
+                        help="Name, short name, or codename of the antenna to look up. "
+                        "If omitted, lists all antennas (or all antennas at the given --band).")
+    parser.add_argument('-b', '--band', type=str, default=None,
+                        help="Filter by observing band (e.g. '18cm', '6cm'). "
+                        "If no antenna is given, lists all antennas that observe at this band.")
+
+
+def _normalize_band(band: str) -> str:
+    """Normalize band string to include 'cm' suffix if missing.
+    Returns the normalized band string (e.g. '18' -> '18cm', '18cm' -> '18cm').
+    Only appends 'cm' if the string contains no unit suffix (no letters).
+    """
+    band = band.strip()
+    if band.replace('.', '').isdigit():
+        band = f"{band}cm"
+    return band
+
+
+def _find_antenna(name: str) -> Optional[object]:
+    """Search obs._STATIONS for an antenna matching name, fullname, or codename (case-insensitive).
+    Returns the matching Station object or None if not found.
+    """
+    name_lower = name.lower()
+    for ant in obs._STATIONS:
+        if (ant.name.lower() == name_lower or ant.fullname.lower() == name_lower
+                or ant.codename.lower() == name_lower):
+            return ant
+    return None
+
+
+def handle_antenna_command(args):
+    """Handle the 'antenna'/'ant' subcommand.
+
+    Behavior:
+    - antenna_name + band: show info for that antenna filtered to the given band.
+    - antenna_name only: show full info for that antenna.
+    - band only: list all antennas that can observe at that band.
+    - neither: list all antennas (same as --list-antennas).
+    """
+    band = _normalize_band(args.band) if args.band else None
+
+    # Validate band if provided
+    if band is not None and band not in obs.freqsetups.bands:
+        rprint(f"[bold red]Band '{band}' is not recognized.[/bold red] "
+               f"Available bands: {', '.join(obs.freqsetups.bands)}")
+        sys.exit(1)
+
+    # Case 1: no antenna given — list all or filter by band
+    if args.antenna_name is None:
+        if band is None:
+            # Same as --list-antennas
+            rprint("\n[bold]All available antennas:[/bold]")
+            for ant in obs._STATIONS:
+                rprint(f"     [bold]{ant.name}[/bold] ([cyan]{ant.codename}[/cyan]):  "
+                       f"{ant.diameter} in {ant.country}")
+                rprint(f"      [dim]Observes at {', '.join(ant.bands)}[/dim]")
+        else:
+            # List all antennas that observe at the given band
+            matching = [ant for ant in obs._STATIONS if ant.has_band(band)]
+            if not matching:
+                rprint(f"[bold red]No antennas found that observe at {band}.[/bold red]")
+                sys.exit(1)
+            rprint(f"\n[bold]Antennas that observe at [cyan]{band}[/cyan]:[/bold]")
+            table = Table(box=box.SIMPLE, show_header=True, header_style="bold magenta")
+            table.add_column("Antenna", style="bold")
+            table.add_column("Codename", style="cyan")
+            table.add_column("Diameter")
+            table.add_column("Country")
+            table.add_column(f"SEFD at {band} (Jy)", justify="right")
+            for ant in sorted(matching, key=lambda a: a.name):
+                sefd_val = ant.sefd(band)
+                sefd_str = f"{sefd_val.value:.0f}" if hasattr(sefd_val, 'value') else str(sefd_val)
+                table.add_row(ant.name, ant.codename, ant.diameter, ant.country, sefd_str)
+            rprint(table)
+        return
+
+    # Case 2: antenna name provided — find it
+    ant = _find_antenna(args.antenna_name)
+    if ant is None:
+        rprint(f"[bold red]Antenna '{args.antenna_name}' not found.[/bold red] "
+               "Run [bold]planobs --list-antennas[/bold] to see the available antennas.")
+        sys.exit(1)
+
+    # Print antenna header
+    rprint(f"\n[bold underline]{ant.fullname}[/bold underline]")
+    rprint(f"  [bold]Short name:[/bold]  {ant.name}")
+    rprint(f"  [bold]Codename:[/bold]    [cyan]{ant.codename}[/cyan]")
+    rprint(f"  [bold]Diameter:[/bold]    {ant.diameter}")
+    rprint(f"  [bold]Country:[/bold]     {ant.country}")
+
+    # Determine which bands to show
+    if band is not None:
+        if not ant.has_band(band):
+            rprint(f"\n[bold red]{ant.name} does not observe at {band}.[/bold red] "
+                   f"It observes at: {', '.join(ant.bands)}")
+            sys.exit(1)
+        bands_to_show = [band]
+    else:
+        bands_to_show = sorted(ant.bands, key=lambda b: float(b.replace('cm', '')))
+
+    # Print SEFD table (horizontal layout, wraps at terminal width)
+    rprint("")
+    _render_horizontal_band_table(bands_to_show, ant)
 
 
 if __name__ == '__main__':

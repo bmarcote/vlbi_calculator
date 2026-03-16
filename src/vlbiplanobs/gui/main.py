@@ -172,6 +172,12 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: Optio
         return outputs.error_card("No antennas are able to observe with the current setup",
                                   "First, select antennas that can actually observe."), *vals4error
 
+    if duration is not None and duration < 0.1:
+        return outputs.error_card('Duration too short',
+                                  'Minimum duration is 0.1 h, but you can check the instantaneous '
+                                  'sensitivity in the provided values (they are also calculated per '
+                                  'minute integration).'), *vals4error
+
     if defined_epoch and ((startdate is not None and duration is None) or
                           (startdate is None and duration is not None)):
         return outputs.error_card('The observing epoch is partially defined',

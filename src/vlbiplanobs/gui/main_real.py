@@ -183,7 +183,7 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
         return hidden_outputs
     
     has_source = defined_source and source and source.strip() != ''
-    has_duration = duration is not None and duration > 0
+    has_duration = duration is not None and duration >= 0.1
     
     if defined_epoch:
         epoch_complete = startdate is not None and starttime is not None and has_duration

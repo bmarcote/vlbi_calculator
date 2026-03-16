@@ -69,6 +69,12 @@ planobs source '3C273'
 
 If the source is not in the RFC catalog, PlanObs resolves it via SIMBAD/NED/VizieR.
 
+Add `--gst` to see the GST time ranges when each network has enough antennas to observe the source:
+
+```bash
+planobs source '3C273' --gst
+```
+
 :material-arrow-right: **[Full source reference](mode-source.md)**
 
 ---

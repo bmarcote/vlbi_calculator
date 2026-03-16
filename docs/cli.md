@@ -9,7 +9,7 @@ The `planobs` command-line interface is organised into **modes** (subcommands). 
 | `planobs [observe]` | Plan a VLBI observation | `-b BAND`, `-t TARGET`, `-n NETWORK` |
 | `planobs fringefinders` | Find fringe finder sources | `-s STATIONS`, `-t STARTTIME`, `-d DURATION` |
 | `planobs phasecals` | Find phase calibrator sources | `-t TARGET` |
-| `planobs source` | Look up source information | `<source_name>` |
+| `planobs source` | Look up source information | `<source_name>`, `--gst` |
 | `planobs server` | Launch the web GUI | `--host`, `--port` |
 
 !!! tip "Legacy syntax"

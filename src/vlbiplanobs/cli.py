@@ -887,6 +887,8 @@ def add_source_arguments(parser):
                         help="Name of the source to get information about.")
     parser.add_argument('--no-networks', action='store_true', default=False,
                         help="Skip the network observability table calculation and display.")
+    parser.add_argument('--gst', action='store_true', default=False,
+                        help="Show GST time ranges (HH:MM-HH:MM) when the source is visible by >3 antennas per network.")
 
 
 def add_server_arguments(parser):
@@ -1036,13 +1038,26 @@ def handle_phase_cal_command(args):
         sys.argv = original_argv
 
 
-def _check_obs_worker(args: tuple) -> tuple[str, str, bool]:
+def _format_gst_ranges(gst_pairs: list[tuple]) -> str:
+    """Format a list of GST (Longitude) start/end pairs as 'HH:MM-HH:MM, ...' string."""
+    parts = []
+    for pair in gst_pairs:
+        t0, t1 = pair
+        h0, m0 = int(t0.hour), int((t0.hour % 1) * 60)
+        h1, m1 = int(t1.hour), int((t1.hour % 1) * 60)
+        parts.append(f"{h0:02d}:{m0:02d}-{h1:02d}:{m1:02d}")
+    return ", ".join(parts)
+
+
+def _check_obs_worker(args):
     """Module-level worker for ProcessPoolExecutor: checks if a network can observe a source.
 
     Must be defined at module level (not as a closure) to be picklable.
-    Accepts (net_key, band, source_name, ra_deg, dec_deg) and returns (net_key, band, result).
+    Accepts (net_key, band, source_name, ra_deg, dec_deg[, return_gst]).
+    Returns (net_key, band, is_observable, gst_ranges_str | None).
     """
-    net_key, band, source_name, ra_deg, dec_deg = args
+    return_gst = args[5] if len(args) > 5 else False
+    net_key, band, source_name, ra_deg, dec_deg = args[:5]
     try:
         coord = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg)
         src = sources.Source(name=source_name, coordinates=coord)
@@ -1053,22 +1068,32 @@ def _check_obs_worker(args: tuple) -> tuple[str, str, bool]:
             scans={src.name: sources.ScanBlock([sources.Scan(src, duration=5 * u.min)])}
         )
         observable_times = observation.when_is_observable(min_stations=3)
-        return net_key, band, len(observable_times[src.name]) > 0
+        is_obs = len(observable_times[src.name]) > 0
+        if return_gst and is_obs:
+            gst_times = observation.when_is_observable(min_stations=3, return_gst=True)
+            gst_str = _format_gst_ranges(gst_times.get(src.name, []))
+            return net_key, band, True, gst_str
+        return net_key, band, is_obs, "" if return_gst else None
     except Exception:
-        return net_key, band, False
+        return net_key, band, False, "" if return_gst else None
 
 
 def _build_obs_table(sorted_bands: list[str],
                      observability: dict[tuple[str, str], bool],
-                     pending: set[tuple[str, str]]) -> Table:
+                     pending: set[tuple[str, str]],
+                     show_gst: bool = False,
+                     gst_ranges: dict[tuple[str, str], str] | None = None) -> Table:
     """Build the network observability Rich Table from current results.
 
     Cells that are still being computed are shown as '…'.
+    When show_gst is True, appends a 'GST' column per network showing GST ranges where >3 antennas observe.
     """
     table = Table(box=None, show_header=True, padding=0, pad_edge=False)
     table.add_column("Network", style="cyan", justify="left", width=10, no_wrap=True)
     for band in sorted_bands:
         table.add_column(band.replace('cm', ''), justify="center", width=6, no_wrap=True)
+    if show_gst:
+        table.add_column("GST", style="white", justify="left", no_wrap=False)
     for net_key, network in obs._NETWORKS.items():
         row: list[Text | str] = [net_key]
         for band in sorted_bands:
@@ -1081,16 +1106,35 @@ def _build_obs_table(sorted_bands: list[str],
                     row.append("   ")
             else:
                 row.append("   ")
+        if show_gst:
+            net_gst_parts: list[str] = []
+            any_pending = False
+            for band in sorted_bands:
+                if band in network.observing_bands:
+                    if (net_key, band) in pending:
+                        any_pending = True
+                    elif gst_ranges and (net_key, band) in gst_ranges and gst_ranges[(net_key, band)]:
+                        net_gst_parts.append(gst_ranges[(net_key, band)])
+            if any_pending:
+                row.append(Text(" … ", style="dim"))
+            elif net_gst_parts:
+                row.append(", ".join(dict.fromkeys(net_gst_parts)))
+            else:
+                row.append("")
         table.add_row(*row)
     return table
 
 
-def _show_observability_table(source: sources.Source) -> None:
+def _show_observability_table(source: sources.Source, show_gst: bool = False) -> None:
     """Compute and display the network observability table with live progressive updates.
 
     Tries ProcessPoolExecutor first (true parallelism, bypasses GIL) and falls back
     to ThreadPoolExecutor if process spawning fails. Results are displayed as they
     arrive via Rich Live, so the table fills in progressively rather than all at once.
+
+    Inputs
+        - source : sources.Source — the source to check observability for.
+        - show_gst : bool — if True, appends a GST column with time ranges where >3 antennas observe.
     """
     all_bands: set[str] = set()
     for network in obs._NETWORKS.values():
@@ -1102,13 +1146,14 @@ def _show_observability_table(source: sources.Source) -> None:
     sorted_bands = sorted(all_bands, key=wavelength_key)
 
     tasks = [
-        (net_key, band, source.name, source.coord.ra.deg, source.coord.dec.deg)
+        (net_key, band, source.name, source.coord.ra.deg, source.coord.dec.deg, show_gst)
         for net_key, network in obs._NETWORKS.items()
         for band in sorted_bands
         if band in network.observing_bands
     ]
 
     observability: dict[tuple[str, str], bool] = {}
+    gst_ranges: dict[tuple[str, str], str] = {}
     pending: set[tuple[str, str]] = {(t[0], t[1]) for t in tasks}
     n_workers = min(len(tasks), (os.cpu_count() or 4))
 
@@ -1118,15 +1163,19 @@ def _show_observability_table(source: sources.Source) -> None:
                        for task in worker_tasks}
             for future in as_completed(futures):
                 try:
-                    net_key, band, result = future.result()
+                    net_key, band, result, gst_str = future.result()
                 except Exception:
                     net_key, band = futures[future]
                     result = False
+                    gst_str = None
                 observability[(net_key, band)] = result
+                if gst_str is not None:
+                    gst_ranges[(net_key, band)] = gst_str
                 pending.discard((net_key, band))
-                live.update(_build_obs_table(sorted_bands, observability, pending))
+                live.update(_build_obs_table(sorted_bands, observability, pending,
+                                             show_gst=show_gst, gst_ranges=gst_ranges))
 
-    with Live(_build_obs_table(sorted_bands, observability, pending),
+    with Live(_build_obs_table(sorted_bands, observability, pending, show_gst=show_gst, gst_ranges=gst_ranges),
               refresh_per_second=8) as live:
         try:
             _run(ProcessPoolExecutor, tasks)
@@ -1181,7 +1230,7 @@ def handle_source_command(args):
         # Show observability table for all sources
         if source_obj and not args.no_networks:
             rprint("\n[bold green]Observable by (bands in cm)[/bold green]")
-            _show_observability_table(source_obj)
+            _show_observability_table(source_obj, show_gst=args.gst)
     except Exception as e:
         rprint(f"[bold red]Error:[/bold red] {e}")
         sys.exit(1)

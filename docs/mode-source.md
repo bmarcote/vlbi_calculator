@@ -5,7 +5,7 @@ The **source** mode retrieves detailed information about a single source. It que
 ## Usage
 
 ```bash
-planobs source <source_name>
+planobs source [options] <source_name>
 ```
 
 The `source_name` argument is **required** and positional. It can be:
@@ -13,6 +13,13 @@ The `source_name` argument is **required** and positional. It can be:
 - A J2000 name from the RFC catalog (e.g. `J1229+0203`)
 - An IVS name (e.g. `3C273`)
 - Any source resolvable by SIMBAD/NED/VizieR (e.g. `M87`)
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--no-networks` | Skip the network observability table. |
+| `--gst` | Append a **GST** column to the observability table showing the Greenwich Sidereal Time ranges (`HH:MM-HH:MM`) during which more than 3 antennas in the network can observe the source. |
 
 ---
 
@@ -69,6 +76,14 @@ planobs source 'J1229+0203'
 ```bash
 planobs source 'M87'
 ```
+
+### Show GST observing windows
+
+```bash
+planobs source '3C273' --gst
+```
+
+The table gains a **GST** column showing the sidereal time range(s) when each network has more than 3 antennas able to observe the source (e.g. `01:15-19:30`).
 
 ---
 

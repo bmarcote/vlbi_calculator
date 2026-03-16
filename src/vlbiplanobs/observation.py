@@ -54,10 +54,10 @@ def _check_type(value, expected_type) -> bool:
 
 def enforce_types(func):
     """Decorator that enforces type hints at runtime.
-    
+
     Checks that input parameters match their type annotations.
     Raises TypeError if a parameter has the wrong type.
-    
+
     Note: Parameters with default values can accept None even if not explicitly
     marked as Optional, for backward compatibility.
     """

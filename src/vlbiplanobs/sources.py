@@ -577,16 +577,16 @@ class SourceCatalog:
         """
         with open(path, 'rb') as sources_toml:
             catalog = tomllib.load(sources_toml)
-            
+
             # Handle [[pulsar]] arrays
             if 'pulsar' in catalog:
                 if 'pulsars' not in self._blocks:
                     self._blocks['pulsars'] = dict()
-                
+
                 for src in catalog['pulsar']:
                     name = src.get('name', 'unknown')
                     scans = []
-                    
+
                     # Handle phasecal if present
                     if 'phasecal' in src and src['phasecal'].get('name'):
                         pc = src['phasecal']
@@ -626,16 +626,16 @@ class SourceCatalog:
                         every=int(src['every']) if 'every' in src else -1))
 
                     self._blocks['pulsars'][name] = ScanBlock(scans)
-            
+
             # Handle [[target]] arrays
             if 'target' in catalog:
                 if 'targets' not in self._blocks:
                     self._blocks['targets'] = dict()
-                
+
                 for src in catalog['target']:
                     name = src.get('name', 'unknown')
                     scans = []
-                    
+
                     # Handle phasecal if present
                     if 'phasecal' in src and src['phasecal'].get('name'):
                         pc = src['phasecal']
@@ -820,12 +820,12 @@ class ScanBlock:
 
         # Get scans with valid durations
         valid_scans = [s for s in self.scans if s.duration is not None]
-        
+
         if not valid_scans:
             return {}
-        
+
         total_duration = sum([s.duration for s in valid_scans if s.every <= 0])
-        
+
         # Get positive every values
         positive_every = [s.every for s in valid_scans if s.every > 0]
         if positive_every:

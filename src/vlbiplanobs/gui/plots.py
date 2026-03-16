@@ -24,12 +24,12 @@ def _get_axis_config(o):
 
     if o.fixed_time:
         # For xaxis (UTC): datetime values are used directly in time_range
-        
+
         # For xaxis2 (GST): convert gstimes to datetime format for the range
         gst_start = datetime.combine(o.times.datetime[0].date(), datetime.min.time()) + timedelta(hours=o.gstimes[0].hour)
         gst_end = datetime.combine(o.times.datetime[0].date(), datetime.min.time()) + timedelta(hours=o.gstimes[-1].hour)
         gst_range = [gst_start, gst_end]
-        
+
         # xaxis2_config = dict(overlaying='x', side='top', type='date', tickmode='auto',
         #                      showline=True, linecolor='black', linewidth=2, ticks='inside',
         #                      range=gst_range, title='Time (GST)', showgrid=False, zeroline=False,
@@ -198,7 +198,7 @@ def serialize_uv_data(o) -> Optional[dict]:
     """
     if o is None or not o.scans:
         return None
-    
+
     bl_uv = o.get_uv_data()
     serialized = {}
     for key, arr in bl_uv[list(bl_uv.keys())[0]].items():
@@ -214,7 +214,7 @@ def uvplot_from_data(uv_data: dict, filter_antennas: Optional[list[str]] = None)
     """Creates UV coverage plot from serialized UV data."""
     if uv_data is None:
         return None
-    
+
     highlight_colors = [
         "#FF0000", "#0000FF", "#008000", "#FFA500", "#800080",
         "#00FFFF", "#FF00FF", "#FFD700", "#00FF00", "#A52A2A",

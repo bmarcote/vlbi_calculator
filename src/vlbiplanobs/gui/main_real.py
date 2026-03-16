@@ -128,9 +128,9 @@ def download_pdf_summary(n_clicks, obs_params: dict):
                Input('switches-antennas', 'value')],
               suppress_callback_exceptions=True)
 def compute_observation_realtime(band: int, defined_source: bool, source: str, onsourcetime: int,
-                                  defined_epoch: bool, startdate: str, starttime: str, 
+                                  defined_epoch: bool, startdate: str, starttime: str,
                                   duration: int | float, datarate: int, subbands: int,
-                                  channels: int, pols: int, inttime: int, e_evn: bool, 
+                                  channels: int, pols: int, inttime: int, e_evn: bool,
                                   selected_antennas: list[str]):
     """Real-time computation - returns text outputs immediately, plots render via stores.
 
@@ -168,23 +168,23 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
         None,        # store-elev-data
         None,        # store-worldmap-data
     )
-    
+
     if band == 0 or band is None:
         return hidden_outputs
-    
+
     if not selected_antennas:
         return hidden_outputs
-    
+
     selected_antennas = [ant for ant in selected_antennas
                          if observation._STATIONS[ant].has_band(inputs.band_from_index(band))
                          and (not e_evn or observation._STATIONS[ant].real_time)]
-    
+
     if not selected_antennas:
         return hidden_outputs
-    
+
     has_source = defined_source and source and source.strip() != ''
     has_duration = duration is not None and duration >= 0.1
-    
+
     if defined_epoch:
         epoch_complete = startdate is not None and starttime is not None and has_duration
         if not epoch_complete and has_source:
@@ -192,15 +192,15 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
         elif not epoch_complete and not has_source:
             if not has_duration:
                 return hidden_outputs
-    
+
     if not has_source and not has_duration:
         return hidden_outputs
-    
+
     t0 = dt.now()
     try:
         logger.info(f"Real-time update: band={inputs.band_from_index(band)}, "
                     f"antennas={len(selected_antennas)}, source={source}, duration={duration}")
-        
+
         obs = cli.main(
             band=inputs.band_from_index(band),
             stations=sorted(selected_antennas),
@@ -215,10 +215,10 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
             polarizations=pols or 2,
             inttime=(inttime or 2) * u.s
         )
-        
+
         if obs is None:
             return hidden_outputs
-        
+
         with ThreadPoolExecutor() as executor:
             f_observable = executor.submit(obs.is_observable)
             f_sun_constraint = executor.submit(obs.sun_constraint)
@@ -240,21 +240,21 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
             _ = f_uv_values.result()
 
         _ = obs.synthesized_beam()
-        
+
     except (ValueError, sources.SourceNotVisible, IndexError) as e:
         logger.debug(f"Cannot compute observation yet: {e}")
         return hidden_outputs
     except Exception as e:
         logger.debug(f"Error during real-time update: {e}")
         return hidden_outputs
-    
+
     try:
         if not all(obs.is_observable_by_network(min_stations=1).values()):
             return hidden_outputs
-        
+
         futures = {}
         can_show_source_plots = obs.sourcenames and has_source
-        
+
         with ThreadPoolExecutor() as executor:
             # Text outputs (fast)
             futures['out_rms'] = executor.submit(outputs.rms, obs)
@@ -269,7 +269,7 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
 
             # Lightweight data serialization for deferred plot rendering
             futures['worldmap_data'] = executor.submit(plots.serialize_worldmap_data, obs)
-            
+
             if can_show_source_plots:
                 futures['out_sun'] = executor.submit(outputs.sun_warning, obs)
                 futures['elev_data'] = executor.submit(plots.serialize_elevation_data, obs)
@@ -302,7 +302,7 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
                 out_uv = [True, html.Div(), []]
                 uv_data = None
                 elev_data = None
-                
+
     except Exception as e:
         logger.debug(f"Error generating outputs: {e}")
         return hidden_outputs

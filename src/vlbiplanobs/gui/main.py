@@ -327,6 +327,7 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: Optio
 
 
 server = app.server
+app.index_string = app.index_string.replace('<head>', '<head><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">')
 app.index_string = app.index_string.replace('<body>', '<body class="g-sidenav-show bg-gray-100">')
 
 app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-100 row m-0 p-4', children=[
@@ -341,9 +342,9 @@ app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-10
                    layout.top_banner(app),
                    # inputs.modal_welcome(),
                    html.Div(id='main-window', className='container-fluid d-flex row p-0 m-0',
-                            children=[html.Div(id='right-column', className='col-12 col-sm-6 m-0 p-0',
+                            children=[html.Div(id='right-column', className='col-12 col-lg-6 m-0 p-0',
                                                children=layout.inputs_column(app)),
-                                      html.Div(id='left-column', className='col-12 col-sm-6 m-0 p-0',
+                                      html.Div(id='left-column', className='col-12 col-lg-6 m-0 p-0',
                                                children=[layout.compute_buttons(app),
                                                          layout.outputs_column(app)])]),
                    html.Div(html.A(html.I(className="fa-solid fa-circle-info",

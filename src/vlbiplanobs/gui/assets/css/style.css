@@ -121,3 +121,14 @@ input[type=time] {
 .card-text-shadow {
     text-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
 }
+
+/* Override theme min-width so the layout can shrink on small screens */
+.container,
+.container-fluid,
+.container-xxl,
+.container-xl,
+.container-lg,
+.container-md,
+.container-sm {
+    min-width: 0;
+}

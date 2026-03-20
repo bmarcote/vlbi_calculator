@@ -220,26 +220,25 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
             return hidden_outputs
 
         with ThreadPoolExecutor() as executor:
-            f_observable = executor.submit(obs.is_observable)
-            f_sun_constraint = executor.submit(obs.sun_constraint)
-            f_uv_data = executor.submit(obs.get_uv_data)
-            f_baseline_sens = executor.submit(obs.baseline_sensitivity)
-            _ = f_observable.result()
-            _ = f_sun_constraint.result()
-            _ = f_uv_data.result()
-            _ = f_baseline_sens.result()
-
-        with ThreadPoolExecutor() as executor:
-            f_always_obs = executor.submit(obs.is_always_observable)
-            f_sun_epochs = executor.submit(obs.sun_limiting_epochs)
-            f_thermal = executor.submit(obs.thermal_noise)
-            f_uv_values = executor.submit(obs.get_uv_values)
-            _ = f_always_obs.result()
-            _ = f_sun_epochs.result()
-            _ = f_thermal.result()
-            _ = f_uv_values.result()
-
-        _ = obs.synthesized_beam()
+            # Submit all independent pre-computations in a single pool
+            pre_futures = [
+                executor.submit(obs.is_observable),
+                executor.submit(obs.sun_constraint),
+                executor.submit(obs.get_uv_data),
+                executor.submit(obs.baseline_sensitivity),
+            ]
+            for f in pre_futures:
+                f.result()
+            # Second wave depends on is_observable being cached
+            dep_futures = [
+                executor.submit(obs.is_always_observable),
+                executor.submit(obs.sun_limiting_epochs),
+                executor.submit(obs.thermal_noise),
+                executor.submit(obs.get_uv_values),
+                executor.submit(obs.synthesized_beam),
+            ]
+            for f in dep_futures:
+                f.result()
 
     except (ValueError, sources.SourceNotVisible, IndexError) as e:
         logger.debug(f"Cannot compute observation yet: {e}")

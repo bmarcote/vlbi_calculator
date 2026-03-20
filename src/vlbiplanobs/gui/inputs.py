@@ -315,7 +315,7 @@ def duration() -> html.Div:
                                     html.Label('Leave empty to search best time', htmlFor='duration'),
                                     dbc.Input(id='duration', value=None, type='number', className='form-control',
                                             placeholder="In hours",
-                                            persistence=True, debounce=False, inputMode='numeric', max=50, step=0.1),
+                                            persistence=True, debounce=True, inputMode='numeric', max=50, step=0.1),
                                     html.Small(id='error_duration', className='form-text text-muted')])]),
                             html.Div(className='col-7', children=[
                                 html.Div(className='row form-group', children=[

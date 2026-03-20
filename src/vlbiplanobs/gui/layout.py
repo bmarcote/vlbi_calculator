@@ -1,4 +1,5 @@
 from dash import html, dcc
+import dash_bootstrap_components as dbc
 from dash_bootstrap_components import Modal
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs.gui import inputs, outputs
@@ -45,6 +46,17 @@ def compute_buttons(app) -> html.Div:
     return html.Div([html.Div(className='m-0 p-0', children=[
         html.Div(className='row d-flex m-0 p-0', children=[
             inputs.compute_button(),
+            outputs.download_button_div(),
+            dcc.Download(id="download-data")])])])
+
+
+def compute_buttons_realtime(app) -> html.Div:
+    """Layout for real-time mode: no CALCULATE button, just the download button."""
+    return html.Div([html.Div(className='m-0 p-0', children=[
+        html.Div(className='row d-flex m-0 p-0', children=[
+            html.Div(className='col-6', children=[
+                dbc.Spinner(id='loading', color='#a01d26',
+                            children=html.Div(id='loading-div'))]),
             outputs.download_button_div(),
             dcc.Download(id="download-data")])])])
 

@@ -595,13 +595,244 @@ class ObservationScheduler:
         return scheduled
 
     # ------------------------------------------------------------------
+    # Multi-source scheduling helpers
+    # ------------------------------------------------------------------
+
+    def _source_main_coord(self, name: str) -> Optional[SkyCoord]:
+        """Return the sky coordinate of the primary science target in a scan block.
+
+        Parameters
+        ----------
+        name : str
+            Block name in obs.scans.
+
+        Returns
+        -------
+        SkyCoord or None
+        """
+        block = self.obs.scans.get(name)
+        if block is None:
+            return None
+        targets = block.sources(SourceType.TARGET) or block.sources(SourceType.PULSAR) or block.sources()
+        return targets[0].coord if targets else None
+
+    def _find_optimal_window(self, name: str, t0: Time, t1: Time, dur: u.Quantity) -> tuple[Time, float]:
+        """Find the start time of the best observing window for *name*.
+
+        Searches the interval [t0, t1] for the placement of *dur* that maximises
+        n_antennas * 100 + mean_elevation.
+
+        Returns
+        -------
+        (best_start, score) — score is -1 if no valid window found.
+        """
+        result = self._find_best(name, t0, t1, dur)
+        if result:
+            ts, _te, n, e = result
+            return ts, float(n) * 100.0 + e
+        return t0, -1.0
+
+    def _nearest_neighbor_order(self, names: list[str]) -> list[str]:
+        """Reorder *names* using nearest-neighbour heuristic to minimise total angular slewing.
+
+        Starts from the first element of *names* (which should already be sorted
+        by optimal observation window) and greedily picks the geographically
+        closest remaining source at each step.
+
+        Parameters
+        ----------
+        names : list[str]
+            Source block names, pre-sorted by optimal start time.
+
+        Returns
+        -------
+        list[str]
+            Reordered names.
+        """
+        if len(names) <= 2:
+            return list(names)
+        coords: dict[str, Optional[SkyCoord]] = {n: self._source_main_coord(n) for n in names}
+        remaining = list(names)
+        ordered = [remaining.pop(0)]
+        while remaining:
+            last_coord = coords.get(ordered[-1])
+            if last_coord is None:
+                ordered.append(remaining.pop(0))
+                continue
+            best_next = min(remaining, key=lambda n: (
+                last_coord.separation(coords[n]).deg if coords.get(n) is not None else 360.0))
+            ordered.append(best_next)
+            remaining.remove(best_next)
+        return ordered
+
+    def _choose_ff_positions(self, n_sources: int, n_ff: int) -> set[int]:
+        """Choose at which source boundaries to insert FF scans.
+
+        Positions range from 0 (before source 0) to n_sources (after last source).
+        FFs are spread as evenly as possible across the observation.
+
+        Parameters
+        ----------
+        n_sources : int
+        n_ff : int
+
+        Returns
+        -------
+        set[int]
+        """
+        if n_ff <= 0:
+            return set()
+        if n_ff >= n_sources + 1:
+            return set(range(n_sources + 1))
+        positions: set[int] = set()
+        for k in range(n_ff):
+            idx = round((k + 0.5) * (n_sources + 1) / n_ff)
+            positions.add(min(max(idx, 0), n_sources))
+        return positions
+
+    def _determine_ff_count(self, obs_dur_h: float) -> int:
+        """Determine the number of FF scans for a given observation duration.
+
+        Respects user-specified count.  Otherwise:
+        <= 1.5 h → 1, <= 3 h → 2, > 3 h → 2 + one per FF_INTERVAL.
+
+        Parameters
+        ----------
+        obs_dur_h : float
+            Observation duration in hours.
+
+        Returns
+        -------
+        int
+        """
+        if self._ff_n_scans is not None:
+            return max(1, self._ff_n_scans)
+        if obs_dur_h <= 1.5:
+            return 1
+        if obs_dur_h <= 3.0:
+            return 2
+        extra = max(0, int(obs_dur_h / self.FF_INTERVAL.to(u.h).value) - 1)
+        return 2 + extra
+
+    def _schedule_multi_source(self, sci_names: list[str], ff_names: list[str],
+                                t0: Time, t1: Time) -> list[ScheduledScanBlock]:
+        """Schedule multiple science sources with equalised time and interleaved FF scans.
+
+        Algorithm
+        ---------
+        1. Calculate equal science time per source (total_time - ff_overhead).
+        2. Find the optimal observing window for each source.
+        3. Sort sources chronologically by their optimal window; break ties with
+           nearest-neighbour sky distance to minimise slewing.
+        4. Place FF scans at evenly-distributed boundaries between source blocks.
+        5. Place each source block sequentially; the duration is adjusted so that
+           the last block ends exactly at t1.
+
+        Parameters
+        ----------
+        sci_names : list[str]
+            Science block names (already filtered, no FF/polcal/eMERLIN blocks).
+        ff_names : list[str]
+            FF block names registered in obs.scans.
+        t0, t1 : Time
+            Observation start/end.
+
+        Returns
+        -------
+        list[ScheduledScanBlock]
+            All scheduled blocks (science + FF) in chronological order.
+        """
+        n_sci = len(sci_names)
+        obs_dur_h = (t1 - t0).to(u.h).value
+        n_ff = self._determine_ff_count(obs_dur_h)
+
+        # --- time budget ---
+        total_ff_time = n_ff * self.FF_DUR
+        sci_time_total = max((t1 - t0) - total_ff_time, (t1 - t0) * 0.1)
+        time_per_source = sci_time_total / n_sci
+
+        # --- find optimal windows ---
+        source_peak: dict[str, Time] = {}
+        for name in sci_names:
+            peak_start, _ = self._find_optimal_window(name, t0, t1, time_per_source)
+            source_peak[name] = peak_start
+
+        # --- sort by optimal window start, then minimise slewing ---
+        ordered = sorted(sci_names, key=lambda n: source_peak[n].mjd)
+        ordered = self._nearest_neighbor_order(ordered)
+
+        # --- choose where to insert FF scans ---
+        ff_positions = self._choose_ff_positions(n_sci, n_ff)
+        log.info("Multi-source schedule: %d sources, %d FF scans at positions %s",
+                 n_sci, n_ff, sorted(ff_positions))
+
+        # --- build timeline ---
+        all_blocks: list[ScheduledScanBlock] = []
+        ff_count = 0
+        current_t = t0
+
+        def _place_ff(t: Time, count: int) -> Time:
+            """Place one FF block starting at t; returns new current time."""
+            if not ff_names:
+                return t
+            fn = ff_names[count % len(ff_names)]
+            ff_block = self.obs.scans[fn]
+            n_vis = self._vis_at(fn, t)
+            all_blocks.append(ScheduledScanBlock(
+                name=f"FF_{count + 1}", block=ff_block,
+                start_time=t, end_time=t + self.FF_DUR,
+                scans=list(ff_block.scans), n_antennas=n_vis,
+                mean_elevation=self._elev_at(fn, t)))
+            return t + self.FF_DUR
+
+        for i, name in enumerate(ordered):
+            # Possibly insert FF before this source
+            if i in ff_positions and ff_count < n_ff:
+                current_t = _place_ff(current_t, ff_count)
+                ff_count += 1
+
+            # Allocate time: divide remaining time equally among remaining sources,
+            # reserving time for any FFs still to be placed after this source.
+            remaining_sci_blocks = n_sci - i
+            remaining_ff_time = (n_ff - ff_count) * self.FF_DUR
+            available_to_end = (t1 - current_t) - remaining_ff_time
+            this_dur = max(available_to_end / remaining_sci_blocks, 1.0 * u.min)
+
+            block = self.obs.scans[name]
+            sci_dur = min(this_dur, (t1 - current_t)).to(u.min)
+            try:
+                scans = block.fill(sci_dur)
+            except (ValueError, Exception):
+                scans = list(block.scans)
+
+            # Use actual scan durations for precise time tracking (fill() may not use the full sci_dur)
+            actual_dur = sum(s.duration.to(u.min).value for s in scans) * u.min
+            sci_end = current_t + actual_dur
+            mid = current_t + actual_dur * 0.5
+            all_blocks.append(ScheduledScanBlock(
+                name=name, block=block, start_time=current_t, end_time=sci_end,
+                scans=scans, n_antennas=self._vis_at(name, mid),
+                mean_elevation=self._elev_at(name, mid)))
+            current_t = sci_end
+
+        # Place any remaining FFs at the end
+        while ff_count < n_ff and ff_names and current_t + self.FF_DUR <= t1:
+            current_t = _place_ff(current_t, ff_count)
+            ff_count += 1
+
+        return sorted(all_blocks, key=lambda b: b.start_time.mjd)
+
+    # ------------------------------------------------------------------
     # Main entry point
     # ------------------------------------------------------------------
 
     def schedule(self) -> dict[str, ScanBlock]:
         """Generate the complete observation schedule.
 
-        Order: FF (evenly spread) → eMERLIN 3C286 → polcal → science fills gaps.
+        For a single science block: FF (evenly spread) → eMERLIN 3C286 → polcal → science fills gaps.
+        For multiple science blocks: multi-source mode with equalised time per source,
+        optimal window selection, slew minimisation, and FF scans distributed between
+        source blocks.
 
         Returns
         -------
@@ -610,31 +841,46 @@ class ObservationScheduler:
         """
         t0, t1 = self.obs.times[0], self.obs.times[-1]
 
-        # 1. Fringe finders — evenly spread, never consecutive
-        ff_names = self._select_fringefinders()
-        ff_sched = self._schedule_ff(ff_names, t0, t1) if ff_names else []
-        all_sched: list[ScheduledScanBlock] = list(ff_sched)
-
-        # 2. eMERLIN 3C286 — place in first available slot after first FF
-        if self._has_emerlin():
-            em_block = self._create_emerlin_3c286_block()
-            if em_block:
-                slots = self._get_slots(all_sched, t0, t1)
-                em = self._schedule_single_block(em_block, slots, 'eMERLIN_3C286')
-                if em:
-                    all_sched.append(em)
-
-        # 3. Polcal — spread at 10 / 50 / 90 %
-        if self._polcal:
-            polcal_names = self._create_polcal_blocks()
-            slots = self._get_slots(all_sched, t0, t1)
-            all_sched.extend(self._schedule_polcal(polcal_names, slots))
-
-        # 4. Science — fill remaining gaps, optimised per slot
         sci_names = [n for n in self._sci_blocks()
                      if not n.startswith('FF_') and not n.startswith('POLCAL_') and n != 'eMERLIN_3C286']
-        slots = self._get_slots(all_sched, t0, t1)
-        all_sched.extend(self._schedule_sci(sci_names, slots))
+        ff_names = self._select_fringefinders()
+
+        if len(sci_names) > 1:
+            # ---- Multi-source path ----
+            all_sched: list[ScheduledScanBlock] = self._schedule_multi_source(sci_names, ff_names, t0, t1)
+
+            # eMERLIN 3C286 and polcal are added in any remaining gaps
+            if self._has_emerlin():
+                em_block = self._create_emerlin_3c286_block()
+                if em_block:
+                    slots = self._get_slots(all_sched, t0, t1)
+                    em = self._schedule_single_block(em_block, slots, 'eMERLIN_3C286')
+                    if em:
+                        all_sched.append(em)
+            if self._polcal:
+                polcal_names = self._create_polcal_blocks()
+                slots = self._get_slots(all_sched, t0, t1)
+                all_sched.extend(self._schedule_polcal(polcal_names, slots))
+        else:
+            # ---- Single-source path (original logic) ----
+            ff_sched = self._schedule_ff(ff_names, t0, t1) if ff_names else []
+            all_sched = list(ff_sched)
+
+            if self._has_emerlin():
+                em_block = self._create_emerlin_3c286_block()
+                if em_block:
+                    slots = self._get_slots(all_sched, t0, t1)
+                    em = self._schedule_single_block(em_block, slots, 'eMERLIN_3C286')
+                    if em:
+                        all_sched.append(em)
+
+            if self._polcal:
+                polcal_names = self._create_polcal_blocks()
+                slots = self._get_slots(all_sched, t0, t1)
+                all_sched.extend(self._schedule_polcal(polcal_names, slots))
+
+            slots = self._get_slots(all_sched, t0, t1)
+            all_sched.extend(self._schedule_sci(sci_names, slots))
 
         self._scheduled = sorted(all_sched, key=lambda b: b.start_time.mjd)
         return {f"{i + 1:03d}_{b.name}": b.block for i, b in enumerate(self._scheduled)}

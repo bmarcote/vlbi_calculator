@@ -501,6 +501,47 @@ def _format_dec_coordinate(dec_str: str) -> str:
     return dec_str
 
 
+def _resolve_coord_str(entry: dict, name: str) -> Optional[str]:
+    """Return a SkyCoord-parseable coordinate string for a catalog entry.
+
+    Tries, in order:
+    1. 'coordinates' key in the TOML entry (explicit RA/Dec).
+    2. RFC catalog lookup by name.
+    3. Online name resolution (SIMBAD/NED/VizieR).
+
+    Returns None and logs a warning if all methods fail.
+
+    Parameters
+    ----------
+    entry : dict
+        Parsed TOML sub-dict for a phasecal, checksource, or target.
+    name : str
+        Source name, used for catalog/online lookup when coordinates are absent.
+    """
+    import logging as _log
+    if 'coordinates' in entry:
+        c = entry['coordinates']
+        ra = c['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
+        dec = _format_dec_coordinate(c['Dec']).replace(':', 'd', 1).replace(':', 'm') + 's'
+        return f"{ra} {dec}"
+    # Try RFC catalog
+    try:
+        sky = Source.get_rfc_coordinates(name)
+        return sky.to_string('hmsdms')
+    except (ValueError, Exception):
+        pass
+    # Try online resolution
+    try:
+        sky = coord.get_icrs_coordinates(name)
+        return sky.to_string('hmsdms')
+    except Exception:
+        pass
+    _log.getLogger(__name__).warning(
+        "Could not resolve coordinates for '%s': not in catalog, RFC, or online resolvers. "
+        "Skipping this source.", name)
+    return None
+
+
 class SourceCatalog:
     def __init__(self, personal_catalog: Optional[str] = None):
         self._blocks: dict[str, dict[str, ScanBlock]] = dict()
@@ -590,36 +631,29 @@ class SourceCatalog:
                     # Handle phasecal if present
                     if 'phasecal' in src and src['phasecal'].get('name'):
                         pc = src['phasecal']
-                        pc_coords = pc['coordinates']
-                        # Convert RA:Dec format to SkyCoord format
-                        ra = pc_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
-                        dec = _format_dec_coordinate(pc_coords['Dec']).replace(':', 'd', 1).replace(':', 'm') + 's'
-                        pc_coord_str = f"{ra} {dec}"
-                        scans.append(Scan(
-                            source=Source(name=pc['name'], coordinates=pc_coord_str, source_type=SourceType.PHASECAL),
-                            duration=float(pc['duration'])*u.min if 'duration' in pc else None,
-                            every=int(pc['every']) if 'every' in pc else -1))
+                        pc_coord_str = _resolve_coord_str(pc, pc['name'])
+                        if pc_coord_str is not None:
+                            scans.append(Scan(
+                                source=Source(name=pc['name'], coordinates=pc_coord_str, source_type=SourceType.PHASECAL),
+                                duration=float(pc['duration'])*u.min if 'duration' in pc else None,
+                                every=int(pc['every']) if 'every' in pc else -1))
 
                     # Handle checksource if present
                     if 'checksource' in src and src['checksource'].get('name'):
                         cs = src['checksource']
-                        cs_coords = cs['coordinates']
-                        # Convert RA:Dec format to SkyCoord format
-                        ra = cs_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
-                        dec = _format_dec_coordinate(cs_coords['Dec']).replace(':', 'd', 1).replace(':', 'm') + 's'
-                        cs_coord_str = f"{ra} {dec}"
-                        scans.append(Scan(
-                            source=Source(name=cs['name'], coordinates=cs_coord_str,
-                                          source_type=SourceType.CHECKSOURCE),
-                            duration=float(cs['duration'])*u.min if 'duration' in cs else None,
-                            every=int(cs['every']) if 'every' in cs else -1))
+                        cs_coord_str = _resolve_coord_str(cs, cs['name'])
+                        if cs_coord_str is not None:
+                            scans.append(Scan(
+                                source=Source(name=cs['name'], coordinates=cs_coord_str,
+                                              source_type=SourceType.CHECKSOURCE),
+                                duration=float(cs['duration'])*u.min if 'duration' in cs else None,
+                                every=int(cs['every']) if 'every' in cs else 4))
 
-                    # Main source
-                    src_coords = src['coordinates']
-                    # Convert RA:Dec format to SkyCoord format
-                    ra = src_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
-                    dec = _format_dec_coordinate(src_coords['Dec']).replace(':', 'd', 1).replace(':', 'm') + 's'
-                    src_coord_str = f"{ra} {dec}"
+                    # Main source (coordinates required for the primary target)
+                    src_coord_str = _resolve_coord_str(src, name)
+                    if src_coord_str is None:
+                        raise ValueError(f"Could not resolve coordinates for pulsar '{name}'. "
+                                         "Add 'coordinates' to its catalog entry.")
                     scans.append(Scan(
                         source=Source(name=name, coordinates=src_coord_str, source_type=SourceType.PULSAR),
                         duration=float(src['duration'])*u.min if 'duration' in src else None,
@@ -639,36 +673,29 @@ class SourceCatalog:
                     # Handle phasecal if present
                     if 'phasecal' in src and src['phasecal'].get('name'):
                         pc = src['phasecal']
-                        pc_coords = pc['coordinates']
-                        # Convert RA:Dec format to SkyCoord format
-                        ra = pc_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
-                        dec = _format_dec_coordinate(pc_coords['Dec']).replace(':', 'd', 1).replace(':', 'm') + 's'
-                        pc_coord_str = f"{ra} {dec}"
-                        scans.append(Scan(
-                            source=Source(name=pc['name'], coordinates=pc_coord_str, source_type=SourceType.PHASECAL),
-                            duration=float(pc['duration'])*u.min if 'duration' in pc else None,
-                            every=int(pc['every']) if 'every' in pc else -1))
+                        pc_coord_str = _resolve_coord_str(pc, pc['name'])
+                        if pc_coord_str is not None:
+                            scans.append(Scan(
+                                source=Source(name=pc['name'], coordinates=pc_coord_str, source_type=SourceType.PHASECAL),
+                                duration=float(pc['duration'])*u.min if 'duration' in pc else None,
+                                every=int(pc['every']) if 'every' in pc else -1))
 
                     # Handle checksource if present
                     if 'checksource' in src and src['checksource'].get('name'):
                         cs = src['checksource']
-                        cs_coords = cs['coordinates']
-                        # Convert RA:Dec format to SkyCoord format
-                        ra = cs_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
-                        dec = _format_dec_coordinate(cs_coords['Dec']).replace(':', 'd', 1).replace(':', 'm') + 's'
-                        cs_coord_str = f"{ra} {dec}"
-                        scans.append(Scan(
-                            source=Source(name=cs['name'], coordinates=cs_coord_str,
-                                          source_type=SourceType.CHECKSOURCE),
-                            duration=float(cs['duration'])*u.min if 'duration' in cs else None,
-                            every=int(cs['every']) if 'every' in cs else -1))
+                        cs_coord_str = _resolve_coord_str(cs, cs['name'])
+                        if cs_coord_str is not None:
+                            scans.append(Scan(
+                                source=Source(name=cs['name'], coordinates=cs_coord_str,
+                                              source_type=SourceType.CHECKSOURCE),
+                                duration=float(cs['duration'])*u.min if 'duration' in cs else None,
+                                every=int(cs['every']) if 'every' in cs else 4))
 
-                    # Main source
-                    src_coords = src['coordinates']
-                    # Convert RA:Dec format to SkyCoord format
-                    ra = src_coords['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
-                    dec = _format_dec_coordinate(src_coords['Dec']).replace(':', 'd', 1).replace(':', 'm') + 's'
-                    src_coord_str = f"{ra} {dec}"
+                    # Main source (coordinates required for the primary target)
+                    src_coord_str = _resolve_coord_str(src, name)
+                    if src_coord_str is None:
+                        raise ValueError(f"Could not resolve coordinates for target '{name}'. "
+                                         "Add 'coordinates' to its catalog entry.")
                     scans.append(Scan(
                         source=Source(name=name, coordinates=src_coord_str, source_type=SourceType.TARGET),
                         duration=float(src['duration'])*u.min if 'duration' in src else None,
@@ -900,10 +927,12 @@ class ScanBlock:
                     main_loop += to_append
                     booked_time += reduce(operator.add, [a.duration for a in to_append])
             else:
+                # Correct formula: n = floor((max_duration - last_duration) / loop_duration)
+                # This ensures n * loop_duration + last_duration <= max_duration
+                n_reps = int((max_duration - last_duration).to(u.min).value //
+                             loop_duration.to(u.min).value)
                 main_loop += (self.scans_with_sources(SourceType.PHASECAL) +
-                              self.scans_with_sources(SourceType.TARGET)) * \
-                              int(max_duration.to(u.min).value // (loop_duration +
-                                  last_duration).to(u.min).value)
+                              self.scans_with_sources(SourceType.TARGET)) * n_reps
 
             main_loop += self.scans_with_sources(SourceType.PHASECAL)
         else:

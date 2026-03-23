@@ -159,7 +159,10 @@ class VLBIObs(obs.Observation):
         rprint("[bold]The blocks are observable for:[/bold]")
         for ablockname, ablock in self.scans.items():
             rprint(f"    - '{ablockname}':")
-            block_sources = ablock.sources()
+            # Show only science targets (TARGET or PULSAR) in the CLI plot; fall back to all if none exist.
+            block_sources = (ablock.sources(sources.SourceType.TARGET) or
+                             ablock.sources(sources.SourceType.PULSAR) or
+                             ablock.sources())
             for src in block_sources:
                 src_vis = per_src.get(src.name, {})
                 if not src_vis:
@@ -610,9 +613,11 @@ def main(band: str, networks: Optional[list[str]] = None,
                         sources.Scan(a_source, duration=target_dur))
 
                     src2observe[a_source.name] = sources.ScanBlock(scans_for_block)
-                except ValueError:
-                    raise ValueError(f"The source '{target}' is not found in the catalog and could not "
-                                     "be resolved (not in SIMBAD/NED/VizieR)")
+                except Exception:
+                    raise ValueError(
+                        f"Source '{target}' not found: not in the provided catalog, not in the "
+                        "RFC calibrator catalog, and could not be resolved online "
+                        "(SIMBAD/NED/VizieR). Check the source name or add it to your catalog.")
     elif source_catalog is None:
         # rprint("[bold red]Either a source catalog file or a list of targets must be "
         #        "provided (or both).[/bold red]")

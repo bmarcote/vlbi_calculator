@@ -24,7 +24,7 @@ iers_conf.auto_max_age = None
 if os.access("/var/log/planobs.log", os.W_OK):
     logfilename = "/var/log/planobs.log"
 else:
-    logfilename = "~/log-planobs.log"
+    logfilename = os.path.expanduser("~/log-planobs.log")
 
 _LOG = logger.add(logfilename, backtrace=True, diagnose=True,
                   format="{time:YYYY-MM-DD HH:mm} |  {level} {message}")

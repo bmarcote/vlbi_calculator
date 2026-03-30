@@ -57,7 +57,7 @@ dependencies = [
   "dash-mantine-components",
   "kaleido",
   "loguru",
-  "borb==3.0.2",  # only for macOS (case-insensitive). Newer versions would work with GNU/Linux
+  "borb",  # only for macOS (case-insensitive). Newer versions would work with GNU/Linux
 ]
 
 

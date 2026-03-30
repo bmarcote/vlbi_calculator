@@ -382,14 +382,25 @@ app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-10
                    html.Div(id='bottom-banner', children=[html.Br(), html.Br(), html.Br()])]))
 
 
-def main(debug: bool = False):
-    usage = "%(prog)s [-h]  OPTIONS"
-    description = "EVN Observation Planner (Real-time GUI)"
-    parser = argparse.ArgumentParser(description=description, prog="planobs-server-realtime", usage=usage)
-    parser.add_argument('-d', '--debug', action='store_true', default=False, help="Enable debug mode")
-    args = parser.parse_args()
-    return app.run(debug=args.debug)
+def main(debug: bool = False, host: str = '127.0.0.1', port: int = 8050):
+    """Start the EVN Observation Planner web server.
+
+    Parameters
+    ----------
+    debug : bool
+        Enable Dash debug mode.
+    host : str
+        Host address to bind to.
+    port : int
+        Port number to listen on.
+    """
+    return app.run(debug=debug, host=host, port=port)
 
 
 if __name__ == '__main__':
-    main(debug=False)
+    parser = argparse.ArgumentParser(description="EVN Observation Planner (GUI)", prog="planobs-server")
+    parser.add_argument('-d', '--debug', action='store_true', default=False, help="Enable debug mode")
+    parser.add_argument('--host', type=str, default='127.0.0.1', help="Host address (default: 127.0.0.1)")
+    parser.add_argument('--port', type=int, default=8050, help="Port number (default: 8050)")
+    args = parser.parse_args()
+    main(debug=args.debug, host=args.host, port=args.port)

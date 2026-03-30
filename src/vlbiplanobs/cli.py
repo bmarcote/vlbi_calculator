@@ -22,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 from astropy.coordinates import SkyCoord
 from .scheduler import ObservationScheduler
 from .gui.main import main as gui_main
+from .gui.main_real import main as gui_main_real
 
 
 def optimal_units(value: u.Quantity, units: list[u.Unit]):
@@ -48,6 +49,7 @@ class VLBIObs(obs.Observation):
     # add __init__
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._excluded_stations: dict[str, str] = {}
 
     def summary(self, gui: bool = True, tui: bool = True):
         if gui:
@@ -94,6 +96,26 @@ class VLBIObs(obs.Observation):
                     rprint(f"    [dim]{s.codename:3}: {s.datarate.value:4.0f} "
                            f"{s.datarate.unit.to_string('unicode')} "
                            f"({int(self.subbands*s.datarate/self.datarate)} subbands)[/dim]")
+
+        # Report stations that were requested but excluded
+        excluded_msgs: list[str] = []
+        for code, reason in self._excluded_stations.items():
+            excluded_msgs.append(f"{code} ({reason})")
+        if self.sources() and self.fixed_time:
+            can_obs = self.can_be_observed()
+            never_visible = set()
+            for blk_obs in can_obs.values():
+                for ant, visible in blk_obs.items():
+                    if not visible:
+                        never_visible.add(ant)
+            # Only flag stations that cannot observe ANY block
+            all_blocks_invisible = never_visible.copy()
+            for blk_obs in can_obs.values():
+                all_blocks_invisible &= {ant for ant, v in blk_obs.items() if not v}
+            for ant in sorted(all_blocks_invisible):
+                excluded_msgs.append(f"{ant} (source not visible)")
+        if excluded_msgs:
+            rprint(f"    [yellow]Not observing: {', '.join(excluded_msgs)}[/yellow]")
 
         rprint("\n[bold green]Sources[/bold green]:")
         if len(self.scans) > 0:
@@ -149,7 +171,7 @@ class VLBIObs(obs.Observation):
         per_src = self.per_source_observable()
         rms_noise = self.thermal_noise()
         ontarget_time = self.ontarget_time
-        sun_per_src = self.sun_constraint_per_source()
+        sun_per_src = self.sun_constraint_per_source(times=self._REF_YEAR if doing_gst else None)
         sun_limit = self.sun_limiting_epochs()
         if doing_gst:
             gstimes = self.gstimes
@@ -235,9 +257,12 @@ class VLBIObs(obs.Observation):
             # Sun constraint — per source, so the user knows which source is the problem
             if doing_gst:
                 if len(sun_limit[ablockname]) > 0:
-                    offending = [s.name for s in block_sources if sun_per_src.get(s.name) is not None]
-                    src_label = ', '.join(offending) if offending else 'a source in this block'
-                    rprint(f"[bold red]Note that the Sun is too close to {src_label}[/bold red]",
+                    offending = [(s.name, sun_per_src[s.name])
+                                 for s in block_sources if sun_per_src.get(s.name) is not None]
+                    src_label = ', '.join(s for s, _ in offending) if offending else 'a source in this block'
+                    min_sep = min((sep for _, sep in offending), default=None) if offending else None
+                    sep_str = f" (min separation {min_sep:.1f})" if min_sep is not None else ''
+                    rprint(f"[bold red]Note that the Sun is too close to {src_label}{sep_str}[/bold red]",
                            end='')
                     t0, t1 = sun_limit[ablockname][0].datetime, sun_limit[ablockname][-1].datetime
                     if t0 == t1:
@@ -308,8 +333,9 @@ class VLBIObs(obs.Observation):
 
 
 def get_stations(band: str, list_networks: Optional[list[str]] = None,
-                 list_stations: Optional[list[str]] = None) -> stations.Stations:
-    """Returns a VLBI array including the required stations.
+                 list_stations: Optional[list[str]] = None
+                 ) -> tuple[stations.Stations, dict[str, str]]:
+    """Returns a VLBI array including the required stations and any that were excluded.
     Each argument is a comma-separated list of names.
 
     Inputs
@@ -323,15 +349,24 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
             If you want a particular list of stations, or adding some that are not
             in the default network, then you can quote them here, using either the
             station code names or their names.
+
+    Returns
+        tuple[Stations, dict[str, str]]
+            The selected Stations object and a dict mapping excluded station codenames
+            to the reason they were dropped (e.g. 'no band').
     """
-    stations = []
+    selected = []
+    no_band: dict[str, str] = {}
     if list_networks is not None:
         try:
             networks = [obs._NETWORKS[n] for n in list_networks]
             for n in networks:
                 for s in n.station_codenames:
-                    if s not in stations and band in obs._STATIONS[s].bands:
-                        stations.append(s)
+                    if s not in selected:
+                        if band in obs._STATIONS[s].bands:
+                            selected.append(s)
+                        else:
+                            no_band[s] = 'no band'
         except KeyError:
             unknown_networks: list = [n for n in list_networks if n not in obs._NETWORKS]  # type: ignore
             n_networks = len(unknown_networks)  # type: ignore
@@ -370,22 +405,20 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
                         rprint(f"[bold red]The station {s} is not known.[/bold red]")
                         raise ValueError(f"Station ({s}) not known.")
 
-                if a_station not in stations and band in obs._STATIONS[a_station].bands:
-                    stations.append(a_station)
+                if a_station not in selected:
+                    if band in obs._STATIONS[a_station].bands:
+                        selected.append(a_station)
+                    elif a_station not in no_band:
+                        no_band[a_station] = 'no band'
         except ValueError:
             raise
 
-    dropped_stations = [s for s in stations if band not in obs._STATIONS[s].bands]
-    if len(dropped_stations) > 0:
-        rprint("[yellow]The following antennas were ignored "
-               f"because they cannot observe at {band}: {', '.join(dropped_stations)}[/yellow]")
-
-    final_stations = obs._STATIONS.filter_antennas(stations)
+    final_stations = obs._STATIONS.filter_antennas(selected)
     if not final_stations:
         rprint(f"[bold red]No antennas have been selected or none can observe at {band}.[/bold red]")
         raise ValueError("Antennas must be selected.")
 
-    return final_stations
+    return final_stations, no_band
 
 
 def _resolve_calibrators(names: list[str], target: sources.Source, band: str,
@@ -664,7 +697,8 @@ def main(band: str, networks: Optional[list[str]] = None,
     elif isinstance(datarate, str):
         raise ValueError("Data rate is a str! ", datarate)
 
-    o = VLBIObs(band, get_stations(band, networks, stations), scans=src2observe,
+    selected_stations, excluded_stations = get_stations(band, networks, stations)
+    o = VLBIObs(band, selected_stations, scans=src2observe,
                 times=start_time + np.arange(0, duration_val + 5, 10)*u.min
                 if start_time is not None and duration_val is not None else None, duration=duration,
                 datarate=datarate,
@@ -672,6 +706,7 @@ def main(band: str, networks: Optional[list[str]] = None,
                 polarizations=polarizations,
                 inttime=inttime,
                 ontarget=ontarget)
+    o._excluded_stations = excluded_stations
     return o
 
 
@@ -712,7 +747,6 @@ def cli():
         handle_observation_command(args)
         return
 
-    # Subcommand mode
     parser = argparse.ArgumentParser(
         description="EVN Observation Planner\n\n"
                    "Available modes:\n"
@@ -722,9 +756,7 @@ def cli():
                    "  planobs source [options]        - Get information about a specific source\n"
                    "  planobs server [options]        - Start the web server\n\n"
                    "Use 'planobs <command> --help' for detailed help on each mode.",
-        prog="planobs",
-        formatter_class=RawTextRichHelpFormatter
-    )
+        prog="planobs", formatter_class=RawTextRichHelpFormatter)
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
 
@@ -900,6 +932,8 @@ def add_server_arguments(parser):
     """Add arguments for server."""
     parser.add_argument('--host', type=str, default='127.0.0.1', help="Host address (default: 127.0.0.1)")
     parser.add_argument('--port', type=int, default=8050, help="Port number (default: 8050)")
+    parser.add_argument('-r', '--real-time', action='store_true', default=False,
+                        help="Runs the version that make changes in real time (instead of via button)")
     parser.add_argument('--debug', action='store_true', default=False, help="Enable debug mode")
 
 
@@ -1243,7 +1277,10 @@ def handle_source_command(args):
 
 def handle_server_command(args):
     """Handle the server command."""
-    gui_main(debug=args.debug, host=args.host, port=args.port)
+    if args.real_time:
+        gui_main_real(debug=args.debug, host=args.host, port=args.port)
+    else:
+        gui_main(debug=args.debug, host=args.host, port=args.port)
 
 
 def _render_horizontal_band_table(bands_to_show: list[str], ant) -> None:

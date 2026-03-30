@@ -1,5 +1,4 @@
-__version__ = "4.8.1"
-
+from importlib.metadata import version
 from .cli import main as VLBIObs
 from astropy.time import Time
 from .stations import Stations, Station
@@ -13,6 +12,7 @@ from .calibrators import (
     get_nearby_sources
 )
 
+__version__ = version("vlbiplanobs")
 __all__ = [
     "__version__",
     "VLBIObs", "Time", "Stations", "Station",

@@ -1385,14 +1385,11 @@ def handle_antenna_command(args):
     - neither: list all antennas (same as --list-antennas).
     """
     band = _normalize_band(args.band) if args.band else None
-
-    # Validate band if provided
     if band is not None and band not in obs.freqsetups.bands:
         rprint(f"[bold red]Band '{band}' is not recognized.[/bold red] "
                f"Available bands: {', '.join(obs.freqsetups.bands)}")
         sys.exit(1)
 
-    # Case 1: no antenna given — list all or filter by band
     if args.antenna_name is None:
         if band is None:
             # Same as --list-antennas
@@ -1402,7 +1399,6 @@ def handle_antenna_command(args):
                        f"{ant.diameter} in {ant.country}")
                 rprint(f"      [dim]Observes at {', '.join(ant.bands)}[/dim]")
         else:
-            # List all antennas that observe at the given band
             matching = [ant for ant in obs._STATIONS if ant.has_band(band)]
             if not matching:
                 rprint(f"[bold red]No antennas found that observe at {band}.[/bold red]")
@@ -1421,21 +1417,18 @@ def handle_antenna_command(args):
             rprint(table)
         return
 
-    # Case 2: antenna name provided — find it
     ant = _find_antenna(args.antenna_name)
     if ant is None:
         rprint(f"[bold red]Antenna '{args.antenna_name}' not found.[/bold red] "
                "Run [bold]planobs --list-antennas[/bold] to see the available antennas.")
         sys.exit(1)
 
-    # Print antenna header
     rprint(f"\n[bold underline]{ant.fullname}[/bold underline]")
     rprint(f"  [bold]Short name:[/bold]  {ant.name}")
     rprint(f"  [bold]Codename:[/bold]    [cyan]{ant.codename}[/cyan]")
     rprint(f"  [bold]Diameter:[/bold]    {ant.diameter}")
     rprint(f"  [bold]Country:[/bold]     {ant.country}")
 
-    # Determine which bands to show
     if band is not None:
         if not ant.has_band(band):
             rprint(f"\n[bold red]{ant.name} does not observe at {band}.[/bold red] "

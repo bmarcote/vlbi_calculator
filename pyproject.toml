@@ -78,7 +78,7 @@ include-package-data = true
 "stations" = ["data/stations_catalog.inp"]
 "networks" = ["data/network_catalog.inp"]
 "rfc" = ["data/rfc_2021c_cat.txt"]
-"vlbiplanobs.gui.assets" = ["gui/assets/**/*"]
+"vlbiplanobs.gui" = ["assets/**/*"]
 
 
 [tool.setuptools.packages.find]

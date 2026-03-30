@@ -3,6 +3,7 @@ import sys
 import argparse
 from typing import Optional
 from datetime import datetime as dt
+from importlib.metadata import version
 import numpy as np
 from astropy import units as u
 from astropy.time import Time
@@ -21,7 +22,6 @@ from vlbiplanobs.gui import plots
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from astropy.coordinates import SkyCoord
 from .scheduler import ObservationScheduler
-from vlbiplanobs import __version__
 from .gui.main import main as gui_main
 from .gui.main_real import main as gui_main_real
 
@@ -715,7 +715,7 @@ def cli():
     """Main CLI entry point with subcommands."""
     # Handle version argument early
     if len(sys.argv) > 1 and sys.argv[1] in ('-V', '--version'):
-        print(f"planobs {__version__}")
+        print(f"planobs {version('vlbiplanobs')}")
         sys.exit(0)
     
     # Check if this is legacy mode (no subcommand provided)

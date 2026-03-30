@@ -1,4 +1,3 @@
-from importlib.metadata import version
 from .cli import main as VLBIObs
 from astropy.time import Time
 from .stations import Stations, Station
@@ -12,11 +11,7 @@ from .calibrators import (
     get_nearby_sources
 )
 
-__version__ = version("vlbiplanobs")
-__all__ = [
-    "__version__",
-    "VLBIObs", "Time", "Stations", "Station",
-    "Source", "Scan", "ScanBlock", "SourceType", "SourceNotVisible",
-    "NETWORKS", "STATIONS",
-    "RFCCatalog", "CalibratorSource", "get_fringe_finder_sources", "get_nearby_sources",
-]
+__all__ = ["VLBIObs", "Time", "Stations", "Station",
+           "Source", "Scan", "ScanBlock", "SourceType", "SourceNotVisible",
+           "NETWORKS", "STATIONS",
+           "RFCCatalog", "CalibratorSource", "get_fringe_finder_sources", "get_nearby_sources"]

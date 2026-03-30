@@ -465,9 +465,8 @@ def rms(o: Optional[cli.VLBIObs] = None) -> html.Div:
                                    html.Div(className='row', children=[
                                        html.Div(html.Button('View sensitivity per baseline',
                                                             id='button-sensitivity-baseline',
-                                                            className='btn btn-white btn-sm w-100 mb-0 active',
+                                                            className='btn btn-white btn-sm w-100 mb-0 active btn-sensitivity',
                                                             style={'position': 'sticky', 'top': '20px',
-                                                                   'color': '#9DB7C4',
                                                                    'box-shadow': 'none'}))])])
 
 
@@ -675,7 +674,7 @@ def plot_uv_coverage(o: Optional[cli.VLBIObs] = None) -> html.Div:
                  html.P(""),
                  html.Label("Highlight antennas:", id='select-ant-uv-label',
                             htmlFor='select-ant-uv-plot'),
-                 dcc.Dropdown(multi=True, id="select-antenna-uv-plot",
+                 dcc.Dropdown(multi=True, id="select-antenna-uv-plot", maxHeight=400,
                               options=put_antenna_options(o)),  # type: ignore
                  html.Br(), html.Br(),
                  html.Div(className='row', id='out-uv-coverage-info', children=print_baseline_lengths(o))

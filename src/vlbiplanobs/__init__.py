@@ -1,3 +1,5 @@
+__version__ = "4.8.1"
+
 from .cli import main as VLBIObs
 from astropy.time import Time
 from .stations import Stations, Station
@@ -12,6 +14,7 @@ from .calibrators import (
 )
 
 __all__ = [
+    "__version__",
     "VLBIObs", "Time", "Stations", "Station",
     "Source", "Scan", "ScanBlock", "SourceType", "SourceNotVisible",
     "NETWORKS", "STATIONS",

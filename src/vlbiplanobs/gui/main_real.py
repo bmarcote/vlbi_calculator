@@ -33,7 +33,7 @@ current_directory = os.path.dirname(os.path.realpath(__file__))
 external_stylesheets: list = ['https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css']
 external_scripts: list = []
 
-app = Dash(__name__, title='EVN Observation Planner (Real-time)', external_scripts=external_scripts,
+app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_scripts,
            external_stylesheets=[dbc.themes.FLATLY, dbc.icons.BOOTSTRAP,
                                  dbc.icons.FONT_AWESOME, dmc.styles.DATES] + external_stylesheets,
            assets_folder=current_directory+'/assets/', eager_loading=False,
@@ -116,7 +116,7 @@ def download_pdf_summary(n_clicks, obs_params: dict):
                Input('source-input', 'value'),
                Input('onsourcetime', 'value'),
                Input('switch-specify-epoch', 'value'),
-               Input('startdate', 'value'),
+               Input('startdate', 'date'),
                Input('starttime', 'value'),
                Input('duration', 'value'),
                Input('datarate', 'value'),
@@ -207,7 +207,7 @@ def compute_observation_realtime(band: int, defined_source: bool, source: str, o
             targets=[source] if has_source else None,
             duration=duration * u.h if has_duration else None,
             ontarget=onsourcetime / 100 if onsourcetime else 0.7,
-            start_time=Time(dt.strptime(f"{startdate} {starttime}", '%Y-%m-%d %H:%M'),
+            start_time=Time(dt.strptime(f"{startdate[:10]} {starttime}", '%Y-%m-%d %H:%M'),
                            format='datetime', scale='utc') if defined_epoch and startdate and starttime else None,
             datarate=(datarate if not isinstance(datarate, str) else int(datarate or 2048)) * u.Mbit / u.s,
             subbands=subbands or 8,

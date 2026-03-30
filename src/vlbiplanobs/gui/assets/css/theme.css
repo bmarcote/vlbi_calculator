@@ -441,6 +441,14 @@ input[type=time],
     border-color: var(--border-color) !important;
 }
 
+/* Ensure Mantine popover/date picker appears above Bootstrap stacking context */
+.mantine-Popover-dropdown,
+.mantine-DateInput-dropdown,
+.mantine-DatePicker-dropdown,
+.mantine-DateTimePicker-dropdown {
+    z-index: 9999 !important;
+}
+
 /* Dash core components dropdown - comprehensive selectors */
 .Select-control,
 .Select-menu-outer,
@@ -544,29 +552,48 @@ th, td {
     border-color: var(--border-color) !important;
 }
 
-/* Slider styles - keep same blueish color in dark mode, just adjust rail/handle bg */
-[data-theme="dark"] .rc-slider-rail {
-    background-color: #495057 !important;
+/* Slider styles - Dash 4 uses dash-slider-* classes */
+[data-theme="dark"] .dash-slider-track {
+    background-color: #6c757d !important;
 }
 
-[data-theme="dark"] .rc-slider-handle {
+[data-theme="dark"] .dash-slider-thumb {
     background-color: #2d3238 !important;
+    border-color: #9DB7C4 !important;
 }
 
-[data-theme="dark"] .rc-slider-mark-text {
+[data-theme="dark"] .dash-slider-mark-text,
+[data-theme="dark"] .dash-slider-dot {
     color: #adb5bd !important;
 }
 
 @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .rc-slider-rail {
-        background-color: #495057 !important;
+    :root:not([data-theme="light"]) .dash-slider-track {
+        background-color: #6c757d !important;
     }
-    :root:not([data-theme="light"]) .rc-slider-handle {
+    :root:not([data-theme="light"]) .dash-slider-thumb {
         background-color: #2d3238 !important;
     }
-    :root:not([data-theme="light"]) .rc-slider-mark-text {
+    :root:not([data-theme="light"]) .dash-slider-mark-text,
+    :root:not([data-theme="light"]) .dash-slider-dot {
         color: #adb5bd !important;
     }
+}
+
+/* Also keep old rc-slider overrides for backward compatibility */
+[data-theme="dark"] .rc-slider-rail {
+    background-color: #6c757d !important;
+}
+[data-theme="dark"] .rc-slider-handle {
+    background-color: #2d3238 !important;
+}
+[data-theme="dark"] .rc-slider-mark-text {
+    color: #adb5bd !important;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .rc-slider-rail { background-color: #6c757d !important; }
+    :root:not([data-theme="light"]) .rc-slider-handle { background-color: #2d3238 !important; }
+    :root:not([data-theme="light"]) .rc-slider-mark-text { color: #adb5bd !important; }
 }
 
 /* Plotly chart backgrounds - handled via JS but provide fallback */
@@ -651,8 +678,137 @@ th, td {
 }
 
 /* Theme-based logo switching */
-.logo-dark { display: none; }
-.logo-light { display: inline-block; }
+.logo-dark { display: none !important; }
+.logo-light { display: inline-block !important; }
 
-[data-theme="dark"] .logo-dark { display: inline-block; }
-[data-theme="dark"] .logo-light { display: none; }
+[data-theme="dark"] .logo-dark { display: inline-block !important; }
+[data-theme="dark"] .logo-light { display: none !important; }
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .logo-dark { display: inline-block !important; }
+    :root:not([data-theme="light"]) .logo-light { display: none !important; }
+}
+
+/* Dash 4 slider: hide direct-input number box */
+.dash-slider-input {
+    display: none !important;
+}
+
+/* Dash 4 slider: selected range and thumb use primary color */
+.dash-slider-range {
+    background-color: #004990 !important;
+}
+
+.dash-slider-thumb {
+    border-color: #004990 !important;
+    background-color: #9DB7C4 !important;
+}
+
+.dash-slider-dot[data-active="true"],
+.dash-slider-dot-active {
+    border-color: #004990 !important;
+}
+
+/* Legacy rc-slider overrides (pre-Dash 4) */
+.rc-slider-track { background-color: #004990 !important; }
+.rc-slider-handle { border-color: #004990 !important; }
+.rc-slider-dot-active { border-color: #004990 !important; }
+
+/* Dash 4 dropdown dark mode */
+[data-theme="dark"] .dash-dropdown-wrapper,
+[data-theme="dark"] .dash-dropdown-trigger,
+[data-theme="dark"] .dash-dropdown-value,
+[data-theme="dark"] .dash-dropdown-search {
+    background-color: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-color) !important;
+}
+
+[data-theme="dark"] .dash-dropdown-content,
+[data-theme="dark"] .dash-dropdown-options {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-color) !important;
+}
+
+[data-theme="dark"] .dash-dropdown-option {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .dash-dropdown-option:hover {
+    background-color: var(--bg-hover) !important;
+}
+
+[data-theme="dark"] .dash-dropdown-placeholder {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="dark"] .dash-dropdown-value-item {
+    background-color: var(--bg-hover) !important;
+    color: var(--text-primary) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .dash-dropdown-wrapper,
+    :root:not([data-theme="light"]) .dash-dropdown-trigger,
+    :root:not([data-theme="light"]) .dash-dropdown-value,
+    :root:not([data-theme="light"]) .dash-dropdown-search {
+        background-color: var(--bg-input) !important;
+        color: var(--text-primary) !important;
+        border-color: var(--border-color) !important;
+    }
+    :root:not([data-theme="light"]) .dash-dropdown-content,
+    :root:not([data-theme="light"]) .dash-dropdown-options {
+        background-color: var(--bg-card) !important;
+        border-color: var(--border-color) !important;
+    }
+    :root:not([data-theme="light"]) .dash-dropdown-option {
+        color: var(--text-primary) !important;
+    }
+    :root:not([data-theme="light"]) .dash-dropdown-option:hover {
+        background-color: var(--bg-hover) !important;
+    }
+    :root:not([data-theme="light"]) .dash-dropdown-placeholder {
+        color: var(--text-muted) !important;
+    }
+    :root:not([data-theme="light"]) .dash-dropdown-value-item {
+        background-color: var(--bg-hover) !important;
+        color: var(--text-primary) !important;
+    }
+}
+
+/* btn-white dark mode: invert for visibility */
+[data-theme="dark"] .btn-white,
+[data-theme="dark"] .btn-white:hover {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-primary) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .btn-white,
+    :root:not([data-theme="light"]) .btn-white:hover {
+        background-color: var(--bg-card) !important;
+        border-color: var(--border-color) !important;
+        color: var(--text-primary) !important;
+    }
+}
+
+/* Sensitivity per baseline button */
+.btn-sensitivity {
+    color: #9DB7C4 !important;
+}
+
+[data-theme="dark"] .btn-sensitivity {
+    color: var(--text-primary) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .btn-sensitivity {
+        color: var(--text-primary) !important;
+    }
+}
+
+/* Dash 4 dcc.Input: hide the debounce submit indicator (prevents double ticks) */
+.dash-input-submit-indicator {
+    display: none !important;
+}

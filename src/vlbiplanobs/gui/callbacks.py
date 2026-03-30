@@ -135,26 +135,25 @@ clientside_callback(
 
 
 @callback([Output('error_source', 'children'),
-           Output('error_source', 'className'),
-           Output('source-input', 'className')],
+           Output('error_source', 'className')],
           Input('source-input', 'value'))
 def get_initial_source(source_coord: str):
     """Verifies that the introduced source coordinates have a right format.
-    If they are correct, it does nothing. If they are incorrect, it shows an error labinputs.
+    If they are correct, it does nothing. If they are incorrect, it shows an error label.
     """
     if (source_coord != 'hh:mm:ss dd:mm:ss') and (source_coord is not None) and (source_coord != ''):
         if len(source_coord) > 40:
-            return "Name too long.", 'form-text text-danger', 'form-control'
+            return "Name too long.", 'form-text text-danger'
         try:
             src = sources.Source.source_from_str(source_coord)
-            return src.coord.to_string('hmsdms', precision=3), 'form-text text-success', 'form-control is-valid'
+            return src.coord.to_string('hmsdms', precision=3), 'form-text text-success'
         except ValueError:
-            return "Wrong coordinates.", 'form-text text-danger', 'form-control is-invalid'
+            return "Wrong coordinates.", 'form-text text-danger'
         except coord.name_resolve.NameResolveError:
             return "Unrecognized name. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'", \
-                   'form-text text-danger', 'form-control is-invalid'
+                   'form-text text-danger'
 
-    return '', no_update, no_update
+    return '', no_update
 
 
 @callback(Output('bandwidth-label', 'children'),

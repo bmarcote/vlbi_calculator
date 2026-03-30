@@ -21,6 +21,7 @@ from vlbiplanobs.gui import plots
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from astropy.coordinates import SkyCoord
 from .scheduler import ObservationScheduler
+from vlbiplanobs import __version__
 from .gui.main import main as gui_main
 from .gui.main_real import main as gui_main_real
 
@@ -712,6 +713,11 @@ def main(band: str, networks: Optional[list[str]] = None,
 
 def cli():
     """Main CLI entry point with subcommands."""
+    # Handle version argument early
+    if len(sys.argv) > 1 and sys.argv[1] in ('-V', '--version'):
+        print(f"planobs {__version__}")
+        sys.exit(0)
+    
     # Check if this is legacy mode (no subcommand provided)
     if len(sys.argv) == 1:
         # No arguments - show subcommand help
@@ -724,6 +730,7 @@ def cli():
                        "  planobs server [options]                   - Start the web server\n\n"
                        "Use 'planobs <command> --help' for detailed help on each mode.",
             prog="planobs", formatter_class=RawTextRichHelpFormatter)
+        parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {__version__}')
         subparsers = parser.add_subparsers(dest='command', help='Available commands')
         subparsers.add_parser('observe', help='Plan VLBI observations (default mode)')
         subparsers.add_parser('fringefinders', help='Find fringe finder sources')
@@ -741,6 +748,7 @@ def cli():
                        "  planobs source [options]        - Get information about a specific source\n"
                        "  planobs server [options]        - Start the web server\n\n"
                        "Use 'planobs <command> --help' for detailed help on each mode.", prog="planobs", formatter_class=RawTextRichHelpFormatter)
+        parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {__version__}')
         add_observation_arguments(parser)
         args = parser.parse_args()
         args.command = 'observe'
@@ -757,6 +765,7 @@ def cli():
                    "  planobs server [options]        - Start the web server\n\n"
                    "Use 'planobs <command> --help' for detailed help on each mode.",
         prog="planobs", formatter_class=RawTextRichHelpFormatter)
+    parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {__version__}')
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
 

@@ -226,7 +226,8 @@ def pick_band(bands: dict[str, str]) -> html.Div:
                        html.Br(),
                        html.Div(dcc.Slider(min=0, max=len(labels)-1, step=1, value=0,
                                            marks={i: label for i, label in enumerate(labels)},
-                                included=False, id='band-slider', persistence=True))])])
+                                included=False, id='band-slider', persistence=True,
+                                allow_direct_input=False))])])
 
 
 def network_band_labels(network: str, show_wavelengths: bool = False) -> str:
@@ -312,9 +313,9 @@ def duration() -> html.Div:
                         html.Div(className='row d-flex align-items-bottom', children=[
                             html.Div(className='col-5', children=[
                                 html.Div(className='row form-group', children=[
-                                    html.Label('Leave empty to search best time', htmlFor='duration'),
-                                    dbc.Input(id='duration', value=None, type='number', className='form-control',
-                                            placeholder="In hours",
+                                    html.Label('In hours', htmlFor='duration'),
+                                    dbc.Input(id='duration', value=24, type='number', className='form-control',
+                                            placeholder="In hours", min=0.1,
                                             persistence=True, debounce=True, inputMode='numeric', max=50, step=0.1),
                                     html.Small(id='error_duration', className='form-text text-muted')])]),
                             html.Div(className='col-7', children=[
@@ -322,7 +323,7 @@ def duration() -> html.Div:
                                     html.Label('Percentage of observing time spent on target', htmlFor='onsourcetime'),
                                     dcc.Slider(id='onsourcetime', min=20, max=100, step=10, value=70,
                                                 marks={i: str(i) for i in range(20, 101, 10)},
-                                                persistence=True)])])])])])
+                                                persistence=True, allow_direct_input=False)])])])])])
 
 def source_and_epoch_selection() -> html.Div:
     return html.Div([html.H4("Source  &  Epoch", className='text-dark font-weight-bold mb-1'),
@@ -336,14 +337,21 @@ def source_and_epoch_selection() -> html.Div:
                                         html.Div(className='row', children=[
                                             html.Label('Start of observation (UTC)', htmlFor='starttime'),
                                             html.Div(className='row mx-0', children=[
-                                                html.Div(className='col-12 px-0 mx-0', children=[
-                                                    dmc.DateInput(id='startdate', className='form-picker',
-                                                                  value=dt.today().date(), placeholder="Start Date",
-                                                                  valueFormat="DD MMMM YYYY",
-                                                                  clearable=False, persistence=True,
-                                                                  minDate="1950-01-01", maxDate="2100-01-01"),
+                                                html.Div(className='col-12 px-0 mx-0 d-flex align-items-center', children=[
+                                                    dcc.DatePickerSingle(id='startdate', min_date_allowed=dt(1950, 1, 1),
+                                                                         max_date_allowed=dt(2100, 1, 1),
+                                                                         initial_visible_month=dt.today(),
+                                                                         date=dt.today().date(),
+                                                                         className='date-picker',
+                                                                         display_format='DD MMM Y'),
+                                                    # dcc.Input(id='startdate', type='date',
+                                                    #           value=dt.today().date().isoformat(),
+                                                    #           min="1950-01-01", max="2100-01-01",
+                                                    #           className='date-picker',
+                                                    #           display_format='DD MMM Y',
+                                                    #           persistence=True, debounce=True),
                                                     dcc.Dropdown(id='starttime', placeholder="Start time (UTC)",
-                                                                 value="00:00", clearable=False,
+                                                                 value="00:00", clearable=False, searchable=False,
                                                                  options=[{'label': f"{hm//60:02n}:{hm % 60:02n}",
                                                                            'value': f"{hm//60:02n}:{hm % 60:02n}"}
                                                                           for hm in range(0, 24*60, 15)],  # type: ignore[arg-type]
@@ -376,27 +384,32 @@ def correlations() -> html.Div:
                                 dbc.Switch(label='Optimize for spectral line', value=False,
                                            id='switch-specify-continuum', persistence=True),
                                 dcc.Dropdown(id='datarate', placeholder="Maximum observing data rate...",
+                                             className='form-dropdown',
                                              options=tuple({'label': drl, 'value': dr}
                                                            for dr, drl in fs.data_rates.items()),  # type: ignore[arg-type]
-                                             value=2048, persistence=True, clearable=False),
+                                             value=2048, persistence=True, clearable=False, searchable=False),
                                 html.Label(id='bandwidth-label', style={'color': '#999999'}, children='',
                                            htmlFor="datarate")]),
                             html.Div(className='col-6', children=[
                                 html.Div(className='form-group', children=[
                                     dcc.Dropdown(id='subbands', placeholder="Select no. subbands...",
+                                                 className='form-dropdown',
                                                  options=tuple({'label': sbl, 'value': sb}  # type: ignore
                                                                for sb, sbl in fs.subbands.items())[::-1],
-                                                 value=8, persistence=True, clearable=False),
+                                                 value=8, persistence=True, clearable=False, searchable=False),
                                     dcc.Dropdown(id='channels',
                                                  placeholder="Select no. channels per subband...",
+                                                 className='form-dropdown',
                                                  options=tuple({'label': chl, 'value': ch}  # type: ignore
                                                                for ch, chl in fs.channels.items())[::-1],
-                                                 value=64, persistence=True, clearable=False),
+                                                 value=64, persistence=True, clearable=False, searchable=False),
                                     dcc.Dropdown(id='pols', placeholder="Polarizations...",
+                                                 className='form-dropdown',
                                                  options=tuple({'label': pl, 'value': p}  # type: ignore
                                                                for p, pl in fs.polarizations.items()),
-                                                 value=4, persistence=True, clearable=False),
+                                                 value=4, persistence=True, clearable=False, searchable=False),
                                     dcc.Dropdown(id='inttime', placeholder="Integration time...",
+                                                 className='form-dropdown',
                                                  options=tuple({'label': itl, 'value': it}  # type: ignore
                                                                for it, itl in fs.inttimes.items()),
-                                                 value=2, persistence=True, clearable=False)])])])])])
+                                                 value=2, persistence=True, clearable=False, searchable=False)])])])])])

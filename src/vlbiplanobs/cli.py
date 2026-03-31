@@ -717,7 +717,7 @@ def cli():
     if len(sys.argv) > 1 and sys.argv[1] in ('-V', '--version'):
         print(f"planobs {version('vlbiplanobs')}")
         sys.exit(0)
-    
+
     # Check if this is legacy mode (no subcommand provided)
     if len(sys.argv) == 1:
         # No arguments - show subcommand help
@@ -730,7 +730,7 @@ def cli():
                        "  planobs server [options]                   - Start the web server\n\n"
                        "Use 'planobs <command> --help' for detailed help on each mode.",
             prog="planobs", formatter_class=RawTextRichHelpFormatter)
-        parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {__version__}')
+        parser.add_argument('-V', '--version', action='version', version=f"%(prog)s {version('vlbiplanobs')}")
         subparsers = parser.add_subparsers(dest='command', help='Available commands')
         subparsers.add_parser('observe', help='Plan VLBI observations (default mode)')
         subparsers.add_parser('fringefinders', help='Find fringe finder sources')
@@ -748,7 +748,7 @@ def cli():
                        "  planobs source [options]        - Get information about a specific source\n"
                        "  planobs server [options]        - Start the web server\n\n"
                        "Use 'planobs <command> --help' for detailed help on each mode.", prog="planobs", formatter_class=RawTextRichHelpFormatter)
-        parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {__version__}')
+        parser.add_argument('-V', '--version', action='version', version=f"%(prog)s {version('vlbiplanobs')}")
         add_observation_arguments(parser)
         args = parser.parse_args()
         args.command = 'observe'

@@ -13,7 +13,7 @@ version = "4.9.2"
 description = "Observaiton Planner for VLBI observations"
 license = "GPL-3.0-or-later"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 keywords = [
   "astronomy",
   "astrophysics",

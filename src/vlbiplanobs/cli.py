@@ -765,7 +765,7 @@ def cli():
                    "  planobs server [options]        - Start the web server\n\n"
                    "Use 'planobs <command> --help' for detailed help on each mode.",
         prog="planobs", formatter_class=RawTextRichHelpFormatter)
-    parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {__version__}')
+    parser.add_argument('-V', '--version', action='version', version=f"%(prog)s {version('vlbiplanobs')}")
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
 

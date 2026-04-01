@@ -284,19 +284,27 @@ class VLBIObs(obs.Observation):
                            f"this observation (separation of {sep:.1f}).[/bold red]")
 
             rprint("[bold]Expected rms thermal noise for the target source: [/bold]", end='')
-            for src, rms in rms_noise.items():
-                if any([s.type is sources.SourceType.TARGET for s in self.sources()]):
-                    if src in self.sourcenames_in_block(ablockname, sources.SourceType.TARGET):
-                        val = optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
-                        rprint(f"{src}: {val.value:.02f} {val.unit.to_string('unicode')}")
-                        val = optimal_units(ontarget_time[src], [u.h, u.min, u.s, u.ms])
-                        rprint("[dim]for a total on-source time of ~ "
-                               f"{val.value:.2f} {val.unit.to_string('unicode')} "
-                               f"(assuming the total observing time).[/dim]")
-                else:
-                    if src in self.sourcenames_in_block(ablockname):
-                        val = optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
-                        rprint(f"{src}: {val.value:.2f} {val.unit.to_string('unicode')}.")
+            if rms_noise is None:
+                rprint("[yellow]Cannot be computed (not enough simultaneous antenna coverage).[/yellow]")
+            else:
+                for src, rms in rms_noise.items():
+                    if rms is None:
+                        if src in self.sourcenames_in_block(ablockname):
+                            rprint(f"[yellow]{src}: cannot be computed "
+                                   "(not enough simultaneous antenna coverage).[/yellow]")
+                        continue
+                    if any([s.type is sources.SourceType.TARGET for s in self.sources()]):
+                        if src in self.sourcenames_in_block(ablockname, sources.SourceType.TARGET):
+                            val = optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
+                            rprint(f"{src}: {val.value:.02f} {val.unit.to_string('unicode')}")
+                            val = optimal_units(ontarget_time[src], [u.h, u.min, u.s, u.ms])
+                            rprint("[dim]for a total on-source time of ~ "
+                                   f"{val.value:.2f} {val.unit.to_string('unicode')} "
+                                   f"(assuming the total observing time).[/dim]")
+                    else:
+                        if src in self.sourcenames_in_block(ablockname):
+                            val = optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
+                            rprint(f"{src}: {val.value:.2f} {val.unit.to_string('unicode')}.")
 
             print('\n')
 

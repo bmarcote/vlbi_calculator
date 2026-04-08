@@ -62,7 +62,8 @@ class Station(object):
                  country: str = "", diameter: str = "",
                  real_time: bool = False, mount: Optional[Mount] = None,
                  max_datarate: Optional[u.Quantity | dict[str, u.Quantity]] = None,
-                 datarate: Optional[u.Quantity] = None, decommissioned: bool = False) -> None:
+                 datarate: Optional[u.Quantity] = None, decommissioned: bool = False,
+                 sched_name: Optional[str] = None) -> None:
         """Initializes a station.
 
         Inputs
@@ -113,6 +114,8 @@ class Station(object):
             data rate assumed in the observation.
         - decommissioned : bool [OPTIONAL]
             If the station is decommissioned, False by default.
+        - sched_name : str [OPTIONAL]
+            Station name as used in the SCHED software catalog. If not provided, defaults to `name`.
         """
         for a_var, a_var_name in zip((name, codename, country, diameter),
                                      ("name", "codename", "country", "diameter")):
@@ -147,6 +150,7 @@ class Station(object):
         self._max_datarate: u.Quantity | dict | None = max_datarate
         self._datarate: u.Quantity | None = datarate
         self._decommissioned: bool = decommissioned
+        self._sched_name: str = name if sched_name is None else sched_name
         if self.mount.mount_type == MountType.ALTAZ:
             self._constraints = [constraints.AzimuthConstraint(min=self.mount.ax1.limits[0],
                                                                max=self.mount.ax1.limits[1]),
@@ -199,6 +203,11 @@ class Station(object):
         """Returns True if the station is decommissioned, False otherwise.
         """
         return self._decommissioned
+
+    @property
+    def sched_name(self) -> str:
+        """Station name as used in the SCHED software catalog."""
+        return self._sched_name
 
     @property
     def real_time(self) -> bool:
@@ -925,10 +934,12 @@ class Stations(object):
         else:
             amount = None
 
+        sched_name = station.get("sched_name", stationname)
         return Station(stationname, station["code"],
                        tuple([n.strip() for n in station["networks"].split(",") if n.strip() != '']),
                        a_loc, sefds, station["station"], station["country"], station["diameter"],
-                       does_real_time, amount, max_dt, decommissioned=is_decommissioned)
+                       does_real_time, amount, max_dt, decommissioned=is_decommissioned,
+                       sched_name=sched_name)
 
     @staticmethod
     def _get_stations_from_configfile(filename: Optional[str] = None,

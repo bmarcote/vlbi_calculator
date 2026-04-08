@@ -23,7 +23,6 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 from astropy.coordinates import SkyCoord
 from .scheduler import ObservationScheduler
 from .gui.main import main as gui_main
-from .gui.main_real import main as gui_main_real
 
 
 def optimal_units(value: u.Quantity, units: list[u.Unit]):
@@ -949,8 +948,6 @@ def add_server_arguments(parser):
     """Add arguments for server."""
     parser.add_argument('--host', type=str, default='127.0.0.1', help="Host address (default: 127.0.0.1)")
     parser.add_argument('--port', type=int, default=8050, help="Port number (default: 8050)")
-    parser.add_argument('-r', '--real-time', action='store_true', default=False,
-                        help="Runs the version that make changes in real time (instead of via button)")
     parser.add_argument('--debug', action='store_true', default=False, help="Enable debug mode")
 
 
@@ -1294,10 +1291,7 @@ def handle_source_command(args):
 
 def handle_server_command(args):
     """Handle the server command."""
-    if args.real_time:
-        gui_main_real(debug=args.debug, host=args.host, port=args.port)
-    else:
-        gui_main(debug=args.debug, host=args.host, port=args.port)
+    gui_main(debug=args.debug, host=args.host, port=args.port)
 
 
 def _render_horizontal_band_table(bands_to_show: list[str], ant) -> None:

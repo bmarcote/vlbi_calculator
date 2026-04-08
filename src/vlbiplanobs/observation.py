@@ -35,7 +35,7 @@ def _warm_astropy_caches() -> None:
     """
     global _REF_TIMES_CACHE, _REF_YEAR_CACHE, _CACHE_YEAR
     current_year = dt.now().year
-    _REF_TIMES_CACHE = Time(f'{current_year}-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01) * u.day
+    _REF_TIMES_CACHE = Time(f'{current_year}-09-21', scale='utc') + np.arange(0.0, 1.0, 0.5/24) * u.day
     _REF_YEAR_CACHE = Time(f'{current_year}-01-01', scale='utc') + np.arange(0.0, 365.2, 1) * u.day
     _CACHE_YEAR = current_year
     # Trigger the expensive sidereal_time computation so it's cached for all future calls
@@ -154,7 +154,7 @@ class Observation(object):
         global _REF_TIMES_CACHE, _CACHE_YEAR
         current_year = dt.now().year
         if _CACHE_YEAR != current_year or _REF_TIMES_CACHE is None:
-            _REF_TIMES_CACHE = Time(f'{current_year}-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01)*u.day
+            _REF_TIMES_CACHE = Time(f'{current_year}-09-21', scale='utc') + np.arange(0.0, 1.0, 0.5/24)*u.day
             _CACHE_YEAR = current_year
         return _REF_TIMES_CACHE
 

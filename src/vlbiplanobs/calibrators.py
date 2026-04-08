@@ -155,8 +155,17 @@ class CalibratorSource(Source):
         return self.coord
 
     def get_astrogeo_link(self) -> str:
+        # Handle negative declinations properly - only degrees should be negative
+        ra_h, ra_m, ra_s = self.coord.ra.hms
+        dec_d, dec_m, dec_s = self.coord.dec.dms
+        
+        # For negative declinations, make minutes and seconds positive
+        if dec_d < 0:
+            dec_m = abs(dec_m)
+            dec_s = abs(dec_s)
+        
         fmt = "ra={:02.0f}:{:02.0f}:{:06.3f}&dec={:+03.0f}:{:02.0f}:{:06.3f}&num_sou=1&format=html"
-        source_coord_str = parse.quote(fmt.format(*self.coord.ra.hms, *self.coord.dec.dms), safe='=&')
+        source_coord_str = parse.quote(fmt.format(ra_h, ra_m, ra_s, dec_d, dec_m, dec_s), safe='=&')
         return f"http://astrogeo.org/cgi-bin/calib_search_form.csh?{source_coord_str}"
 
     def get_observed_bands(self) -> str:

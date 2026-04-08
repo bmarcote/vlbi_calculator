@@ -1,11 +1,10 @@
+"""Real-time version of main.py - updates outputs as inputs change (no compute button needed)."""
 import os
 import argparse
-from typing import Optional
 from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
-from dash import Dash, html, dcc, Output, Input, State, no_update, ALL
-from dash.exceptions import PreventUpdate
+from dash import Dash, html, dcc, Output, Input, State, no_update
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from astropy.utils.iers import conf as iers_conf
@@ -38,7 +37,7 @@ app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_
            external_stylesheets=[dbc.themes.FLATLY, dbc.icons.BOOTSTRAP,
                                  dbc.icons.FONT_AWESOME, dmc.styles.DATES] + external_stylesheets,
            assets_folder=current_directory+'/assets/', eager_loading=False,
-           prevent_initial_callbacks=True)
+           prevent_initial_callbacks=False)  # Allow initial callbacks for real-time updates
 
 
 @app.callback([Output('download-data', 'data'),
@@ -54,14 +53,13 @@ def download_pdf_summary(n_clicks, obs_params: dict):
 
     try:
         logger.info("PDF generation started on download request.")
-        # Recreate observation from stored parameters
         obs = cli.main(
             band=obs_params['band'],
             stations=obs_params['stations'],
             targets=obs_params['targets'],
             duration=obs_params['duration'] * u.h if obs_params['duration'] is not None else None,
             ontarget=obs_params['ontarget'],
-            start_time=Time(dt.strptime(f"{obs_params['startdate'][:10]} {obs_params['starttime']}", '%Y-%m-%d %H:%M'),
+            start_time=Time(dt.strptime(f"{obs_params['startdate']} {obs_params['starttime']}", '%Y-%m-%d %H:%M'),
                            format='datetime', scale='utc') if obs_params['startdate'] else None,
             datarate=obs_params['datarate'] * u.Mbit / u.s,
             subbands=obs_params['subbands'],
@@ -84,6 +82,8 @@ def download_pdf_summary(n_clicks, obs_params: dict):
                                                         "Re-calculate a full observation and try again")
 
 
+# Real-time callback - triggers on ANY input change
+# Plot figures are rendered progressively via store-triggered callbacks in callbacks.py
 @app.callback([Output('user-message', 'children'),
                Output('loading-div', 'children'),
                Output('download-summary-div', 'hidden'),
@@ -111,142 +111,151 @@ def download_pdf_summary(n_clicks, obs_params: dict):
                Output('store-uv-data', 'data'),
                Output('store-elev-data', 'data'),
                Output('store-worldmap-data', 'data')],
-              Input('compute-observation', 'n_clicks'),
-              [State('band-slider', 'value'),
-               State('switch-specify-source', 'value'),
-               State('source-input', 'value'),
-               State('onsourcetime', 'value'),
-               State('switch-specify-epoch', 'value'),
-               State('startdate', 'date'),
-               State('starttime', 'value'),
-               State('duration', 'value'),
-               State('datarate', 'value'),
-               State('subbands', 'value'),
-               State('channels', 'value'),
-               State('pols', 'value'),
-               State('inttime', 'value'),
-               State('switch-specify-e-evn', 'value'),
-               State('switches-antennas', 'value'),
-               State({'type': 'network-switch', 'index': ALL}, 'value'),
-               State({'type': 'network-switch', 'index': ALL}, 'disabled')],
-              running=[(Output("compute-observation", "disabled"), True, False),],
-              suppress_callback_exceptions=True, prevent_initial_call=True)
-@observation.enforce_types
-def compute_observation(n_clicks, band: int, defined_source: bool, source: Optional[str],
-                        onsourcetime: Optional[int], defined_epoch: bool, startdate: Optional[str],
-                        starttime: Optional[str], duration: Optional[int | float],
-                        datarate: Optional[int], subbands: Optional[int], channels: Optional[int],
-                        pols: Optional[int], inttime: Optional[int], e_evn: bool,
-                        selected_antennas: list[str], selected_networks: list[bool],
-                        disabled_networks: list[bool]):
-    """Computes observation and returns text outputs immediately.
+              [Input('band-slider', 'value'),
+               Input('switch-specify-source', 'value'),
+               Input('source-input', 'value'),
+               Input('onsourcetime', 'value'),
+               Input('switch-specify-epoch', 'value'),
+               Input('startdate', 'date'),
+               Input('starttime', 'value'),
+               Input('duration', 'value'),
+               Input('datarate', 'value'),
+               Input('subbands', 'value'),
+               Input('channels', 'value'),
+               Input('pols', 'value'),
+               Input('inttime', 'value'),
+               Input('switch-specify-e-evn', 'value'),
+               Input('switches-antennas', 'value')],
+              suppress_callback_exceptions=True)
+def compute_observation_realtime(band: int, defined_source: bool, source: str, onsourcetime: int,
+                                  defined_epoch: bool, startdate: str, starttime: str,
+                                  duration: int | float, datarate: int, subbands: int,
+                                  channels: int, pols: int, inttime: int, e_evn: bool,
+                                  selected_antennas: list[str]):
+    """Real-time computation - returns text outputs immediately, plots render via stores.
 
-    Plot figures are rendered progressively via store-triggered callbacks
-    (store-elev-data, store-uv-data, store-worldmap-data) so the user sees
-    text results without waiting for heavy Plotly figure generation.
+    Shows whatever outputs are possible with the current inputs:
+    - No band/antennas: Show nothing
+    - Band + antennas + (source OR duration): Show full observation
     """
-    if n_clicks is None:
-        raise PreventUpdate
+    # Default hidden state for all outputs (27 values)
+    hidden_outputs = (
+        html.Div(),  # user-message
+        html.Div(),  # loading-div
+        True,        # download-summary-div hidden
+        no_update,   # download-link
+        html.Div(),  # card-rms
+        html.Div(),  # sensitivity-baseline-modal
+        html.Div(),  # card-resolution
+        html.Div(),  # out-sun
+        html.Div(),  # out-phaseref
+        html.Div(),  # out-ant
+        True,        # out-elevations hidden
+        html.Div(),  # out-elevations-info
+        True,        # out-uv-coverage hidden
+        html.Div(),  # out-uv-coverage-info
+        [],          # select-antenna-uv-plot options
+        html.Div(),  # div-card-fov
+        html.Div(),  # div-card-vel
+        True,        # out-worldmap hidden
+        html.Div(),  # card-datasize
+        html.Div(),  # div-card-time
+        no_update,   # store-prev-datarate
+        no_update,   # store-prev-channels
+        no_update,   # store-prev-subbands
+        None,        # store-obs-params
+        None,        # store-uv-data
+        None,        # store-elev-data
+        None,        # store-worldmap-data
+    )
 
-    # Error return: 27 outputs total (text + stores, no figures)
-    vals4error = no_update, True, no_update, *[html.Div()]*6, True, html.Div(), True, html.Div(), \
-        no_update, html.Div(), html.Div(), True, *[html.Div()]*2, \
-        no_update, no_update, no_update, no_update, no_update, no_update, no_update
-    if band == 0 or (not selected_antennas) or (duration is None and (not source or not defined_source)):
-        return outputs.warning_card("Select the band, antennas, and source or duration",
-                                    "If no source is provided, a duration for the observation "
-                                    "must be set."), *vals4error
+    if band == 0 or band is None:
+        return hidden_outputs
 
-    if any(v is None for v in (datarate, subbands, channels, pols, inttime, onsourcetime)):
-        return outputs.error_card("Missing observation parameters",
-                                  "Please set the data rate, subbands, channels, polarizations, "
-                                  "integration time, and on-source percentage."), *vals4error
-
-    assert datarate is not None and subbands is not None and channels is not None
-    assert pols is not None and inttime is not None and onsourcetime is not None
+    if not selected_antennas:
+        return hidden_outputs
 
     selected_antennas = [ant for ant in selected_antennas
                          if observation._STATIONS[ant].has_band(inputs.band_from_index(band))
                          and (not e_evn or observation._STATIONS[ant].real_time)]
+
     if not selected_antennas:
-        return outputs.error_card("No antennas are able to observe with the current setup",
-                                  "First, select antennas that can actually observe."), *vals4error
+        return hidden_outputs
 
-    if duration is not None and duration < 0.1:
-        return outputs.error_card('Duration too short',
-                                  'Minimum duration is 0.1 h, but you can check the instantaneous '
-                                  'sensitivity in the provided values (they are also calculated per '
-                                  'minute integration).'), *vals4error
+    has_source = defined_source and source and source.strip() != ''
+    has_duration = duration is not None and duration >= 0.1
 
-    if defined_epoch and ((startdate is not None and duration is None) or
-                          (startdate is None and duration is not None)):
-        return outputs.error_card('The observing epoch is partially defined',
-                                  'If you define the observing epoch, then all start date, time, '
-                                  'and duration are required.'), *vals4error
+    if defined_epoch:
+        epoch_complete = startdate is not None and starttime is not None and has_duration
+        if not epoch_complete and has_source:
+            defined_epoch = False
+        elif not epoch_complete and not has_source:
+            if not has_duration:
+                return hidden_outputs
+
+    if not has_source and not has_duration:
+        return hidden_outputs
 
     t0 = dt.now()
-    network_names = [nn for nb, ns, nn in zip(selected_networks, disabled_networks, observation._NETWORKS) \
-                     if nb and not ns]
     try:
-        logger.info(f"New Observation: Networks:{','.join(network_names)}; "
-                    f"antennas: {','.join(selected_antennas)};"
-                    f"datarate: {datarate};",
-                    f"band: {inputs.band_from_index(band)}; target: {source}; duration: {duration}"
-                    f"{' h' if duration is not None else ''};"
-                    f"defined_epoch: {defined_epoch}.")
-        obs = cli.main(band=inputs.band_from_index(band), stations=sorted(selected_antennas),
-                      targets=[source] if defined_source and source and source.strip() != '' else None,
-                      duration=duration*u.h if duration is not None else None,
-                      ontarget=onsourcetime/100,
-                      start_time=Time(dt.strptime(f"{startdate[:10]} {starttime}", '%Y-%m-%d %H:%M'),
-                                      format='datetime', scale='utc') if defined_epoch else None,
-                      datarate=(datarate if not isinstance(datarate, str) else int(datarate))*u.Mbit/u.s,
-                      subbands=subbands, channels=channels, polarizations=pols,
-                      inttime=inttime*u.s)
-        # Pre-compute all cached data BEFORE parallel execution to ensure thread safety.
-        if obs is not None:
-            with ThreadPoolExecutor() as executor:
-                # Submit all independent pre-computations in a single pool
-                pre_futures = [executor.submit(obs.is_observable),
-                               executor.submit(obs.sun_constraint),
-                               executor.submit(obs.get_uv_data),
-                               executor.submit(obs.baseline_sensitivity),
-                ]
-                for f in pre_futures:
-                    f.result()
-                # Second wave depends on is_observable being cached
-                dep_futures = [executor.submit(obs.is_always_observable),
-                               executor.submit(obs.sun_limiting_epochs),
-                               executor.submit(obs.thermal_noise),
-                               executor.submit(obs.get_uv_values),
-                               executor.submit(obs.synthesized_beam),
-                ]
-                for f in dep_futures:
-                    f.result()
-    except ValueError as e:
-        logger.exception(f"An error has occured: {e}.")
-        return outputs.error_card("Could not plan the observation",
-                                  "Your source is not visible during the defined time by >1 antenna."), \
-            *vals4error
-    except (sources.SourceNotVisible, IndexError):
-        return outputs.error_card('Source Not Visible!',
-                                  'The source cannot be observed by at least more than one antenna '
-                                  'during the given observing time.'), *vals4error
-    except Exception as e:
-        logger.exception(f"An error has occured: {e}.")
-        return outputs.error_card("Could not plan the observation",
-                                  "Missing necessary fields in the observation configuration"), *vals4error
+        logger.info(f"Real-time update: band={inputs.band_from_index(band)}, "
+                    f"antennas={len(selected_antennas)}, source={source}, duration={duration}")
 
-    assert obs is not None, "Observation should have been created."
-    try:
-        if not all(obs.is_observable_by_network(min_stations=1).values()):
-            raise sources.SourceNotVisible
+        obs = cli.main(
+            band=inputs.band_from_index(band),
+            stations=sorted(selected_antennas),
+            targets=[source] if has_source else None,
+            duration=duration * u.h if has_duration else None,
+            ontarget=onsourcetime / 100 if onsourcetime else 0.7,
+            start_time=Time(dt.strptime(f"{startdate[:10]} {starttime}", '%Y-%m-%d %H:%M'),
+                           format='datetime', scale='utc') if defined_epoch and startdate and starttime else None,
+            datarate=(datarate if not isinstance(datarate, str) else int(datarate or 2048)) * u.Mbit / u.s,
+            subbands=subbands or 8,
+            channels=channels or 64,
+            polarizations=pols or 2,
+            inttime=(inttime or 2) * u.s
+        )
 
-        has_source = obs.sourcenames and defined_source
-        futures = {}
+        if obs is None:
+            return hidden_outputs
 
         with ThreadPoolExecutor() as executor:
-            # Text output functions (fast)
+            # Submit all independent pre-computations in a single pool
+            pre_futures = [
+                executor.submit(obs.is_observable),
+                executor.submit(obs.sun_constraint),
+                executor.submit(obs.get_uv_data),
+                executor.submit(obs.baseline_sensitivity),
+            ]
+            for f in pre_futures:
+                f.result()
+            # Second wave depends on is_observable being cached
+            dep_futures = [
+                executor.submit(obs.is_always_observable),
+                executor.submit(obs.sun_limiting_epochs),
+                executor.submit(obs.thermal_noise),
+                executor.submit(obs.get_uv_values),
+                executor.submit(obs.synthesized_beam),
+            ]
+            for f in dep_futures:
+                f.result()
+
+    except (ValueError, sources.SourceNotVisible, IndexError) as e:
+        logger.debug(f"Cannot compute observation yet: {e}")
+        return hidden_outputs
+    except Exception as e:
+        logger.debug(f"Error during real-time update: {e}")
+        return hidden_outputs
+
+    try:
+        if not all(obs.is_observable_by_network(min_stations=1).values()):
+            return hidden_outputs
+
+        futures = {}
+        can_show_source_plots = obs.sourcenames and has_source
+
+        with ThreadPoolExecutor() as executor:
+            # Text outputs (fast)
             futures['out_rms'] = executor.submit(outputs.rms, obs)
             futures['out_res'] = executor.submit(outputs.resolution, obs)
             futures['out_ant'] = executor.submit(outputs.ant_warning, obs)
@@ -258,15 +267,15 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: Optio
             futures['out_obstime'] = executor.submit(outputs.obs_time, obs)
 
             # Lightweight data serialization for deferred plot rendering
-            futures['worldmap_data'] = executor.submit(plots.serialize_worldmap_data, obs)  # type: ignore[arg-type]
+            futures['worldmap_data'] = executor.submit(plots.serialize_worldmap_data, obs)
 
-            if has_source:
+            if can_show_source_plots:
                 futures['out_sun'] = executor.submit(outputs.sun_warning, obs)
-                futures['elev_data'] = executor.submit(plots.serialize_elevation_data, obs)  # type: ignore[arg-type]
-                futures['uv_data'] = executor.submit(plots.serialize_uv_data, obs)  # type: ignore[arg-type]
+                futures['elev_data'] = executor.submit(plots.serialize_elevation_data, obs)
+                futures['uv_data'] = executor.submit(plots.serialize_uv_data, obs)
                 futures['out_elev_info'] = executor.submit(outputs.print_observability_ranges, obs)
                 futures['out_uv_info'] = executor.submit(outputs.print_baseline_lengths, obs)
-                futures['out_ant_options'] = executor.submit(outputs.put_antenna_options, obs)  # type: ignore[arg-type]
+                futures['out_ant_options'] = executor.submit(outputs.put_antenna_options, obs)
 
             # Collect text results
             out_rms = futures['out_rms'].result()
@@ -280,55 +289,74 @@ def compute_observation(n_clicks, band: int, defined_source: bool, source: Optio
             out_obstime = futures['out_obstime'].result()
             worldmap_data = futures['worldmap_data'].result()
 
-            if has_source:
+            if can_show_source_plots:
                 out_sun = futures['out_sun'].result()
                 out_elev = [False, futures['out_elev_info'].result()]
                 out_uv = [False, futures['out_uv_info'].result(), futures['out_ant_options'].result()]
                 uv_data = futures['uv_data'].result()
                 elev_data = futures['elev_data'].result()
             else:
-                out_sun = no_update  # type: ignore[assignment]
-                out_elev = [True, no_update]
-                out_uv = [True, no_update, no_update]
-                uv_data = no_update  # type: ignore[assignment]
-                elev_data = no_update  # type: ignore[assignment]
-    except sources.SourceNotVisible:
-        return outputs.error_card('Source Not Visible!',
-                                  'The source cannot be observed by at least more than one antenna '
-                                  'during the given observing time.'), *vals4error
-    except Exception as e:
-        logger.exception(f"While computing: {e}.")
-        return outputs.error_card("An error has occured", str(e)), *vals4error
+                out_sun = html.Div()
+                out_elev = [True, html.Div()]
+                out_uv = [True, html.Div(), []]
+                uv_data = None
+                elev_data = None
 
-    logger.info(f"Execution time: {(dt.now() - t0).total_seconds()} s")
+    except Exception as e:
+        logger.debug(f"Error generating outputs: {e}")
+        return hidden_outputs
+
+    elapsed = (dt.now() - t0).total_seconds()
+    logger.info(f"Real-time update completed in {elapsed:.2f}s")
 
     obs_params = {
         'band': inputs.band_from_index(band),
         'stations': sorted(selected_antennas),
-        'targets': [source] if defined_source and source and source.strip() != '' else None,
+        'targets': [source] if has_source else None,
         'duration': duration,
-        'ontarget': onsourcetime / 100,
+        'ontarget': onsourcetime / 100 if onsourcetime else 0.7,
         'startdate': startdate if defined_epoch else None,
         'starttime': starttime if defined_epoch else None,
-        'datarate': datarate if not isinstance(datarate, str) else int(datarate),
-        'subbands': subbands,
-        'channels': channels,
-        'polarizations': pols,
-        'inttime': inttime
+        'datarate': datarate if not isinstance(datarate, str) else int(datarate or 2048),
+        'subbands': subbands or 8,
+        'channels': channels or 64,
+        'polarizations': pols or 2,
+        'inttime': inttime or 2
     }
 
-    return html.Div(), html.Div(), False, None, out_rms, out_baseline_sens, out_res, out_sun, \
-        out_phaseref, out_ant, *out_elev, *out_uv, out_fov, out_freq, False, \
-        out_datasize, out_obstime, datarate, channels, subbands, obs_params, \
-        uv_data, elev_data, worldmap_data
+    return (
+        html.Div(),        # user-message
+        html.Div(),        # loading-div
+        False,             # download-summary-div
+        None,              # download-link
+        out_rms,           # card-rms
+        out_baseline_sens, # sensitivity-baseline-modal
+        out_res,           # card-resolution
+        out_sun,           # out-sun
+        out_phaseref,      # out-phaseref
+        out_ant,           # out-ant
+        *out_elev,         # out-elevations (hidden, info)
+        *out_uv,           # out-uv-coverage (hidden, info, options)
+        out_fov,           # div-card-fov
+        out_freq,          # div-card-vel
+        False,             # out-worldmap
+        out_datasize,      # card-datasize
+        out_obstime,       # div-card-time
+        datarate or 2048,  # store-prev-datarate
+        channels or 64,    # store-prev-channels
+        subbands or 8,     # store-prev-subbands
+        obs_params,        # store-obs-params
+        uv_data,           # store-uv-data
+        elev_data,         # store-elev-data
+        worldmap_data,     # store-worldmap-data
+    )
 
 
 server = app.server
-app.index_string = app.index_string.replace('<head>', '<head><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">')
 app.index_string = app.index_string.replace('<body>', '<body class="g-sidenav-show bg-gray-100">')
 
+# Layout without the compute button prominently featured
 app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-100 row m-0 p-4', children=[
-                   # Stores for preserving previous values across callbacks (avoids shared state with gunicorn)
                    dcc.Store(id='store-prev-datarate', data=2048),
                    dcc.Store(id='store-prev-channels', data=64),
                    dcc.Store(id='store-prev-subbands', data=8),
@@ -336,16 +364,16 @@ app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-10
                    dcc.Store(id='store-uv-data', data=None),
                    dcc.Store(id='store-elev-data', data=None),
                    dcc.Store(id='store-worldmap-data', data=None),
+                   # Hidden compute button (needed for callback compatibility but not shown)
+                   html.Div(html.Button(id='compute-observation', style={'display': 'none'})),
                    layout.top_banner(app),
-                   # inputs.modal_welcome(),
                    html.Div(id='main-window', className='container-fluid d-flex row p-0 m-0',
-                            children=[html.Div(id='right-column', className='col-12 col-lg-6 m-0 p-0',
+                            children=[html.Div(id='right-column', className='col-12 col-sm-6 m-0 p-0',
                                                children=layout.inputs_column(app)),
-                                      html.Div(id='left-column', className='col-12 col-lg-6 m-0 p-0',
-                                               children=[layout.compute_buttons(app),
+                                      html.Div(id='left-column', className='col-12 col-sm-6 m-0 p-0',
+                                               children=[layout.compute_buttons_realtime(app),
                                                          layout.outputs_column(app)])]),
-                   html.Div(html.A(html.I(className="fa-solid fa-circle-info",
-                    style={"font-size": "4rem"}),
+                   html.Div(html.A(html.I(className="fa-solid fa-circle-info", style={"font-size": "4rem"}),
                                    id="more-info-button",
                                    className="btn-floating-info btn-lg rounded-circle")),
                    dbc.Tooltip("Opens more information", target='more-info-button'),

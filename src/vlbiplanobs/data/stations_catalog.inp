@@ -28,7 +28,7 @@ sefd_0.09 = 9362.5
 [ARO12m]
 station = ARO 12m Radio Telescope
 sched_name = aro12m
-code = Ar1
+code = Ao
 networks = EHT
 country = U.S.A.
 diameter = 12 m
@@ -105,7 +105,7 @@ sefd_3.6 = 1255.0
 [Arecibo 12m]
 station = Arecibo 12-m Telescope
 sched_name = areciboc
-code = AO12m
+code = Ac
 networks =
 country = Puerto Rico
 diameter = 12 m
@@ -400,8 +400,8 @@ mount = ALTAZ
 
 [GMRT]
 station = Giant Metrewave Radio Telescope
-sched_name = gmrt
-code = GMRT
+sched_name = gmrt_tie
+code = Gt
 networks = EVN
 country = India
 diameter = 30 x 45 m
@@ -452,8 +452,8 @@ ax2acc = 0.05
 
 [Greenland]
 station = Greenland Telescope
-sched_name = greenland
-code = GLT
+sched_name = glt
+code = Gl
 networks = GMVA
 country = Greenland
 diameter = 12 m
@@ -537,7 +537,7 @@ ax2rate = 120
 [Hitachi]
 station = Hitachi
 sched_name = hitachi
-code = Ht
+code = Hi
 networks = EAVN
 country = Japan
 diameter = 32 m
@@ -598,7 +598,7 @@ ax2acc = 1.3
 
 [IAR 30m]
 station = IAR 30m
-sched_name = iar 30m
+sched_name = iar30m
 code = Bs
 networks =
 country = Argentina
@@ -666,7 +666,7 @@ ax2acc = 2.10
 [JCMT]
 station = James Clerk Maxwell Telescope
 sched_name = jcmt
-code = JCMT
+code = Mm
 networks = EHT
 country = U.S.A.
 diameter = 15 m
@@ -971,7 +971,7 @@ ax2acc = 0.31
 
 [MeerKAT 1]
 station = MeerKAT (single dish)
-sched_name = meerkat 1
+sched_name = meerkat1
 code = Me1
 networks =
 country = South Africa
@@ -1223,7 +1223,7 @@ ax2acc = 0.4
 
 [NOEMA]
 station = NOEMA (Plateau de Bure Interferometer)
-sched_name = pdbure
+sched_name = noema
 code = Nn
 networks = EHT, GMVA
 country = France
@@ -1348,7 +1348,7 @@ ax2acc = 3
 [Robledo 34]
 station = Robledo (34-m)
 sched_name = dss65
-code = Ro3
+code = Ro34
 networks = EVN
 country = Spain
 diameter = 34 m
@@ -1367,7 +1367,7 @@ sefd_3.6 = 106.0
 [Robledo 70]
 station = Robledo (70-m)
 sched_name = dss63
-code = Ro7
+code = Ro70
 networks = EVN
 country = Spain
 diameter = 70 m
@@ -1406,7 +1406,7 @@ sefd_0.7 = 1919.0
 
 [SKA-Mid 1]
 station = Square Kilometre Array (1-dish Mid)
-sched_name = ska-mid 1
+sched_name = skamid1
 code = Sk1
 networks =
 country = South Africa
@@ -1423,7 +1423,7 @@ sefd_2 = 349
 
 [SKA-Mid AA*]
 station = Square Kilometre Array AA* (phased up)
-sched_name = ska-mid aa*
+sched_name = skamidaa
 code = Sk2
 networks =
 country = South Africa
@@ -1440,7 +1440,7 @@ sefd_2 = 4.5
 
 [SKA-Mid AA4]
 station = Square Kilometre Array AA4 (phased up)
-sched_name = ska-mid aa4
+sched_name = skamidaa4
 code = Sk4
 networks =
 country = South Africa
@@ -1458,7 +1458,7 @@ sefd_2 = 2.77
 [SMA]
 station = Submillimeter Array
 sched_name = sma
-code = SMA
+code = Sa
 networks = EHT
 country = U.S.A.
 diameter = 8 x 6 m
@@ -1470,7 +1470,7 @@ sefd_0.09 = 10285.7
 [SMT]
 station = Heinrich Hertz Submillimeter Telescope
 sched_name = smt
-code = SMT
+code = St
 networks = EHT
 country = U.S.A.
 diameter = 10 m
@@ -1526,7 +1526,7 @@ ax2acc = 0.28
 [SPT]
 station = South Pole Telescope
 sched_name = spt
-code = SPT
+code = Sp
 networks = EHT
 country = South Pole
 diameter = 10 m
@@ -1566,7 +1566,7 @@ ax2acc = 0.25
 
 [St. Maria]
 station = St. Maria
-sched_name = st. maria
+sched_name = stmaria
 code = Sm
 networks =
 country = Portugal (Azores)
@@ -1805,8 +1805,8 @@ ax2acc = 0.5
 
 [Usuda]
 station = Usuda
-sched_name = usudavl
-code = Tu
+sched_name = usudavs
+code = Ud
 networks = EAVN
 country = Japan
 diameter = 64 m
@@ -1818,8 +1818,8 @@ mount = ALTAZ
 
 [VLA 1]
 station = Karl Jansky G. Very Large Array (single-dish)
-sched_name = vla
-code = VLA
+sched_name = vla1
+code = Y1
 networks = VLBA
 country = U.S.A.
 diameter = 1 x 25 m
@@ -1967,7 +1967,7 @@ sefd_3.6 = 449.0
 [WMT]
 station = Wetterstein Milimeter Telescope
 sched_name = wmt
-code = WMT
+code = Wt
 networks =
 country = Germany
 diameter = 18 m
@@ -2106,4 +2106,3 @@ ax1rate = 60
 ax2rate = 30
 ax1acc = 0.05
 ax2acc = 0.05
-

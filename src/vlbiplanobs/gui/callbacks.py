@@ -341,18 +341,24 @@ def url_open(href):
     parsed_href = furl(href)
     target_version = parsed_href.args.get('targetversion')
     config = parsed_href.args.get('config')
-    if (target_version is None) or (config is None):
+    if config is None:
         raise PreventUpdate
-    target_version = Version(unquote(target_version))
-    if target_version > current_version:
-        # current running version too old??
-        raise PreventUpdate
+    if target_version is not None:
+        target_version = Version(unquote(target_version))
+        if target_version > current_version:
+            # current running version too old??
+            raise PreventUpdate
     config_list = json.loads(unquote(config))
     id_list, value_list = map(list, zip(*config_list))
-    if id_list != export_component_ids:
-        # mismatch in expected IDs, since only one version is supported,
-        # this is currently an input error
-        raise PreventUpdate
-    del parsed_href.args['targetversion']
-    del parsed_href.args['config']
-    return value_list + [parsed_href.url]
+    update_list = []
+    for component_id in export_component_ids:
+        try:
+            index = id_list.index(component_id)
+            update_list.append(value_list[index])
+        except ValueError:
+            update_list.append(no_update)
+    if target_version is not None:
+        del parsed_href.args['targetversion']
+    if config is not None:
+        del parsed_href.args['config']
+    return update_list + [parsed_href.url]

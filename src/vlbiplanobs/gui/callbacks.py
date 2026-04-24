@@ -29,25 +29,46 @@ def change_band_labels(show_wavelengths: bool):
 
 @callback([Output({'type': 'network-switch', 'index': ALL}, 'disabled'),
            Output({'type': 'network-card', 'index': ALL}, 'style')],
-          Input('band-slider', 'value'),
+          [Input('band-slider', 'value'),
+           Input('source-input', 'value'),
+           Input('switch-specify-source', 'value')],
           State({'type': 'network-card', 'index': ALL}, 'style'))
-def enable_networks_with_band(band_index: int, card_styles):
-    if band_index == 0:
-        return tuple(False for _ in observation._NETWORKS), \
-                     tuple({k: v if k != 'opacity' else 1.0 for k, v in card_style.items()}
-                           for card_style in card_styles)
+def enable_networks_with_band(band_index: int, source_input: str, specify_source: bool, card_styles):
+    """Disable/enable network cards based on selected band and source observability.
 
-    def opacity(x: bool) -> float:
-        return 1.0 if x else 0.2
+    A network is enabled only when it supports the selected band (if any) AND the specified
+    source is observable by at least 3 of its stations (if a source is given).
+    """
+    the_band = inputs.band_from_index(band_index) if band_index != 0 else None
+    band_ok = {k: (the_band in net.observing_bands if the_band else True)
+               for k, net in observation._NETWORKS.items()}
 
-    new_card_styles: tuple = tuple({k: v if k != 'opacity' else
-                                   opacity(inputs.band_from_index(band_index) in network.observing_bands)
-                                   for k, v in card_style.items()}
-                                   for network, card_style in zip(observation._NETWORKS.values(),
-                                                                  card_styles))
+    source_ok = {k: True for k in observation._NETWORKS}
+    if specify_source and source_input and source_input not in ('', 'hh:mm:ss dd:mm:ss'):
+        try:
+            src = sources.Source.source_from_str(source_input)
+            for net_key, network in observation._NETWORKS.items():
+                if not band_ok[net_key]:
+                    continue
+                check_band = the_band if the_band else list(network.observing_bands)[0]
+                try:
+                    obs_obj = observation.Observation(
+                        band=check_band, stations=network, times=None, duration=1 * u.hour,
+                        datarate=network.max_datarate(check_band),
+                        scans={src.name: sources.ScanBlock([sources.Scan(src, duration=5 * u.min)])}
+                    )
+                    observable = obs_obj.when_is_observable(min_stations=3)
+                    source_ok[net_key] = len(observable[src.name]) > 0
+                except Exception:
+                    source_ok[net_key] = False
+        except Exception:
+            pass
 
-    return tuple(inputs.band_from_index(band_index) not in network.observing_bands
-                 for network in observation._NETWORKS.values()), new_card_styles
+    enabled = {k: band_ok[k] and source_ok[k] for k in observation._NETWORKS}
+    new_card_styles = tuple({k: v if k != 'opacity' else (1.0 if enabled[nk] else 0.2)
+                             for k, v in style.items()}
+                            for nk, style in zip(observation._NETWORKS, card_styles))
+    return tuple(not enabled[k] for k in observation._NETWORKS), new_card_styles
 
 
 @callback([Output('datarate', 'options'),

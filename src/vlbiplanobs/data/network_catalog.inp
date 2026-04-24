@@ -73,7 +73,7 @@ observing_bands = 1.3cm, 0.7cm
 [EAVN]
 
 name = East Asia VLBI Network
-default_antennas = Km, Ur, T6, Sh, My, Gf, Ht, Ks, Tk, To, Ts, Tu, Ym, Vr, Vs, Vm, Vo, Vj, Ku, Ky, Kt, Kc
+default_antennas = Km, Ur, T6, Sh, My, Gf, Hi, Ks, Tk, To, Ts, Ud, Ym, Vr, Vs, Vm, Vo, Vj, Ku, Ky, Kt, Kc
 max_datarate = 16384
 observing_bands = 5cm, 1.3cm, 0.7cm
 
@@ -97,7 +97,7 @@ observing_bands = 0.7cm, 0.348cm
 [EHT]
 
 name = Event Horizon Telescope
-default_antennas = ALMA, Pv, Lm, Nn, SMA, JCMT, Ap, SMT, SPT, GLT
+default_antennas = Aa, Pv, Lm, Nn, Sa, Mm, Ax, St, Sp, Gl
 max_datarate = 32768
 observing_bands = 0.348cm, 0.13cm, 0.09cm
 

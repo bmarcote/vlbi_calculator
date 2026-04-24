@@ -48,13 +48,14 @@ def compute_buttons(app) -> html.Div:
             inputs.compute_button(),
             outputs.download_button_div(),
             dcc.Download(id="download-data")])]),
-            html.Div(className='m-0 p-0', children=[
-                dcc.Location(id='url', refresh=False),
-                inputs.export_button(),
-                Alert("Nothing to see here", id='export-alert',
-                      is_open=False, color='success',
-                      duration=5000, dismissable=True)
-            ])])
+            # html.Div(className='m-0 p-0', children=[
+            #     dcc.Location(id='url', refresh=False),
+            #     inputs.export_button(),
+            #     Alert("Nothing to see here", id='export-alert',
+            #           is_open=False, color='success',
+            #           duration=5000, dismissable=True)
+            # ])
+    ])
 
 
 def compute_buttons_realtime(app) -> html.Div:

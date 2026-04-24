@@ -1,8 +1,13 @@
 from typing import Optional
+import json
+import importlib.metadata
+from packaging.version import Version
+from urllib.parse import quote, unquote
 from dash import html, Output, Input, State, callback, no_update, clientside_callback, ALL
 from dash.exceptions import PreventUpdate
 from astropy import coordinates as coord
 from astropy import units as u
+from furl import furl
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs import sources
 from vlbiplanobs import observation
@@ -67,15 +72,16 @@ def enable_networks_with_band(band_index: int, source_input: str, specify_source
 
 
 @callback([Output('datarate', 'options'),
-           Output('datarate', 'value'),
-           Output('channels', 'value'),
-           Output('subbands', 'value')],
+           Output('datarate', 'value', allow_duplicate=True),
+           Output('channels', 'value', allow_duplicate=True),
+           Output('subbands', 'value', allow_duplicate=True)],
           [Input('switch-specify-continuum', 'value'),
            Input('band-slider', 'value'),
            Input({'type': 'network-switch', 'index': ALL}, 'value')],
           [State('datarate', 'value'),
            State('store-prev-channels', 'data'),
-           State('store-prev-subbands', 'data')])
+           State('store-prev-subbands', 'data')],
+          prevent_initial_call=True)
 def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: list[bool],
                              datarate: int = 2048, prev_channels: int = 64, prev_subbands: int = 8):
     if band == 0:
@@ -122,9 +128,10 @@ def enable_antennas_with_band(band_index: int, do_e_evn: bool):
             for ant in observation._STATIONS]
 
 
-@callback(Output('switches-antennas', 'value'),
+@callback(Output('switches-antennas', 'value', allow_duplicate=True),
           Input({'type': 'network-switch', 'index': ALL}, 'value'),
-          State('switches-antennas', 'value'))
+          State('switches-antennas', 'value'),
+          prevent_initial_call=True)
 def update_selected_antennas_from_networks(networks, current_antennas):
     current_antennas = set(current_antennas)
     ants2include = set()
@@ -294,3 +301,85 @@ clientside_callback(
     Input("theme-toggle-btn", "n_clicks"),
     prevent_initial_call=True
 )
+
+# list of component IDs that constitute the user's configuration
+export_component_ids = [
+    'switch-band-label',
+    'band-slider',
+    'duration',
+    'onsourcetime',
+] + [
+    {'type': 'network-switch', 'index': network_name}
+    for network_name in observation._NETWORKS
+] + [
+    'switches-antennas',
+    'switch-specify-epoch',
+    'startdate',
+    'starttime',
+    'switch-specify-source',
+    'source-input',
+    'switch-specify-e-evn',
+    'switch-specify-continuum',
+    'datarate',
+    'subbands',
+    'channels',
+    'pols',
+    'inttime',
+]
+
+current_version = Version(importlib.metadata.version('vlbiplanobs'))
+
+json_config = '[' + ','.join(f'[{json.dumps(export_component_ids[i])}, args[{i}]]' for i in range(len(export_component_ids))) + ']'
+callback_javascript = f"""
+    function(n_clicks, ...args) {{
+        const value = '?targetversion={quote(str(current_version))}&config=' + encodeURIComponent(JSON.stringify({json_config}));
+        if (window.opener && !window.opener.closed) {{
+            window.opener.postMessage(value, '*'); // FIX set the true targetOrigin
+            return [true, "Configuration sent to Polaris"];
+        }}
+        else {{
+            navigator.clipboard.writeText(value);
+            return [true, "Configuration copied to clipboard, paste in Polaris"];
+        }}
+    }}
+"""
+clientside_callback(
+    callback_javascript,
+    Output('export-alert', 'is_open'),
+    Output('export-alert', 'children'),
+    Input('export-state-of-the-system', 'n_clicks'),
+    [State(id_, 'value') for id_ in export_component_ids],
+    prevent_initial_call=True
+    )
+
+@callback(
+    [Output(id_, 'value') for id_ in export_component_ids],
+    # delete targetversion and config from the url parameters after parsing it
+    Output('url', 'href'),
+    Input('url', 'href')
+    )
+def url_open(href):
+    parsed_href = furl(href)
+    target_version = parsed_href.args.get('targetversion')
+    config = parsed_href.args.get('config')
+    if config is None:
+        raise PreventUpdate
+    if target_version is not None:
+        target_version = Version(unquote(target_version))
+        if target_version > current_version:
+            # current running version too old??
+            raise PreventUpdate
+    config_list = json.loads(unquote(config))
+    id_list, value_list = map(list, zip(*config_list))
+    update_list = []
+    for component_id in export_component_ids:
+        try:
+            index = id_list.index(component_id)
+            update_list.append(value_list[index])
+        except ValueError:
+            update_list.append(no_update)
+    if target_version is not None:
+        del parsed_href.args['targetversion']
+    if config is not None:
+        del parsed_href.args['config']
+    return update_list + [parsed_href.url]

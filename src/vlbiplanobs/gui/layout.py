@@ -1,6 +1,6 @@
 from dash import html, dcc
 import dash_bootstrap_components as dbc
-from dash_bootstrap_components import Modal
+from dash_bootstrap_components import Modal, Alert
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs.gui import inputs, outputs
 
@@ -47,7 +47,15 @@ def compute_buttons(app) -> html.Div:
         html.Div(className='row d-flex m-0 p-0', children=[
             inputs.compute_button(),
             outputs.download_button_div(),
-            dcc.Download(id="download-data")])])])
+            dcc.Download(id="download-data")])]),
+            # html.Div(className='m-0 p-0', children=[
+            #     dcc.Location(id='url', refresh=False),
+            #     inputs.export_button(),
+            #     Alert("Nothing to see here", id='export-alert',
+            #           is_open=False, color='success',
+            #           duration=5000, dismissable=True)
+            # ])
+    ])
 
 
 def compute_buttons_realtime(app) -> html.Div:

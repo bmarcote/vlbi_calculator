@@ -1,10 +1,140 @@
 from collections import defaultdict
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime
+import math
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from vlbiplanobs import sources
+
+
+def _compute_gst_ticks(times_dt: list, gst_hours: list) -> tuple[list, list]:
+    """Compute rounded major-tick positions for a GST top axis paired with a UTC bottom axis.
+
+    The GST values returned by astropy live in [0, 24) and therefore wrap around midnight.
+    To produce monotonically-increasing tick positions, the GST series is first unwrapped
+    (so it spans, e.g., 22h .. 30h instead of 22h .. 6h). Major-tick positions are picked
+    on rounded values (whole hours, half hours, ...) inside that unwrapped range and then
+    mapped back to UTC datetimes via linear interpolation between consecutive samples.
+
+    Inputs
+    - times_dt: sequence of UTC ``datetime`` objects (length n, monotonic).
+    - gst_hours: sequence of GST hours in [0, 24) (length n, same sampling as ``times_dt``).
+
+    Returns
+    - (tickvals, ticktext) where ``tickvals`` is a list of UTC ``datetime`` objects placed
+      on rounded GST values and ``ticktext`` is the matching list of ``"HH:MM"`` strings
+      (always taken modulo 24h).
+    """
+    n = len(times_dt)
+    if n < 2 or len(gst_hours) != n:
+        return [], []
+
+    unwrapped = [float(gst_hours[0])]
+    for i in range(1, n):
+        d = float(gst_hours[i]) - float(gst_hours[i - 1])
+        if d < -12.0:
+            d += 24.0
+        elif d > 12.0:
+            d -= 24.0
+        unwrapped.append(unwrapped[-1] + d)
+
+    g_start, g_end = unwrapped[0], unwrapped[-1]
+    span = g_end - g_start
+    if span <= 0:
+        return [], []
+
+    if span > 18.0:
+        step = 3.0
+    elif span > 12.0:
+        step = 2.0
+    elif span > 6.0:
+        step = 1.0
+    elif span > 3.0:
+        step = 0.5
+    elif span > 1.5:
+        step = 0.25
+    elif span > 0.5:
+        step = 1.0 / 6.0
+    else:
+        step = 1.0 / 12.0
+
+    unwrapped_arr = np.asarray(unwrapped)
+    eps = step * 1e-6
+    first = math.ceil((g_start - eps) / step) * step
+
+    tickvals: list = []
+    ticktext: list = []
+    n_steps = int(math.floor((g_end - first) / step + eps)) + 1
+    for k in range(max(n_steps, 0)):
+        g = first + k * step
+        if g < g_start - eps or g > g_end + eps:
+            continue
+        idx = int(np.searchsorted(unwrapped_arr, g) - 1)
+        if idx < 0:
+            idx = 0
+        if idx >= n - 1:
+            idx = n - 2
+        denom = unwrapped_arr[idx + 1] - unwrapped_arr[idx]
+        frac = 0.0 if denom == 0 else (g - unwrapped_arr[idx]) / denom
+        t = times_dt[idx] + (times_dt[idx + 1] - times_dt[idx]) * frac
+
+        gh = g % 24.0
+        h = int(gh)
+        m = int(round((gh - h) * 60.0))
+        if m == 60:
+            h += 1
+            m = 0
+        h = h % 24
+        tickvals.append(t)
+        ticktext.append(f"{h:02d}:{m:02d}")
+    return tickvals, ticktext
+
+
+def _build_gst_axis_config(times_dt: list, gst_hours: list, time_range: list) -> Optional[dict]:
+    """Builds the layout config for a GST top axis overlaying the UTC bottom axis.
+
+    Returns None when the GST axis cannot be built (insufficient samples, no span).
+    The returned dict contains the ``xaxis2`` layout entry with rounded ``"HH:MM"`` ticks
+    and an explicit ``range`` covering the same UTC window as the bottom axis. We do
+    *not* use ``matches='x'`` / ``anchor='y'`` because they conflict with
+    ``overlaying='x'`` in several plotly versions (the secondary axis silently fails
+    to render).
+    """
+    tickvals, ticktext = _compute_gst_ticks(times_dt, gst_hours)
+    if not tickvals:
+        return None
+    return dict(
+        overlaying='x', side='top', type='date',
+        range=time_range, autorange=False,
+        tickmode='array', tickvals=tickvals, ticktext=ticktext,
+        showline=True, linecolor='black', linewidth=1, mirror=False,
+        ticks='inside', showgrid=False, zeroline=False,
+        title='Time (GST)',
+    )
+
+
+def _apply_gst_top_axis(fig: go.Figure, axis_cfg: dict, y_anchor: float = 0.0) -> None:
+    """Adds the GST top axis (xaxis2) to ``fig`` plus a fully transparent anchor trace.
+
+    Plotly only draws a secondary axis when at least one trace is bound to it *and*
+    that trace contributes points (a scatter with ``y=[None, None]`` is treated as
+    empty and the axis silently disappears). This helper therefore plots two markers
+    at ``y=y_anchor`` (defaulting to ``0``, which sits on the existing y-axis) with
+    fully transparent markers and disabled hover, so the axis is rendered without
+    visually touching the data.
+    No-ops when ``axis_cfg`` does not request a GST top axis.
+    """
+    cfg = axis_cfg.get('xaxis2_config')
+    if cfg is None:
+        return
+    fig.update_layout(xaxis2=cfg)
+    rng = axis_cfg['xaxis_range']
+    fig.add_trace(go.Scatter(
+        x=[rng[0], rng[-1]], y=[y_anchor, y_anchor], xaxis='x2', yaxis='y',
+        mode='markers', marker=dict(opacity=0, size=1), opacity=0,
+        showlegend=False, hoverinfo='skip',
+    ))
 
 
 def _get_axis_config(o):
@@ -16,34 +146,22 @@ def _get_axis_config(o):
 
     Returns
     - dict with keys:
-        - xaxis_range: [start, end] datetime range for x-axis
-        - xaxis_title: title for x-axis
-        - xaxis2_config: dict for secondary x-axis (or None if not needed)
+        - xaxis_range: [start, end] datetime range for the bottom (UTC) x-axis.
+        - xaxis_title: title for the bottom x-axis.
+        - xaxis2_config: layout dict for the secondary GST x-axis (None when not applicable,
+          e.g. when the user has not picked an epoch and the bottom axis already shows GST).
     """
     time_range = [o.times.datetime[0], o.times.datetime[-1]]
 
     if o.fixed_time:
-        # For xaxis (UTC): datetime values are used directly in time_range
-
-        # For xaxis2 (GST): convert gstimes to datetime format for the range
-        gst_start = datetime.combine(o.times.datetime[0].date(), datetime.min.time()) + timedelta(hours=o.gstimes[0].hour)
-        gst_end = datetime.combine(o.times.datetime[0].date(), datetime.min.time()) + timedelta(hours=o.gstimes[-1].hour)
-        gst_range = [gst_start, gst_end]
-
-        # xaxis2_config = dict(overlaying='x', side='top', type='date', tickmode='auto',
-        #                      showline=True, linecolor='black', linewidth=2, ticks='inside',
-        #                      range=gst_range, title='Time (GST)', showgrid=False, zeroline=False,
-        #                      tickformat='%H:%M')
+        gst_hours = [float(g.hour) for g in o.gstimes]
+        xaxis2_config = _build_gst_axis_config(list(o.times.datetime), gst_hours, time_range)
         return {
             'xaxis_range': time_range,
             'xaxis_title': 'Time (UTC)',
-            # 'xaxis2_range': gst_range,
-            # 'xaxis2_config': xaxis2_config,
-            # 'show_xaxis2': True
+            'xaxis2_config': xaxis2_config,
         }
-    else:
-        # No epoch defined: x-axis shows GST directly, x-axis2 shows GST too
-        return {'xaxis_range': time_range, 'xaxis_title': 'Time (GST)'}
+    return {'xaxis_range': time_range, 'xaxis_title': 'Time (GST)', 'xaxis2_config': None}
 
 
 def elevation_plot_curves(o) -> Optional[go.Figure]:
@@ -82,17 +200,15 @@ def elevation_plot_curves(o) -> Optional[go.Figure]:
     # Get axis configuration based on observation time mode
     axis_cfg = _get_axis_config(o)
 
-    # Add invisible trace for secondary x-axis (GST) only when needed
-    # if axis_cfg['show_xaxis2']:
-    #     fig.add_trace(go.Scatter(x=o.times.datetime, y=[None]*len(o.times.datetime),
-    #                              mode='markers', marker=dict(opacity=0), showlegend=False,
-    #                              xaxis='x2', hoverinfo='skip'))
+    # When the bottom axis is UTC (fixed_time), the top axis mirrors it as GST,
+    # so we keep the bottom axis in 'allticks' mirror mode only without a top axis.
+    bottom_mirror = 'allticks' if axis_cfg.get('xaxis2_config') is None else False
 
     layout_kwargs = dict(showlegend=True, hovermode='closest', xaxis_title=axis_cfg['xaxis_title'],
                          yaxis_title="Elevation (degrees)", title='', paper_bgcolor='rgba(0,0,0,0)',
                          plot_bgcolor='rgba(0,0,0,0)',
                          xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
-                                    mirror='allticks', ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
+                                    mirror=bottom_mirror, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
                                     showgrid=False, zeroline=False,
                                     minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
                          yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks',
@@ -105,6 +221,7 @@ def elevation_plot_curves(o) -> Optional[go.Figure]:
                                      bordercolor='rgba(0, 0, 0, 0.3)', borderwidth=1))
 
     fig.update_layout(**layout_kwargs)
+    _apply_gst_top_axis(fig, axis_cfg)
     return fig
 
 
@@ -163,6 +280,14 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
 
     # Get axis configuration based on observation time mode
     axis_cfg = _get_axis_config(o)
+    # Only attach a GST top axis when the heatmap has a single subplot. With multiple
+    # subplots, make_subplots already populates xaxis2/3/... so adding our overlay would
+    # clash with their layout.
+    single_subplot = len(srcup) == 1
+    if not single_subplot:
+        axis_cfg = {**axis_cfg, 'xaxis2_config': None}
+
+    bottom_mirror = 'allticks' if axis_cfg.get('xaxis2_config') is None else False
 
     layout_kwargs = dict(
         showlegend=False,
@@ -173,7 +298,7 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
-                   mirror='allticks', ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
+                   mirror=bottom_mirror, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
                    showgrid=False, zeroline=False,
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
@@ -189,6 +314,7 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
         fig.update_layout(coloraxis=dict(colorscale='Viridis'),
                           coloraxis_colorbar=dict(title='Elevation (degrees)'))
 
+    _apply_gst_top_axis(fig, axis_cfg)
     return fig
 
 
@@ -395,13 +521,21 @@ def serialize_elevation_data(o) -> Optional[dict]:
 
 
 def _get_axis_config_from_data(data: dict) -> dict:
-    """Build axis config from serialized elevation data."""
+    """Build axis config (incl. GST top axis when applicable) from serialized elevation data.
+
+    Mirrors :func:`_get_axis_config` but reads from the JSON-serialized payload produced by
+    :func:`serialize_elevation_data` (``times_iso`` + ``gstimes_hours``). The GST top axis is
+    only built for fixed-epoch observations that carry GST samples matching the time grid.
+    """
     times = [datetime.fromisoformat(t) for t in data['times_iso']]
     time_range = [times[0], times[-1]]
     if data['fixed_time']:
-        return {'xaxis_range': time_range, 'xaxis_title': 'Time (UTC)'}
-    else:
-        return {'xaxis_range': time_range, 'xaxis_title': 'Time (GST)'}
+        gst_hours = data.get('gstimes_hours') or []
+        xaxis2_config = (_build_gst_axis_config(times, gst_hours, time_range)
+                         if len(gst_hours) == len(times) else None)
+        return {'xaxis_range': time_range, 'xaxis_title': 'Time (UTC)',
+                'xaxis2_config': xaxis2_config}
+    return {'xaxis_range': time_range, 'xaxis_title': 'Time (GST)', 'xaxis2_config': None}
 
 
 def elevation_plot_from_data(data: dict, show_colorbar: bool = False) -> Optional[go.Figure]:
@@ -438,11 +572,16 @@ def elevation_plot_from_data(data: dict, show_colorbar: bool = False) -> Optiona
                       row=src_i % 4 + 1, col=src_i // 4 + 1)
 
     axis_cfg = _get_axis_config_from_data(data)
+    # Only attach the GST top axis when there is a single subplot, to avoid colliding with
+    # the xaxis2/3/... slots that ``make_subplots`` reserves for additional source-block panels.
+    if len(blocks) != 1:
+        axis_cfg = {**axis_cfg, 'xaxis2_config': None}
+    bottom_mirror = 'allticks' if axis_cfg.get('xaxis2_config') is None else False
     fig.update_layout(
         showlegend=False, hovermode='closest', xaxis_title=axis_cfg['xaxis_title'],
         yaxis_title="Antennas", title='', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
         xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
-                   mirror='allticks', ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
+                   mirror=bottom_mirror, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
                    showgrid=False, zeroline=False,
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
@@ -450,6 +589,7 @@ def elevation_plot_from_data(data: dict, show_colorbar: bool = False) -> Optiona
                    showgrid=False, zeroline=False,
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         margin=dict(l=2, r=2, t=45, b=0))
+    _apply_gst_top_axis(fig, axis_cfg)
     return fig
 
 
@@ -481,12 +621,13 @@ def elevation_curves_from_data(data: dict) -> Optional[go.Figure]:
                 name=sinfo['name']))
 
     axis_cfg = _get_axis_config_from_data(data)
+    bottom_mirror = 'allticks' if axis_cfg.get('xaxis2_config') is None else False
     fig.update_layout(
         showlegend=True, hovermode='closest', xaxis_title=axis_cfg['xaxis_title'],
         yaxis_title="Elevation (degrees)", title='', paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
-                   mirror='allticks', ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
+                   mirror=bottom_mirror, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
                    showgrid=False, zeroline=False,
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
@@ -495,6 +636,7 @@ def elevation_curves_from_data(data: dict) -> Optional[go.Figure]:
         margin=dict(l=2, r=2, t=45, b=0),
         legend=dict(x=0.01, y=0.99, xanchor='left', yanchor='top', bgcolor='rgba(255, 255, 255, 0.7)',
                     bordercolor='rgba(0, 0, 0, 0.3)', borderwidth=1))
+    _apply_gst_top_axis(fig, axis_cfg)
     return fig
 
 

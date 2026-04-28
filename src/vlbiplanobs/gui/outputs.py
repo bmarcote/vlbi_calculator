@@ -358,7 +358,7 @@ def data_size(o: Optional[cli.VLBIObs] = None) -> html.Div:
         return html.Div()
 
     ds = cli.optimal_units(o.datasize(), [u.TB, u.GB, u.MB])
-    return card_result(f"{ds.value:.2n} {ds.unit.to_string('unicode')}",
+    return card_result(f"{ds.value:.2f} {ds.unit.to_string('unicode')}",
                        "Data size", id='data-size',
                        extra_rows=[
                         html.Br(),
@@ -550,7 +550,7 @@ def resolution(o: Optional[cli.VLBIObs] = None) -> html.Div:
     bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
     bmin = synth_beam['bmin'].to(bmaj.unit)
     bmin_elip = max(int(bmin.value*80/bmaj.value), 2)
-    return card_result([f"{bmaj.value:2.1f} x {quantity2str(bmin)}", html.Sup("2"),
+    return card_result([f"{bmaj.value:2.1f} x {bmin.value:2.1f} {bmin.unit.to_string('unicode')}", html.Sup("2"),
                         f", {synth_beam['pa'].value:2.0f}º"], 'Angular Resolution', id='res',
                        extra_rows=[html.Br(), html.Div(ellipse(bmaj="80px",
                                                                bmin=f"{bmin_elip}px",

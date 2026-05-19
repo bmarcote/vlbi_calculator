@@ -1,9 +1,11 @@
 from typing import Optional
+import base64
 import json
 import importlib.metadata
 from packaging.version import Version
 from urllib.parse import quote, unquote
-from dash import html, Output, Input, State, callback, no_update, clientside_callback, ALL
+from dash import html, Output, Input, State, callback, ctx, no_update, clientside_callback, ALL, MATCH
+import dash_bootstrap_components as dbc
 from dash.exceptions import PreventUpdate
 from astropy import coordinates as coord
 from astropy import units as u
@@ -30,39 +32,45 @@ def change_band_labels(show_wavelengths: bool):
 @callback([Output({'type': 'network-switch', 'index': ALL}, 'disabled'),
            Output({'type': 'network-card', 'index': ALL}, 'style')],
           [Input('band-slider', 'value'),
-           Input('source-input', 'value'),
-           Input('switch-specify-source', 'value')],
+           Input('store-targets', 'data')],
           State({'type': 'network-card', 'index': ALL}, 'style'))
-def enable_networks_with_band(band_index: int, source_input: str, specify_source: bool, card_styles):
+def enable_networks_with_band(band_index: int, target_specs: Optional[list[str]],
+                              card_styles):
     """Disable/enable network cards based on selected band and source observability.
 
-    A network is enabled only when it supports the selected band (if any) AND the specified
-    source is observable by at least 3 of its stations (if a source is given).
+    A network is enabled only when it supports the selected band (if any) AND any of the
+    specified target sources is observable by at least 3 of its stations (if any sources
+    are given).
     """
     the_band = inputs.band_from_index(band_index) if band_index != 0 else None
     band_ok = {k: (the_band in net.observing_bands if the_band else True)
                for k, net in observation._NETWORKS.items()}
 
     source_ok = {k: True for k in observation._NETWORKS}
-    if specify_source and source_input and source_input not in ('', 'hh:mm:ss dd:mm:ss'):
-        try:
-            src = sources.Source.source_from_str(source_input)
-            for net_key, network in observation._NETWORKS.items():
-                if not band_ok[net_key]:
-                    continue
-                check_band = the_band if the_band else list(network.observing_bands)[0]
-                try:
-                    obs_obj = observation.Observation(
-                        band=check_band, stations=network, times=None, duration=1 * u.hour,
-                        datarate=network.max_datarate(check_band),
-                        scans={src.name: sources.ScanBlock([sources.Scan(src, duration=5 * u.min)])}
-                    )
-                    observable = obs_obj.when_is_observable(min_stations=3)
-                    source_ok[net_key] = len(observable[src.name]) > 0
-                except Exception:
-                    source_ok[net_key] = False
-        except Exception:
-            pass
+    target_specs = target_specs or []
+    if target_specs:
+        # Use the first target spec only as a quick gating heuristic: full validation
+        # happens on each target individually inside the compute callback.
+        first_spec = next((s for s in target_specs if s and s.strip()), None)
+        if first_spec:
+            try:
+                src = sources.Source.source_from_str(first_spec)
+                for net_key, network in observation._NETWORKS.items():
+                    if not band_ok[net_key]:
+                        continue
+                    check_band = the_band if the_band else list(network.observing_bands)[0]
+                    try:
+                        obs_obj = observation.Observation(
+                            band=check_band, stations=network, times=None, duration=1 * u.hour,
+                            datarate=network.max_datarate(check_band),
+                            scans={src.name: sources.ScanBlock([sources.Scan(src, duration=5 * u.min)])}
+                        )
+                        observable = obs_obj.when_is_observable(min_stations=3)
+                        source_ok[net_key] = len(observable[src.name]) > 0
+                    except Exception:
+                        source_ok[net_key] = False
+            except Exception:
+                pass
 
     enabled = {k: band_ok[k] and source_ok[k] for k in observation._NETWORKS}
     new_card_styles = tuple({k: v if k != 'opacity' else (1.0 if enabled[nk] else 0.2)
@@ -148,40 +156,192 @@ def update_selected_antennas_from_networks(networks, current_antennas):
     return tuple(current_antennas - ants2exclude | ants2include)
 
 
-# Clientside callbacks for faster UI toggle responses
+# Clientside callback for epoch toggle.
+# Uses className ('d-none' vs '') instead of `hidden` so that persistence-restored
+# switch values are reliably reflected on page load without race conditions.
 clientside_callback(
-    "function(value) { return !value; }",
-    Output('source-selection-div', 'hidden'),
-    Input('switch-specify-source', 'value')
-)
-
-clientside_callback(
-    "function(value) { return !value; }",
-    Output('epoch-selection-div', 'hidden'),
+    "function(value) { return value ? '' : 'd-none'; }",
+    Output('epoch-selection-div', 'className'),
     Input('switch-specify-epoch', 'value')
 )
 
 
-@callback([Output('error_source', 'children'),
-           Output('error_source', 'className')],
-          Input('source-input', 'value'))
-def get_initial_source(source_coord: str):
-    """Verifies that the introduced source coordinates have a right format.
-    If they are correct, it does nothing. If they are incorrect, it shows an error label.
-    """
-    if (source_coord != 'hh:mm:ss dd:mm:ss') and (source_coord is not None) and (source_coord != ''):
-        if len(source_coord) > 40:
-            return "Name too long.", 'form-text text-danger'
-        try:
-            src = sources.Source.source_from_str(source_coord)
-            return src.coord.to_string('hmsdms', precision=3), 'form-text text-success'
-        except ValueError:
-            return "Wrong coordinates.", 'form-text text-danger'
-        except coord.name_resolve.NameResolveError:
-            return "Unrecognized name. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'", \
-                   'form-text text-danger'
+# --------------------------------------------------------------------------------------
+# Multi-target source management
+# --------------------------------------------------------------------------------------
+# The list of target source specs (strings) lives in `dcc.Store(id='store-targets')`.
+# The user manages it through the modal opened from the source-and-epoch panel.
 
-    return '', no_update
+clientside_callback(
+    "function(n_open, n_close, is_open) { return !is_open; }",
+    Output('source-modal', 'is_open'),
+    [Input('button-open-source-modal', 'n_clicks'),
+     Input('button-close-source-modal', 'n_clicks')],
+    State('source-modal', 'is_open'),
+    prevent_initial_call=True
+)
+
+
+def _validate_source_spec(spec: str) -> tuple[bool, str]:
+    """Validate a single source spec string.
+
+    Returns (ok, message). The message describes the resolved coordinates on success
+    or the reason for failure otherwise.
+    """
+    spec = (spec or '').strip()
+    if not spec:
+        return False, "Empty source name/coordinates."
+    if len(spec) > 80:
+        return False, "Name too long."
+    try:
+        src = sources.Source.source_from_str(spec)
+    except ValueError:
+        return False, "Wrong coordinates format. Use 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'."
+    except coord.name_resolve.NameResolveError:
+        return False, "Unrecognized source name (not found in SIMBAD/NED/VizieR)."
+    except Exception as exc:
+        return False, f"Could not parse source: {exc}"
+    return True, src.coord.to_string('hmsdms', precision=3)
+
+
+@callback([Output('store-targets', 'data'),
+           Output('modal-source-input', 'value'),
+           Output('modal-source-feedback', 'children'),
+           Output('modal-source-feedback', 'className'),
+           Output('upload-sources-feedback', 'children'),
+           Output('upload-sources-feedback', 'className')],
+          [Input('button-add-source', 'n_clicks'),
+           Input('modal-source-input', 'n_submit'),
+           Input('upload-sources', 'contents'),
+           Input('button-clear-sources', 'n_clicks'),
+           Input({'type': 'modal-remove-target', 'index': ALL}, 'n_clicks')],
+          [State('modal-source-input', 'value'),
+           State('upload-sources', 'filename'),
+           State('store-targets', 'data')],
+          prevent_initial_call=True)
+def manage_target_sources(add_clicks, submit_n, upload_contents, clear_clicks,
+                          remove_clicks, modal_input, upload_filename, store_data):
+    """Single dispatcher for all target-source mutations driven from the modal.
+
+    Handles: add via text input, add via file upload, remove individual, and clear all.
+    Returns the updated store plus user feedback messages.
+    """
+    targets: list[str] = list(store_data or [])
+    triggered = ctx.triggered_id
+    feedback_text, feedback_class = no_update, no_update
+    upload_text, upload_class = no_update, no_update
+    new_modal_input = no_update
+
+    def _append_unique(spec: str) -> bool:
+        spec = spec.strip()
+        if spec and spec not in targets:
+            targets.append(spec)
+            return True
+        return False
+
+    if triggered == 'button-clear-sources':
+        targets = []
+        feedback_text, feedback_class = "All sources cleared.", 'form-text text-warning'
+
+    elif triggered in ('button-add-source', 'modal-source-input'):
+        ok, msg = _validate_source_spec(modal_input or '')
+        if not ok:
+            feedback_text, feedback_class = msg, 'form-text text-danger'
+        elif (modal_input or '').strip() in targets:
+            feedback_text = f"'{modal_input.strip()}' is already in the list."
+            feedback_class = 'form-text text-warning'
+        else:
+            _append_unique(modal_input or '')
+            new_modal_input = ''
+            feedback_text = f"Added (resolved to {msg})."
+            feedback_class = 'form-text text-success'
+
+    elif triggered == 'upload-sources':
+        if upload_contents is None:
+            raise PreventUpdate
+        try:
+            _, content_string = upload_contents.split(',', 1)
+            decoded = base64.b64decode(content_string).decode('utf-8', errors='replace')
+        except Exception as exc:
+            upload_text = f"Could not read file: {exc}"
+            upload_class = 'form-text text-danger'
+        else:
+            added, skipped, invalid = 0, 0, []
+            for raw in decoded.splitlines():
+                line = raw.strip()
+                if not line or line.startswith('#'):
+                    continue
+                ok, msg = _validate_source_spec(line)
+                if not ok:
+                    invalid.append(f"{line!r}: {msg}")
+                    continue
+                if _append_unique(line):
+                    added += 1
+                else:
+                    skipped += 1
+            label = upload_filename or 'file'
+            parts = [f"Loaded {added} source(s) from {label}."]
+            if skipped:
+                parts.append(f"{skipped} already present.")
+            if invalid:
+                parts.append(f"{len(invalid)} invalid line(s) ignored.")
+            upload_text = ' '.join(parts)
+            upload_class = 'form-text text-success' if added else 'form-text text-warning'
+
+    elif isinstance(triggered, dict) and triggered.get('type') == 'modal-remove-target':
+        idx = triggered.get('index')
+        # n_clicks may fire on initial render; ignore None entries.
+        if 0 <= idx < len(targets) and any(remove_clicks or []):
+            removed = targets.pop(idx)
+            feedback_text = f"Removed '{removed}'."
+            feedback_class = 'form-text text-muted'
+        else:
+            raise PreventUpdate
+    else:
+        raise PreventUpdate
+
+    return targets, new_modal_input, feedback_text, feedback_class, upload_text, upload_class
+
+
+@callback([Output('target-chips-display', 'children'),
+           Output('modal-source-list', 'children')],
+          Input('store-targets', 'data'))
+def render_target_sources(targets: Optional[list[str]]):
+    """Render the chip list shown in the inputs panel and the detailed list inside the modal.
+
+    Each modal entry has an X button (pattern-matching id `modal-remove-target`).
+    """
+    targets = targets or []
+
+    if not targets:
+        chips = html.Small("No target sources added yet.", className='text-muted')
+        modal_list = html.P("No sources added yet.",
+                            className='text-muted text-center my-3')
+        return chips, modal_list
+
+    chip_children = []
+    for spec in targets:
+        chip_children.append(
+            dbc.Badge(spec, pill=True, className='me-1 mb-1',
+                      style={'font-size': '0.85em', 'padding': '0.4em 0.7em',
+                             'background-color': '#004990', 'color': 'white'}))
+    chips = html.Div(chip_children, style={'max-height': '6em', 'overflow-y': 'auto'})
+
+    modal_items = []
+    for i, spec in enumerate(targets):
+        modal_items.append(
+            html.Li(className='list-group-item d-flex justify-content-between align-items-center',
+                    children=[
+                        html.Span(spec, className='text-break'),
+                        dbc.Button(html.I(className='fa fa-times'),
+                                   id={'type': 'modal-remove-target', 'index': i},
+                                   color='danger', outline=True, size='sm',
+                                   n_clicks=0,
+                                   title=f"Remove {spec}")
+                    ]))
+    modal_list = html.Ul(modal_items, className='list-group list-group-flush')
+
+    return chips, modal_list
 
 
 @callback(Output('bandwidth-label', 'children'),
@@ -204,14 +364,6 @@ def update_bandwidth_label(datarate: int, npols: int, chans: int, subbands: int,
 
 clientside_callback(
     "function(n_clicks, is_open) { return n_clicks ? !is_open : dash_clientside.no_update; }",
-    Output("sensitivity-baseline-modal", "is_open"),
-    Input("button-sensitivity-baseline", "n_clicks"),
-    State("sensitivity-baseline-modal", "is_open"),
-    prevent_initial_call=True
-)
-
-clientside_callback(
-    "function(n_clicks, is_open) { return n_clicks ? !is_open : dash_clientside.no_update; }",
     Output("more-info-modal", "is_open"),
     Input("more-info-button", "n_clicks"),
     State("more-info-modal", "is_open"),
@@ -219,41 +371,19 @@ clientside_callback(
 )
 
 
-@callback([Output('fig-elevations', 'figure'),
-           Output('fig-elevations2', 'figure')],
-          Input('store-elev-data', 'data'), prevent_initial_call=True)
-def render_elevation_plots(elev_data: dict):
-    """Render elevation plots progressively from serialized data."""
-    if elev_data is None:
-        raise PreventUpdate
-    return plots.elevation_plot_from_data(elev_data), plots.elevation_curves_from_data(elev_data)
-
-
-@callback(Output('fig-uv-coverage', 'figure'),
-          Input('store-uv-data', 'data'), prevent_initial_call=True)
-def render_uv_plot(uv_data: dict):
-    """Render UV coverage plot progressively from serialized data."""
-    if uv_data is None:
-        raise PreventUpdate
-    return plots.uvplot_from_data(uv_data)
-
-
-@callback(Output('fig-uv-coverage', 'figure', allow_duplicate=True),
-          Input('select-antenna-uv-plot', 'value'),
-          State('store-uv-data', 'data'), prevent_initial_call='initial_duplicate')
+# Per-tab UV antenna-highlight callback. Each tab embeds:
+#   - a `dcc.Dropdown(id={'type':'select-ant-uv','index':<src>})`
+#   - a `dcc.Graph(id={'type':'fig-uv','index':<src>})`
+#   - a `dcc.Store(id={'type':'store-uv-data','index':<src>}, data=<serialized uv>)`
+# This pattern-matching callback updates the figure when the user picks antennas.
+@callback(Output({'type': 'fig-uv', 'index': MATCH}, 'figure'),
+          Input({'type': 'select-ant-uv', 'index': MATCH}, 'value'),
+          State({'type': 'store-uv-data', 'index': MATCH}, 'data'),
+          prevent_initial_call=True)
 def update_uv_figure(highlight_antennas: list[str], uv_data: dict):
     if uv_data is None:
         raise PreventUpdate
     return plots.uvplot_from_data(uv_data, highlight_antennas)
-
-
-@callback(Output('fig-worldmap', 'figure'),
-          Input('store-worldmap-data', 'data'), prevent_initial_call=True)
-def render_worldmap(worldmap_data: dict):
-    """Render worldmap progressively from serialized data."""
-    if worldmap_data is None:
-        raise PreventUpdate
-    return plots.worldmap_from_data(worldmap_data)
 
 
 @callback([Output('error_duration', 'children'),
@@ -316,8 +446,6 @@ export_component_ids = [
     'switch-specify-epoch',
     'startdate',
     'starttime',
-    'switch-specify-source',
-    'source-input',
     'switch-specify-e-evn',
     'switch-specify-continuum',
     'datarate',

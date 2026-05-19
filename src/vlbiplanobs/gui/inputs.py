@@ -345,7 +345,7 @@ def source_and_epoch_selection() -> html.Div:
                                 html.Div(className='row form-group', children=[
                                     dbc.Switch(label='Specify an epoch', value=False,
                                                 id='switch-specify-epoch', persistence=True),
-                                    html.Div(id='epoch-selection-div', hidden=True, children=[
+                                    html.Div(id='epoch-selection-div', className='d-none', children=[
                                         html.Div(className='row', children=[
                                             html.Label('Start of observation (UTC)', htmlFor='starttime'),
                                             html.Div(className='row mx-0', children=[
@@ -373,16 +373,72 @@ def source_and_epoch_selection() -> html.Div:
                                                         className='form-text text-muted')])])])])]),
                             html.Div(className='col-6', children=[
                                 html.Div(className='row form-group', children=[
-                                    dbc.Switch(label='Specify a target source', value=False,
-                                                id='switch-specify-source', persistence=True),
-                                    html.Div(id='source-selection-div', hidden=True,
-                                            children=html.Div(className='row', children=[
-                                                html.Label('Source name or coordinates', htmlFor='source-input'),
-                                                dcc.Input(id='source-input', value=None, type='text',
-                                                        className='form-control', placeholder="hh:mm:ss dd:mm:ss",
-                                                        persistence=True, debounce=True),
-                                                html.Small(id='error_source', className='form-text text-muted')]))])])])]),
+                                    # html.Label('Target sources', className='form-label fw-bold'),
+                                    dbc.Button("Add target sources",
+                                               id='button-open-source-modal',
+                                               color='primary', outline=True,
+                                               className='btn btn-sm w-100'),
+                                    html.Div(id='target-chips-display', className='mb-2',
+                                             children=html.Small("No target sources added yet.",
+                                                                 className='text-muted'))])])])]),
                     ])
+
+
+def target_sources_modal() -> html.Div:
+    """Returns a modal window allowing users to add/remove multiple target sources.
+
+    Sources can be added by typing a name or coordinates, or by uploading a text file
+    where each line contains one source. The list of selected target sources is
+    persisted in the `store-targets` `dcc.Store`.
+    """
+    return dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("Target Sources")),
+        dbc.ModalBody([
+            html.Div(className='mb-3', children=[
+                html.Label("Add a source by name or coordinates:",
+                           htmlFor='modal-source-input', className='form-label'),
+                dbc.InputGroup([
+                    dbc.Input(id='modal-source-input', type='text',
+                              placeholder="3C273  or  hh:mm:ss dd:mm:ss",
+                              debounce=False, n_submit=0),
+                    dbc.Button("Add", id='button-add-source',
+                               color='success', n_clicks=0,
+                               style={'font-weight': 'bold',
+                                      'border-top-left-radius': '0.375rem',
+                                      'border-bottom-left-radius': '0.375rem'})]),
+                html.Small(id='modal-source-feedback',
+                           className='form-text text-muted')]),
+            html.Hr(),
+            html.Div(className='mb-3', children=[
+                html.Label("Or upload a text file (one source per line):",
+                           className='form-label'),
+                dcc.Upload(id='upload-sources',
+                           children=html.Div([
+                               html.I(className='fa fa-upload me-2'),
+                               'Drag & drop or ',
+                               html.A('select a file',
+                                      style={'color': '#004990', 'cursor': 'pointer',
+                                             'text-decoration': 'underline'})]),
+                           className='upload-zone p-3 text-center',
+                           style={'border': '2px dashed #004990',
+                                  'border-radius': '8px',
+                                  'background-color': 'rgba(0, 73, 144, 0.05)'},
+                           multiple=False, accept='.txt,.csv,.cat,.lis,.list'),
+                html.Small(id='upload-sources-feedback',
+                           className='form-text text-muted')]),
+            html.Hr(),
+            html.Div([
+                html.H6("Current target sources", id='modal-source-list-header',
+                        className='mb-2'),
+                html.Div(id='modal-source-list',
+                         children=html.P("No sources added yet.",
+                                         className='text-muted text-center my-3'))])]),
+        dbc.ModalFooter([
+            dbc.Button("Clear all", id='button-clear-sources',
+                       color='danger', outline=True, n_clicks=0),
+            dbc.Button("Done", id='button-close-source-modal',
+                       color='secondary', className='ms-auto', n_clicks=0)])
+    ], id='source-modal', is_open=False, size='lg', scrollable=True, backdrop=True)
 
 def correlations() -> html.Div:
     """Creates the inputs to specify if the user wants continuum correlation and/or spectral line.

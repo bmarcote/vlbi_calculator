@@ -1,6 +1,5 @@
 from dash import html, dcc
 import dash_bootstrap_components as dbc
-from dash_bootstrap_components import Modal, Alert
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs.gui import inputs, outputs
 
@@ -59,47 +58,31 @@ def compute_buttons(app) -> html.Div:
 
 
 def compute_buttons_realtime(app) -> html.Div:
-    """Layout for real-time mode: no CALCULATE button, just the download button."""
-    return html.Div([html.Div(className='m-0 p-0', children=[
-        html.Div(className='row d-flex m-0 p-0', children=[
-            html.Div(className='col-6', children=[
+    """Layout for real-time mode: just the loading spinner.
+
+    The PDF download button is rendered per-target inside each output tab (and inside
+    the simple panel when no target source is specified), so a global button is no
+    longer needed here.
+    """
+    return html.Div(className='m-0 p-0', children=[
+        html.Div(className='row d-flex m-0 p-0 justify-content-center', children=[
+            html.Div(className='col-12 text-center', children=[
                 dbc.Spinner(id='loading', color='#a01d26',
-                            children=html.Div(id='loading-div'))]),
-            outputs.download_button_div(),
-            dcc.Download(id="download-data")])])])
+                            children=html.Div(id='loading-div'))])])])
 
 
 def outputs_column(app) -> html.Div:
     return html.Div(children=[
-        # First just the warnings
+        # Top-level user message (shared across tabs)
         html.Div(id='user-message', className='m-0 p-0',
                  children=html.Blockquote(className='text-secondary text-bold ms-2 px-2',
-                                          children=["Set your VLBI observation on the left and the press ",
-                                                    html.Em('CALCULATE!'),
+                                          children=["Set your VLBI observation on the left to see the "
+                                                    "details of the expected outcome here.",
                                                     html.Footer(className='text-sm pt-2',
-                                                                children="The details of the expected outcome will "
-                                                                         "appear here")])),
-
-        html.A(id='download-link'),
-        html.Div(id='out-sun', className='m-0 p-0'),
-        html.Div(id='out-phaseref', className='m-0 p-0'),
-        html.Div(id='out-ant', className='m-0 p-0'),
-        # Now the actual results
-        html.Div(className='col-12 m-0 p-0', children=[
-            html.Div(className='row d-flex m-0 p-0', children=[
-                html.Div(outputs.obs_time(), className='col-6 m-0 p-0 d-flex align-items-stretch', id='div-card-time'),
-                html.Div(outputs.summary_freq_res(), className='col-6 m-0 p-0 d-flex align-items-stretch', id='div-card-vel')]),
-            html.Div(className='row d-flex m-0 p-0', children=[
-                html.Div(Modal(id="sensitivity-baseline-modal", size='xl', is_open=False)),
-                html.Div(outputs.rms(), className='col-6 m-0 p-0 d-flex align-items-stretch', id='card-rms'),
-                html.Div(outputs.resolution(), className='col-6 m-0 p-0 d-flex align-items-stretch', id='card-resolution')])]),
-        # style={'align-items': 'stretch'}),
-        html.Div(outputs.plot_elevations(), id='out-elevations', className='m-0 p-0', hidden=True),
-        html.Div(outputs.plot_uv_coverage(), id='out-uv-coverage', className='m-0 p-0', hidden=True),
-        html.Div(className='col-12 m-0 p-0', children=html.Div(className='row d-flex m-0 p-0', children=[
-            html.Div(outputs.field_of_view(), className='col-6 m-0 p-0 d-flex align-items-stretch', id='div-card-fov'),
-            html.Div(outputs.data_size(), id='card-datasize', className='col-6 m-0 p-0 d-flex align-items-stretch')])),
-        html.Div(outputs.plot_worldmap(), id='out-worldmap', className='m-0 p-0', hidden=True)
-        # html.Div(className='col-12 m-0 p-0', children=html.Div(className='row d-flex m-0 p-0', children=[
-        #     ]))
+                                                                children="Add target sources via the "
+                                                                         "'Source & Epoch' panel to "
+                                                                         "compare them side-by-side.")])),
+        # Container that the compute callback fills with either a simple panel
+        # (when no target sources are specified) or a tabbed view (one tab per source).
+        html.Div(id='outputs-container', className='m-0 p-0')
     ])

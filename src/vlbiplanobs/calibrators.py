@@ -408,7 +408,7 @@ def _station_observable_mask(elev: np.ndarray, az: np.ndarray, ha_hours: np.ndar
         az_max = mount.ax1.limits[1].to(u.deg).value
         el_min = mount.ax2.limits[0].to(u.deg).value
         el_max = mount.ax2.limits[1].to(u.deg).value
-        return (az > az_min) & (az < az_max) & (elev > el_min) & (elev < el_max)
+        mask = (az > az_min) & (az < az_max) & (elev > el_min) & (elev < el_max)
     else:
         ha_min = mount.ax1.limits[0].to(u.hourangle).value
         ha_max = mount.ax1.limits[1].to(u.hourangle).value
@@ -416,7 +416,13 @@ def _station_observable_mask(elev: np.ndarray, az: np.ndarray, ha_hours: np.ndar
         dec_max = mount.ax2.limits[1].to(u.deg).value
         ha_ok = ((ha_min < ha_hours) & (ha_hours < ha_max)) | ((ha_min + 24.0 < ha_hours) & (ha_hours < ha_max + 24.0))
         dec_ok = (dec_deg >= dec_min) & (dec_deg <= dec_max)
-        return ha_ok & dec_ok & (elev > 5.0)
+        mask = ha_ok & dec_ok & (elev > 5.0)
+
+    # Apply the azimuth-dependent local horizon, if defined for this station
+    if station.horizon is not None:
+        mask &= elev > station.horizon_min_elevation(az)
+
+    return mask
 
 
 def get_fringe_finder_sources(

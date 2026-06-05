@@ -63,7 +63,8 @@ class Station(object):
                  real_time: bool = False, mount: Optional[Mount] = None,
                  max_datarate: Optional[u.Quantity | dict[str, u.Quantity]] = None,
                  datarate: Optional[u.Quantity] = None, decommissioned: bool = False,
-                 sched_name: Optional[str] = None) -> None:
+                 sched_name: Optional[str] = None,
+                 horizon: Optional[tuple[np.ndarray, np.ndarray]] = None) -> None:
         """Initializes a station.
 
         Inputs
@@ -116,6 +117,14 @@ class Station(object):
             If the station is decommissioned, False by default.
         - sched_name : str [OPTIONAL]
             Station name as used in the SCHED software catalog. If not provided, defaults to `name`.
+        - horizon : tuple[np.ndarray, np.ndarray] [OPTIONAL]
+            Azimuth-dependent local horizon as a tuple (azimuth_deg, elevation_deg) of two numpy
+            arrays in degrees. The azimuths must be sorted ascending within [0, 360] and the
+            elevations give the minimum observable elevation (local horizon) at each azimuth. A
+            single sample point defines a flat horizon at all azimuths. When provided, the source
+            must be above this interpolated horizon (in addition to the mount axis limits) to be
+            considered observable. Used to model terrain/structure blockage that is higher than the
+            nominal axis elevation limit.
         """
         for a_var, a_var_name in zip((name, codename, country, diameter),
                                      ("name", "codename", "country", "diameter")):
@@ -151,6 +160,14 @@ class Station(object):
         self._datarate: u.Quantity | None = datarate
         self._decommissioned: bool = decommissioned
         self._sched_name: str = name if sched_name is None else sched_name
+        if horizon is None:
+            self._horizon: Optional[tuple[np.ndarray, np.ndarray]] = None
+        else:
+            self._horizon = (np.atleast_1d(np.asarray(horizon[0], dtype=np.float64)),
+                             np.atleast_1d(np.asarray(horizon[1], dtype=np.float64)))
+            assert self._horizon[0].size == self._horizon[1].size, \
+                "horizon azimuth and elevation arrays must have the same length."
+
         if self.mount.mount_type == MountType.ALTAZ:
             self._constraints = [constraints.AzimuthConstraint(min=self.mount.ax1.limits[0],
                                                                max=self.mount.ax1.limits[1]),
@@ -162,6 +179,10 @@ class Station(object):
                                  constraints.DeclinationConstraint(min=self.mount.ax2.limits[0],
                                                                    max=self.mount.ax2.limits[1]),
                                  constraints.ElevationConstraint(min=5*u.deg)]
+
+        if self._horizon is not None:
+            self._constraints.append(constraints.HorizonConstraint(self._horizon[0]*u.deg,
+                                                                   self._horizon[1]*u.deg))
 
     @property
     def name(self) -> str:
@@ -243,6 +264,31 @@ class Station(object):
     def mount(self) -> Mount:
         """Returns the mount of the station"""
         return self._mount
+
+    @property
+    def horizon(self) -> Optional[tuple[np.ndarray, np.ndarray]]:
+        """Returns the azimuth-dependent local horizon of the station, or None if not defined.
+
+        The horizon is a tuple (azimuth_deg, elevation_deg) of two numpy arrays in degrees, giving
+        the minimum observable elevation (local horizon) at each azimuth sample point.
+        """
+        return self._horizon
+
+    def horizon_min_elevation(self, azimuth_deg: np.ndarray) -> np.ndarray:
+        """Returns the minimum observable elevation (local horizon) in degrees at each azimuth.
+
+        Inputs
+        - azimuth_deg : np.ndarray
+            Azimuth(s) of the target in degrees (any shape).
+
+        Returns
+        - np.ndarray
+            Minimum observable elevation in degrees at each input azimuth (same shape as input).
+            Returns an array of zeros if the station has no defined horizon.
+        """
+        if self._horizon is None:
+            return np.zeros_like(np.asarray(azimuth_deg, dtype=np.float64))
+        return constraints.horizon_min_elevation(azimuth_deg, self._horizon[0], self._horizon[1])
 
     @property
     def max_datarate(self) -> Union[u.Quantity, dict[str, u.Quantity], None]:
@@ -935,11 +981,24 @@ class Stations(object):
             amount = None
 
         sched_name = station.get("sched_name", stationname)
+
+        horizon = None
+        if ("horizon_az" in station) and ("horizon_el" in station):
+            try:
+                hor_az = np.array([float(i.strip()) for i in station["horizon_az"].split(",")])
+                hor_el = np.array([float(i.strip()) for i in station["horizon_el"].split(",")])
+                if hor_az.size != hor_el.size:
+                    raise ValueError(f"horizon_az and horizon_el must have the same number of values "
+                                     f"for antenna {station['station']}.")
+                horizon = (hor_az, hor_el)
+            except ValueError:
+                raise ValueError(f"when loading the horizon data from antenna {station['station']}.")
+
         return Station(stationname, station["code"],
                        tuple([n.strip() for n in station["networks"].split(",") if n.strip() != '']),
                        a_loc, sefds, station["station"], station["country"], station["diameter"],
                        does_real_time, amount, max_dt, decommissioned=is_decommissioned,
-                       sched_name=sched_name)
+                       sched_name=sched_name, horizon=horizon)
 
     @staticmethod
     def _get_stations_from_configfile(filename: Optional[str] = None,

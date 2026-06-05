@@ -9,6 +9,7 @@ from astropy.time import Time
 from astroplan import FixedTarget
 from vlbiplanobs import stations
 from vlbiplanobs import freqsetups
+from vlbiplanobs import constraints
 
 
 def test_stations_catalog():
@@ -225,4 +226,63 @@ def test_station_file():
                                joinpath(f"network-{net.replace(' ', '_').lower()}.png")) as netfile:
             if net != 'e-EVN':
                 assert netfile.exists()
+
+
+def test_horizon_min_elevation():
+    """Tests the azimuth-dependent local horizon interpolation helper."""
+    # A single sample point defines a flat horizon at all azimuths.
+    az = np.array([0.0, 90.0, 200.0, 359.0])
+    flat = constraints.horizon_min_elevation(az, np.array([0.0]), np.array([7.0]))
+    assert np.allclose(flat, 7.0)
+
+    # Linear interpolation between sample points, with wrapping around 360 deg.
+    hor_az = np.array([0.0, 90.0, 180.0, 270.0, 360.0])
+    hor_el = np.array([2.0, 10.0, 4.0, 6.0, 2.0])
+    out = constraints.horizon_min_elevation(np.array([0.0, 45.0, 90.0, 180.0, 360.0]), hor_az, hor_el)
+    assert np.allclose(out, [2.0, 6.0, 10.0, 4.0, 2.0])
+    # Azimuth values are wrapped into [0, 360).
+    assert np.isclose(constraints.horizon_min_elevation(np.array([450.0]), hor_az, hor_el)[0],
+                      constraints.horizon_min_elevation(np.array([90.0]), hor_az, hor_el)[0])
+
+
+def test_station_horizon():
+    """Tests that a Station stores a local horizon and applies it as an extra constraint."""
+    sefds = {'18cm': 100*u.Jy}
+    loc = coord.EarthLocation(3839348.973*u.m, 430403.51*u.m, 5057990.099*u.m)
+    # Station without horizon vs. one with a high (40 deg) flat horizon.
+    st_no = stations.Station('name', 'Nm', 'VLBI', loc, sefds)
+    st_hor = stations.Station('name', 'Nm', 'VLBI', loc, sefds,
+                              horizon=(np.array([0.0]), np.array([40.0])))
+    assert st_no.horizon is None
+    assert st_hor.horizon is not None
+    assert np.allclose(st_hor.horizon_min_elevation(np.array([0.0, 123.0, 250.0])), 40.0)
+    assert st_no.horizon_min_elevation(np.array([0.0, 123.0])).shape == (2,)
+
+    # A source observable above the axis limits but at modest elevation must be blocked by the
+    # 40 deg horizon while remaining observable without it.
+    times = Time('2020-03-21 4:00', scale='utc') + np.arange(0, 4*60, 10)*u.min
+    src = FixedTarget(coord=coord.SkyCoord('0h0m0s 30d0m0s'), name='testSrc')
+    elev = st_no.elevation(times, src).to(u.deg).value
+    # Choose a time where the source is up but below 40 deg elevation.
+    low_mask = (elev > 10.0) & (elev < 40.0)
+    assert low_mask.any(), f"No suitable low-elevation sample (max elev={elev.max():.1f})."
+    vis_no = np.array(st_no.is_observable(times, src))
+    vis_hor = np.array(st_hor.is_observable(times, src))
+    assert vis_no[low_mask].all(), "Source should be observable without the horizon constraint."
+    assert not vis_hor[low_mask].any(), "Source below the 40 deg horizon must not be observable."
+
+
+def test_catalog_horizons_loaded():
+    """Tests that horizon data from the catalog is parsed for known stations and absent for others."""
+    all_stations = stations.Stations()
+    # Effelsberg has an azimuth-dependent horizon defined in the catalog.
+    ef = all_stations['Ef']
+    assert ef.horizon is not None
+    assert ef.horizon[0].size == ef.horizon[1].size > 1
+    # Onsala85 (O8) has a single flat horizon value.
+    o8 = all_stations['O8']
+    assert o8.horizon is not None
+    assert np.allclose(o8.horizon_min_elevation(np.array([0.0, 180.0])), 7.0)
+    # A station without HOR data must have no horizon.
+    assert all_stations['Mc'].horizon is None
 

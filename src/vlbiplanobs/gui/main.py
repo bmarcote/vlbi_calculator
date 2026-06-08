@@ -24,13 +24,31 @@ from vlbiplanobs.gui import layout
 iers_conf.auto_download = False
 iers_conf.auto_max_age = None
 
-if os.access("/var/log/planobs.log", os.W_OK):
-    logfilename = "/var/log/planobs.log"
-else:
-    logfilename = os.path.expanduser("~/log-planobs.log")
+def setup_file_logging(logfilename: Optional[str] = None) -> int:
+    """Enable loguru file logging for planobs and return the sink handler id.
 
-_LOG = logger.add(logfilename, backtrace=True, diagnose=True,
-                  format="{time:YYYY-MM-DD HH:mm} |  {level} {message}")
+    No log file is created unless this function is called explicitly (e.g. via
+    the CLI ``--logging`` flag). This avoids creating a log file by default.
+
+    Parameters
+    ----------
+    logfilename : Optional[str]
+        Path of the log file. When None, '/var/log/planobs.log' is used if
+        writable, otherwise '~/log-planobs.log'.
+
+    Returns
+    -------
+    int
+        The loguru handler id of the added file sink.
+    """
+    if logfilename is None:
+        if os.access("/var/log/planobs.log", os.W_OK):
+            logfilename = "/var/log/planobs.log"
+        else:
+            logfilename = os.path.expanduser("~/log-planobs.log")
+
+    return logger.add(logfilename, backtrace=True, diagnose=True,
+                      format="{time:YYYY-MM-DD HH:mm} |  {level} {message}")
 
 current_directory = os.path.dirname(os.path.realpath(__file__))
 external_stylesheets: list = ['https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css']
@@ -351,7 +369,8 @@ app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-10
                    html.Div(id='bottom-banner', children=[html.Br(), html.Br(), html.Br()])]))
 
 
-def main(debug: bool = False, host: str = '127.0.0.1', port: int = 8050):
+def main(debug: bool = False, host: str = '127.0.0.1', port: int = 8050,
+         logging: bool | str = False):
     """Start the EVN Observation Planner web server.
 
     Parameters
@@ -362,7 +381,13 @@ def main(debug: bool = False, host: str = '127.0.0.1', port: int = 8050):
         Host address to bind to.
     port : int
         Port number to listen on.
+    logging : bool | str
+        Enable file logging. When False (default) no log file is created.
+        When True a default path is used; when a string, it is the log path.
     """
+    if logging:
+        setup_file_logging(None if logging is True else logging)
+
     return app.run(debug=debug, host=host, port=port)
 
 
@@ -371,5 +396,7 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--debug', action='store_true', default=False, help="Enable debug mode")
     parser.add_argument('--host', type=str, default='127.0.0.1', help="Host address (default: 127.0.0.1)")
     parser.add_argument('--port', type=int, default=8050, help="Port number (default: 8050)")
+    parser.add_argument('--logging', nargs='?', const=True, default=False, metavar='LOGFILE',
+                        help="Enable logging to a file (disabled by default).")
     args = parser.parse_args()
-    main(debug=args.debug, host=args.host, port=args.port)
+    main(debug=args.debug, host=args.host, port=args.port, logging=args.logging)

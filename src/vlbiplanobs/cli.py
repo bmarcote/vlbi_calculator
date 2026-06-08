@@ -718,6 +718,22 @@ def main(band: str, networks: Optional[list[str]] = None,
     return o
 
 
+def _maybe_setup_logging(logging_arg):
+    """Enable file logging when the ``--logging`` flag was provided.
+
+    Parameters
+    ----------
+    logging_arg : bool | str
+        The parsed value of the ``--logging`` flag: False when not given,
+        True when given without a path, or a string path otherwise.
+    """
+    if not logging_arg:
+        return
+
+    from .gui.main import setup_file_logging
+    setup_file_logging(None if logging_arg is True else logging_arg)
+
+
 def cli():
     """Main CLI entry point with subcommands."""
     # Handle version argument early
@@ -757,8 +773,10 @@ def cli():
                        "Use 'planobs <command> --help' for detailed help on each mode.", prog="planobs", formatter_class=RawTextRichHelpFormatter)
         parser.add_argument('-V', '--version', action='version', version=f"%(prog)s {version('vlbiplanobs')}")
         add_observation_arguments(parser)
+        add_logging_argument(parser)
         args = parser.parse_args()
         args.command = 'observe'
+        _maybe_setup_logging(getattr(args, 'logging', False))
         handle_observation_command(args)
         return
 
@@ -801,7 +819,12 @@ def cli():
                                            formatter_class=RawTextRichHelpFormatter)
     add_antenna_arguments(antenna_parser)
 
+    for subparser in (obs_parser, fringe_parser, phase_parser, source_parser,
+                      server_parser, antenna_parser):
+        add_logging_argument(subparser)
+
     args = parser.parse_args()
+    _maybe_setup_logging(getattr(args, 'logging', False))
 
     if args.command == 'observe':
         handle_observation_command(args)
@@ -954,6 +977,19 @@ def add_server_arguments(parser):
     parser.add_argument('--host', type=str, default='127.0.0.1', help="Host address (default: 127.0.0.1)")
     parser.add_argument('--port', type=int, default=8050, help="Port number (default: 8050)")
     parser.add_argument('--debug', action='store_true', default=False, help="Enable debug mode")
+
+
+def add_logging_argument(parser):
+    """Add the optional ``--logging`` flag that enables writing a log file.
+
+    No log file is created by default. When the flag is given without a value,
+    a default path is used ('/var/log/planobs.log' if writable, otherwise
+    '~/log-planobs.log'). An explicit path may also be provided.
+    """
+    parser.add_argument('--logging', nargs='?', const=True, default=False, metavar='LOGFILE',
+                        help="Enable logging to a file. Optionally provide a path;\n"
+                        "otherwise '/var/log/planobs.log' (if writable) or\n"
+                        "'~/log-planobs.log' is used. Disabled by default.")
 
 
 def handle_observation_command(args):

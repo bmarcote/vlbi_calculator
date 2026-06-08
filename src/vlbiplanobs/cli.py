@@ -896,7 +896,12 @@ def add_fringe_finder_arguments(parser):
     """Add arguments for fringe finder search."""
     # Import the main_fringe function to get its argument parser
     # We'll recreate the arguments here
-    parser.add_argument('-s', '--stations', type=str, nargs='+', required=True,
+    parser.add_argument('-n', '--network', type=str, nargs='+',
+                        help="The VLBI network(s) that will participate in\nthe observation. "
+                        "It will take the default stations in each network.\nIf 'stations' "
+                        "is provided, then it will take both the default stations\nplus "
+                        "the ones given in stations. [green]See '--list-networks' to get a list.[/green]")
+    parser.add_argument('-s', '--stations', type=str, nargs='+',
                         help="List of antenna codenames or names that will participate in the observation.")
     parser.add_argument('-t', '--starttime', type=str, required=True,
                         help="Start of the observation in format 'YYYY-MM-DD HH:MM' (UTC).")
@@ -1047,8 +1052,18 @@ def handle_observation_command(args):
 
 def handle_fringe_finder_command(args):
     """Handle the fringe finder command."""
+    if args.network is None and args.stations is None:
+        rprint("[bold red]You need to provide at least a VLBI network "
+               "or a list of antennas that will participate in the observation.[/bold red]")
+        sys.exit(1)
+
     original_argv = sys.argv.copy()
-    sys.argv = ['planobs_fringefinder', '-s'] + args.stations + ['-t', args.starttime, '-d', str(args.duration)]
+    sys.argv = ['planobs_fringefinder']
+    if args.network is not None:
+        sys.argv.extend(['-n'] + args.network)
+    if args.stations is not None:
+        sys.argv.extend(['-s'] + args.stations)
+    sys.argv.extend(['-t', args.starttime, '-d', str(args.duration)])
     if args.min_flux != 0.5:
         sys.argv.extend(['--min-flux', str(args.min_flux)])
     if args.min_elevation != 20.0:

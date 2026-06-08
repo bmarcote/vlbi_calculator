@@ -709,7 +709,10 @@ def main_fringe():
     description = "Find fringe finder sources for VLBI observations"
     parser = argparse.ArgumentParser(description=description, prog="planobs_fringefinder", usage=usage,
                                   formatter_class=RawTextRichHelpFormatter)
-    parser.add_argument('-s', '--stations', type=str, nargs='+', required=True,
+    parser.add_argument('-n', '--network', type=str, nargs='+',
+                        help="The VLBI network(s) that will participate in the observation. "
+                        "It will take the default stations in each network.")
+    parser.add_argument('-s', '--stations', type=str, nargs='+',
                         help="List of antenna codenames or names that will participate in the observation.")
     parser.add_argument('-t', '--starttime', type=str, required=True,
                         help="Start of the observation in format 'YYYY-MM-DD HH:MM' (UTC).")
@@ -729,9 +732,35 @@ def main_fringe():
     parser.add_argument('--json', action='store_true', default=False,
                         help="Output results in JSON format instead of a table.")
     args = parser.parse_args()
+    if args.network is None and args.stations is None:
+        error_msg = "You need to provide at least a VLBI network or a list of antennas."
+        if args.json:
+            print(json.dumps({"error": error_msg}, indent=2))
+        else:
+            rprint(f"[bold red]{error_msg}[/bold red]")
+        sys.exit(1)
+
     obs._STATIONS = obs.Stations(filename=args.station_catalog)
     stations_list = []
-    for s in args.stations:
+    if args.network is not None:
+        try:
+            for n in args.network:
+                network = obs._NETWORKS[n]
+                for s in network.station_codenames:
+                    if s not in stations_list:
+                        stations_list.append(s)
+        except KeyError:
+            unknown_networks = [n for n in args.network if n not in obs._NETWORKS]
+            n_networks = len(unknown_networks)
+            error_msg = (f"The network{'s' if n_networks > 1 else ''} {', '.join(unknown_networks)} "
+                         f"{'are' if n_networks > 1 else 'is'} not known.")
+            if args.json:
+                print(json.dumps({"error": error_msg}, indent=2))
+            else:
+                rprint(f"[bold red]{error_msg}[/bold red]")
+            sys.exit(1)
+
+    for s in args.stations or []:
         try:
             # Try case-sensitive lookup first
             a_station = obs._STATIONS[s.strip()].codename

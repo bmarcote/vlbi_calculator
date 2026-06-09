@@ -62,6 +62,98 @@ class VLBIObs(obs.Observation):
         self._summary_tui()
         # TODO: for now it just calls the TUI
 
+    def per_source_elevations(self) -> dict[str, dict[str, np.ndarray]]:
+        """Returns per-source elevation data across all stations in degrees.
+
+        Returns
+            dict[source_name, dict[station_codename, np.ndarray[float]]]
+                Elevation values in degrees for each source and station.
+        """
+        elevations = self.elevations()
+        result = {}
+        for source_name, station_elevs in elevations.items():
+            result[source_name] = {}
+            for station_codename, elev_values in station_elevs.items():
+                # Convert to degrees and handle astropy Quantities
+                if hasattr(elev_values, 'to'):
+                    result[source_name][station_codename] = elev_values.to(u.deg).value
+                else:
+                    result[source_name][station_codename] = np.asarray(elev_values)
+        return result
+
+    def _plot_source_elevation_terminal(self, src_name: str, src_vis: dict, src_elev: dict, time_labels: list[str]) -> None:
+        """Render a per-antenna elevation plot for one source using plotext.
+
+        Each visible time step is plotted as a colored scatter point.
+        Color encodes elevation: red (<10°), yellow (10-20°), green (20-40°),
+        cyan (40-60°), blue (>60°). Invisible steps are left blank.
+
+        Inputs
+        - src_name : str
+            Source name used as the plot title.
+        - src_vis : dict[str, np.ndarray]
+            Boolean visibility array per antenna codename.
+        - src_elev : dict[str, np.ndarray]
+            Elevation in degrees per antenna codename.
+        - time_labels : list[str]
+            Time label string for every time step (x-axis tick labels).
+        """
+        import plotext as pltx
+        import shutil
+
+        antenna_names = list(src_vis.keys())
+        n_times = len(next(iter(src_vis.values())))
+        n_ants = len(antenna_names)
+        if n_times == 0 or n_ants == 0:
+            return
+
+        pltx.clf()
+        pltx.theme('clear')
+
+        # Elevation color bands — same scheme as GUI.
+        # 256-colour index 226 = bright yellow (avoids 'yellow' rendering as white).
+        bands = [
+            (0,  10, 'red',  '< 10°'),
+            (10, 20, 226,    '10–20°'),
+            (20, 40, 'green','20–40°'),
+            (40, 60, 'cyan', '40–60°'),
+            (60, 90, 'blue', '> 60°'),
+        ]
+
+        # Legend width = "▪▪ " prefix (3) + longest label + 1 padding.
+        # Extend xlim left by this amount so the legend occupies negative x space
+        # and never overlaps the data.  Widen the canvas by the same amount so
+        # data density stays at ~1 column per time step.
+        legend_offset = max(len(label) for *_, label in bands) + 4
+        y_margin = max(len(a) for a in antenna_names) + 4
+        term_width = shutil.get_terminal_size((120, 24)).columns
+        canvas_width = min(term_width, n_times + y_margin + legend_offset)
+        pltx.plot_size(canvas_width, n_ants + 6)
+
+        for el_min, el_max, color, label in bands:
+            xs: list[int] = []
+            ys: list[int] = []
+            for y_idx, ant in enumerate(antenna_names):
+                visibility = src_vis.get(ant, np.zeros(n_times, dtype=bool))
+                elevations = src_elev.get(ant, np.zeros(n_times))
+                for x_idx, (is_vis, elev) in enumerate(zip(visibility, elevations)):
+                    if is_vis and el_min <= float(elev) < el_max:
+                        xs.append(x_idx)
+                        ys.append(y_idx)
+            if xs:
+                pltx.scatter(xs, ys, color=color, marker='▪', label=label)
+
+        pltx.yticks(list(range(n_ants)), antenna_names)
+        pltx.ylim(-0.5, n_ants - 0.5)
+
+        # Show three x-axis ticks: start, middle, end
+        mid = n_times // 2
+        pltx.xticks([0, mid, n_times - 1], [time_labels[0], time_labels[mid], time_labels[-1]])
+        pltx.xlim(-legend_offset, n_times - 0.5)
+
+        pltx.title(src_name)
+        pltx.show()
+
     def _summary_tui(self):
         """Prints the infromation for the given Observation, for testing purposes
         """
@@ -169,6 +261,7 @@ class VLBIObs(obs.Observation):
             doing_gst = False
 
         per_src = self.per_source_observable()
+        per_src_elev = self.per_source_elevations()
         rms_noise = self.thermal_noise()
         ontarget_time = self.ontarget_time
         sun_per_src = self.sun_constraint_per_source(times=self._REF_YEAR if doing_gst else None)
@@ -187,6 +280,7 @@ class VLBIObs(obs.Observation):
                              ablock.sources())
             for src in block_sources:
                 src_vis = per_src.get(src.name, {})
+                src_elev = per_src_elev.get(src.name, {})
                 if not src_vis:
                     continue
                 # Check if source is always observable by all stations
@@ -201,23 +295,18 @@ class VLBIObs(obs.Observation):
                 else:
                     rprint(' [dim](nobody can observe it all the time)[/dim]')
 
-                for ant in src_vis:
-                    rprint(f"        {ant:4}| {''.join(['◼︎' if b else ' ' for b in src_vis[ant]])}")
-
-                # Time axis under the last station row
-                last_vis = list(src_vis.values())[-1]
-                rprint(f"            |-{''.join(['-' for _ in last_vis])}|")
+                # Build time-axis labels then hand off to plotext
                 if doing_gst:
-                    temp = (24*u.hourangle
-                            if np.abs(localtimes[-1].mjd - localtimes[0].mjd - 1) < 0.1
-                            else 0.0*u.hourangle)
-                    rprint(f"            {gstimes[0].to_string(sep=':', fields=2, pad=True)} GST"
-                           f"{''.join([' ' for _ in last_vis][:-11])}"
-                           f"{(gstimes[-1] + temp).to_string(sep=':', fields=2, pad=True)}")
+                    t_wrap = (24*u.hourangle
+                              if np.abs(localtimes[-1].mjd - localtimes[0].mjd - 1) < 0.1
+                              else 0.0*u.hourangle)
+                    time_labels = [f"{gst.to_string(sep=':', fields=2, pad=True)} GST"
+                                   for gst in gstimes]
+                    time_labels[-1] = (gstimes[-1] + t_wrap).to_string(sep=':', fields=2, pad=True)
                 else:
-                    rprint(f"            {self.times.datetime[0].strftime('%H:%M'):05} UTC"
-                           f"{''.join([' ' for _ in last_vis][:-11])}"
-                           f"{self.times.datetime[-1].strftime('%H:%M'):05}")
+                    time_labels = [f"{t.strftime('%H:%M')} UTC" for t in self.times.datetime]
+
+                self._plot_source_elevation_terminal(src.name, src_vis, src_elev, time_labels)
 
             # "When everyone can observe" and "optimal visibility" — use block-level
             if doing_gst:

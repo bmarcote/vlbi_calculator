@@ -129,18 +129,130 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
           [Input('band-slider', 'value'),
            Input('switch-specify-e-evn', 'value')])
 def enable_antennas_with_band(band_index: int, do_e_evn: bool):
+    grouped_codenames = {s.codename for slist in inputs.station_groups().values() for s in slist}
+    ungrouped = [ant for ant in observation._STATIONS if ant.codename not in grouped_codenames]
     if band_index == 0:
-        return [False for _ in observation._STATIONS]
+        return [False for _ in ungrouped]
 
     return [not ant.has_band(inputs.band_from_index(band_index)) or (do_e_evn and not ant.real_time)
-            for ant in observation._STATIONS]
+            for ant in ungrouped]
 
 
-@callback(Output('switches-antennas', 'value', allow_duplicate=True),
-          Input({'type': 'network-switch', 'index': ALL}, 'value'),
-          State('switches-antennas', 'value'),
-          prevent_initial_call=True)
-def update_selected_antennas_from_networks(networks, current_antennas):
+@callback(
+    [Output({'type': 'group-is-selected', 'index': MATCH}, 'data'),
+     Output('switches-antennas', 'value', allow_duplicate=True)],
+    Input({'type': 'group-toggle-btn', 'index': MATCH}, 'n_clicks'),
+    [State({'type': 'group-is-selected', 'index': MATCH}, 'data'),
+     State({'type': 'group-active-codename', 'index': MATCH}, 'data'),
+     State('switches-antennas', 'value')],
+    prevent_initial_call=True
+)
+def toggle_group_chip(n_clicks, is_selected, active_codename, current_antennas):
+    """Toggle a grouped antenna chip on/off, adding or removing its active codename
+    from the switches-antennas selection."""
+    if n_clicks is None:
+        raise PreventUpdate
+    new_selected = not bool(is_selected)
+    current_set = set(current_antennas or [])
+    if new_selected:
+        current_set.add(active_codename)
+    else:
+        current_set.discard(active_codename)
+    return new_selected, list(current_set)
+
+
+@callback(
+    [Output({'type': 'group-active-codename', 'index': ALL}, 'data', allow_duplicate=True),
+     Output('switches-antennas', 'value', allow_duplicate=True)],
+    Input({'type': 'group-menu-item', 'index': ALL}, 'n_clicks'),
+    [State({'type': 'group-active-codename', 'index': ALL}, 'data'),
+     State({'type': 'group-is-selected', 'index': ALL}, 'data'),
+     State('switches-antennas', 'value')],
+    prevent_initial_call=True
+)
+def switch_group_config(menu_clicks, active_codenames, is_selected_list, current_antennas):
+    """Switch the active configuration for a grouped antenna when the user picks a menu item.
+    Parses the triggered menu item index ('group__codename') to identify the group, then
+    updates that group's active codename and swaps the codename in switches-antennas if the
+    group is currently selected.
+    """
+    if not ctx.triggered_id:
+        raise PreventUpdate
+    triggered_index = ctx.triggered_id.get('index', '')
+    if '__' not in triggered_index:
+        raise PreventUpdate
+    group_name_triggered, new_codename = triggered_index.split('__', 1)
+
+    # Build ordered list of group names matching the ALL store order
+    group_names = [item['id']['index'] for item in ctx.states_list[0]]
+    try:
+        group_idx = group_names.index(group_name_triggered)
+    except ValueError:
+        raise PreventUpdate
+
+    current_codename = active_codenames[group_idx]
+    if new_codename == current_codename:
+        raise PreventUpdate
+
+    new_active_codenames = list(active_codenames)
+    new_active_codenames[group_idx] = new_codename
+
+    current_set = set(current_antennas or [])
+    if is_selected_list[group_idx]:
+        current_set.discard(current_codename)
+        current_set.add(new_codename)
+
+    return new_active_codenames, list(current_set)
+
+
+@callback(
+    [Output({'type': 'group-toggle-btn', 'index': MATCH}, 'children'),
+     Output({'type': 'group-toggle-btn', 'index': MATCH}, 'className'),
+     Output({'type': 'group-chip-wrapper', 'index': MATCH}, 'style')],
+    [Input({'type': 'group-active-codename', 'index': MATCH}, 'data'),
+     Input({'type': 'group-is-selected', 'index': MATCH}, 'data'),
+     Input('band-slider', 'value'),
+     Input('switch-specify-e-evn', 'value')],
+)
+def update_group_chip_appearance(active_codename, is_selected, band_index, do_e_evn):
+    """Update the toggle button label and styling to reflect the active config and
+    selected/disabled state. Also dims the group chip wrapper when the active config
+    cannot observe the selected band."""
+    ant = observation._STATIONS[active_codename]
+    group_name = ctx.outputs_list[0]['id']['index']
+    label = group_name.upper()
+
+    disabled = False
+    if band_index and band_index != 0:
+        band = inputs.band_from_index(band_index)
+        disabled = not ant.has_band(band) or (do_e_evn and not ant.real_time)
+
+    css_class = 'btn-group-chip-toggle '
+    if disabled:
+        css_class += 'btn-group-chip-disabled'
+    elif is_selected:
+        css_class += 'btn-group-chip-on'
+    else:
+        css_class += 'btn-group-chip-off'
+
+    wrapper_style = {'display': 'inline-flex', 'align-items': 'center',
+                     'opacity': '0.45' if disabled else '1.0'}
+    return label, css_class, wrapper_style
+
+
+@callback(
+    [Output('switches-antennas', 'value', allow_duplicate=True)] +
+    [Output({'type': 'group-is-selected', 'index': gname}, 'data', allow_duplicate=True)
+     for gname in inputs.station_groups()],
+    Input({'type': 'network-switch', 'index': ALL}, 'value'),
+    [State('switches-antennas', 'value')] +
+    [State({'type': 'group-active-codename', 'index': gname}, 'data')
+     for gname in inputs.station_groups()],
+    prevent_initial_call=True
+)
+def update_selected_antennas_from_networks(networks, current_antennas, *group_active_codenames):
+    """When a network switch is toggled, update both the ungrouped chip selection and
+    the is-selected state for each grouped antenna whose active codename is in the network."""
     current_antennas = set(current_antennas)
     ants2include = set()
     ants2exclude = set()
@@ -151,9 +263,20 @@ def update_selected_antennas_from_networks(networks, current_antennas):
         else:
             ants2exclude.update(network.station_codenames)
 
-    # Exclude antennas that are not in the selected networks
     ants2exclude -= ants2include
-    return tuple(current_antennas - ants2exclude | ants2include)
+    new_antennas = current_antennas - ants2exclude | ants2include
+
+    group_selected_states = []
+    for active_codename in group_active_codenames:
+        if active_codename in ants2include:
+            group_selected_states.append(True)
+        elif active_codename in ants2exclude:
+            group_selected_states.append(False)
+        else:
+            # No network touched this group's active config — keep current state
+            group_selected_states.append(no_update)
+
+    return [list(new_antennas)] + group_selected_states
 
 
 # Clientside callback for epoch toggle.

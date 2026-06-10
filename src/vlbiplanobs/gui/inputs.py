@@ -359,10 +359,10 @@ def _grouped_chip_component(app, group_name: str, group_stations: list[stations.
         ]
     )
 
-    # The toggle button (on/off) shows the active config name. Clicking it toggles selection.
+    # The toggle button (on/off) shows the group name. Clicking it toggles selection.
     toggle_btn = html.Button(
         id={'type': 'group-toggle-btn', 'index': group_name},
-        children=group_stations[0].name,
+        children=group_name.upper(),
         className='btn-group-chip-toggle btn-group-chip-off',
         title=f"Toggle {group_name.upper()} antenna",
     )

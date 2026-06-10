@@ -50,7 +50,7 @@ dependencies = [
   # "polars>=0.20.0",
   # "jax>=0.4.0",
   # "jaxlib>=0.4.0",
-  # "ortools",
+  "ortools>=9.0",
   "plotly",
   "dash>=3.0",
   "dash-bootstrap-components>=2.0",

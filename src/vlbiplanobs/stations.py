@@ -64,7 +64,8 @@ class Station(object):
                  max_datarate: Optional[u.Quantity | dict[str, u.Quantity]] = None,
                  datarate: Optional[u.Quantity] = None, decommissioned: bool = False,
                  sched_name: Optional[str] = None,
-                 horizon: Optional[tuple[np.ndarray, np.ndarray]] = None) -> None:
+                 horizon: Optional[tuple[np.ndarray, np.ndarray]] = None,
+                 group: Optional[str] = None) -> None:
         """Initializes a station.
 
         Inputs
@@ -125,6 +126,11 @@ class Station(object):
             must be above this interpolated horizon (in addition to the mount axis limits) to be
             considered observable. Used to model terrain/structure blockage that is higher than the
             nominal axis elevation limit.
+        - group : str [OPTIONAL]
+            Group identifier shared by multiple configurations of the same physical antenna
+            (e.g. 'vla' for both Y1 and Y27). Used by the GUI to collapse related configurations
+            into a single chip with a dropdown for selecting which configuration to use.
+            Only one configuration per group can be selected at a time.
         """
         for a_var, a_var_name in zip((name, codename, country, diameter),
                                      ("name", "codename", "country", "diameter")):
@@ -184,6 +190,8 @@ class Station(object):
             self._constraints.append(constraints.HorizonConstraint(self._horizon[0]*u.deg,
                                                                    self._horizon[1]*u.deg))
 
+        self._group: Optional[str] = group
+
     @property
     def name(self) -> str:
         """Name of the station."""
@@ -229,6 +237,11 @@ class Station(object):
     def sched_name(self) -> str:
         """Station name as used in the SCHED software catalog."""
         return self._sched_name
+
+    @property
+    def group(self) -> Optional[str]:
+        """Group identifier for multi-configuration antennas (e.g. 'vla'). None if standalone."""
+        return self._group
 
     @property
     def real_time(self) -> bool:
@@ -994,11 +1007,15 @@ class Stations(object):
             except ValueError:
                 raise ValueError(f"when loading the horizon data from antenna {station['station']}.")
 
+        group = station.get("group", None)
+        if group is not None:
+            group = group.strip() or None
+
         return Station(stationname, station["code"],
                        tuple([n.strip() for n in station["networks"].split(",") if n.strip() != '']),
                        a_loc, sefds, station["station"], station["country"], station["diameter"],
                        does_real_time, amount, max_dt, decommissioned=is_decommissioned,
-                       sched_name=sched_name, horizon=horizon)
+                       sched_name=sched_name, horizon=horizon, group=group)
 
     @staticmethod
     def _get_stations_from_configfile(filename: Optional[str] = None,

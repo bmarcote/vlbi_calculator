@@ -313,7 +313,7 @@ class VLBIObs(obs.Observation):
                 when_everyone = self.when_is_observable(mandatory_stations='all',
                                                         return_gst=True)[ablockname]
                 if len(when_everyone) > 0:
-                    rprint("\n[bold]Everyone can observe the block at: [/bold]", end='')
+                    rprint("\n[bold]All antennas can observe the block simultaneously at: [/bold]", end='')
                     rprint(', '.join([t1.to_string(sep=':', fields=2, pad=True) + '-' +
                            t2.to_string(sep=':', fields=2, pad=True) +
                            ' GST' for t1, t2 in when_everyone]))
@@ -322,7 +322,7 @@ class VLBIObs(obs.Observation):
             else:
                 when_everyone = self.when_is_observable(mandatory_stations='all')[ablockname]
                 if len(when_everyone) > 0:
-                    rprint("\n[bold]Everyone can observe the block at: [/bold]", end='')
+                    rprint("\n[bold]All antennas can observe the block simultaneously at: [/bold]", end='')
                     rprint(', '.join([t1.strftime('%d %b %Y %H:%M')+'-'+t2.strftime('%H:%M') +
                            ' UTC' for t1, t2 in when_everyone]))
                 else:
@@ -330,7 +330,7 @@ class VLBIObs(obs.Observation):
 
             min_stat = 3 if len(self.stations) > 3 else min(2, len(self.stations))
             if len(self.stations) > 2:
-                rprint(f"[bold]Optimal visibility range (> {min_stat} antennas):[/bold] ", end='')
+                rprint(f"[bold]Optimal visibility window (> {min_stat} antennas simultaneously):[/bold] ", end='')
                 if doing_gst:
                     rprint(', '.join([t1.to_string(sep=':', fields=2, pad=True) + '--' +
                                       (t2 + (24*u.hourangle if np.abs(t1 - t2) < 0.1*u.hourangle

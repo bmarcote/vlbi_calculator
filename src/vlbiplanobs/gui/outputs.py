@@ -617,11 +617,11 @@ def print_observability_ranges(o: Optional[cli.VLBIObs]) -> html.Div:
         text += ["The source cannot be observed by all stations at the same time."]
     else:
         if o.fixed_time:
-            text += ["Everyone can observe the source on " +
+            text += ["All antennas can observe the source simultaneously on " +
                      ', '.join([t1.strftime('%d %b %Y %H:%M')+'-'+t2.strftime('%H:%M') +
                                 ' UTC.' for t1, t2 in when_everyone])]
         else:
-            text += ["Everyone can observe the source at " +
+            text += ["All antennas can observe the source simultaneously between " +
                      ', '.join([t1.to_string(sep=':', fields=2, pad=True) + '-' +
                                 t2.to_string(sep=':', fields=2, pad=True) +
                                 ' GST.' for t1, t2 in when_everyone])]
@@ -636,12 +636,11 @@ def print_observability_ranges(o: Optional[cli.VLBIObs]) -> html.Div:
                      ', '.join([ant for ant in o.stations.station_codenames if ant not in ant_can]),
                      '.', html.Br()]
     else:
-        text += [f"{'And' if not when_everyone else 'But'} there are no antennas that can observe "
-                 "the source at all time.", html.Br()]
+        text += ["No individual antenna can observe the source continuously at all times.", html.Br()]
 
     min_stat = 3 if len(o.stations) > 3 else min(2, len(o.stations))
     if len(o.stations) > 2:
-        text += [f"The optimal visibility range (> {min_stat} antennas) occurs on "]
+        text += [f"The optimal visibility window, where > {min_stat} antennas can observe the source simultaneously, is "]
         if not o.fixed_time:
             text += [', '.join([t1.to_string(sep=':', fields=2, pad=True) + '-' +
                                 (t2 + (24*u.hourangle if np.abs(t1 - t2) < 0.1*u.hourangle
@@ -1070,7 +1069,7 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
                                         ' GST.' for t1, t2
                                         in o.when_is_observable(min_stations=min_stat,
                                                                 return_gst=not o.fixed_time)[ablockname]]))
-                layout.append_layout_element(pdf.Paragraph(f"{text}. Optimal visibility range (> {min_stat} antennas) at "
+                layout.append_layout_element(pdf.Paragraph(f"{text}. Optimal visibility window (> {min_stat} antennas simultaneously) at "
                                          f"{gst_range}{' for '+ablockname if len(srcup) > 1 else ''}"))
 
     sun_const = o.sun_constraint()

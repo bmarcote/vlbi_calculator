@@ -57,6 +57,20 @@ The web GUI provides interactive versions of the same capabilities available thr
 - **Resolution estimator** – angular resolution for the selected stations and band.
 - **Station map** – geographic map of the participating antennas.
 
+### Antenna Selection
+
+The antenna panel lets you select stations individually or by network.
+
+- **Single-configuration antennas** appear as standard toggle chips. Click to include/exclude from the observation.
+- **Multi-configuration antennas** (VLA, MeerKAT, SKAO) appear as a **split-button chip**:
+  - The chip label shows the group name (e.g. `VLA`).
+  - The **▼** button on the right opens a dropdown to switch between configurations (e.g. single dish vs. phased array). Hovering over each option shows the full antenna information card.
+  - Selecting any configuration from the dropdown automatically includes that antenna in the observation.
+  - The currently active configuration is highlighted in the dropdown menu.
+  - Only one configuration per group can be active at a time.
+- Chips dim automatically when the active configuration does not support the selected observing band.
+- **Network switches** select/deselect all antennas in a predefined network at once, including the appropriate configuration for grouped antennas.
+
 ---
 
 ## When to Use This Mode

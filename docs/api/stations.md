@@ -13,6 +13,9 @@ Represents a single radio telescope.
 - `networks` - Networks this station belongs to
 - `location` - Geographic coordinates
 - `bands` - Available observing bands
+- `group` - Group identifier for multi-configuration antennas (e.g. `'VLA'`). `None` for standalone stations. Used by the GUI to collapse configurations into a single chip.
+- `horizon` - Azimuth-dependent local horizon as a `(az_deg, el_deg)` tuple of NumPy arrays. `None` if no horizon data is available. Used to exclude elevations below terrain/structure blockage at a given azimuth.
+- `horizon_min_elevation(az)` - Returns the minimum observable elevation (degrees) at a given azimuth. Returns `0` if no horizon is defined.
 
 ### Example
 

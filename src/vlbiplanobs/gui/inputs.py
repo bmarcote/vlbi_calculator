@@ -330,11 +330,12 @@ def _grouped_chip_component(app, group_name: str, group_stations: list[stations.
     ]
 
     menu_items = []
-    for s in group_stations:
+    for i, s in enumerate(group_stations):
         item_content = dmc.MenuItem(
             s.name,
             id={'type': 'group-menu-item', 'index': f"{group_name}__{s.codename}"},
-            style={'font-size': '0.85rem'}
+            style={'font-size': '0.85rem'},
+            className='group-menu-item-active' if i == 0 else '',
         )
         menu_items.append(
             dmc.HoverCard(shadow="lg", radius="lg", openDelay=700, position='right',
@@ -375,7 +376,7 @@ def _grouped_chip_component(app, group_name: str, group_stations: list[stations.
             )
         ],
         id={'type': 'group-chip-wrapper', 'index': group_name},
-        style={'display': 'inline-flex', 'align-items': 'center'}
+        style={'display': 'inline-flex', 'align-items': 'center', 'align-self': 'center'}
     )
     return wrapper
 

@@ -163,6 +163,7 @@ def toggle_group_chip(n_clicks, is_selected, active_codename, current_antennas):
 
 @callback(
     [Output({'type': 'group-active-codename', 'index': ALL}, 'data', allow_duplicate=True),
+     Output({'type': 'group-is-selected', 'index': ALL}, 'data', allow_duplicate=True),
      Output('switches-antennas', 'value', allow_duplicate=True)],
     Input({'type': 'group-menu-item', 'index': ALL}, 'n_clicks'),
     [State({'type': 'group-active-codename', 'index': ALL}, 'data'),
@@ -172,9 +173,9 @@ def toggle_group_chip(n_clicks, is_selected, active_codename, current_antennas):
 )
 def switch_group_config(menu_clicks, active_codenames, is_selected_list, current_antennas):
     """Switch the active configuration for a grouped antenna when the user picks a menu item.
-    Parses the triggered menu item index ('group__codename') to identify the group, then
-    updates that group's active codename and swaps the codename in switches-antennas if the
-    group is currently selected.
+    Always selects the group (turns it on) when a config is chosen — picking a config implies
+    including that antenna in the observation. Removes the old codename and adds the new one
+    to switches-antennas.
     """
     if not ctx.triggered_id:
         raise PreventUpdate
@@ -191,18 +192,39 @@ def switch_group_config(menu_clicks, active_codenames, is_selected_list, current
         raise PreventUpdate
 
     current_codename = active_codenames[group_idx]
-    if new_codename == current_codename:
-        raise PreventUpdate
 
     new_active_codenames = list(active_codenames)
     new_active_codenames[group_idx] = new_codename
 
-    current_set = set(current_antennas or [])
-    if is_selected_list[group_idx]:
-        current_set.discard(current_codename)
-        current_set.add(new_codename)
+    new_is_selected = [no_update] * len(is_selected_list)
+    new_is_selected[group_idx] = True
 
-    return new_active_codenames, list(current_set)
+    current_set = set(current_antennas or [])
+    current_set.discard(current_codename)
+    current_set.add(new_codename)
+
+    return new_active_codenames, new_is_selected, list(current_set)
+
+
+@callback(
+    Output({'type': 'group-menu-item', 'index': ALL}, 'className'),
+    [Input({'type': 'group-active-codename', 'index': ALL}, 'data'),
+     Input('switches-antennas', 'value')],
+)
+def highlight_active_menu_item(active_codenames, _switches):
+    """Set className on each menu item to mark the active configuration.
+    Uses a CSS class rather than Mantine style props so the highlight survives
+    Dash re-renders triggered by unrelated callbacks (e.g. observation compute).
+    Re-triggered by switches-antennas changes to re-apply after any full update.
+    """
+    active_set = set(active_codenames)
+
+    classes = []
+    for item in ctx.outputs_list[0]:
+        index = item['id']['index']  # format: 'groupname__codename'
+        codename = index.split('__', 1)[1] if '__' in index else ''
+        classes.append('group-menu-item-active' if codename in active_set else '')
+    return classes
 
 
 @callback(
@@ -235,7 +257,7 @@ def update_group_chip_appearance(active_codename, is_selected, band_index, do_e_
     else:
         css_class += 'btn-group-chip-off'
 
-    wrapper_style = {'display': 'inline-flex', 'align-items': 'center',
+    wrapper_style = {'display': 'inline-flex', 'align-items': 'center', 'align-self': 'center',
                      'opacity': '0.45' if disabled else '1.0'}
     return label, css_class, wrapper_style
 

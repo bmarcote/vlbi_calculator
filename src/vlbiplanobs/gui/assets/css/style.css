@@ -161,15 +161,20 @@ input[type=time] {
 .btn-group-chip-toggle {
     border: none;
     background: transparent;
-    padding: 2px 6px;
-    font-size: 0.85rem;
+    padding: 0 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.875rem;
     cursor: pointer;
     outline: none;
     font-family: inherit;
-    border-radius: 0.8rem 0 0 0.8rem;
+    border-radius: 1rem 0 0 1rem;
     transition: background-color 0.15s ease, color 0.15s ease;
     white-space: nowrap;
     user-select: none;
+    height: 1.875rem;
+    display: flex;
+    align-items: center;
 }
 
 .btn-group-chip-off {
@@ -201,14 +206,17 @@ input[type=time] {
     border: none;
     border-left: 1px solid rgba(0, 73, 144, 0.35);
     background: transparent;
-    padding: 2px 7px;
-    font-size: 0.85rem;
+    padding: 0 0.5rem;
+    font-size: 0.875rem;
     cursor: pointer;
     line-height: 1;
     color: #004990;
-    border-radius: 0 0.8rem 0.8rem 0;
+    border-radius: 0 1rem 1rem 0;
     transition: background-color 0.15s ease, color 0.15s ease;
     user-select: none;
+    height: 1.875rem;
+    display: flex;
+    align-items: center;
 }
 
 .btn-group-config-arrow:hover {
@@ -219,16 +227,25 @@ input[type=time] {
 .group-chip-inner {
     border: 1.5px solid #004990;
     border-radius: 1rem;
-    padding: 1px 2px;
+    padding: 0;
     background: white;
     display: inline-flex;
-    align-items: center;
+    align-items: stretch;
     gap: 0;
+    height: 1.875rem;
+    box-sizing: border-box;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    vertical-align: middle;
 }
 
 .group-chip-inner:hover {
     box-shadow: 0 0 0 2px rgba(0, 73, 144, 0.18);
+}
+
+.group-menu-item-active {
+    background-color: rgba(0, 73, 144, 0.12) !important;
+    color: #004990 !important;
+    font-weight: 600 !important;
 }
 
 /* Override theme min-width so the layout can shrink on small screens */
@@ -240,4 +257,135 @@ input[type=time] {
 .container-md,
 .container-sm {
     min-width: 0;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Professional polish
+   Theme-aware refinements layered on top of the soft-ui / FLATLY theme.
+   Uses the CSS variables defined in theme.css so light/dark modes both work.
+   Brand colours: #004990 (EVN blue), #a01d26 (accent red).
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Smoother text rendering across the app */
+body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+/* Cards: consistent radius, refined border, gentle shadow deepen on hover */
+.card {
+    border-radius: 0.75rem;
+    border: 1px solid var(--card-border);
+    transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+    box-shadow: var(--shadow-lg);
+}
+
+/* Headings: tighter, more deliberate typography */
+h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.01em;
+}
+
+h2.font-weight-bolder {
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+/* Buttons: consistent radius and a gentle interaction feedback */
+.btn {
+    border-radius: 0.5rem;
+    transition: background-color 0.15s ease, border-color 0.15s ease,
+                box-shadow 0.15s ease, transform 0.05s ease;
+}
+
+.btn:hover {
+    box-shadow: var(--shadow-sm);
+}
+
+.btn:active {
+    transform: translateY(1px);
+}
+
+/* Form controls: clearer, brand-coloured focus ring */
+.form-control:focus,
+.form-picker:focus-within,
+.SingleDatePickerInput:focus-within,
+.mantine-Select-input:focus,
+.mantine-NumberInput-input:focus,
+.mantine-TextInput-input:focus,
+input[type=time]:focus {
+    border-color: var(--link-color) !important;
+    box-shadow: 0 0 0 0.15rem rgba(0, 73, 144, 0.18) !important;
+    outline: none;
+}
+
+/* Output tabs: cleaner separation + brand-coloured active indicator */
+.nav-tabs {
+    border-bottom: 1px solid var(--border-light);
+}
+
+.nav-tabs .nav-link {
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 0.6rem 1rem;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.nav-tabs .nav-link.active {
+    background-color: transparent !important;
+    border-bottom: 2px solid #004990;
+}
+
+/* Floating info button: compact, circular, brand-accent */
+.btn-floating-info {
+    width: 3.25rem;
+    height: 3.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--bg-card);
+    box-shadow: var(--shadow-md);
+    text-shadow: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+}
+
+.btn-floating-info:hover {
+    transform: scale(1.08);
+    box-shadow: var(--shadow-lg);
+    text-shadow: none;
+}
+
+.btn-floating-info i {
+    font-size: 2rem !important;
+}
+
+/* Custom scrollbars for a tidier, modern feel */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-muted);
+    background-clip: content-box;
 }

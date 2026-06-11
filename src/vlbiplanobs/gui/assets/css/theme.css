@@ -808,6 +808,20 @@ th, td {
     }
 }
 
+/* Output tabs: use secondary text color for tab labels */
+.nav-tabs .nav-link {
+    color: var(--text-secondary) !important;
+}
+
+.nav-tabs .nav-link.active {
+    color: var(--text-secondary) !important;
+    font-weight: 600;
+}
+
+.nav-tabs .nav-link:hover {
+    color: var(--text-primary) !important;
+}
+
 /* Dash 4 dcc.Input: hide the debounce submit indicator (prevents double ticks) */
 .dash-input-submit-indicator {
     display: none !important;

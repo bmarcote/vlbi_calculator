@@ -811,6 +811,10 @@ class Observation(object):
                 dec_ok = (dec_deg >= dec_min) & (dec_deg <= dec_max)
                 visible = ha_ok & dec_ok & (elev > 5.0)
 
+            # Apply the azimuth-dependent local horizon, if defined for this station
+            if station.horizon is not None:
+                visible &= elev > station.horizon_min_elevation(az)
+
             # visible shape: (n_times, n_sources) — store per-source column
             for s_idx, src in enumerate(sources_list):
                 result[src.name][station.codename] = visible[:, s_idx]

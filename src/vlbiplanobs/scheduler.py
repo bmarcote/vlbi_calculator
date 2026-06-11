@@ -27,6 +27,13 @@ from .sources import Source, SourceType, ScanBlock, Scan
 from .observation import Observation
 from . import calibrators
 
+try:
+    from ortools.sat.python import cp_model
+    _HAS_ORTOOLS = True
+except ImportError:  # pragma: no cover - exercised only when ortools missing
+    cp_model = None  # type: ignore
+    _HAS_ORTOOLS = False
+
 log = logging.getLogger(__name__)
 
 _EMERLIN_CODES = {'CM', 'KN', 'PI', 'DA', 'DE', 'JB2', 'JB1'}
@@ -120,6 +127,16 @@ class ObservationScheduler:
     EMERLIN_3C286_DUR = 5 * u.min
     GAP_DUR = 30 * u.s
     GAP_INTERVAL = 10 * u.min
+
+    # --- CP-SAT objective weights (integer coefficients) ---
+    # Spread term rewards a large minimum gap (in grid cells) between
+    # consecutive fringe-finder scans.  Separation term penalises the angular
+    # distance (deg) between a fringe finder and the science target it
+    # interrupts.  Elevation term mildly prefers high-elevation FF placements.
+    CP_W_SPREAD = 1000
+    CP_W_SEPARATION = 10
+    CP_W_ELEVATION = 1
+    CP_MAX_SOLVE_SECONDS = 5.0
 
     def __init__(self, observation: Observation, min_antennas: int = 2,
                  require_all_antennas: bool = False,
@@ -823,6 +840,331 @@ class ObservationScheduler:
         return sorted(all_blocks, key=lambda b: b.start_time.mjd)
 
     # ------------------------------------------------------------------
+    # CP-SAT scheduling  (constraint-programming layout)
+    # ------------------------------------------------------------------
+
+    def _block_source_coord(self, name: str) -> Optional[SkyCoord]:
+        """Return the sky coordinate of the first source in a scan block."""
+        block = self.obs.scans.get(name)
+        if block is None:
+            return None
+        srcs = block.sources()
+        return srcs[0].coord if srcs else None
+
+    def _min_block_duration(self, name: str) -> u.Quantity:
+        """Return the minimum duration to fit one pass of a scan block."""
+        block = self.obs.scans[name]
+        return sum(s.duration.to(u.min).value for s in block.scans) * u.min
+
+    def _layout_science(self, sci_names: list[str], eff_t0: Time, eff_t1: Time) -> list[ScheduledScanBlock]:
+        """Lay out science blocks contiguously across [eff_t0, eff_t1] (no calibrators).
+
+        For a single science block the whole window is filled with it.  For
+        multiple blocks the time is equalised per source, ordered by optimal
+        observing window, and slew-minimised via nearest-neighbour.  Fringe
+        finders and other calibrators are inserted afterwards by splitting these
+        science blocks (see ``_insert_aux``).
+
+        Parameters
+        ----------
+        sci_names : list[str]
+            Science block names.
+        eff_t0, eff_t1 : Time
+            Effective observation window where science is observable.
+
+        Returns
+        -------
+        list[ScheduledScanBlock]
+            Contiguous science blocks covering the window.
+        """
+        if not sci_names:
+            return []
+        if len(sci_names) == 1:
+            name = sci_names[0]
+            block = self.obs.scans[name]
+            span = (eff_t1 - eff_t0)
+            try:
+                scans = block.fill(span.to(u.min))
+            except Exception:
+                scans = list(block.scans)
+            mid = eff_t0 + span * 0.5
+            return [ScheduledScanBlock(
+                name=name, block=block, start_time=eff_t0, end_time=eff_t1, scans=scans,
+                n_antennas=self._vis_at(name, mid), mean_elevation=self._elev_at(name, mid))]
+
+        n = len(sci_names)
+        tps = (eff_t1 - eff_t0) / n
+        peak = {nm: self._find_optimal_window(nm, eff_t0, eff_t1, tps)[0] for nm in sci_names}
+        ordered = sorted(sci_names, key=lambda nm: peak[nm].mjd)
+        ordered = self._nearest_neighbor_order(ordered)
+
+        blocks: list[ScheduledScanBlock] = []
+        cur = eff_t0
+        for i, name in enumerate(ordered):
+            remaining = n - i
+            this_dur = (eff_t1 - cur) / remaining
+            block = self.obs.scans[name]
+            sci_dur = min(this_dur, (eff_t1 - cur)).to(u.min)
+            try:
+                scans = block.fill(sci_dur)
+            except Exception:
+                scans = list(block.scans)
+            actual = sum(s.duration.to(u.min).value for s in scans) * u.min
+            if actual.to(u.min).value <= 0:
+                actual = sci_dur
+            end = cur + actual
+            mid = cur + actual * 0.5
+            blocks.append(ScheduledScanBlock(
+                name=name, block=block, start_time=cur, end_time=end, scans=scans,
+                n_antennas=self._vis_at(name, mid), mean_elevation=self._elev_at(name, mid)))
+            cur = end
+        return blocks
+
+    def _occupant_at(self, layout: list[ScheduledScanBlock], t: Time) -> Optional[tuple[str, Optional[SkyCoord]]]:
+        """Return (block_name, target_coord) of the science block covering time *t*, or None."""
+        for sb in layout:
+            if sb.start_time <= t < sb.end_time:
+                return sb.name, self._source_main_coord(sb.name)
+        return None
+
+    def _cpsat_ff_placement(self, ff_names: list[str], layout: list[ScheduledScanBlock],
+                            eff_t0: Time, eff_t1: Time) -> list[tuple[Time, str]]:
+        """Decide fringe-finder times and sources via CP-SAT optimisation.
+
+        The observation window is discretised into ``FF_DUR``-sized cells.  Each
+        FF scan is assigned to a cell (and a source) such that:
+
+        - exactly ``n_ff`` scans are placed (from ``_determine_ff_count``);
+        - each FF lies fully inside one science block (so it cleanly splits it);
+        - the FF source is visible by the required number of antennas there;
+        - the **minimum gap between consecutive FF scans is maximised** (even
+          spread along the observation, ``CP_W_SPREAD``);
+        - the **angular separation between each FF and the science target it
+          interrupts is minimised** (``CP_W_SEPARATION``);
+        - high FF elevation is mildly preferred (``CP_W_ELEVATION``).
+
+        Parameters
+        ----------
+        ff_names : list[str]
+            Candidate FF block names (registered in obs.scans).
+        layout : list[ScheduledScanBlock]
+            The science-only layout (provides the interrupted-target coords).
+        eff_t0, eff_t1 : Time
+            Effective observation window.
+
+        Returns
+        -------
+        list[tuple[Time, str]]
+            (start_time, ff_block_name) pairs in chronological order.  Empty if
+            ortools is unavailable or no feasible placement exists.
+        """
+        if not _HAS_ORTOOLS or not ff_names or not layout:
+            return []
+        dur = self.FF_DUR
+        cell_min = dur.to(u.min).value
+        win_min = (eff_t1 - eff_t0).to(u.min).value
+        K = int(win_min // cell_min)
+        if K < 1:
+            return []
+
+        cell_t = [eff_t0 + (c * cell_min) * u.min for c in range(K)]
+        min_req = self._n_ant if self.require_all else self.min_ant
+        ff_coord = {fn: self._block_source_coord(fn) for fn in ff_names}
+
+        # Candidate (cell, ff-source) placements with separation + elevation cost.
+        cand: dict[tuple[int, int], tuple[float, float]] = {}
+        cand_by_cell: dict[int, list[int]] = {}
+        for c in range(K):
+            occ_s = self._occupant_at(layout, cell_t[c])
+            occ_e = self._occupant_at(layout, cell_t[c] + dur - 1 * u.s)
+            if occ_s is None or occ_e is None or occ_s[0] != occ_e[0]:
+                continue  # FF would cross a science-block boundary; skip cell
+            occ_coord = occ_s[1]
+            for fi, fn in enumerate(ff_names):
+                if self._vis_at(fn, cell_t[c]) < min_req:
+                    continue
+                sep = 0.0
+                if occ_coord is not None and ff_coord[fn] is not None:
+                    sep = float(ff_coord[fn].separation(occ_coord).deg)
+                cand[(c, fi)] = (sep, self._elev_at(fn, cell_t[c]))
+                cand_by_cell.setdefault(c, []).append(fi)
+        if not cand:
+            return []
+
+        usable_cells = sorted(cand_by_cell.keys())
+        n_ff = min(self._determine_ff_count((eff_t1 - eff_t0).to(u.h).value), len(usable_cells))
+        if n_ff < 1:
+            return []
+
+        model = cp_model.CpModel()
+        x: dict[tuple[int, int, int], object] = {}
+        for i in range(n_ff):
+            for (c, fi) in cand:
+                x[i, c, fi] = model.NewBoolVar(f"x_{i}_{c}_{fi}")
+            model.Add(sum(x[i, c, fi] for (c, fi) in cand) == 1)
+        for c in usable_cells:
+            model.Add(sum(x[i, c, fi] for i in range(n_ff) for fi in cand_by_cell[c]) <= 1)
+
+        pos = [model.NewIntVar(0, K - 1, f"pos_{i}") for i in range(n_ff)]
+        for i in range(n_ff):
+            model.Add(pos[i] == sum(c * x[i, c, fi] for (c, fi) in cand))
+        for i in range(n_ff - 1):
+            model.Add(pos[i + 1] >= pos[i] + 1)
+
+        obj = []
+        if n_ff > 1:
+            gmin = model.NewIntVar(0, K, "gmin")
+            for i in range(n_ff - 1):
+                model.Add(gmin <= pos[i + 1] - pos[i])
+            obj.append(self.CP_W_SPREAD * gmin)
+        else:
+            dev = model.NewIntVar(0, K, "dev")
+            model.AddAbsEquality(dev, pos[0] - K // 2)
+            obj.append(-self.CP_W_SPREAD * dev)
+
+        sep_term = sum(int(round(cand[(c, fi)][0])) * x[i, c, fi]
+                       for i in range(n_ff) for (c, fi) in cand)
+        elev_term = sum(int(round(cand[(c, fi)][1])) * x[i, c, fi]
+                        for i in range(n_ff) for (c, fi) in cand)
+        model.Maximize(sum(obj) - self.CP_W_SEPARATION * sep_term + self.CP_W_ELEVATION * elev_term)
+
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = self.CP_MAX_SOLVE_SECONDS
+        solver.parameters.random_seed = 0
+        solver.parameters.num_search_workers = 1
+        status = solver.Solve(model)
+        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            log.warning("CP-SAT FF placement found no solution (status %s).", solver.StatusName(status))
+            return []
+
+        placements: list[tuple[Time, str]] = []
+        for i in range(n_ff):
+            for (c, fi) in cand:
+                if solver.Value(x[i, c, fi]) == 1:
+                    placements.append((cell_t[c], ff_names[fi]))
+                    break
+        placements.sort(key=lambda p: p[0].mjd)
+        log.info("CP-SAT placed %d FF scans (spread=%s, status=%s).",
+                 len(placements), 'maximin' if n_ff > 1 else 'centred', solver.StatusName(status))
+        return placements
+
+    def _polcal_target_times(self, eff_t0: Time, eff_t1: Time) -> list[tuple[Time, str]]:
+        """Create polcal blocks and return their target (time, name) at 10/50/90% of the window."""
+        names = self._create_polcal_blocks()
+        total = (eff_t1 - eff_t0)
+        return [(eff_t0 + total * frac, pc) for frac, pc in zip([0.1, 0.5, 0.9], names)]
+
+    def _make_aux_block(self, name: str, a: Time, b: Time, label: str) -> ScheduledScanBlock:
+        """Build a single-scan calibrator ScheduledScanBlock (FF/polcal/eMERLIN)."""
+        block = self.obs.scans[name]
+        return ScheduledScanBlock(
+            name=label, block=block, start_time=a, end_time=b, scans=list(block.scans),
+            n_antennas=self._vis_at(name, a), mean_elevation=self._elev_at(name, a))
+
+    def _make_sci_chunk(self, name: str, a: Time, b: Time) -> Optional[ScheduledScanBlock]:
+        """Build a science ScheduledScanBlock for [a, b], or None if too short to fit one pass."""
+        span = (b - a)
+        if span.to(u.min).value <= 0 or span < self._min_block_duration(name):
+            return None
+        block = self.obs.scans[name]
+        try:
+            scans = block.fill(span.to(u.min))
+        except Exception:
+            scans = list(block.scans)
+        mid = a + span * 0.5
+        return ScheduledScanBlock(
+            name=name, block=block, start_time=a, end_time=b, scans=scans,
+            n_antennas=self._vis_at(name, mid), mean_elevation=self._elev_at(name, mid))
+
+    def _insert_aux(self, layout: list[ScheduledScanBlock],
+                    placements: list[tuple[Time, str, u.Quantity, str]]) -> list[ScheduledScanBlock]:
+        """Split science blocks to insert calibrator scans at the requested times.
+
+        Each placement ``(start, block_name, duration, label)`` is assigned to the
+        science block that contains its start time and inserted there, splitting
+        the surrounding science into the chunks before and after it.  Placements
+        that would cross a block boundary or not fit are skipped.
+
+        Parameters
+        ----------
+        layout : list[ScheduledScanBlock]
+            Contiguous science layout.
+        placements : list[tuple[Time, str, Quantity, str]]
+            Calibrator insertions.
+
+        Returns
+        -------
+        list[ScheduledScanBlock]
+            Combined science + calibrator schedule in chronological order.
+        """
+        if not placements:
+            return list(layout)
+        buckets: list[list[tuple[Time, str, u.Quantity, str]]] = [[] for _ in layout]
+        for p in placements:
+            ts = p[0]
+            for bi, sb in enumerate(layout):
+                if sb.start_time <= ts < sb.end_time:
+                    buckets[bi].append(p)
+                    break
+        counters: dict[str, int] = {}
+        result: list[ScheduledScanBlock] = []
+        for bi, sb in enumerate(layout):
+            plist = sorted(buckets[bi], key=lambda p: p[0].mjd)
+            if not plist:
+                result.append(sb)
+                continue
+            cur = sb.start_time
+            for (ts, name, pdur, label) in plist:
+                ts = max(ts, cur)
+                te = ts + pdur
+                if te > sb.end_time:
+                    continue  # does not fit in the remaining block span
+                if ts > cur:
+                    chunk = self._make_sci_chunk(sb.name, cur, ts)
+                    if chunk:
+                        result.append(chunk)
+                counters[label] = counters.get(label, 0) + 1
+                result.append(self._make_aux_block(name, ts, te, f"{label}_{counters[label]}"))
+                cur = te
+            if cur < sb.end_time:
+                chunk = self._make_sci_chunk(sb.name, cur, sb.end_time)
+                if chunk:
+                    result.append(chunk)
+        return result
+
+    def _schedule_cpsat(self, sci_names: list[str], ff_names: list[str],
+                        t0: Time, t1: Time) -> list[ScheduledScanBlock]:
+        """Constraint-programming schedule: science layout + CP-SAT FF/calibrator insertion.
+
+        Builds a contiguous science layout, then inserts fringe finders (placed by
+        CP-SAT), eMERLIN 3C286, and polcal scans by splitting the science blocks.
+
+        Returns
+        -------
+        list[ScheduledScanBlock]
+            Full schedule in chronological order, or empty on failure.
+        """
+        eff_t0, eff_t1 = self._effective_obs_window(t0, t1)
+        layout = self._layout_science(sci_names, eff_t0, eff_t1)
+        if not layout:
+            return []
+
+        aux: list[tuple[Time, str, u.Quantity, str]] = []
+        for ts, fn in self._cpsat_ff_placement(ff_names, layout, eff_t0, eff_t1):
+            aux.append((ts, fn, self.FF_DUR, 'FF'))
+        if self._has_emerlin():
+            em = self._create_emerlin_3c286_block()
+            if em:
+                r = self._find_best(em, eff_t0, eff_t1, self.EMERLIN_3C286_DUR)
+                if r:
+                    aux.append((r[0], em, self.EMERLIN_3C286_DUR, 'eMERLIN_3C286'))
+        if self._polcal:
+            for ts, pc in self._polcal_target_times(eff_t0, eff_t1):
+                aux.append((ts, pc, self.POLCAL_DUR, 'POLCAL'))
+
+        return sorted(self._insert_aux(layout, aux), key=lambda b: b.start_time.mjd)
+
+    # ------------------------------------------------------------------
     # Main entry point
     # ------------------------------------------------------------------
 
@@ -844,6 +1186,14 @@ class ObservationScheduler:
         sci_names = [n for n in self._sci_blocks()
                      if not n.startswith('FF_') and not n.startswith('POLCAL_') and n != 'eMERLIN_3C286']
         ff_names = self._select_fringefinders()
+
+        # ---- Preferred path: CP-SAT constraint-programming layout ----
+        if _HAS_ORTOOLS and sci_names:
+            cp_sched = self._schedule_cpsat(sci_names, ff_names, t0, t1)
+            if cp_sched:
+                self._scheduled = sorted(cp_sched, key=lambda b: b.start_time.mjd)
+                return {f"{i + 1:03d}_{b.name}": b.block for i, b in enumerate(self._scheduled)}
+            log.warning("CP-SAT scheduling produced no blocks; falling back to heuristic scheduler.")
 
         if len(sci_names) > 1:
             # ---- Multi-source path ----

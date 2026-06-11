@@ -183,8 +183,8 @@ When run with a target source, PlanObs prints:
 
 1. **Observation summary** – band, duration, stations, setup (data rate, bandwidth, subbands).
 2. **Source list** – all sources in every scan block, with coordinates.
-3. **Visibility chart** – a text-based chart showing when each station can observe the source.
-4. **Optimal observing window** – GST or UTC range when the maximum number of stations can observe.
+3. **Visibility chart** – a colour-coded `plotext` scatter plot showing each station's elevation over time (red `< 10°`, yellow `10–20°`, green `20–40°`, cyan `40–60°`, blue `> 60°`).
+4. **Optimal observing window** – UTC or GST range when all antennas can observe simultaneously, and when ≥ 3 antennas can observe simultaneously.
 5. **Thermal noise estimate** – expected RMS noise for the target, with on-source time.
 6. **Sun constraint warning** – if the Sun is too close to the source during the observation.
 

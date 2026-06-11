@@ -296,27 +296,127 @@ def networks(app) -> html.Div:
                               className='d-flex flex-wrap')])
 
 
+def station_groups() -> dict[str, list[stations.Station]]:
+    """Returns an ordered dict mapping group_name -> [Station, ...] for all grouped stations.
+    Stations without a group are not included. Order follows the catalog order.
+    """
+    groups: dict[str, list[stations.Station]] = {}
+    for s in observation._STATIONS:
+        if s.group is not None:
+            groups.setdefault(s.group, []).append(s)
+    return groups
+
+
+def _grouped_chip_component(app, group_name: str, group_stations: list[stations.Station],
+                             show_wavelengths: bool = False) -> html.Div:
+    """Renders a single grouped-antenna chip: a toggle button (on/off) plus a small dropdown
+    arrow that lets the user pick which configuration is active. Only one config per group can
+    be in the selected set at a time. Each dropdown item shows a HoverCard tooltip with the
+    antenna info card.
+
+    Inputs
+    - app : Dash app instance
+    - group_name : str  — group identifier (e.g. 'vla')
+    - group_stations : list[Station]  — stations in this group, in catalog order
+    - show_wavelengths : bool  — passed through to antenna_card
+    """
+    default_codename = group_stations[0].codename
+
+    stores = [
+        dcc.Store(id={'type': 'group-active-codename', 'index': group_name}, data=default_codename,
+                  storage_type='session'),
+        dcc.Store(id={'type': 'group-is-selected', 'index': group_name}, data=False,
+                  storage_type='session'),
+    ]
+
+    menu_items = []
+    for i, s in enumerate(group_stations):
+        item_content = dmc.MenuItem(
+            s.name,
+            id={'type': 'group-menu-item', 'index': f"{group_name}__{s.codename}"},
+            style={'font-size': '0.85rem'},
+            className='group-menu-item-active' if i == 0 else '',
+        )
+        menu_items.append(
+            dmc.HoverCard(shadow="lg", radius="lg", openDelay=700, position='right',
+                          children=[dmc.HoverCardTarget(item_content),
+                                    dmc.HoverCardDropdown(antenna_card(app, s, show_wavelengths),
+                                                          className='m-0 p-0')])
+        )
+
+    dropdown_trigger = dmc.Menu(
+        id={'type': 'group-menu', 'index': group_name},
+        position='bottom-start',
+        children=[
+            dmc.MenuTarget(
+                html.Button(
+                    '▼',
+                    id={'type': 'group-dropdown-btn', 'index': group_name},
+                    className='btn-group-config-arrow',
+                    title='Switch configuration',
+                )
+            ),
+            dmc.MenuDropdown(menu_items),
+        ]
+    )
+
+    # The toggle button (on/off) shows the group name. Clicking it toggles selection.
+    toggle_btn = html.Button(
+        id={'type': 'group-toggle-btn', 'index': group_name},
+        children=group_name.upper(),
+        className='btn-group-chip-toggle btn-group-chip-off',
+        title=f"Toggle {group_name.upper()} antenna",
+    )
+
+    wrapper = html.Div(
+        stores + [
+            html.Div(
+                [toggle_btn, dropdown_trigger],
+                className='group-chip-inner',
+            )
+        ],
+        id={'type': 'group-chip-wrapper', 'index': group_name},
+        style={'display': 'inline-flex', 'align-items': 'center', 'align-self': 'center'}
+    )
+    return wrapper
+
+
 def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
     """Returns the DIV that shows all the antennas that can be selected, and allows searching through them
     """
+    groups = station_groups()
+    grouped_codenames = {s.codename for slist in groups.values() for s in slist}
+
+    grouped_components = [
+        _grouped_chip_component(app, gname, gstations, show_wavelengths)
+        for gname, gstations in groups.items()
+    ]
+
     return html.Div([html.H4("Manual Selection of Antennas   ",
                              className='text-dark font-weight-bold mb-2 pl-2 ml-4'),
-                     dmc.Group(dmc.ChipGroup(value=[], id='switches-antennas', persistence=True,
-                                             multiple=True, deselectable=True, children=[
-                                  antenna_card_hover(app,
-                                                     dmc.Chip(s.name, value=s.codename,
-                                                              id={'type': 'antenna-chip', 'index': s.codename},
-                                                              color='#004990',
-                                                              persistence=True,
-                                                              styles={'display': 'grid',
-                                                                      'grid-template-columns':
-                                                                      'repeat(auto-fit, '
-                                                                      'minmax(10rem, 1fr))'}),
-                                                     s, show_wavelengths)
-                                  for s in observation._STATIONS]),
-                               className='mb-2 flex',
-                               style={'display': 'inline-flex', 'gap': '5px', 'justify-content': 'center',
-                                      'flex-wrap': 'wrap'})])
+                     dmc.Group(
+                         [
+                             dmc.ChipGroup(value=[], id='switches-antennas', persistence=True,
+                                           multiple=True, deselectable=True,
+                                           children=[
+                                               antenna_card_hover(app,
+                                                                  dmc.Chip(s.name, value=s.codename,
+                                                                           id={'type': 'antenna-chip',
+                                                                               'index': s.codename},
+                                                                           color='#004990',
+                                                                           persistence=True,
+                                                                           styles={'display': 'grid',
+                                                                                   'grid-template-columns':
+                                                                                   'repeat(auto-fit, '
+                                                                                   'minmax(10rem, 1fr))'}),
+                                                                  s, show_wavelengths)
+                                               for s in observation._STATIONS
+                                               if s.codename not in grouped_codenames
+                                           ]),
+                         ] + grouped_components,
+                         className='mb-2 flex',
+                         style={'display': 'inline-flex', 'gap': '5px', 'justify-content': 'center',
+                                'flex-wrap': 'wrap'})])
 
 
 def duration() -> html.Div:
@@ -345,7 +445,7 @@ def source_and_epoch_selection() -> html.Div:
                                 html.Div(className='row form-group', children=[
                                     dbc.Switch(label='Specify an epoch', value=False,
                                                 id='switch-specify-epoch', persistence=True),
-                                    html.Div(id='epoch-selection-div', hidden=True, children=[
+                                    html.Div(id='epoch-selection-div', className='d-none', children=[
                                         html.Div(className='row', children=[
                                             html.Label('Start of observation (UTC)', htmlFor='starttime'),
                                             html.Div(className='row mx-0', children=[
@@ -373,16 +473,72 @@ def source_and_epoch_selection() -> html.Div:
                                                         className='form-text text-muted')])])])])]),
                             html.Div(className='col-6', children=[
                                 html.Div(className='row form-group', children=[
-                                    dbc.Switch(label='Specify a target source', value=False,
-                                                id='switch-specify-source', persistence=True),
-                                    html.Div(id='source-selection-div', hidden=True,
-                                            children=html.Div(className='row', children=[
-                                                html.Label('Source name or coordinates', htmlFor='source-input'),
-                                                dcc.Input(id='source-input', value=None, type='text',
-                                                        className='form-control', placeholder="hh:mm:ss dd:mm:ss",
-                                                        persistence=True, debounce=True),
-                                                html.Small(id='error_source', className='form-text text-muted')]))])])])]),
+                                    # html.Label('Target sources', className='form-label fw-bold'),
+                                    dbc.Button("Add target sources",
+                                               id='button-open-source-modal',
+                                               color='primary', outline=True,
+                                               className='btn btn-sm w-100'),
+                                    html.Div(id='target-chips-display', className='mb-2',
+                                             children=html.Small("No target sources added yet.",
+                                                                 className='text-muted'))])])])]),
                     ])
+
+
+def target_sources_modal() -> html.Div:
+    """Returns a modal window allowing users to add/remove multiple target sources.
+
+    Sources can be added by typing a name or coordinates, or by uploading a text file
+    where each line contains one source. The list of selected target sources is
+    persisted in the `store-targets` `dcc.Store`.
+    """
+    return dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("Target Sources")),
+        dbc.ModalBody([
+            html.Div(className='mb-3', children=[
+                html.Label("Add a source by name or coordinates:",
+                           htmlFor='modal-source-input', className='form-label'),
+                dbc.InputGroup([
+                    dbc.Input(id='modal-source-input', type='text',
+                              placeholder="3C273  or  hh:mm:ss dd:mm:ss",
+                              debounce=False, n_submit=0),
+                    dbc.Button("Add", id='button-add-source',
+                               color='success', n_clicks=0,
+                               style={'font-weight': 'bold',
+                                      'border-top-left-radius': '0.375rem',
+                                      'border-bottom-left-radius': '0.375rem'})]),
+                html.Small(id='modal-source-feedback',
+                           className='form-text text-muted')]),
+            html.Hr(),
+            html.Div(className='mb-3', children=[
+                html.Label("Or upload a text file (one source per line):",
+                           className='form-label'),
+                dcc.Upload(id='upload-sources',
+                           children=html.Div([
+                               html.I(className='fa fa-upload me-2'),
+                               'Drag & drop or ',
+                               html.A('select a file',
+                                      style={'color': '#004990', 'cursor': 'pointer',
+                                             'text-decoration': 'underline'})]),
+                           className='upload-zone p-3 text-center',
+                           style={'border': '2px dashed #004990',
+                                  'border-radius': '8px',
+                                  'background-color': 'rgba(0, 73, 144, 0.05)'},
+                           multiple=False, accept='.txt,.csv,.cat,.lis,.list'),
+                html.Small(id='upload-sources-feedback',
+                           className='form-text text-muted')]),
+            html.Hr(),
+            html.Div([
+                html.H6("Current target sources", id='modal-source-list-header',
+                        className='mb-2'),
+                html.Div(id='modal-source-list',
+                         children=html.P("No sources added yet.",
+                                         className='text-muted text-center my-3'))])]),
+        dbc.ModalFooter([
+            dbc.Button("Clear all", id='button-clear-sources',
+                       color='danger', outline=True, n_clicks=0),
+            dbc.Button("Done", id='button-close-source-modal',
+                       color='secondary', className='ms-auto', n_clicks=0)])
+    ], id='source-modal', is_open=False, size='lg', scrollable=True, backdrop=True)
 
 def correlations() -> html.Div:
     """Creates the inputs to specify if the user wants continuum correlation and/or spectral line.

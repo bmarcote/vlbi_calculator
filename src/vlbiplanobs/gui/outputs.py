@@ -617,11 +617,11 @@ def print_observability_ranges(o: Optional[cli.VLBIObs]) -> html.Div:
         text += ["The source cannot be observed by all stations at the same time."]
     else:
         if o.fixed_time:
-            text += ["Everyone can observe the source on " +
+            text += ["All antennas can observe the source simultaneously on " +
                      ', '.join([t1.strftime('%d %b %Y %H:%M')+'-'+t2.strftime('%H:%M') +
                                 ' UTC.' for t1, t2 in when_everyone])]
         else:
-            text += ["Everyone can observe the source at " +
+            text += ["All antennas can observe the source simultaneously between " +
                      ', '.join([t1.to_string(sep=':', fields=2, pad=True) + '-' +
                                 t2.to_string(sep=':', fields=2, pad=True) +
                                 ' GST.' for t1, t2 in when_everyone])]
@@ -636,12 +636,11 @@ def print_observability_ranges(o: Optional[cli.VLBIObs]) -> html.Div:
                      ', '.join([ant for ant in o.stations.station_codenames if ant not in ant_can]),
                      '.', html.Br()]
     else:
-        text += [f"{'And' if not when_everyone else 'But'} there are no antennas that can observe "
-                 "the source at all time.", html.Br()]
+        text += ["No individual antenna can observe the source continuously at all times.", html.Br()]
 
     min_stat = 3 if len(o.stations) > 3 else min(2, len(o.stations))
     if len(o.stations) > 2:
-        text += [f"The optimal visibility range (> {min_stat} antennas) occurs on "]
+        text += [f"The optimal visibility window, where > {min_stat} antennas can observe the source simultaneously, is "]
         if not o.fixed_time:
             text += [', '.join([t1.to_string(sep=':', fields=2, pad=True) + '-' +
                                 (t2 + (24*u.hourangle if np.abs(t1 - t2) < 0.1*u.hourangle
@@ -771,6 +770,223 @@ def plot_worldmap(o: Optional[cli.VLBIObs] = None) -> html.Div:
                                    html.P("")]))
 
 
+# --------------------------------------------------------------------------------------
+# Multi-target tab/panel builders
+# --------------------------------------------------------------------------------------
+# These helpers assemble the full per-target output (warnings, cards, plots, PDF
+# download button, sensitivity modal). They are used by the compute callback in
+# `main.py` to fill the `outputs-container` with either a single panel (no target
+# specified, observation calculations only depend on duration/setup) or with a
+# `dbc.Tabs` containing one tab per target source.
+
+
+def _baseline_sensitivity_modal_for_target(o: cli.VLBIObs, target_spec: str) -> dbc.Modal:
+    """Returns a per-target Modal containing the per-baseline sensitivity table.
+
+    The modal id uses pattern matching so a clientside callback can toggle each
+    independently of the others. The body is fully rendered server-side.
+    """
+    return dbc.Modal(baseline_sensitivities(o),
+                     id={'type': 'modal-sens', 'index': target_spec},
+                     size='xl', is_open=False, scrollable=True)
+
+
+def _rms_card_for_target(o: cli.VLBIObs, target_spec: str) -> html.Div:
+    """Returns a per-target rms card with a pattern-matched 'view sensitivity per baseline' button.
+
+    Mirrors :func:`rms` but replaces the global button id with one specific to this target.
+    """
+    if o is None:
+        return html.Div()
+
+    try:
+        if isinstance(thermal_noise := o.thermal_noise(), dict):
+            rms_val = list(thermal_noise.values())[0]
+        else:
+            rms_val = thermal_noise
+
+        out_rms: list[str] = [
+            quantity2str(cli.optimal_units(rms_val, [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
+                                                     u.mJy/u.beam, u.uJy/u.beam])),
+            quantity2str(cli.optimal_units(rms_val/np.sqrt(1*u.min / (o.duration if o.duration is not None
+                                                                       else 24*u.h)),
+                                           [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
+                                            u.mJy/u.beam, u.uJy/u.beam])),
+            quantity2str(cli.optimal_units(rms_val*np.sqrt(o.subbands * o.channels),
+                                           [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
+                                            u.mJy/u.beam, u.uJy/u.beam]))]
+    except Exception as e:
+        print(f"Error computing rms card: {e}")
+        return html.Div()
+
+    src = list(o.ontarget_time.keys())[0] if o.ontarget_time else None
+    on_target_str = f"{o.ontarget_time[src]:.2g}" if src and o.ontarget_time else "n/a"
+    return card_result(out_rms[0], f'rms thermal noise (for {on_target_str} on-target)',
+                       id='rms', extra_rows=[html.Br(), html.Div(className='row', children=[
+                            html.Div(className='col-6 text-start px-0 pb-2', children=[
+                                html.H5(className='mb-0 font-weight-bolder text-light',
+                                        children=out_rms[2]),
+                                html.Label(className='text-sm mb-0 text-light',
+                                           children="per spectral channel")],
+                                     style={'text-wrap': 'pretty'}),
+                            html.Div(className='col-6 text-end px-0', children=[
+                                html.H5(className='mb-0 font-weight-bolder text-light',
+                                        children=out_rms[1]),
+                                html.Label(className='text-sm mb-0 text-light',
+                                           children="on 1-min integration")],
+                                     style={'text-wrap': 'pretty'})]),
+                                   html.Div(className='row', children=[
+                                       html.Div(dbc.Button(
+                                           'View sensitivity per baseline',
+                                           id={'type': 'btn-sens', 'index': target_spec},
+                                           color='light', outline=False,
+                                           className='btn btn-white btn-sm w-100 mb-0 active btn-sensitivity',
+                                           style={'position': 'sticky', 'top': '20px',
+                                                  'box-shadow': 'none'}))])])
+
+
+def _target_pdf_button(target_spec: str) -> html.Div:
+    """Returns a per-target 'Export Summary as PDF' button + its dcc.Download sink."""
+    return html.Div(className='d-flex align-items-center justify-content-center my-3',
+                    style={'gap': '5px'}, children=[
+                        dbc.Spinner(id={'type': 'pdf-spinner', 'index': target_spec},
+                                    color='#004990',
+                                    children=html.Div(id={'type': 'pdf-spinner-div',
+                                                          'index': target_spec})),
+                        dbc.Button('Export Summary as PDF',
+                                   id={'type': 'btn-pdf', 'index': target_spec},
+                                   color='secondary', outline=True, n_clicks=0,
+                                   className='btn btn-lg btn-outline-secondary text-bolder '
+                                             'mx-auto w-75 m-4 p-2'),
+                        dcc.Download(id={'type': 'download-pdf', 'index': target_spec})])
+
+
+def build_target_tab_content(o: cli.VLBIObs, target_spec: str,
+                             error: Optional[str] = None) -> html.Div:
+    """Assemble the full output panel for one target source.
+
+    Inputs
+    - o : VLBIObs or None
+        Observation built for this single target. May be None if the observation
+        could not be computed (the resulting panel will only show ``error``).
+    - target_spec : str
+        The source spec (name or coords) the user added. Used as the pattern-matching
+        index for interactive child components.
+    - error : str or None
+        Human-readable error message to display at the top of the panel.
+
+    Returns
+    - dash.html.Div
+        Panel content ready to be embedded inside a ``dbc.Tab``.
+    """
+    if error is not None:
+        return html.Div(className='m-2', children=error_card(
+            f"Could not compute observation for '{target_spec}'", error))
+
+    if o is None:
+        return html.Div(className='m-2', children=warning_card(
+            f"No observation available for '{target_spec}'",
+            "Please review the inputs and try again."))
+
+    has_source_plots = bool(o.scans) and bool(o.sourcenames)
+
+    # Pre-serialize UV data so the per-tab antenna-highlight callback can update the
+    # plot without re-running the computation.
+    try:
+        uv_data = plots.serialize_uv_data(o) if has_source_plots else None
+    except Exception:
+        uv_data = None
+
+    children: list = []
+
+    # Per-target PDF download at top of tab
+    children.append(_target_pdf_button(target_spec))
+
+    # Warnings
+    children.append(html.Div(sun_warning(o), className='m-0 p-0'))
+    children.append(html.Div(warning_low_high_freq(o), className='m-0 p-0'))
+    children.append(html.Div(ant_warning(o), className='m-0 p-0'))
+
+    # Cards row 1: time / freq-vel
+    children.append(html.Div(className='col-12 m-0 p-0', children=html.Div(
+        className='row d-flex m-0 p-0', children=[
+            html.Div(obs_time(o), className='col-6 m-0 p-0 d-flex align-items-stretch'),
+            html.Div(summary_freq_res(o), className='col-6 m-0 p-0 d-flex align-items-stretch')])))
+
+    # Cards row 2: rms / resolution
+    children.append(html.Div(className='col-12 m-0 p-0', children=html.Div(
+        className='row d-flex m-0 p-0', children=[
+            html.Div(_rms_card_for_target(o, target_spec),
+                     className='col-6 m-0 p-0 d-flex align-items-stretch'),
+            html.Div(resolution(o), className='col-6 m-0 p-0 d-flex align-items-stretch')])))
+
+    # Per-target sensitivity-per-baseline modal
+    children.append(_baseline_sensitivity_modal_for_target(o, target_spec))
+
+    # Source-dependent plots
+    if has_source_plots:
+        children.append(html.Div(className='m-0 p-0', children=card([
+            html.Div(className='card-header pb-0', children=html.H5('Source Elevation')),
+            dcc.Loading(dcc.Graph(figure=plots.elevation_plot(o), responsive=True),
+                        type='circle', color='#004990'),
+            dcc.Loading(dcc.Graph(figure=plots.elevation_plot_curves(o), responsive=True),
+                        type='circle', color='#004990'),
+            html.Div(print_observability_ranges(o))])))
+
+        children.append(html.Div(className='m-0 p-0', children=card([
+            html.Div(className='card-header pb-0', children=html.H5('(u, v) Coverage')),
+            dcc.Loading(dcc.Graph(id={'type': 'fig-uv', 'index': target_spec},
+                                  figure=plots.uvplot(o), responsive=True),
+                        type='circle', color='#004990'),
+            html.P(""),
+            html.Label("Highlight antennas:"),
+            dcc.Dropdown(multi=True, id={'type': 'select-ant-uv', 'index': target_spec},
+                         maxHeight=400, options=put_antenna_options(o)),
+            dcc.Store(id={'type': 'store-uv-data', 'index': target_spec}, data=uv_data),
+            html.Br(), html.Br(),
+            html.Div(className='row', children=print_baseline_lengths(o))])))
+
+    # Cards row 3: fov / data size
+    children.append(html.Div(className='col-12 m-0 p-0', children=html.Div(
+        className='row d-flex m-0 p-0', children=[
+            html.Div(field_of_view(o), className='col-6 m-0 p-0 d-flex align-items-stretch'),
+            html.Div(data_size(o), className='col-6 m-0 p-0 d-flex align-items-stretch')])))
+
+    # Worldmap
+    children.append(html.Div(plot_worldmap(o), className='m-0 p-0'))
+
+    return html.Div(children, className='m-0 p-0')
+
+
+def build_no_target_panel(o: Optional[cli.VLBIObs]) -> html.Div:
+    """Build the simplified panel shown when no target source is specified.
+
+    Reuses the existing component functions (cards + worldmap), plus a single PDF
+    download button. The sensitivity-per-baseline modal is omitted because no
+    source-dependent geometry is available.
+    """
+    if o is None:
+        return html.Div()
+
+    return html.Div([
+        _target_pdf_button('__no_target__'),
+        html.Div(warning_low_high_freq(o), className='m-0 p-0'),
+        html.Div(className='col-12 m-0 p-0', children=html.Div(
+            className='row d-flex m-0 p-0', children=[
+                html.Div(obs_time(o), className='col-6 m-0 p-0 d-flex align-items-stretch'),
+                html.Div(summary_freq_res(o), className='col-6 m-0 p-0 d-flex align-items-stretch')])),
+        html.Div(className='col-12 m-0 p-0', children=html.Div(
+            className='row d-flex m-0 p-0', children=[
+                html.Div(rms(o), className='col-6 m-0 p-0 d-flex align-items-stretch'),
+                html.Div(resolution(o), className='col-6 m-0 p-0 d-flex align-items-stretch')])),
+        html.Div(className='col-12 m-0 p-0', children=html.Div(
+            className='row d-flex m-0 p-0', children=[
+                html.Div(field_of_view(o), className='col-6 m-0 p-0 d-flex align-items-stretch'),
+                html.Div(data_size(o), className='col-6 m-0 p-0 d-flex align-items-stretch')])),
+        html.Div(plot_worldmap(o), className='m-0 p-0'),
+    ], className='m-0 p-0')
+
+
 def download_button_div() -> html.Div:
     """Creates a placeholder div for the PDF download button.
 
@@ -853,7 +1069,7 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
                                         ' GST.' for t1, t2
                                         in o.when_is_observable(min_stations=min_stat,
                                                                 return_gst=not o.fixed_time)[ablockname]]))
-                layout.append_layout_element(pdf.Paragraph(f"{text}. Optimal visibility range (> {min_stat} antennas) at "
+                layout.append_layout_element(pdf.Paragraph(f"{text}. Optimal visibility window (> {min_stat} antennas simultaneously) at "
                                          f"{gst_range}{' for '+ablockname if len(srcup) > 1 else ''}"))
 
     sun_const = o.sun_constraint()

@@ -160,6 +160,33 @@ class TestRFCCatalog:
         assert catalog_s.n_sources > 0
         assert catalog_c.n_sources > 0
 
+    def test_include_missing_retains_more_sources(self):
+        """include_missing=True with a high threshold keeps sources missing c-band data.
+
+        The RFC catalog stores unobserved bands as negative flux values.  With
+        include_missing=True those sources survive any min_flux threshold.
+        """
+        cat_strict = calibrators.RFCCatalog(min_flux=9999.0, band='c', include_missing=False)
+        cat_incl = calibrators.RFCCatalog(min_flux=9999.0, band='c', include_missing=True)
+        # Strict mode excludes everything (no c-band source has >9999 Jy)
+        assert cat_strict.n_sources == 0
+        # include_missing mode keeps sources that have no c-band measurement
+        assert cat_incl.n_sources > 0
+
+    def test_min_flux_zero_vs_extreme(self):
+        """min_flux=0 keeps more sources than min_flux=9999 in strict mode (no source has >9999 Jy)."""
+        cat_all = calibrators.RFCCatalog(min_flux=0.0, band='c', include_missing=True)
+        cat_none = calibrators.RFCCatalog(min_flux=9999.0, band='c', include_missing=False)
+        assert cat_all.n_sources > 0
+        assert cat_none.n_sources == 0
+
+    def test_min_flux_applied_across_thresholds(self):
+        """Incrementally higher min_flux thresholds yield monotonically non-increasing source counts."""
+        thresholds = [0.1, 0.5, 1.0, 5.0]
+        counts = [calibrators.RFCCatalog(min_flux=t * u.Jy, band='c', include_missing=True).n_sources
+                  for t in thresholds]
+        assert counts == sorted(counts, reverse=True)
+
 
 class TestBandMapping:
     """Tests for the RFC band mapping functionality."""
@@ -245,6 +272,7 @@ class TestGetNearbySources:
         catalog._sources = [reference_source, nearby1, nearby2, far]
         catalog._min_flux = 0.0
         catalog._band = 'c'
+        catalog._include_missing = False
         catalog._catalog_filename = None
         catalog._ra_arr = np.array([187.5, 187.5083, 187.5, 187.5])
         catalog._dec_arr = np.array([45.0, 45.0028, 46.0, 55.0])

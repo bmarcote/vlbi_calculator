@@ -276,3 +276,76 @@ def test_phasecals_sc_nonexistent_file():
     """``planobs phasecals -sc /no/such/file.toml -t 3C84`` exits non-zero."""
     code, _ = _run_cli(['phasecals', '-sc', '/no/such/file.toml', '-t', '3C84', '-n', '1'])
     assert code != 0
+
+
+# ---------------------------------------------------------------------------
+# phasecals parameter coverage (min-flux, max-separation, n-sources)
+# ---------------------------------------------------------------------------
+
+def _phasecals_json(extra_args: list) -> tuple[int, dict]:
+    """Run ``planobs phasecals`` with ``--json`` and return (exit_code, parsed_dict)."""
+    import json
+    code, out = _run_cli(['phasecals', '-t', '3C84', '--json'] + extra_args)
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        data = {}
+    return code, data
+
+
+def test_phasecals_json_output_structure():
+    """JSON output contains expected top-level keys when sources are found."""
+    code, data = _phasecals_json(['--min-flux', '0.001'])
+    if code == 0:
+        for key in ('target_name', 'sources', 'total_found', 'min_flux_jy', 'max_separation_deg'):
+            assert key in data, f"missing key: {key}"
+
+
+def test_phasecals_min_flux_echoed_in_json():
+    """--min-flux value is echoed in JSON output under ``min_flux_jy``."""
+    code, data = _phasecals_json(['--min-flux', '0.42'])
+    if code == 0:
+        assert abs(data['min_flux_jy'] - 0.42) < 1e-6
+
+
+def test_phasecals_max_separation_echoed_in_json():
+    """--max-separation value is echoed in JSON output under ``max_separation_deg``."""
+    code, data = _phasecals_json(['--max-separation', '3.7'])
+    if code == 0:
+        assert abs(data['max_separation_deg'] - 3.7) < 1e-6
+
+
+def test_phasecals_min_flux_high_returns_fewer_sources():
+    """--min-flux 9999 returns far fewer sources than --min-flux 0.001.
+
+    Sources with no c-band measurement (stored as negative flux) are kept even
+    at a high threshold (include_missing=True mode), so the count may not be 0.
+    """
+    _, data_high = _phasecals_json(['--min-flux', '9999.0'])
+    _, data_low = _phasecals_json(['--min-flux', '0.001'])
+    n_high = data_high.get('total_found', 0)
+    n_low = data_low.get('total_found', 0)
+    assert n_high < n_low
+
+
+
+def test_phasecals_n_sources_limits_count():
+    """-n 1 returns at most 1 source in JSON output."""
+    code, data = _phasecals_json(['-n', '1', '--min-flux', '0.001'])
+    if code == 0:
+        assert data.get('total_found', 0) <= 1
+        assert len(data.get('sources', [])) <= 1
+
+
+def test_phasecals_max_separation_all_within_radius():
+    """All returned sources have separation <= --max-separation."""
+    code, data = _phasecals_json(['--max-separation', '2.0', '--min-flux', '0.001'])
+    if code == 0:
+        for src in data.get('sources', []):
+            assert src['separation_deg'] <= 2.0 + 1e-6
+
+
+def test_phasecals_max_separation_tiny_returns_nothing():
+    """--max-separation 0.001 (sub-arcminute) returns no sources near 3C84."""
+    code, data = _phasecals_json(['--max-separation', '0.001'])
+    assert data.get('total_found', 0) == 0

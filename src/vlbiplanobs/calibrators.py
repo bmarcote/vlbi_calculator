@@ -180,13 +180,14 @@ class CalibratorSource(Source):
 class RFCCatalog:
     """RFC (Radio Fundamental Catalog) of VLBI calibrator sources."""
     __slots__ = ('_sources', '_min_flux', '_band', '_catalog_filename',
-                 '_name_index', '_ivsname_index', '_ra_arr', '_dec_arr')
+                 '_name_index', '_ivsname_index', '_ra_arr', '_dec_arr', '_include_missing')
 
     def __init__(self, catalog_filename: Optional[str] = None, min_flux: u.Quantity = _DEFAULT_MIN_FLUX,
-                 band: str = 'c'):
+                 band: str = 'c', include_missing: bool = False):
         self._sources: list[CalibratorSource] = []
         self._min_flux = min_flux.to(u.Jy).value if hasattr(min_flux, 'to') else min_flux
         self._band = band
+        self._include_missing = include_missing
         self._catalog_filename = catalog_filename
         self._name_index: dict[str, CalibratorSource] = {}
         self._ivsname_index: dict[str, CalibratorSource] = {}
@@ -228,16 +229,15 @@ class RFCCatalog:
                         flux_values.extend([flux_res, flux_unres])
 
                     flux_array = np.array(flux_values, dtype=np.float32).reshape(5, 2)
-                    # Skip sources with flux below threshold
-                    # For phase calibrator searches (min_flux=0.0), include sources with missing data (-1.0)
-                    # For fringe finder searches (min_flux>0.0), exclude sources with missing data
-                    if self._min_flux > 0:
-                        # Fringe finder mode: exclude missing data and low flux
-                        if flux_array[band_idx, 1] < 0 or flux_array[band_idx, 1] < self._min_flux:
+                    # Skip sources with flux below threshold.
+                    # include_missing=True (phase cal mode): keep sources with no band measurement,
+                    # filter only those with a measured flux below threshold.
+                    # include_missing=False (fringe finder mode): exclude both missing and low-flux sources.
+                    if self._include_missing:
+                        if flux_array[band_idx, 1] >= 0 and flux_array[band_idx, 1] < self._min_flux:
                             continue
                     else:
-                        # Phase calibrator mode: include missing data, exclude only low positive flux
-                        if flux_array[band_idx, 1] >= 0 and flux_array[band_idx, 1] < self._min_flux:
+                        if flux_array[band_idx, 1] < 0 or flux_array[band_idx, 1] < self._min_flux:
                             continue
                 except (ValueError, IndexError):
                     continue
@@ -939,6 +939,9 @@ def _target_from_personal_catalog(catalog_file: str, name: str) -> Optional[Sour
     Returns
         Optional[Source] — the (first) target source of the matching block, the source with
         the given name, or None if not found.
+
+    Raises
+        FileNotFoundError — if catalog_file does not exist.
     """
     catalog = SourceCatalog(catalog_file)
     if name in catalog.blocknames:
@@ -974,10 +977,18 @@ def main_phasecal():
                         help="Output results in JSON format instead of a table.")
     args = parser.parse_args()
 
-    catalog = RFCCatalog(catalog_filename=args.catalog_file, band='c', min_flux=0.0)
+    catalog = RFCCatalog(catalog_filename=args.catalog_file, band='c', min_flux=args.min_flux, include_missing=True)
     target = None
     if args.source_catalog is not None:
-        target = _target_from_personal_catalog(args.source_catalog, args.target)
+        try:
+            target = _target_from_personal_catalog(args.source_catalog, args.target)
+        except FileNotFoundError:
+            error_msg = f"Source catalog file not found: {args.source_catalog}"
+            if args.json:
+                print(json.dumps({"error": error_msg}, indent=2))
+            else:
+                rprint(f"[bold red]{error_msg}[/bold red]")
+            sys.exit(1)
         if target is None:
             rprint(f"[yellow]'{args.target}' not found in {args.source_catalog} — "
                    "falling back to the RFC catalog/online lookup.[/yellow]")

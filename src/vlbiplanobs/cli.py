@@ -783,7 +783,10 @@ def main(band: str, networks: Optional[list[str]] = None,
         duration_val = duration.to(u.min).value
 
     if datarate is None:
-        obs_networks = networks or obs.Observation.guess_network(band, obs._STATIONS.filter_antennas(stations or []))
+        filtered_stations = obs._STATIONS.filter_antennas(stations or [])
+        if not filtered_stations:
+            raise ValueError(f"No valid stations provided. Check station codes: {stations}")
+        obs_networks = networks or obs.Observation.guess_network(band, filtered_stations)
         for a_network in obs._NETWORKS:
             if a_network in obs_networks:
                 datarate = obs._NETWORKS[a_network].max_datarate(band)
@@ -938,7 +941,7 @@ def add_observation_arguments(parser):
                         "  c) 'name/coordinates' to provide both (coordinates override lookup).\n"
                         "Or if '--source-catalog' is defined, selects the block(s) in that file.\n"
                         "Multiple sources can be provided.")
-    parser.add_argument('-sc', '--source-catalog', type=str, default=None,
+    parser.add_argument('-sc', '--source-catalog', '--sc', type=str, default=None,
                         help="Input file containing the personal source catalog.\n"
                         "If provided, then '--targets' will select the block(s) "
                         "defined in\nthis file, ignoring the rest.")

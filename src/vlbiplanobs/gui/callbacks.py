@@ -301,14 +301,17 @@ def update_selected_antennas_from_networks(networks, current_antennas, *group_ac
     return [list(new_antennas)] + group_selected_states
 
 
-# Clientside callback for epoch toggle.
-# Uses className ('d-none' vs '') instead of `hidden` so that persistence-restored
-# switch values are reliably reflected on page load without race conditions.
-clientside_callback(
-    "function(value) { return value ? '' : 'd-none'; }",
-    Output('epoch-selection-div', 'className'),
-    Input('switch-specify-epoch', 'value')
-)
+# Epoch toggle: show/hide the date+time fields based on the switch.
+# This MUST be a serverside callback (not clientside): on page load the serverside
+# initial call receives the persistence-restored switch value, so a previously-ticked
+# switch correctly reveals the epoch fields. A clientside callback races against
+# persistence restoration and fires with the stale default (False), leaving the fields
+# hidden until the user toggles the switch off and on again.
+@callback(Output('epoch-selection-div', 'className'),
+          Input('switch-specify-epoch', 'value'))
+def toggle_epoch_selection(value: bool) -> str:
+    """Return '' to show the epoch date/time fields when the switch is on, else 'd-none'."""
+    return '' if value else 'd-none'
 
 
 # --------------------------------------------------------------------------------------

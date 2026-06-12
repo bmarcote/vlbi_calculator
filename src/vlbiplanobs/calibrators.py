@@ -15,7 +15,7 @@ from rich.table import Table
 from rich_argparse import RawTextRichHelpFormatter
 from urllib import parse
 
-from .sources import Source, SourceType
+from .sources import Source, SourceType, SourceCatalog
 from .stations import Stations, MountType
 from . import observation as obs
 
@@ -929,6 +929,26 @@ def main_fringe():
     sys.exit(0)
 
 
+def _target_from_personal_catalog(catalog_file: str, name: str) -> Optional[Source]:
+    """Looks up `name` in a personal source catalog (toml file, as used by 'planobs observe -sc').
+
+    Inputs
+        catalog_file : str — path to the personal source catalog (toml).
+        name : str — block name or source name to look up.
+
+    Returns
+        Optional[Source] — the (first) target source of the matching block, the source with
+        the given name, or None if not found.
+    """
+    catalog = SourceCatalog(catalog_file)
+    if name in catalog.blocknames:
+        block = catalog[name]
+        block_targets = block.sources(SourceType.TARGET) or block.sources()
+        return block_targets[0] if block_targets else None
+
+    return catalog.sources(include_calibrators=True).get(name)
+
+
 def main_phasecal():
     usage = "%(prog)s [-h] OPTIONS"
     description = "Find phase calibrator sources near a target source"
@@ -947,12 +967,23 @@ def main_phasecal():
                              "If not provided, shows flux for all available bands.")
     parser.add_argument('--catalog-file', type=str, default=None,
                         help="Path to custom RFC catalog file.")
+    parser.add_argument('-sc', '--source-catalog', '--sc', type=str, default=None,
+                        help="Input file containing the personal source catalog (toml).\n"
+                        "If provided, '--target' is first looked up there (block or source name).")
     parser.add_argument('--json', action='store_true', default=False,
                         help="Output results in JSON format instead of a table.")
     args = parser.parse_args()
 
     catalog = RFCCatalog(catalog_filename=args.catalog_file, band='c', min_flux=0.0)
-    target = catalog.get_source(args.target)
+    target = None
+    if args.source_catalog is not None:
+        target = _target_from_personal_catalog(args.source_catalog, args.target)
+        if target is None:
+            rprint(f"[yellow]'{args.target}' not found in {args.source_catalog} — "
+                   "falling back to the RFC catalog/online lookup.[/yellow]")
+
+    if not target:
+        target = catalog.get_source(args.target)
     if not target:
         try:
             target = Source.source_from_str(args.target, source_type=SourceType.TARGET)

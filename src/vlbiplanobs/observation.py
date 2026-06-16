@@ -12,11 +12,13 @@ from datetime import datetime as dt
 from astropy import units as u
 from astropy import coordinates as coord
 from astropy.time import Time
+from astropy.utils.iers import conf
 from importlib import resources
 from .stations import Stations, Station, MountType
 from .sources import Source, Scan, ScanBlock, SourceType, SourceNotVisible
 from . import freqsetups
 
+conf.auto_max_age = None
 
 _NETWORKS = Stations.get_networks_from_configfile()
 _STATIONS = Stations()

@@ -428,7 +428,18 @@ def main(band: str, networks: Optional[list[str]] = None,
         duration_val = duration.to(u.min).value
 
     if datarate is None:
-        filtered_stations = obs._STATIONS.filter_antennas(stations or [])
+        if networks is not None:
+            network_station_codes = []
+            for n in networks:
+                if n in obs._NETWORKS:
+                    for s in obs._NETWORKS[n].station_codenames:
+                        if s not in network_station_codes:
+                            network_station_codes.append(s)
+            filtered_stations = obs._STATIONS.filter_antennas(
+                network_station_codes + (stations or [])
+            )
+        else:
+            filtered_stations = obs._STATIONS.filter_antennas(stations or [])
         if not filtered_stations:
             raise ValueError(f"No valid stations provided. Check station codes: {stations}")
         obs_networks = networks or obs.Observation.guess_network(band, filtered_stations)

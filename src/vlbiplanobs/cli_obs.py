@@ -40,11 +40,16 @@ class VLBIObs(obs.Observation):
         self._excluded_stations: dict[str, str] = {}
 
     def summary(self, gui: bool = True, tui: bool = True):
+        """Prints the observation summary. Uses the GUI variant when `gui` is set,
+        otherwise the terminal (TUI) variant when `tui` is set; does nothing if both are False
+        (the CLI warns about that combination before calling)."""
         if gui:
             return self._summary_gui()
 
         if tui:
             return self._summary_tui()
+
+        return None
 
     def _summary_gui(self):
         self._summary_tui()

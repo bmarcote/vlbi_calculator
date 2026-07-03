@@ -762,8 +762,9 @@ class Stations(object):
                                       and s.codename in the_network.station_codenames),
                             observing_bands=bands, max_datarates=datarates)
 
+        # list() so it is a Sequence: dict_values would be treated as a scalar max_datarate
         return Stations(stations=(s for s in self.stations if any(n in s.networks for n in networks)),
-                        observing_bands=self.observing_bands, max_datarates=self._bands.values())
+                        observing_bands=self.observing_bands, max_datarates=list(self._bands.values()))
 
     def filter_band(self, band: str) -> Stations:
         """Returns a new network which only contains the antennas that can observe
@@ -807,9 +808,10 @@ class Stations(object):
                        f"{', '.join(list(unexpected_ant))} are not present in the current "
                        "network.[/yellow bold]")
         codename_indices = {codename: i for i, codename in enumerate(codenames)}
+        # list() so it is a Sequence: dict_values would be treated as a scalar max_datarate
         return Stations(stations=sorted([s for s in self.stations if s.codename in codenames],
                                         key=lambda x: codename_indices[x.codename]),
-                        observing_bands=self.observing_bands, max_datarates=self._bands.values())
+                        observing_bands=self.observing_bands, max_datarates=list(self._bands.values()))
 
     @staticmethod
     def get_networks_from_configfile(filename: Optional[str] = None,
@@ -983,11 +985,11 @@ class Stations(object):
                                                                      configs["ax1rate"],
                                                                      configs["ax1acc"]),
                                    Axis(configs["ax2lim"], configs["ax2rate"],
-                                        station["ax2acc"]))
+                                        configs["ax2acc"]))
                 else:
                     amount = Mount(MountType[station["mount"]], Axis(configs["ax1lim"],
-                                   station["ax1rate"]), Axis(configs["ax2lim"],
-                                   station["ax2rate"]))
+                                   configs["ax1rate"]), Axis(configs["ax2lim"],
+                                   configs["ax2rate"]))
             except ValueError:
                 raise ValueError(f"when loading the data from antenna {station['station']}.")
         else:

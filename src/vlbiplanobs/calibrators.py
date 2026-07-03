@@ -961,7 +961,7 @@ def main_phasecal():
                         help="Target source name (J2000 or IVS name from RFC catalog).")
     parser.add_argument('--max-separation', type=float, default=5.0,
                         help="Maximum angular separation in degrees (default: 5.0).")
-    parser.add_argument('--min-flux', type=float, default=0.0,
+    parser.add_argument('--min-flux', type=float, default=0.1,
                         help="Minimum unresolved flux threshold in Jy (default: 0.1).")
     parser.add_argument('-n', '--n-sources', type=int, default=None,
                         help="Maximum number of sources to return (default: all).")

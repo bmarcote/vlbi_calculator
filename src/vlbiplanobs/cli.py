@@ -885,8 +885,8 @@ def handle_phase_cal_command(args):
         sys.argv.extend(['-sc', args.source_catalog])
     if args.max_separation != 5.0:
         sys.argv.extend(['--max-separation', str(args.max_separation)])
-    if args.min_flux != 0.1:
-        sys.argv.extend(['--min-flux', str(args.min_flux)])
+    # Always forward: keeps the effective default in sync with main_phasecal's parser.
+    sys.argv.extend(['--min-flux', str(args.min_flux)])
     if args.n_sources is not None:
         sys.argv.extend(['-n', str(args.n_sources)])
     if args.band is not None:

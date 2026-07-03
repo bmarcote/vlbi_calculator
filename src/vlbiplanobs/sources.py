@@ -1,6 +1,5 @@
 from typing import Optional, Union, Self, Sequence
 from importlib import resources
-import functools
 import numpy as np
 import tomllib
 import operator
@@ -545,6 +544,10 @@ def _resolve_coord_str(entry: dict, name: str) -> Optional[str]:
 class SourceCatalog:
     def __init__(self, personal_catalog: Optional[str] = None):
         self._blocks: dict[str, dict[str, ScanBlock]] = dict()
+        # Per-instance caches for source_names()/sources(), keyed by include_calibrators.
+        # Invalidated whenever a catalog file is (re)read.
+        self._cache_source_names: dict[bool, list[str]] = {}
+        self._cache_sources: dict[bool, dict[str, Source]] = {}
         if personal_catalog is not None:
             self.read_personal_catalog(personal_catalog)
 
@@ -576,23 +579,31 @@ class SourceCatalog:
     def polcals(self):
         return self._blocks['polcals'] if 'polcals' in self._blocks else None
 
-    @functools.cache
     def source_names(self, include_calibrators: bool = False) -> list[str]:
         """Returns the names of all sources in the database.
         """
-        if include_calibrators:
-            return list([s.name for b in self._blocks.values() for bs in b.values() for s in bs.sources()])
+        if include_calibrators not in self._cache_source_names:
+            if include_calibrators:
+                self._cache_source_names[include_calibrators] = \
+                    [s.name for b in self._blocks.values() for bs in b.values() for s in bs.sources()]
+            else:
+                self._cache_source_names[include_calibrators] = \
+                    [s.name for b in self._blocks['targets'].values() for s in b.sources()]
 
-        return list([s.name for b in self._blocks['targets'].values() for s in b.sources()])
+        return self._cache_source_names[include_calibrators]
 
-    @functools.cache
     def sources(self, include_calibrators: bool = False) -> dict[str, Source]:
         """Returns all sources.
         """
-        if include_calibrators:
-            return {s.name: s for b in self._blocks.values() for bs in b.values() for s in bs.sources()}
+        if include_calibrators not in self._cache_sources:
+            if include_calibrators:
+                self._cache_sources[include_calibrators] = \
+                    {s.name: s for b in self._blocks.values() for bs in b.values() for s in bs.sources()}
+            else:
+                self._cache_sources[include_calibrators] = \
+                    {s.name: s for b in self._blocks['targets'].values() for s in b.sources()}
 
-        return {s.name: s for b in self._blocks['targets'].values() for s in b.sources()}
+        return self._cache_sources[include_calibrators]
 
     def __contains__(self, item: str):
         return item in self.blocknames
@@ -616,6 +627,8 @@ class SourceCatalog:
         - tomllib.TOMLDecodeError: If the TOML file is malformed.
         - ValueError: If the source type is not recognized.
         """
+        self._cache_source_names.clear()
+        self._cache_sources.clear()
         with open(path, 'rb') as sources_toml:
             catalog = tomllib.load(sources_toml)
 
@@ -853,19 +866,20 @@ class ScanBlock:
 
         total_duration = sum([s.duration for s in valid_scans if s.every <= 0])
 
-        # Get positive every values
+        # Over mcm_every cycles, a scan with 'every = N > 0' is observed mcm_every/N times,
+        # while the base scans (every <= 0) are observed on every cycle.
         positive_every = [s.every for s in valid_scans if s.every > 0]
         if positive_every:
             mcm_every = np.lcm.reduce(positive_every)
             total_duration = total_duration*mcm_every + \
-                sum([s.duration*(s.every/mcm_every) for s in valid_scans if s.every > 0])
+                sum([s.duration*(mcm_every/s.every) for s in valid_scans if s.every > 0])
         else:
             mcm_every = 1
 
         for ascan in valid_scans:
             if ascan.duration is not None:
                 self._frac_time[ascan.source.name] = ascan.duration*mcm_every / \
-                                                     (ascan.every if ascan.every >= 0 else 1) / total_duration
+                                                     (ascan.every if ascan.every > 0 else 1) / total_duration
 
         return self._frac_time
 

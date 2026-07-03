@@ -23,10 +23,12 @@ conf.auto_max_age = None
 _NETWORKS = Stations.get_networks_from_configfile()
 _STATIONS = Stations()
 
-# Module-level cached reference times to avoid recalculation
+# Module-level cached reference times to avoid recalculation.
+# Each cache tracks its own year so a year rollover refreshes both independently.
 _REF_TIMES_CACHE: Optional[Time] = None
 _REF_YEAR_CACHE: Optional[Time] = None
-_CACHE_YEAR: Optional[int] = None
+_CACHE_YEAR_TIMES: Optional[int] = None
+_CACHE_YEAR_YEAR: Optional[int] = None
 
 
 def _warm_astropy_caches() -> None:
@@ -35,11 +37,12 @@ def _warm_astropy_caches() -> None:
     The first call to Time.sidereal_time() is ~0.19s due to one-time setup.
     Calling this at module load eliminates the penalty from the first user request.
     """
-    global _REF_TIMES_CACHE, _REF_YEAR_CACHE, _CACHE_YEAR
+    global _REF_TIMES_CACHE, _REF_YEAR_CACHE, _CACHE_YEAR_TIMES, _CACHE_YEAR_YEAR
     current_year = dt.now().year
     _REF_TIMES_CACHE = Time(f'{current_year}-09-21', scale='utc') + np.arange(0.0, 1.0, 0.5/24) * u.day
     _REF_YEAR_CACHE = Time(f'{current_year}-01-01', scale='utc') + np.arange(0.0, 365.2, 1) * u.day
-    _CACHE_YEAR = current_year
+    _CACHE_YEAR_TIMES = current_year
+    _CACHE_YEAR_YEAR = current_year
     # Trigger the expensive sidereal_time computation so it's cached for all future calls
     _REF_TIMES_CACHE.sidereal_time('mean', 'greenwich')
 
@@ -153,22 +156,21 @@ class Observation(object):
     @property
     def _REF_TIMES(self):
         """Returns reference times for the current year, cached to avoid recalculation."""
-        global _REF_TIMES_CACHE, _CACHE_YEAR
+        global _REF_TIMES_CACHE, _CACHE_YEAR_TIMES
         current_year = dt.now().year
-        if _CACHE_YEAR != current_year or _REF_TIMES_CACHE is None:
+        if _CACHE_YEAR_TIMES != current_year or _REF_TIMES_CACHE is None:
             _REF_TIMES_CACHE = Time(f'{current_year}-09-21', scale='utc') + np.arange(0.0, 1.0, 0.5/24)*u.day
-            _CACHE_YEAR = current_year
+            _CACHE_YEAR_TIMES = current_year
         return _REF_TIMES_CACHE
 
     @property
     def _REF_YEAR(self):
         """Returns reference year times for the current year, cached to avoid recalculation."""
-        global _REF_YEAR_CACHE, _CACHE_YEAR
+        global _REF_YEAR_CACHE, _CACHE_YEAR_YEAR
         current_year = dt.now().year
-        if _CACHE_YEAR != current_year or _REF_YEAR_CACHE is None:
+        if _CACHE_YEAR_YEAR != current_year or _REF_YEAR_CACHE is None:
             _REF_YEAR_CACHE = Time(f'{current_year}-01-01', scale='utc') + np.arange(0.0, 365.2, 1)*u.day
-            if _CACHE_YEAR is None:
-                _CACHE_YEAR = current_year
+            _CACHE_YEAR_YEAR = current_year
         return _REF_YEAR_CACHE
 
     @enforce_types
@@ -277,11 +279,12 @@ class Observation(object):
     def scans(self, scans: Optional[dict[str, ScanBlock]]):
         with self._mutex:
             self._scans = scans if scans is not None else {}
+            self._source_list = None
             self._elevations = None
             self._altaz = None
             self._is_visible = None
             self._per_source_visible = None
-            self._is_always_observable = None
+            self._is_always_visible = None
             self._rms = None
             self._uv_baseline = None
             self._uv_array = None
@@ -304,16 +307,16 @@ class Observation(object):
             return []
 
         with self._mutex:
-            if self._source_list is not None:
+            # The cache always holds the full (unfiltered) list; the source_type filter
+            # is applied on return so different filters never poison the cache.
+            if self._source_list is None:
+                self._source_list = [a_src for a_scanblock in self._scans.values()
+                                     for a_src in a_scanblock.sources()]
+
+            if source_type is None:
                 return self._source_list
 
-            self._source_list = []
-            for a_scanblock in self._scans.values():
-                for a_src in a_scanblock.sources():
-                    if (source_type is None) or (a_src.type == source_type):
-                        self._source_list.append(a_src)
-
-            return self._source_list
+            return [a_src for a_src in self._source_list if a_src.type == source_type]
 
     def _scanblock_name_from_source_name(self, source_name: str) -> str:
         if self.scans is not None:
@@ -351,7 +354,7 @@ class Observation(object):
             self._elevations = None
             self._altaz = None
             self._is_visible = None
-            self._is_always_observable = None
+            self._is_always_visible = None
             self._rms = None
             self._uv_baseline = None
             self._uv_array = None
@@ -388,7 +391,7 @@ class Observation(object):
             self._rms = None
             self._baseline_sensitivity = None
             self._uv_baseline = None
-            self._is_always_observable = None
+            self._is_always_visible = None
             self._uv_array = None
             self._synth_beam = None
 
@@ -673,7 +676,7 @@ class Observation(object):
             self._elevations = None
             self._altaz = None
             self._is_visible = None
-            self._is_always_observable = None
+            self._is_always_visible = None
             self._rms = None
             self._baseline_sensitivity = None
             self._uv_baseline = None
@@ -1308,32 +1311,29 @@ class Observation(object):
             - sensitivity: astropy.units.Quantity
                 The sensitivity of the baseline in the observation, in Jy/beam units.
         """
+        # The cache stores the raw (1-second) sensitivities; the integration-time scaling
+        # is applied on every call so different integration times give consistent results.
         if self._baseline_sensitivity is None:
             self._baseline_sensitivity = self._baseline_sensitivity_numpy()
             if self._baseline_sensitivity is None:
                 return None
-            for key in self._baseline_sensitivity:
-                self._baseline_sensitivity[key] = self._baseline_sensitivity[key] / \
-                    np.sqrt(integration_time.to(u.s).value)
+
+        scale = np.sqrt(integration_time.to(u.s).value)
         if antenna1 is None and antenna2 is None:
-            return self._baseline_sensitivity
-        elif antenna1 is not None and antenna2 is None:
-            return [self._baseline_sensitivity[f"{antenna1}-{ant}"]
-                    for ant in self.stations.station_codenames] + \
-                   [self._baseline_sensitivity[f"{ant}-{antenna1}"]
-                    for ant in self.stations.station_codenames if ant != antenna1]
-        elif antenna1 is None and antenna2 is not None:
-            return [self._baseline_sensitivity[f"{antenna2}-{ant}"]
-                    for ant in self.stations.station_codenames] + \
-                   [self._baseline_sensitivity[f"{ant}-{antenna2}"]
-                    for ant in self.stations.station_codenames if ant != antenna2]
+            return {key: val / scale for key, val in self._baseline_sensitivity.items()}
+        elif antenna1 is None or antenna2 is None:
+            # Only one antenna given: return the sensitivities of all its baselines.
+            # Keys are stored in a single 'ant_i-ant_j' orientation, so match both sides.
+            codename = self.stations[antenna1 if antenna1 is not None else antenna2].codename
+            return [val / scale for key, val in self._baseline_sensitivity.items()
+                    if codename in key.split('-')]
 
         ant1 = self.stations[antenna1]
         ant2 = self.stations[antenna2]
         if f"{ant1.codename}-{ant2.codename}" in self._baseline_sensitivity:
-            return self._baseline_sensitivity[f"{ant1.codename}-{ant2.codename}"]
+            return self._baseline_sensitivity[f"{ant1.codename}-{ant2.codename}"] / scale
 
-        return self._baseline_sensitivity[f"{ant2.codename}-{ant1.codename}"]
+        return self._baseline_sensitivity[f"{ant2.codename}-{ant1.codename}"] / scale
 
     # This implementation is ~5 times faster than with threads
     # Only for >20 antennas, it gets ~2 times slower. I think it's worth it.
@@ -1640,7 +1640,7 @@ class Observation(object):
         gsttext = "{:02n}:{:02.2n}-{:02n}:{:02.2n}".format((self.gstimes[0].hour*60) // 60,
                                                            (self.gstimes[0].hour*60) % 60,
                                                            (self.gstimes[-1].hour*60) // 60,
-                                                           (self.gstimes[0].hour*60) % 60)
+                                                           (self.gstimes[-1].hour*60) % 60)
         if self.times[0].datetime.date() == self.times[-1].datetime.date():
             return "{} {}-{} UTC\nGST range: {}".format(self.times[0].datetime.strftime(date_format),
                                                         self.times[0].datetime.strftime('%H:%M'),

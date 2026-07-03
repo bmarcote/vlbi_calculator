@@ -220,7 +220,9 @@ def highlight_active_menu_item(active_codenames, _switches):
     active_set = set(active_codenames)
 
     classes = []
-    for item in ctx.outputs_list[0]:
+    # Single (non-list) Output declaration: ctx.outputs_list is already the flat
+    # list of item specs for the ALL pattern, not wrapped in an outer list.
+    for item in ctx.outputs_list:
         index = item['id']['index']  # format: 'groupname__codename'
         codename = index.split('__', 1)[1] if '__' in index else ''
         classes.append('group-menu-item-active' if codename in active_set else '')
@@ -640,13 +642,17 @@ def url_open(href):
     config = parsed_href.args.get('config')
     if config is None:
         raise PreventUpdate
-    if target_version is not None:
-        target_version = Version(unquote(target_version))
-        if target_version > current_version:
-            # current running version too old??
-            raise PreventUpdate
-    config_list = json.loads(unquote(config))
-    id_list, value_list = map(list, zip(*config_list))
+    # The URL parameters come from the user's browser and may be hand-edited or truncated:
+    # ignore malformed values instead of erroring the callback.
+    try:
+        target_version = Version(unquote(target_version)) if target_version is not None else None
+        config_list = json.loads(unquote(config))
+        id_list, value_list = map(list, zip(*config_list))
+    except Exception:
+        raise PreventUpdate
+    if target_version is not None and target_version > current_version:
+        # current running version too old??
+        raise PreventUpdate
     update_list = []
     for component_id in export_component_ids:
         try:

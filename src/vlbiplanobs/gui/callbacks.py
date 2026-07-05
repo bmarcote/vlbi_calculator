@@ -139,26 +139,52 @@ def enable_antennas_with_band(band_index: int, do_e_evn: bool):
 
 
 @callback(
-    [Output({'type': 'group-is-selected', 'index': MATCH}, 'data'),
+    [Output({'type': 'group-is-selected', 'index': ALL}, 'data', allow_duplicate=True),
      Output('switches-antennas', 'value', allow_duplicate=True)],
-    Input({'type': 'group-toggle-btn', 'index': MATCH}, 'n_clicks'),
-    [State({'type': 'group-is-selected', 'index': MATCH}, 'data'),
-     State({'type': 'group-active-codename', 'index': MATCH}, 'data'),
+    Input({'type': 'group-toggle-btn', 'index': ALL}, 'n_clicks'),
+    [State({'type': 'group-is-selected', 'index': ALL}, 'data'),
+     State({'type': 'group-active-codename', 'index': ALL}, 'data'),
      State('switches-antennas', 'value')],
     prevent_initial_call=True
 )
-def toggle_group_chip(n_clicks, is_selected, active_codename, current_antennas):
+def toggle_group_chip(n_clicks_list, is_selected_list, active_codenames, current_antennas):
     """Toggle a grouped antenna chip on/off, adding or removing its active codename
-    from the switches-antennas selection."""
-    if n_clicks is None:
+    from the switches-antennas selection.
+
+    Uses ALL patterns (not MATCH) so the per-group `group-is-selected` output can share one
+    callback with the plain `switches-antennas` output: Dash forbids mixing a MATCH-wildcard
+    Output with a non-wildcard Output ("Mismatched MATCH wildcards across Outputs"), which
+    disables the whole callback graph. Only the toggled group's state changes; the rest stay
+    `no_update`. Mirrors `switch_group_config` above.
+    """
+    if not ctx.triggered_id:
         raise PreventUpdate
-    new_selected = not bool(is_selected)
+    group_name_triggered = ctx.triggered_id.get('index', '')
+
+    # Ordered group names matching the ALL store order.
+    group_names = [item['id']['index'] for item in ctx.states_list[0]]
+    try:
+        group_idx = group_names.index(group_name_triggered)
+    except ValueError:
+        raise PreventUpdate
+
+    # Ignore the initial (n_clicks=None) dispatch for a freshly-rendered button.
+    if not n_clicks_list[group_idx]:
+        raise PreventUpdate
+
+    new_selected = not bool(is_selected_list[group_idx])
+    active_codename = active_codenames[group_idx]
+
+    new_is_selected = [no_update] * len(is_selected_list)
+    new_is_selected[group_idx] = new_selected
+
     current_set = set(current_antennas or [])
     if new_selected:
         current_set.add(active_codename)
     else:
         current_set.discard(active_codename)
-    return new_selected, list(current_set)
+
+    return new_is_selected, list(current_set)
 
 
 @callback(
@@ -209,23 +235,31 @@ def switch_group_config(menu_clicks, active_codenames, is_selected_list, current
 @callback(
     Output({'type': 'group-menu-item', 'index': ALL}, 'className'),
     [Input({'type': 'group-active-codename', 'index': ALL}, 'data'),
+     Input({'type': 'group-is-selected', 'index': ALL}, 'data'),
      Input('switches-antennas', 'value')],
 )
-def highlight_active_menu_item(active_codenames, _switches):
+def highlight_active_menu_item(active_codenames, is_selected_list, _switches):
     """Set className on each menu item to mark the active configuration.
-    Uses a CSS class rather than Mantine style props so the highlight survives
-    Dash re-renders triggered by unrelated callbacks (e.g. observation compute).
+
+    A menu item is highlighted only when its group is currently selected AND the item is
+    that group's active configuration, so the dropdown follows the user's choice (and shows
+    no highlight when the group is not selected). Uses a CSS class rather than Mantine style
+    props so the highlight survives Dash re-renders triggered by unrelated callbacks.
     Re-triggered by switches-antennas changes to re-apply after any full update.
     """
-    active_set = set(active_codenames)
+    # Map each group name to its active codename and selected state (both are ALL patterns
+    # over the same set of group indices, so build dicts keyed by group name to stay robust).
+    group_active = {it['id']['index']: it.get('value') for it in ctx.inputs_list[0]}
+    group_selected = {it['id']['index']: it.get('value') for it in ctx.inputs_list[1]}
 
     classes = []
     # Single (non-list) Output declaration: ctx.outputs_list is already the flat
     # list of item specs for the ALL pattern, not wrapped in an outer list.
     for item in ctx.outputs_list:
         index = item['id']['index']  # format: 'groupname__codename'
-        codename = index.split('__', 1)[1] if '__' in index else ''
-        classes.append('group-menu-item-active' if codename in active_set else '')
+        group_name, _, codename = index.partition('__')
+        is_active = bool(group_selected.get(group_name)) and group_active.get(group_name) == codename
+        classes.append('group-menu-item group-menu-item-active' if is_active else 'group-menu-item')
     return classes
 
 
@@ -243,8 +277,9 @@ def update_group_chip_appearance(active_codename, is_selected, band_index, do_e_
     selected/disabled state. Also dims the group chip wrapper when the active config
     cannot observe the selected band."""
     ant = observation._STATIONS[active_codename]
-    group_name = ctx.outputs_list[0]['id']['index']
-    label = group_name.upper()
+    # Label follows the active configuration chosen by the user (e.g. 'VLA 1' vs 'VLA 27'),
+    # instead of the generic group name, so the chip reflects the current selection.
+    label = ant.name
 
     disabled = False
     if band_index and band_index != 0:
@@ -303,17 +338,10 @@ def update_selected_antennas_from_networks(networks, current_antennas, *group_ac
     return [list(new_antennas)] + group_selected_states
 
 
-# Epoch toggle: show/hide the date+time fields based on the switch.
-# This MUST be a serverside callback (not clientside): on page load the serverside
-# initial call receives the persistence-restored switch value, so a previously-ticked
-# switch correctly reveals the epoch fields. A clientside callback races against
-# persistence restoration and fires with the stale default (False), leaving the fields
-# hidden until the user toggles the switch off and on again.
-@callback(Output('epoch-selection-div', 'className'),
-          Input('switch-specify-epoch', 'value'))
-def toggle_epoch_selection(value: bool) -> str:
-    """Return '' to show the epoch date/time fields when the switch is on, else 'd-none'."""
-    return '' if value else 'd-none'
+# NOTE: The epoch date/time fields (`epoch-selection-div`) are ALWAYS visible now.
+# The 'Specify an epoch' switch (`switch-specify-epoch`) only controls whether the chosen
+# epoch is applied to the computation (see `compute_observation_realtime`), not the
+# visibility of the fields. No show/hide callback is therefore needed.
 
 
 # --------------------------------------------------------------------------------------

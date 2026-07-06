@@ -239,10 +239,13 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
                         subplot_titles=[f"Elevations for {src_block}" for src_block in srcup]
                         if len(srcup) > 1 else '')
 
+    # (row, col, ant_names) per subplot so each one gets its own y-axis labels
+    subplot_ant_names: list[tuple[int, int, list[str]]] = []
     for src_i, src_block in enumerate(srcup):
         ant_names = list(srcup[src_block].keys())
         n_ants = len(ant_names)
         n_times = len(o.times.datetime)
+        subplot_ant_names.append((src_i % 4 + 1, src_i // 4 + 1, ant_names))
 
         # Build elevation matrix (antennas x times)
         z_matrix = np.full((n_ants, n_times), np.nan)
@@ -301,15 +304,16 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
                    mirror=bottom_mirror, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
                    showgrid=False, zeroline=False,
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
-                   tickmode='array',
-                   tickvals=list(range(1, n_ants + 1)),
-                   ticktext=list(reversed(ant_names)),
-                   showgrid=False, zeroline=False,
-                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         margin=dict(l=2, r=2, t=45, b=0))
 
     fig.update_layout(**layout_kwargs)
+    # Style all y axes, then label each subplot with its own block's antenna names.
+    fig.update_yaxes(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
+                     showgrid=False, zeroline=False,
+                     minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False))
+    for row, col, names in subplot_ant_names:
+        fig.update_yaxes(tickmode='array', tickvals=list(range(1, len(names) + 1)),
+                         ticktext=list(reversed(names)), row=row, col=col)
     if show_colorbar:
         fig.update_layout(coloraxis=dict(colorscale='Viridis'),
                           coloraxis_colorbar=dict(title='Elevation (degrees)'))
@@ -550,9 +554,12 @@ def elevation_plot_from_data(data: dict, show_colorbar: bool = False) -> Optiona
     fig = make_subplots(rows=min(len(blocks), 4), cols=len(blocks) // 4 + 1,
                         subplot_titles=[f"Elevations for {sb}" for sb in blocks] if len(blocks) > 1 else '')
 
+    # (row, col, ant_names) per subplot so each one gets its own y-axis labels
+    subplot_ant_names: list[tuple[int, int, list[str]]] = []
     for src_i, (src_block, bdata) in enumerate(blocks.items()):
         ant_names = bdata['ant_names']
         n_ants = len(ant_names)
+        subplot_ant_names.append((src_i % 4 + 1, src_i // 4 + 1, ant_names))
         z_matrix = np.full((n_ants, n_times), np.nan)
         for anti, ant in enumerate(ant_names):
             vis = np.array(bdata['observability'][ant], dtype=bool)
@@ -584,11 +591,14 @@ def elevation_plot_from_data(data: dict, show_colorbar: bool = False) -> Optiona
                    mirror=bottom_mirror, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
                    showgrid=False, zeroline=False,
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
-                   tickmode='array', tickvals=list(range(1, n_ants + 1)), ticktext=list(reversed(ant_names)),
-                   showgrid=False, zeroline=False,
-                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         margin=dict(l=2, r=2, t=45, b=0))
+    # Style all y axes, then label each subplot with its own block's antenna names.
+    fig.update_yaxes(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
+                     showgrid=False, zeroline=False,
+                     minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False))
+    for row, col, names in subplot_ant_names:
+        fig.update_yaxes(tickmode='array', tickvals=list(range(1, len(names) + 1)),
+                         ticktext=list(reversed(names)), row=row, col=col)
     _apply_gst_top_axis(fig, axis_cfg)
     return fig
 

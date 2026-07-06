@@ -242,7 +242,8 @@ def ant_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
     ants_excluded = []
     for src_is_visible in o.can_be_observed().values():
-        ants_excluded = [ant for ant in src_is_visible if not src_is_visible[ant]]
+        ants_excluded += [ant for ant in src_is_visible
+                          if not src_is_visible[ant] and ant not in ants_excluded]
 
     if not ants_excluded:
         return html.Div()
@@ -1192,11 +1193,13 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
         layout.append_layout_element(pdf.Paragraph(f"Field of view limited to {bw_smearing:.2g} (from frequency smearing) "
                                 f"and {tm_smearing:.2g} (from time smearing), considering 10% loss."))
 
+    figpath: Optional[Path] = None
     if len(o.scans) > 0 and show_figure:
         fig = plots.elevation_plot(o, show_colorbar=True)
         if fig is not None:
             try:
                 with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tempfig:
+                    figpath = Path(tempfig.name)
                     fig.update_layout(
                         plot_bgcolor='white',
                         paper_bgcolor='white',
@@ -1204,7 +1207,6 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
                         margin=dict(l=60, r=20, t=50, b=50)
                     )
                     fig.write_image(tempfig.name, scale=2, width=800, height=400)
-                    figpath = Path(tempfig.name)
 
                 layout.append_layout_element(pdf.Image(figpath, size=(414, 265)))
             except Exception as e:
@@ -1214,6 +1216,10 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
 
     tmp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
     pdf.PDF.write(where_to=tmp.name, what=doc)
+    # The figure PNG is embedded in the written PDF, so the temp file can go now.
+    # The PDF temp file itself is removed by the download callback after serving it.
+    if figpath is not None:
+        figpath.unlink(missing_ok=True)
     return tmp.name
 
     # def get_fig_dirty_map(self):

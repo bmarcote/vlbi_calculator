@@ -335,7 +335,7 @@ def _grouped_chip_component(app, group_name: str, group_stations: list[stations.
             s.name,
             id={'type': 'group-menu-item', 'index': f"{group_name}__{s.codename}"},
             style={'font-size': '0.85rem'},
-            className='group-menu-item-active' if i == 0 else '',
+            className='group-menu-item group-menu-item-active' if i == 0 else 'group-menu-item',
         )
         menu_items.append(
             dmc.HoverCard(shadow="lg", radius="lg", openDelay=700, position='right',
@@ -360,10 +360,11 @@ def _grouped_chip_component(app, group_name: str, group_stations: list[stations.
         ]
     )
 
-    # The toggle button (on/off) shows the group name. Clicking it toggles selection.
+    # The toggle button (on/off) shows the active configuration name (e.g. 'VLA 1').
+    # Clicking it toggles selection; the label is kept in sync by a callback.
     toggle_btn = html.Button(
         id={'type': 'group-toggle-btn', 'index': group_name},
-        children=group_name.upper(),
+        children=group_stations[0].name,
         className='btn-group-chip-toggle btn-group-chip-off',
         title=f"Toggle {group_name.upper()} antenna",
     )
@@ -445,11 +446,11 @@ def source_and_epoch_selection() -> html.Div:
                                 html.Div(className='row form-group', children=[
                                     dbc.Switch(label='Specify an epoch', value=False,
                                                 id='switch-specify-epoch', persistence=True),
-                                    html.Div(id='epoch-selection-div', className='d-none', children=[
+                                    html.Div(id='epoch-selection-div', className='', children=[
                                         html.Div(className='row', children=[
                                             html.Label('Start of observation (UTC)', htmlFor='starttime'),
                                             html.Div(className='row mx-0', children=[
-                                                html.Div(className='col-12 px-0 mx-0 d-flex align-items-center', children=[
+                                                html.Div(className='col-12 px-0 mx-0 d-flex align-items-center gap-2', children=[
                                                     dcc.DatePickerSingle(id='startdate', min_date_allowed=dt(1950, 1, 1),
                                                                          max_date_allowed=dt(2100, 1, 1),
                                                                          initial_visible_month=dt.today(),

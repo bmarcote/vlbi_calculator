@@ -15,15 +15,15 @@ from rich.table import Table
 from rich_argparse import RawTextRichHelpFormatter
 from urllib import parse
 
-from .sources import Source, SourceType
+from .sources import Source, SourceType, SourceCatalog
 from .stations import Stations, MountType
 from . import observation as obs
 
-_RFC_BANDS = {'l': 's', 's': 's', 'c': 'c', 'm': 'c', 'x': 'x', 'u': 'u', 'k': 'k', 'q': 'k'}
-_DEFAULT_MIN_ELEVATION = 20 * u.deg
-_DEFAULT_MIN_FLUX = 1.0 * u.Jy
-_BAND_INDEX = {'s': 0, 'c': 1, 'x': 2, 'u': 3, 'k': 4}
-_WAVELENGTH_BANDS = {'18cm': 's', '21cm': 's', '13cm': 'c', '6cm': 'c', '5cm': 'c',
+_RFC_BANDS: dict[str, str] = {'l': 's', 's': 's', 'c': 'c', 'm': 'c', 'x': 'x', 'u': 'u', 'k': 'k', 'q': 'k'}
+_DEFAULT_MIN_ELEVATION: u.Quantity = 20 * u.deg
+_DEFAULT_MIN_FLUX: u.Quantity = 1.0 * u.Jy
+_BAND_INDEX: dict[str, int] = {'s': 0, 'c': 1, 'x': 2, 'u': 3, 'k': 4}
+_WAVELENGTH_BANDS: dict[str, str] = {'18cm': 's', '21cm': 's', '13cm': 'c', '6cm': 'c', '5cm': 'c',
                        '3.6cm': 'x', '2cm': 'u', '1.3cm': 'k', '0.7cm': 'k'}
 
 
@@ -44,11 +44,11 @@ class CalibratorSource(Source):
                  flux_resolved: np.ndarray, flux_unresolved: np.ndarray, is_calibrator: bool):
         super().__init__(name=name, coordinates=coord.SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg),
                      source_type=SourceType.PHASECAL)
-        self.ivsname = ivsname
-        self.n_observations = n_observations
-        self.flux_resolved = flux_resolved
-        self.flux_unresolved = flux_unresolved
-        self.is_calibrator = is_calibrator
+        self.ivsname: str = ivsname
+        self.n_observations: int = n_observations
+        self.flux_resolved: np.ndarray = flux_resolved
+        self.flux_unresolved: np.ndarray = flux_unresolved
+        self.is_calibrator: bool = is_calibrator
 
     @property
     def ra_deg(self) -> float:
@@ -158,12 +158,12 @@ class CalibratorSource(Source):
         # Handle negative declinations properly - only degrees should be negative
         ra_h, ra_m, ra_s = self.coord.ra.hms
         dec_d, dec_m, dec_s = self.coord.dec.dms
-        
+
         # For negative declinations, make minutes and seconds positive
         if dec_d < 0:
             dec_m = abs(dec_m)
             dec_s = abs(dec_s)
-        
+
         fmt = "ra={:02.0f}:{:02.0f}:{:06.3f}&dec={:+03.0f}:{:02.0f}:{:06.3f}&num_sou=1&format=html"
         source_coord_str = parse.quote(fmt.format(ra_h, ra_m, ra_s, dec_d, dec_m, dec_s), safe='=&')
         return f"http://astrogeo.org/cgi-bin/calib_search_form.csh?{source_coord_str}"
@@ -180,13 +180,14 @@ class CalibratorSource(Source):
 class RFCCatalog:
     """RFC (Radio Fundamental Catalog) of VLBI calibrator sources."""
     __slots__ = ('_sources', '_min_flux', '_band', '_catalog_filename',
-                 '_name_index', '_ivsname_index', '_ra_arr', '_dec_arr')
+                 '_name_index', '_ivsname_index', '_ra_arr', '_dec_arr', '_include_missing')
 
     def __init__(self, catalog_filename: Optional[str] = None, min_flux: u.Quantity = _DEFAULT_MIN_FLUX,
-                 band: str = 'c'):
+                 band: str = 'c', include_missing: bool = False):
         self._sources: list[CalibratorSource] = []
         self._min_flux = min_flux.to(u.Jy).value if hasattr(min_flux, 'to') else min_flux
         self._band = band
+        self._include_missing = include_missing
         self._catalog_filename = catalog_filename
         self._name_index: dict[str, CalibratorSource] = {}
         self._ivsname_index: dict[str, CalibratorSource] = {}
@@ -228,16 +229,15 @@ class RFCCatalog:
                         flux_values.extend([flux_res, flux_unres])
 
                     flux_array = np.array(flux_values, dtype=np.float32).reshape(5, 2)
-                    # Skip sources with flux below threshold
-                    # For phase calibrator searches (min_flux=0.0), include sources with missing data (-1.0)
-                    # For fringe finder searches (min_flux>0.0), exclude sources with missing data
-                    if self._min_flux > 0:
-                        # Fringe finder mode: exclude missing data and low flux
-                        if flux_array[band_idx, 1] < 0 or flux_array[band_idx, 1] < self._min_flux:
+                    # Skip sources with flux below threshold.
+                    # include_missing=True (phase cal mode): keep sources with no band measurement,
+                    # filter only those with a measured flux below threshold.
+                    # include_missing=False (fringe finder mode): exclude both missing and low-flux sources.
+                    if self._include_missing:
+                        if flux_array[band_idx, 1] >= 0 and flux_array[band_idx, 1] < self._min_flux:
                             continue
                     else:
-                        # Phase calibrator mode: include missing data, exclude only low positive flux
-                        if flux_array[band_idx, 1] >= 0 and flux_array[band_idx, 1] < self._min_flux:
+                        if flux_array[band_idx, 1] < 0 or flux_array[band_idx, 1] < self._min_flux:
                             continue
                 except (ValueError, IndexError):
                     continue
@@ -929,6 +929,29 @@ def main_fringe():
     sys.exit(0)
 
 
+def _target_from_personal_catalog(catalog_file: str, name: str) -> Optional[Source]:
+    """Looks up `name` in a personal source catalog (toml file, as used by 'planobs observe -sc').
+
+    Inputs
+        catalog_file : str — path to the personal source catalog (toml).
+        name : str — block name or source name to look up.
+
+    Returns
+        Optional[Source] — the (first) target source of the matching block, the source with
+        the given name, or None if not found.
+
+    Raises
+        FileNotFoundError — if catalog_file does not exist.
+    """
+    catalog = SourceCatalog(catalog_file)
+    if name in catalog.blocknames:
+        block = catalog[name]
+        block_targets = block.sources(SourceType.TARGET) or block.sources()
+        return block_targets[0] if block_targets else None
+
+    return catalog.sources(include_calibrators=True).get(name)
+
+
 def main_phasecal():
     usage = "%(prog)s [-h] OPTIONS"
     description = "Find phase calibrator sources near a target source"
@@ -938,7 +961,7 @@ def main_phasecal():
                         help="Target source name (J2000 or IVS name from RFC catalog).")
     parser.add_argument('--max-separation', type=float, default=5.0,
                         help="Maximum angular separation in degrees (default: 5.0).")
-    parser.add_argument('--min-flux', type=float, default=0.0,
+    parser.add_argument('--min-flux', type=float, default=0.1,
                         help="Minimum unresolved flux threshold in Jy (default: 0.1).")
     parser.add_argument('-n', '--n-sources', type=int, default=None,
                         help="Maximum number of sources to return (default: all).")
@@ -947,12 +970,31 @@ def main_phasecal():
                              "If not provided, shows flux for all available bands.")
     parser.add_argument('--catalog-file', type=str, default=None,
                         help="Path to custom RFC catalog file.")
+    parser.add_argument('-sc', '--source-catalog', '--sc', type=str, default=None,
+                        help="Input file containing the personal source catalog (toml).\n"
+                        "If provided, '--target' is first looked up there (block or source name).")
     parser.add_argument('--json', action='store_true', default=False,
                         help="Output results in JSON format instead of a table.")
     args = parser.parse_args()
 
-    catalog = RFCCatalog(catalog_filename=args.catalog_file, band='c', min_flux=0.0)
-    target = catalog.get_source(args.target)
+    catalog = RFCCatalog(catalog_filename=args.catalog_file, band='c', min_flux=args.min_flux, include_missing=True)
+    target = None
+    if args.source_catalog is not None:
+        try:
+            target = _target_from_personal_catalog(args.source_catalog, args.target)
+        except FileNotFoundError:
+            error_msg = f"Source catalog file not found: {args.source_catalog}"
+            if args.json:
+                print(json.dumps({"error": error_msg}, indent=2))
+            else:
+                rprint(f"[bold red]{error_msg}[/bold red]")
+            sys.exit(1)
+        if target is None:
+            rprint(f"[yellow]'{args.target}' not found in {args.source_catalog} — "
+                   "falling back to the RFC catalog/online lookup.[/yellow]")
+
+    if not target:
+        target = catalog.get_source(args.target)
     if not target:
         try:
             target = Source.source_from_str(args.target, source_type=SourceType.TARGET)

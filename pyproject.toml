@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vlbiplanobs"
-version = "5.0a1"
+version = "5.0.1"
 description = "Observaiton Planner for VLBI observations"
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -57,7 +57,7 @@ dependencies = [
   "dash-mantine-components",
   "kaleido",
   "loguru",
-  "borb",  # only for macOS (case-insensitive). Newer versions would work with GNU/Linux
+  "borb==2.1.25",  # only for macOS (case-insensitive). Newer versions would work with GNU/Linux
   "furl",
   "packaging",
 ]

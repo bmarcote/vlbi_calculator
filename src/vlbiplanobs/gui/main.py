@@ -122,7 +122,13 @@ def download_pdf_per_target(n_clicks, btn_id, obs_params: dict):
             logger.warning(f"Could not include figure in PDF: {fig_error}")
             tmpfile = outputs.summary_pdf(obs, show_figure=False)
         logger.info(f"PDF created at {tmpfile}.")
-        return dcc.send_file(tmpfile, filename=f"planobs_{safe_label}.pdf")
+        # send_file reads the file content into the response, so the temp file can go now.
+        download_data = dcc.send_file(tmpfile, filename=f"planobs_{safe_label}.pdf")
+        try:
+            os.remove(tmpfile)
+        except OSError:
+            logger.warning(f"Could not remove temporary PDF file {tmpfile}.")
+        return download_data
     except Exception as e:
         logger.exception(f"While downloading the PDF: {e}")
         raise PreventUpdate

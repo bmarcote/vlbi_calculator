@@ -68,10 +68,22 @@ app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_
 def _params_to_obs(obs_params: dict, target_spec: Optional[str] = None) -> Optional[cli.VLBIObs]:
     """Rebuild a VLBIObs from serialised observation parameters.
 
-    The compute callback stores all the inputs it used in `store-obs-params` so the PDF
+    The compute callback stores all the inputs it used in store-obs-params so the PDF
     download callback can reconstruct the same observation without reading the GUI state
-    again. When ``target_spec`` is given, only that single target is included in the
-    rebuilt observation; otherwise the rebuild matches what the user saw on the page.
+    again. When target_spec is given, only that single target is included in the
+    rebuilt observation.
+
+    Parameters
+    ----------
+    obs_params : dict
+        Serialized observation parameters from store-obs-params.
+    target_spec : str or None, optional
+        Target specification to include. If None, all targets are included.
+
+    Returns
+    -------
+    VLBIObs or None
+        Reconstructed observation object, or None if params is invalid.
     """
     if obs_params is None:
         return None
@@ -100,8 +112,27 @@ def _params_to_obs(obs_params: dict, target_spec: Optional[str] = None) -> Optio
 def download_pdf_per_target(n_clicks, btn_id, obs_params: dict):
     """Generate and download a PDF summary for the target identified by the clicked button.
 
-    The button id is `{'type': 'btn-pdf', 'index': <target_spec>}`. A special index
-    ``'__no_target__'`` is used for the duration-only panel.
+    The button id is {'type': 'btn-pdf', 'index': <target_spec>}. A special index
+    '__no_target__' is used for the duration-only panel.
+
+    Parameters
+    ----------
+    n_clicks : int
+        Number of clicks on the download button.
+    btn_id : dict
+        Button ID with target specification in the 'index' field.
+    obs_params : dict
+        Serialized observation parameters from store-obs-params.
+
+    Returns
+    -------
+    dict
+        Download data for dcc.send_file.
+
+    Raises
+    ------
+    PreventUpdate
+        If no clicks or invalid observation parameters.
     """
     if not n_clicks or obs_params is None:
         raise PreventUpdate
@@ -165,7 +196,17 @@ app.clientside_callback(
 def _compute_one_target(target_spec: Optional[str], shared_kwargs: dict) -> tuple[Optional[cli.VLBIObs], Optional[str]]:
     """Run cli.main for a single target (or no target) and warm up its caches.
 
-    Returns ``(obs, error_message)``. ``error_message`` is None on success.
+    Parameters
+    ----------
+    target_spec : str or None
+        Target specification, or None for no target.
+    shared_kwargs : dict
+        Shared keyword arguments for cli.main.
+
+    Returns
+    -------
+    tuple[VLBIObs or None, str or None]
+        (obs, error_message). error_message is None on success.
     """
     targets = [target_spec] if target_spec is not None else None
     try:
@@ -226,7 +267,44 @@ def compute_observation_realtime(band: int,
     The container shows:
     - nothing while the inputs are not enough to run any computation;
     - a single panel with duration-only outputs when no target source is specified;
-    - a `dbc.Tabs` (one tab per target) otherwise.
+    - a dbc.Tabs (one tab per target) otherwise.
+
+    Parameters
+    ----------
+    band : int
+        Selected band index.
+    target_specs : list[str] or None
+        List of target specifications.
+    onsourcetime : int
+        Percentage of on-source time.
+    defined_epoch : bool
+        Whether an epoch is specified.
+    startdate : str
+        Start date string.
+    starttime : str
+        Start time string.
+    duration : int or float
+        Observation duration in hours.
+    datarate : int
+        Data rate in Mbit/s.
+    subbands : int
+        Number of subbands.
+    channels : int
+        Number of channels.
+    pols : int
+        Number of polarizations.
+    inttime : int
+        Integration time in seconds.
+    e_evn : bool
+        Whether e-EVN mode is enabled.
+    selected_antennas : list[str]
+        List of selected antenna codenames.
+
+    Returns
+    -------
+    tuple
+        (user_message, loading_div, outputs_container, prev_datarate, prev_channels,
+         prev_subbands, obs_params).
     """
     empty_message = html.Blockquote(
         className='text-secondary text-bold ms-2 px-2',

@@ -5,6 +5,18 @@ from vlbiplanobs.gui import inputs, outputs
 
 
 def top_banner(app) -> html.Div:
+    """Return the top banner with EVN and JIVE logos.
+
+    Parameters
+    ----------
+    app : Dash app
+        Dash application instance.
+
+    Returns
+    -------
+    html.Div
+        Top banner component.
+    """
     # return html.Div(id='banner',
     return inputs.card([html.Div(className='card-body m-0 p-0', children=[
                        html.A(className='d-inline-block mr-md-auto',
@@ -32,6 +44,18 @@ def top_banner(app) -> html.Div:
 
 
 def inputs_column(app) -> html.Div:
+    """Return the inputs column with all input cards.
+
+    Parameters
+    ----------
+    app : Dash app
+        Dash application instance.
+
+    Returns
+    -------
+    html.Div
+        Inputs column component.
+    """
     return html.Div(children=[
             inputs.card(inputs.pick_band(fs.bands)),
             inputs.card(inputs.duration()),
@@ -42,6 +66,18 @@ def inputs_column(app) -> html.Div:
 
 
 def compute_buttons(app) -> html.Div:
+    """Return the compute buttons section.
+
+    Parameters
+    ----------
+    app : Dash app
+        Dash application instance.
+
+    Returns
+    -------
+    html.Div
+        Compute buttons component.
+    """
     return html.Div([html.Div(className='m-0 p-0', children=[
         html.Div(className='row d-flex m-0 p-0', children=[
             inputs.compute_button(),
@@ -58,11 +94,19 @@ def compute_buttons(app) -> html.Div:
 
 
 def compute_buttons_realtime(app) -> html.Div:
-    """Layout for real-time mode: just the loading spinner.
+    """Return the layout for real-time mode with loading spinner.
 
-    The PDF download button is rendered per-target inside each output tab (and inside
-    the simple panel when no target source is specified), so a global button is no
-    longer needed here.
+    The PDF download button is rendered per-target inside each output tab.
+
+    Parameters
+    ----------
+    app : Dash app
+        Dash application instance.
+
+    Returns
+    -------
+    html.Div
+        Loading spinner component.
     """
     return html.Div(className='m-0 p-0', children=[
         html.Div(className='row d-flex m-0 p-0 justify-content-center', children=[
@@ -72,6 +116,18 @@ def compute_buttons_realtime(app) -> html.Div:
 
 
 def outputs_column(app) -> html.Div:
+    """Return the outputs column with user message and results container.
+
+    Parameters
+    ----------
+    app : Dash app
+        Dash application instance.
+
+    Returns
+    -------
+    html.Div
+        Outputs column component.
+    """
     return html.Div(children=[
         # Top-level user message (shared across tabs)
         html.Div(id='user-message', className='m-0 p-0',

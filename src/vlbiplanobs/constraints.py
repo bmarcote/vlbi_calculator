@@ -13,24 +13,26 @@ __all__: list[str] = ['ElevationConstraint', 'SunSeparationConstraint', 'MoonSep
 
 def horizon_min_elevation(azimuth_deg: np.ndarray, horizon_az_deg: np.ndarray,
                           horizon_el_deg: np.ndarray) -> np.ndarray:
-    """Returns the minimum observable elevation (the local horizon) at each given azimuth.
+    """Return the minimum observable elevation (the local horizon) at each given azimuth.
 
     The horizon is defined by a set of (azimuth, elevation) sample points. The elevation limit
     at an arbitrary azimuth is obtained by linear interpolation between the sample points, with
     the azimuth axis wrapping around at 360 degrees. A single sample point defines a flat horizon
     (constant elevation limit at all azimuths).
 
-    Inputs
-    - azimuth_deg : np.ndarray
+    Parameters
+    ----------
+    azimuth_deg : np.ndarray
         Azimuth(s) of the target in degrees (any shape).
-    - horizon_az_deg : np.ndarray
+    horizon_az_deg : np.ndarray
         Azimuth sample points of the horizon, in degrees, sorted ascending within [0, 360].
-    - horizon_el_deg : np.ndarray
+    horizon_el_deg : np.ndarray
         Elevation (horizon) value in degrees at each azimuth sample point.
 
     Returns
-    - np.ndarray
-        Minimum observable elevation in degrees at each input azimuth, same shape as `azimuth_deg`.
+    -------
+    np.ndarray
+        Minimum observable elevation in degrees at each input azimuth, same shape as azimuth_deg.
     """
     az = np.mod(np.asarray(azimuth_deg, dtype=np.float64), 360.0)
     xp = np.asarray(horizon_az_deg, dtype=np.float64)
@@ -47,16 +49,19 @@ class HorizonConstraint(Constraint):
     nominal axis limit. This constraint models that local horizon as a set of (azimuth, elevation)
     sample points and requires the target elevation to be above the interpolated horizon at the
     target azimuth.
+
+    Parameters
+    ----------
+    horizon_az : Quantity
+        Azimuth sample points of the horizon (sorted ascending within [0, 360] degrees).
+    horizon_el : Quantity
+        Horizon (minimum) elevation at each azimuth sample point.
+    boolean_constraint : bool, optional
+        If True, return boolean mask. If False, return rescaled values. Default is True.
     """
 
     def __init__(self, horizon_az: u.Quantity, horizon_el: u.Quantity,
                  boolean_constraint: bool = True):
-        """
-        horizon_az : `~astropy.units.Quantity`
-            Azimuth sample points of the horizon (sorted ascending within [0, 360] degrees).
-        horizon_el : `~astropy.units.Quantity`
-            Horizon (minimum) elevation at each azimuth sample point.
-        """
         self.horizon_az_deg: np.ndarray = np.atleast_1d(horizon_az.to(u.deg).value)
         self.horizon_el_deg: np.ndarray = np.atleast_1d(horizon_el.to(u.deg).value)
         self.boolean_constraint: bool = boolean_constraint
@@ -79,22 +84,27 @@ class HorizonConstraint(Constraint):
 
 class ElevationConstraint(AltitudeConstraint):
     """Constraint on the elevation of the source.
+
+    Inherits from astroplan's AltitudeConstraint.
     """
     pass
 
 
 class AzimuthConstraint(Constraint):
-    """Constraint the azimuth for the station
+    """Constraint on the azimuth for the station.
+
+    Parameters
+    ----------
+    min : Quantity or None, optional
+        Minimum acceptable azimuth for the target. None indicates no limit. Default is None.
+    max : Quantity or None, optional
+        Maximum acceptable azimuth for the target. None indicates no limit. Default is None.
+    boolean_constraint : bool, optional
+        If True, return boolean mask. If False, return rescaled values. Default is True.
     """
 
     def __init__(self, min: Optional[u.Quantity] = None, max: Optional[u.Quantity] = None,
                  boolean_constraint: bool = True):
-        """
-        min : `~astropy.units.Quantity` or `None` (optional)
-            Minimum acceptable azimuth for the target. `None` indicates no limit.
-        max : `~astropy.units.Quantity` or `None` (optional)
-            Minimum acceptable azimuth for the target. `None` indicates no limit.
-        """
         self.min: u.Quantity = min if min is not None else -10*u.deg
         self.max: u.Quantity = max if max is not None else 370*u.deg
         self.boolean_constraint: bool = boolean_constraint
@@ -109,17 +119,20 @@ class AzimuthConstraint(Constraint):
 
 
 class HourAngleConstraint(Constraint):
-    """Constraint the hour angle for the station.
+    """Constraint on the hour angle for the station.
+
+    Parameters
+    ----------
+    min : Quantity or None, optional
+        Minimum acceptable hour angle for the target. None indicates no limit. Default is None.
+    max : Quantity or None, optional
+        Maximum acceptable hour angle for the target. None indicates no limit. Default is None.
+    boolean_constraint : bool, optional
+        If True, return boolean mask. If False, return rescaled values. Default is True.
     """
 
     def __init__(self, min: Optional[u.Quantity] = None, max: Optional[u.Quantity] = None,
                  boolean_constraint: bool = True):
-        """
-        min : `~astropy.units.Quantity` or `None` (optional)
-            Minimum acceptable hour angle for the target. `None` indicates no limit.
-        max : `~astropy.units.Quantity` or `None` (optional)
-            Maximum acceptable hour angle for the target. `None` indicates no limit.
-        """
         self.min = min if min is not None else -370*u.deg
         self.max = max if max is not None else 370*u.deg
         self.boolean_constraint = boolean_constraint
@@ -135,17 +148,20 @@ class HourAngleConstraint(Constraint):
 
 
 class DeclinationConstraint(Constraint):
-    """Constraint the source declination for the station.
+    """Constraint on the source declination for the station.
+
+    Parameters
+    ----------
+    min : Quantity or None, optional
+        Minimum acceptable declination for the target. None indicates no limit. Default is None.
+    max : Quantity or None, optional
+        Maximum acceptable declination for the target. None indicates no limit. Default is None.
+    boolean_constraint : bool, optional
+        If True, return boolean mask. If False, return rescaled values. Default is True.
     """
 
     def __init__(self, min: Optional[u.Quantity] = None, max: Optional[u.Quantity] = None,
                  boolean_constraint: bool = True):
-        """
-        min : `~astropy.units.Quantity` or `None` (optional)
-            Minimum acceptable declination for the target. `None` indicates no limit.
-        max : `~astropy.units.Quantity` or `None` (optional)
-            Maximum acceptable declination for the target. `None` indicates no limit.
-        """
         self.min = min if min is not None else -90*u.deg
         self.max = max if max is not None else 91*u.deg
         self.boolean_constraint = boolean_constraint

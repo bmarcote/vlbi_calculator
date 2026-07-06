@@ -1,4 +1,9 @@
-"""Defines some of the possible values for the setup in a VLBI observation
+"""Defines possible values for VLBI observation setup parameters.
+
+This module provides dictionaries of common VLBI observation parameters including
+bands, data rates, subbands, channels, polarizations, and integration times. It also
+provides helper functions for phase referencing cycles and minimum solar separation
+recommendations.
 """
 from typing import Union, Optional
 from astropy import units as u
@@ -37,18 +42,21 @@ inttimes: dict[Union[int, float], str] = {16: '16 s', 8: '8 s', 4: '4 s', 2: '2 
 
 
 def phaseref_cycle(band: str) -> Optional[u.Quantity]:
-    """Returns the preferred phase referencing cycle for the given band for a standard VLBI observation.
+    """Return the preferred phase referencing cycle for a given band.
 
-    Input
-        band :  str
-            The observing band, e.g. '92cm'.
+    Parameters
+    ----------
+    band : str
+        The observing band, e.g. '92cm'.
+
     Returns
-        u.Quantity or None
-            The preferred phase referencing cycle for the given band, e.g. 5*u.min at 6cm.
-            Note that this cycle length means the time interval between two phase referencing scans,
-            and thus it should be interpreted as the recommended length of a phasecal + target scans.
-            It will return None if the observing frequency is > 60 GHz (wavelegnth < 0.5 cm), meaning
-            no phase referencing is possible.
+    -------
+    Quantity or None
+        The preferred phase referencing cycle for the given band, e.g. 5*u.min at 6cm.
+        Note that this cycle length means the time interval between two phase referencing scans,
+        and thus it should be interpreted as the recommended length of a phasecal + target scans.
+        Returns None if the observing frequency is > 60 GHz (wavelength < 0.5 cm), meaning
+        no phase referencing is possible.
     """
     wavelength = float(band.replace('cm', ''))
     if wavelength > 15:
@@ -62,15 +70,21 @@ def phaseref_cycle(band: str) -> Optional[u.Quantity]:
 
 
 def min_separation_sun(band: str) -> u.Quantity:
-    """Returns the minimum separation to the Sun recommended for a standard VLBI observation
-    at the given band. It follows the same recommendations as written in SCHED:
+    """Return the minimum separation to the Sun recommended for a standard VLBI observation.
 
+    Follows the same recommendations as written in SCHED:
     Barry Clark estimates from predictions by Ketan Desai of IPM scattering sizes
-    that the Sun will cause amplitude reductions on the  longest VLBA baselines
+    that the Sun will cause amplitude reductions on the longest VLBA baselines
     at a solar distance of 60deg F^(-0.6) where F is in GHz.
 
+    Parameters
+    ----------
+    band : str
+        The observing band, e.g. '6cm'.
+
     Returns
-        min_separation : u.Quantity
-            The minimum separation to the Sun for the given band, e.g. 23 degrees at 6cm.
+    -------
+    Quantity
+        The minimum separation to the Sun for the given band, e.g. 23 degrees at 6cm.
     """
     return 60*((30/float(band.replace('cm', '')))**-0.6)*u.deg

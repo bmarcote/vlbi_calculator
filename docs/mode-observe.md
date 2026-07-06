@@ -31,6 +31,9 @@ You must also specify at least one of `--network` or `--stations`.
 | `-s`, `--stations` | Individual station codenames or full names (e.g. `Ef`, `Wb`, `Jb`). Can be combined with `--network`. |
 | `--station-catalog` | Path to a custom station catalog file. Overrides the built-in catalog. |
 
+!!! note "Terrain Blockage"
+    Some stations have azimuth-dependent local horizon constraints (terrain or structure blockage). These are defined in the station catalog and automatically applied to visibility calculations. For example, Effelsberg has a detailed horizon profile that accounts for local terrain, which can reduce the number of visible time steps compared to a simple elevation limit.
+
 ### Examples
 
 Use a predefined network:
@@ -59,6 +62,15 @@ planobs -b 6cm --stations Ef Hh Mc Tr Wb On
 |----------|-------------|
 | `-t`, `--targets` | One or more source names or coordinates. Names are resolved via SIMBAD/NED/VizieR. Coordinates use `hh:mm:ss dd:mm:ss` or `XXhXXmXXs XXdXXmXXs` format. |
 | `-sc`, `--source-catalog` | Path to a TOML source catalog file. When combined with `--targets`, only the named blocks from the file are used. |
+
+!!! note "Name/Coordinates Parsing"
+    Target sources can be specified as names or coordinates. Use the `name/coordinates` format to override catalog lookup with custom coordinates:
+
+    ```bash
+    planobs -b 6cm -t 'MyTarget/12h30m49s +12d23m28s' --network EVN
+    ```
+
+    The part before `/` is used as the name, the part after is parsed as coordinates. This also applies to `--phasecal`, `--check-source`, `--fringefinders`, and `--pulsar` arguments.
 
 ### Examples
 
@@ -133,19 +145,23 @@ planobs -b 6cm -t 'M87' --network EVN --starttime '2025-06-15 08:00' --duration 
 | `--sched` | Generate a pySCHED `.key` schedule file. The value is used as the experiment code and filename. |
 | `--fringefinders` | Fringe finder source(s) or a number of automatic selections (default: `2`). |
 | `--polcal` | Include polarization calibration scans. |
+| `--phasecal` | Phase calibrator source(s) or empty for auto-selection. |
+| `--check-source` | Check source(s) or empty for auto-selection. |
 | `--pulsar` | Include pulsar source scans. Accepts a source name or a number referencing the source catalog. |
 
 ### Example
 
-Generate a schedule file with automatic fringe finder selection:
+Generate a schedule file with automatic fringe finder and phase calibrator selection:
 
 ```bash
 planobs -b 6cm -t 'M87' --network EVN \
   --starttime '2025-03-15 08:00' --duration 8 \
-  --sched eg123a
+  --sched eg123a \
+  --fringefinders 3 \
+  --polcal
 ```
 
-This creates `eg123a.key`. See **[Scheduling](scheduling.md)** for details on the `.key` file format.
+This creates `eg123a.key`. See **[Scheduling](scheduling.md)** for details on the `.key` file format and the auto-selection features for calibrators.
 
 ---
 

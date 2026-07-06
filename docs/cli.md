@@ -100,4 +100,12 @@ planobs -b 6cm -t 'M87' --network EVN \
   --starttime '2025-03-15 08:00' --duration 8 --sched eg123a
 ```
 
-See **[Scheduling](scheduling.md)** for details on the `.key` file format.
+### Auto-select calibrators in schedule
+
+```bash
+planobs -b 6cm -t 'M87' --network EVN \
+  --starttime '2025-03-15 08:00' --duration 8 --sched eg123a \
+  --fringefinders 3 --phasecal --check-source
+```
+
+See **[Scheduling](scheduling.md)** for details on the `.key` file format and auto-selection features.

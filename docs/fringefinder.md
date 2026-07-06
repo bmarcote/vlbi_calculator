@@ -24,6 +24,16 @@ planobs fringefinders -s Ef Hh Mc Tr -t '2025-03-15 08:00' -d 8 -b 6cm
 | `-t`, `--starttime` | Start of the observation in `'YYYY-MM-DD HH:MM'` format (UTC). |
 | `-d`, `--duration` | Duration of the observation in hours. |
 
+!!! note "Name/Coordinates Parsing"
+    Fringe finder sources can be specified as names or coordinates. Use the `name/coordinates` format to override catalog lookup with custom coordinates:
+
+    ```bash
+    planobs fringefinders -s Ef Hh Mc Tr -t '2025-03-15 08:00' -d 8 -b 6cm \
+        --fringefinders 'MyCal/12h30m49s +12d23m28s'
+    ```
+
+    The part before `/` is used as the name, the part after is parsed as coordinates.
+
 ---
 
 ## Optional Options

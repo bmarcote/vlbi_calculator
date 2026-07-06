@@ -142,11 +142,39 @@ A high **unresolved/total flux ratio** indicates a compact source. Extended stru
 
 ## Integration with Observation Planning
 
+### Manual Integration
+
 Once you have identified calibrators, add them to your source catalog file and include them in the observation plan:
 
 ```bash
 planobs -b 6cm --source-catalog my_sources.toml --network EVN \
   --starttime '2025-06-15 08:00' --duration 8
+```
+
+### Auto-Selection in Scheduling
+
+When generating a schedule file with `--sched`, you can use auto-selection for phase calibrators:
+
+```bash
+planobs -b 6cm -t 'M87' --network EVN \
+  --starttime '2025-06-15 08:00' --duration 8 \
+  --sched eg123a \
+  --phasecal
+```
+
+The empty `--phasecal` flag triggers automatic selection of the best phase calibrator based on:
+- **Unresolved flux** – higher flux is preferred
+- **Compactness** – higher unresolved/total flux ratio is preferred
+- **Proximity** – closer to the target is preferred
+- **Exclusion** – the target source itself is never selected
+
+To specify named phase calibrators instead of auto-selection:
+
+```bash
+planobs -b 6cm -t 'M87' --network EVN \
+  --starttime '2025-06-15 08:00' --duration 8 \
+  --sched eg123a \
+  --phasecal 'J1229+0203' 'J1230+1223'
 ```
 
 PlanObs automatically computes phase-referencing cycle times based on the observing band.

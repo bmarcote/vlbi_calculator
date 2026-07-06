@@ -38,8 +38,9 @@
 .date-picker {
     display: inline-block;
     position: static !important;
-    width: 60%;
-    min-width: 150px;
+    width: 9.5rem;
+    min-width: 9.5rem;
+    flex: 0 0 auto;
     height: calc(1.5em + .75rem + 2px);
     color: #495057;
     border: 1px solid #ced4da;
@@ -82,8 +83,9 @@
 
 .form-hour {
     display: inline-block;
-    width: 40%;
-    min-width: 100px;
+    width: 6.5rem;
+    min-width: 6.5rem;
+    flex: 0 0 auto;
     height: calc(1.5em + .75rem + 2px);
     padding: 0;
     font-size: 1rem;
@@ -246,6 +248,24 @@ input[type=time] {
     background-color: rgba(0, 73, 144, 0.12) !important;
     color: #004990 !important;
     font-weight: 600 !important;
+}
+
+/* Make the grouped-antenna dropdown items (and their HoverCard wrappers) span the
+   full width of the menu, so the active-item highlight reaches both edges. */
+.group-menu-item {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.mantine-Menu-dropdown {
+    min-width: 9rem;
+}
+
+.mantine-Menu-dropdown > *,
+.mantine-Menu-dropdown .mantine-HoverCard-root {
+    display: block;
+    width: 100%;
 }
 
 /* Override theme min-width so the layout can shrink on small screens */

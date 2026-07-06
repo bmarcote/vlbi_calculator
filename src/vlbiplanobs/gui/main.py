@@ -72,6 +72,21 @@ def _params_to_obs(obs_params: dict, target_spec: Optional[str] = None) -> Optio
     download callback can reconstruct the same observation without reading the GUI state
     again. When ``target_spec`` is given, only that single target is included in the
     rebuilt observation; otherwise the rebuild matches what the user saw on the page.
+
+    Parameters
+    ----------
+    obs_params : dict
+        Serialised observation parameters, as stored by `compute_observation_realtime` in
+        the `store-obs-params` dcc.Store (band, stations, targets, duration, ontarget,
+        startdate, starttime, datarate, subbands, channels, polarizations, inttime).
+    target_spec : Optional[str]
+        When given, only this single target is included in the rebuilt observation.
+        When None, all targets listed in `obs_params['targets']` are used.
+
+    Returns
+    -------
+    cli.VLBIObs or None
+        The rebuilt `cli.VLBIObs`, or None if `obs_params` is None.
     """
     if obs_params is None:
         return None
@@ -102,6 +117,27 @@ def download_pdf_per_target(n_clicks, btn_id, obs_params: dict):
 
     The button id is `{'type': 'btn-pdf', 'index': <target_spec>}`. A special index
     ``'__no_target__'`` is used for the duration-only panel.
+
+    Parameters
+    ----------
+    n_clicks : int
+        Number of times the clicked `btn-pdf` button has been pressed (Dash Input).
+    btn_id : dict
+        The pattern-matched id of the clicked button, `{'type': 'btn-pdf', 'index': target_spec}`.
+    obs_params : dict
+        Serialised observation parameters from `store-obs-params`, as produced by
+        `compute_observation_realtime` and consumed by `_params_to_obs`.
+
+    Returns
+    -------
+    dict
+        A `dcc.send_file` payload for the generated PDF, to be written to the matching
+        `download-pdf` component.
+
+    Raises
+    ------
+    PreventUpdate
+        If there is nothing to download or if PDF generation fails.
     """
     if not n_clicks or obs_params is None:
         raise PreventUpdate
@@ -165,7 +201,20 @@ app.clientside_callback(
 def _compute_one_target(target_spec: Optional[str], shared_kwargs: dict) -> tuple[Optional[cli.VLBIObs], Optional[str]]:
     """Run cli.main for a single target (or no target) and warm up its caches.
 
-    Returns ``(obs, error_message)``. ``error_message`` is None on success.
+    Parameters
+    ----------
+    target_spec : Optional[str]
+        Source name or coordinate spec for the single target to compute. When None, `cli.main`
+        is called with no targets (duration-only observation).
+    shared_kwargs : dict
+        Keyword arguments forwarded to `cli.main` (band, stations, duration, ontarget,
+        start_time, datarate, subbands, channels, polarizations, inttime), shared across all
+        targets computed in the same real-time update.
+
+    Returns
+    -------
+    tuple[Optional[cli.VLBIObs], Optional[str]]
+        ``(obs, error_message)``. ``error_message`` is None on success.
     """
     targets = [target_spec] if target_spec is not None else None
     try:
@@ -227,6 +276,46 @@ def compute_observation_realtime(band: int,
     - nothing while the inputs are not enough to run any computation;
     - a single panel with duration-only outputs when no target source is specified;
     - a `dbc.Tabs` (one tab per target) otherwise.
+
+    Parameters
+    ----------
+    band : int
+        Index into the band slider (see `inputs.band_from_index`). 0 or None means no band
+        selected yet.
+    target_specs : Optional[list[str]]
+        List of target source specs (names or coordinates) from `store-targets`.
+    onsourcetime : int
+        On-target time as a percentage (0-100); defaults to 70% when falsy.
+    defined_epoch : bool
+        Whether the user has switched on a specific observing epoch (start date/time).
+    startdate : str
+        Observation start date, as an ISO date string from the `startdate` date picker.
+    starttime : str
+        Observation start time, as an 'HH:MM' string from the `starttime` input.
+    duration : int | float
+        Requested observation duration in hours.
+    datarate : int
+        Data rate per station in Mbit/s (or the string placeholder that later gets coerced
+        to an int).
+    subbands : int
+        Number of subbands/IFs.
+    channels : int
+        Number of spectral channels per subband.
+    pols : int
+        Number of polarizations (1 or 2).
+    inttime : int
+        Integration time in seconds.
+    e_evn : bool
+        Whether the "specify e-EVN" real-time-only antenna filter switch is on.
+    selected_antennas : list[str]
+        Codenames of the antennas selected by the user.
+
+    Returns
+    -------
+    tuple
+        A 7-tuple matching the callback's `Output` list: `(user-message children, loading-div
+        children, outputs-container children, store-prev-datarate data, store-prev-channels data,
+        store-prev-subbands data, store-obs-params data)`.
     """
     empty_message = html.Blockquote(
         className='text-secondary text-bold ms-2 px-2',

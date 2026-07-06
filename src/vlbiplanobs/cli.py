@@ -23,6 +23,14 @@ if TYPE_CHECKING:
     from vlbiplanobs import observation as obs
     from vlbiplanobs.cli_obs import VLBIObs, optimal_units  # noqa: F401
 
+"""Command-line entry point for PlanObs: argument parsing and subcommand dispatch
+(`observe`, `fringefinders`, `phasecals`, `source`, `server`, `antenna`).
+
+Heavy dependencies (numpy, astropy, and the vlbiplanobs computation modules) are kept
+out of the module-level imports and loaded on demand via `_load_heavy()`, so that
+`planobs -h`/`-V`/no-arguments respond immediately without paying their import cost.
+"""
+
 # Heavy dependencies (numpy, astropy, computation modules) are imported lazily via
 # `_load_heavy()` so that `planobs`, `planobs -h` and `planobs -V` respond immediately.
 _HEAVY_LOADED = False
@@ -72,24 +80,26 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
                  list_stations: Optional[list[str]] = None
                  ) -> tuple[stations.Stations, dict[str, str]]:
     """Returns a VLBI array including the required stations and any that were excluded.
+
     Each argument is a comma-separated list of names.
 
-    Inputs
-        band : str
-            The observing band. It will drop the stations that do not observe at such band.
-        list_networks : list[str] | None
-            If you want to pick the default antennas participating in one of the
-            known VLBI networks, then you can include directly the network name
-            here.
-        list_stations : list[str] | None
-            If you want a particular list of stations, or adding some that are not
-            in the default network, then you can quote them here, using either the
-            station code names or their names.
+    Parameters
+    ----------
+    band : str
+        The observing band. It will drop the stations that do not observe at such band.
+    list_networks : list[str], optional
+        If you want to pick the default antennas participating in one of the
+        known VLBI networks, then you can include directly the network name here.
+    list_stations : list[str], optional
+        If you want a particular list of stations, or adding some that are not
+        in the default network, then you can quote them here, using either the
+        station code names or their names.
 
     Returns
-        tuple[Stations, dict[str, str]]
-            The selected Stations object and a dict mapping excluded station codenames
-            to the reason they were dropped (e.g. 'no band').
+    -------
+    tuple[Stations, dict[str, str]]
+        The selected Stations object and a dict mapping excluded station codenames
+        to the reason they were dropped (e.g. 'no band').
     """
     _load_heavy()
     selected = []
@@ -167,21 +177,22 @@ def _resolve_calibrators(names: list[str], target: sources.Source, band: str,
     Parameters
     ----------
     names : list[str]
-        Source names to look up.  If empty, auto-selection is used.
-    target : Source
+        Source names to look up. If empty, auto-selection is used.
+    target : sources.Source
         The target source (used for proximity search).
     band : str
         Observing band (e.g. '6cm').
-    source_type : SourceType
+    source_type : sources.SourceType
         Type to assign (PHASECAL or CHECKSOURCE).
-    auto_func : str
+    auto_func : str, optional
         'phasecal' or 'check' — selects which auto-selection algorithm to use.
-    phase_cal_ref : Source or None
+        Default is 'phasecal'.
+    phase_cal_ref : sources.Source, optional
         Required when auto_func='check'; the already-selected phase calibrator.
 
     Returns
     -------
-    list[Source]
+    list[sources.Source]
         Resolved Source objects with the given source_type assigned.
     """
     _load_heavy()
@@ -251,68 +262,74 @@ def main(band: str, networks: Optional[list[str]] = None,
          polcal: bool = False) -> VLBIObs:
     """Planner for VLBI observations.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
+    band : str
+        Observing band, as defined in the catalogs as 'XXcm', with 'XX' being
+        the wavelength in cm. See .freqsetups.bands to get a list.
+    networks : list[str], optional
+        Name(s) of the VLBI network(s) whose default antennas will participate
+        in the observation. Either `networks` or `stations` (or both) must be given.
+    stations : list[str], optional
+        List of the antennas that will participate in the observation.
+        You can use either antenna codenames or the standard name,
+        as given in the catalogs. See .STATIONS.stations to get a list.
+    station_catalog : str, optional
+        Path to the file containing the list of antennas that will
+        participate in the observation, if you have a local file different from the one
+        distributed by PlanObs.
+    src_catalog : str, optional
+        Path to the toml file containing the list of sources that will be observed.
+        This allows you to store a large number of sources of define them in a more detail.
+        See the documentaion for help.
+    targets : list[str], optional
+        List of sources to be observed. Each entry can be:
+        a) the name defining a block in the source catalog file (if provided),
+        b) the coordinates of the source, in RA, DEC (J2000), as 'hh:mm:ss dd:mm:ss'
+           or 'XXhXXmXXs XXdXXmXXs',
+        c) the name of the source, if it is a known one so it can be found in the
+           SIMBAD/NEW/VizieR databases,
+        d) 'name/coordinates' to provide both a custom name and explicit coordinates
+           (the coordinates override any catalog lookup).
+        A mix of the previous ones can also be used for each entry.
+    start_time : astropy.time.Time, optional
+        Start of the observation, of Time class and in UTC.
+    duration : astropy.units.Quantity, optional
+        Total duration of the observation, as a Quantity (e.g. 1.5*u.hour).
+    datarate : astropy.units.Quantity, optional
+        Maximum data rate of the observation (e.g. 4*Gbit/s).
+    ontarget : float, optional
+        Fraction of the total time of the observation spent on the target source.
+        If multiple sources are given (e.g. already specifying scan lengths), this will be
+        ignored. Default is 0.7.
+    subbands : int, optional
+        Number of subbands in which the total bandwidth is split. Default is 4.
+    channels : int, optional
+        Number of spectral channels in which each subband is divided. Default is 64.
+    polarizations : int, optional
+        Number of polarizations recorded. It can be 1 (single pol.), 2 (dual pol.), or 4
+        (full stokes recorded: RR, LL, RL, LR). Default is 4.
+    inttime : astropy.units.Quantity, optional
+        Integration time used in the observations (e.g. time resolution on the correlated
+        data). Default is 2 s.
+    phasecal_names : list[str], optional
+        Phase calibrator source name(s) (or 'name/coordinates'). If given as an empty list,
+        the best candidate is auto-selected. If None, no phase calibrator scans are added.
+    check_source_names : list[str], optional
+        Check source name(s) (or 'name/coordinates'). If given as an empty list, the best
+        candidate is auto-selected using the resolved phase calibrator as reference.
+        If None, no check-source scans are added.
+    fringefinder_spec : list[str], optional
+        Currently unused inside this function (kept for API symmetry with the CLI layer,
+        which forwards fringe finder scheduling to `ObservationScheduler` separately).
+    polcal : bool, optional
+        Currently unused inside this function (see `fringefinder_spec`); polarization
+        calibration scheduling is handled by `ObservationScheduler`. Default is False.
 
-        band : str
-            Observing band, as defined in the catalogs as 'XXcm', with 'XX' being
-            the wavelength in cm. See .freqsetups.bands to get a list.
-
-        stations : list of str, optional
-            List of the antennas that will participate in the observation.
-            You can use either antenna codenames or the standard name,
-            as given in the catalogs. See .STATIONS.stations to get a list.
-
-        station_catalog : str, optional
-            Path to the file containing the list of antennas that will
-            participate in the observation, if you have a local file different from the one
-            distributed by PlanObs.
-
-        src_catalog : str, optional
-            Path to the toml file containing the list of sources that will be observed.
-            This allows you to store a large number of sources of define them in a more detail.
-            See the documentaion for help.
-
-        targets: list[str]
-            List of sources to be observed. Each entry can be:
-            a) the name defining a block in the source catalog file (if provided),
-            b) the coordinates of the source, in RA, DEC (J2000), as 'hh:mm:ss dd:mm:ss'
-               or 'XXhXXmXXs XXdXXmXXs',
-            c) the name of the source, if it is a known one so it can be found in the
-               SIMBAD/NEW/VizieR databases,
-            d) 'name/coordinates' to provide both a custom name and explicit coordinates
-               (the coordinates override any catalog lookup).
-            A mix of the previous ones can also be used for each entry.
-
-        start_time : Time, optional
-            Start of the observation, of Time class and in UTC.
-
-        duration : astropy.units.Quantity, optional
-            Total duration of the observation, as a Quantity (e.g. 1.5*u.hour).
-
-        datarate : astropy.units.Quantity, optional
-            Maximum data rate of the observation (e.g. 4*Gbit/s).
-
-        ontarget : float (default = 0.7)
-            Fraction of the total time of the observation spent on the target source.
-            If multiple sources are given (e.g. already specifying scan lengths), this will be ignored.
-
-        subbads : int (default = 4)
-            Number of subbands in which the total bandwidth is split.
-
-        channels : int (defualt = 64)
-            Number of spectral channels in which each subband is divided.
-
-        polarizations : int (defualt = 4)
-            Number of polarizations recorded. It can be 1 (single pol.), 2 (dual pol.), or 4 (full stokes
-            recorded: RR, LL, RL, LR).
-
-        inttime : astropy.units.Quantity (default 2 s)
-            Integration time used in the observations (e.g. time resolution on the correlated data).
-
-    Returns:
-    --------
-        VLBIObs: a VLBI Observation object with all defined parameters.
+    Returns
+    -------
+    VLBIObs
+        A VLBI Observation object with all defined parameters.
     """
     _load_heavy()
     if inttime is None:
@@ -471,7 +488,7 @@ def _maybe_setup_logging(logging_arg):
 
     Parameters
     ----------
-    logging_arg : bool | str
+    logging_arg : bool or str
         The parsed value of the ``--logging`` flag: False when not given,
         True when given without a path, or a string path otherwise.
     """
@@ -483,7 +500,15 @@ def _maybe_setup_logging(logging_arg):
 
 
 def cli():
-    """Main CLI entry point with subcommands."""
+    """Main CLI entry point (console_scripts target for the `planobs` command).
+
+    Dispatches to one of the subcommands: 'observe' (default, also used in legacy mode
+    when no subcommand is given), 'fringefinders', 'phasecals', 'source', 'server', or
+    'antenna'/'ant'. Handles `-V`/`--version` and the no-argument (help) case before any
+    subparser is built. Reads directly from `sys.argv`; takes no parameters and returns
+    nothing (delegates to the relevant `handle_*_command` function, which may call
+    `sys.exit`).
+    """
     # Handle version argument early
     if len(sys.argv) > 1 and sys.argv[1] in ('-V', '--version'):
         print(f"planobs {version('vlbiplanobs')}")
@@ -589,7 +614,14 @@ def cli():
 
 
 def add_observation_arguments(parser):
-    """Add arguments for observation planning."""
+    """Add arguments for observation planning (the 'observe' subcommand and legacy mode).
+
+    Parameters
+    ----------
+    parser : argparse.ArgumentParser
+        Parser (or subparser) to which the arguments are added in place.
+        See each argument's `help=` text below for its meaning and default.
+    """
     parser.add_argument('-t', '--targets', type=str, default=None, nargs='+',
                         help="Source(s) to be observed. Each entry can be:\n"
                         "  a) A source name (looked up in SIMBAD/NED/VizieR/RFC).\n"
@@ -664,7 +696,14 @@ def add_observation_arguments(parser):
 
 
 def add_fringe_finder_arguments(parser):
-    """Add arguments for fringe finder search."""
+    """Add arguments for fringe finder search (the 'fringefinders' subcommand).
+
+    Parameters
+    ----------
+    parser : argparse.ArgumentParser
+        Parser (or subparser) to which the arguments are added in place.
+        See each argument's `help=` text below for its meaning and default.
+    """
     # Import the main_fringe function to get its argument parser
     # We'll recreate the arguments here
     parser.add_argument('-n', '--network', type=str, nargs='+',
@@ -693,7 +732,14 @@ def add_fringe_finder_arguments(parser):
 
 
 def add_phase_cal_arguments(parser):
-    """Add arguments for phase calibrator search."""
+    """Add arguments for phase calibrator search (the 'phasecals' subcommand).
+
+    Parameters
+    ----------
+    parser : argparse.ArgumentParser
+        Parser (or subparser) to which the arguments are added in place.
+        See each argument's `help=` text below for its meaning and default.
+    """
     parser.add_argument('-t', '--target', type=str, required=True,
                         help="Target source name (J2000 or IVS name from RFC catalog;\n"
                         "or a block/source name from '--source-catalog' if provided).")
@@ -716,7 +762,14 @@ def add_phase_cal_arguments(parser):
 
 
 def add_source_arguments(parser):
-    """Add arguments for source information lookup."""
+    """Add arguments for source information lookup (the 'source' subcommand).
+
+    Parameters
+    ----------
+    parser : argparse.ArgumentParser
+        Parser (or subparser) to which the arguments are added in place.
+        See each argument's `help=` text below for its meaning and default.
+    """
     parser.add_argument('source_name', type=str,
                         help="Name of the source to get information about.")
     parser.add_argument('--no-networks', action='store_true', default=False,
@@ -726,7 +779,14 @@ def add_source_arguments(parser):
 
 
 def add_server_arguments(parser):
-    """Add arguments for server."""
+    """Add arguments for the web server (the 'server' subcommand).
+
+    Parameters
+    ----------
+    parser : argparse.ArgumentParser
+        Parser (or subparser) to which the arguments are added in place.
+        See each argument's `help=` text below for its meaning and default.
+    """
     parser.add_argument('--host', type=str, default='127.0.0.1', help="Host address (default: 127.0.0.1)")
     parser.add_argument('--port', type=int, default=8050, help="Port number (default: 8050)")
     parser.add_argument('--debug', action='store_true', default=False, help="Enable debug mode")
@@ -746,7 +806,19 @@ def add_logging_argument(parser):
 
 
 def handle_observation_command(args):
-    """Handle the observation planning command."""
+    """Handle the 'observe' subcommand (and legacy no-subcommand mode).
+
+    Validates the parsed arguments (band/network/stations/duration requirements),
+    handles the '--list-*' informational flags, builds the observation via `main()`,
+    prints the summary/visibility plots, and optionally writes a SCHED .key file when
+    `--sched` is given. Exits the process (`sys.exit`) on invalid argument combinations
+    or when `main()` raises a `ValueError`.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed arguments from `add_observation_arguments` (plus `add_logging_argument`).
+    """
     _load_heavy()
     t0 = dt.now() if args.debug else None
 
@@ -842,7 +914,17 @@ def handle_observation_command(args):
 
 
 def handle_fringe_finder_command(args):
-    """Handle the fringe finder command."""
+    """Handle the 'fringefinders' subcommand.
+
+    Reconstructs a `sys.argv` for `planobs_fringefinder`, forwarding only the flags
+    that differ from their defaults (or are always required), then delegates to
+    `calibrators.main_fringe()`. Restores the original `sys.argv` afterwards.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed arguments from `add_fringe_finder_arguments`.
+    """
     _load_heavy()
     if args.network is None and args.stations is None:
         rprint("[bold red]You need to provide at least a VLBI network "
@@ -877,7 +959,17 @@ def handle_fringe_finder_command(args):
 
 
 def handle_phase_cal_command(args):
-    """Handle the phase calibrator command."""
+    """Handle the 'phasecals' subcommand.
+
+    Reconstructs a `sys.argv` for `planobs_phasecal`, forwarding only the flags
+    that differ from their defaults (or are always required), then delegates to
+    `calibrators.main_phasecal()`. Restores the original `sys.argv` afterwards.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed arguments from `add_phase_cal_arguments`.
+    """
     _load_heavy()
     original_argv = sys.argv.copy()
     sys.argv = ['planobs_phasecal', '-t', args.target]
@@ -996,9 +1088,13 @@ def _show_observability_table(source: sources.Source, show_gst: bool = False) ->
     to ThreadPoolExecutor if process spawning fails. Results are displayed as they
     arrive via Rich Live, so the table fills in progressively rather than all at once.
 
-    Inputs
-        - source : sources.Source — the source to check observability for.
-        - show_gst : bool — if True, appends a GST column with time ranges where >3 antennas observe.
+    Parameters
+    ----------
+    source : sources.Source
+        The source to check observability for.
+    show_gst : bool, optional
+        If True, appends a GST column with time ranges where >3 antennas observe.
+        Default is False.
     """
     all_bands: set[str] = set()
     for network in obs._NETWORKS.values():
@@ -1052,7 +1148,19 @@ def _show_observability_table(source: sources.Source, show_gst: bool = False) ->
 
 
 def handle_source_command(args):
-    """Handle the source information command."""
+    """Handle the 'source' subcommand: look up and display information about a source.
+
+    Looks up `args.source_name` in the RFC calibrator catalog first (showing AstroGeo
+    flux/observation info if found), otherwise resolves it via
+    `sources.Source.source_from_str` (SIMBAD/NED/VizieR/coordinates). Unless
+    `args.no_networks` is set, also prints the per-network observability table
+    (optionally with GST ranges if `args.gst` is set). Exits with status 1 on failure.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed arguments from `add_source_arguments`.
+    """
     _load_heavy()
     try:
         source_obj = None
@@ -1102,7 +1210,13 @@ def handle_source_command(args):
 
 
 def handle_server_command(args):
-    """Handle the server command."""
+    """Handle the 'server' subcommand: start the PlanObs Dash web server.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed arguments from `add_server_arguments` (`host`, `port`, `debug`).
+    """
     # Lazy import: pulls in dash and the whole GUI stack.
     from vlbiplanobs.gui.main import main as gui_main
     gui_main(debug=args.debug, host=args.host, port=args.port)
@@ -1113,8 +1227,13 @@ def _render_horizontal_band_table(bands_to_show: list[str], ant) -> None:
 
     First column shows row labels ('Band (cm)', 'SEFD (Jy)'); each subsequent column is one band.
     Splits into multiple sub-tables if total width exceeds terminal width.
-    - bands_to_show: list of band strings to display (e.g. ['6cm', '18cm'])
-    - ant: Station object with sefd(band) method
+
+    Parameters
+    ----------
+    bands_to_show : list[str]
+        List of band strings to display (e.g. ['6cm', '18cm']).
+    ant : stations.Station
+        Station object with a `sefd(band)` method.
     """
     from rich.console import Console as _Console
     term_width = _Console().width
@@ -1159,7 +1278,14 @@ def _render_horizontal_band_table(bands_to_show: list[str], ant) -> None:
 
 
 def add_antenna_arguments(parser):
-    """Add arguments for the antenna info/listing command."""
+    """Add arguments for the antenna info/listing command (the 'antenna'/'ant' subcommand).
+
+    Parameters
+    ----------
+    parser : argparse.ArgumentParser
+        Parser (or subparser) to which the arguments are added in place.
+        See each argument's `help=` text below for its meaning and default.
+    """
     parser.add_argument('antenna_name', type=str, nargs='?', default=None,
                         help="Name, short name, or codename of the antenna to look up. "
                         "If omitted, lists all antennas (or all antennas at the given --band).")
@@ -1199,6 +1325,11 @@ def handle_antenna_command(args):
     - antenna_name only: show full info for that antenna.
     - band only: list all antennas that can observe at that band.
     - neither: list all antennas (same as --list-antennas).
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed arguments from `add_antenna_arguments` (`antenna_name`, `band`).
     """
     _load_heavy()
     band = _normalize_band(args.band) if args.band else None

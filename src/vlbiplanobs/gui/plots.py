@@ -7,6 +7,13 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from vlbiplanobs import sources
 
+"""Module that builds all Plotly figures shown in the GUI: elevation curves/heatmaps, (u, v)
+coverage, and the station world map. Includes both the "live" builders that take a `VLBIObs`
+object directly and the `*_from_data` / `serialize_*` pairs used to move plot rendering into a
+lightweight, JSON-serializable payload (so plots can be recomputed client-side without re-running
+the full observation calculation).
+"""
+
 
 def _compute_gst_ticks(times_dt: list, gst_hours: list) -> tuple[list, list]:
     """Compute rounded major-tick positions for a GST top axis paired with a UTC bottom axis.
@@ -17,14 +24,19 @@ def _compute_gst_ticks(times_dt: list, gst_hours: list) -> tuple[list, list]:
     on rounded values (whole hours, half hours, ...) inside that unwrapped range and then
     mapped back to UTC datetimes via linear interpolation between consecutive samples.
 
-    Inputs
-    - times_dt: sequence of UTC ``datetime`` objects (length n, monotonic).
-    - gst_hours: sequence of GST hours in [0, 24) (length n, same sampling as ``times_dt``).
+    Parameters
+    ----------
+    times_dt : list
+        Sequence of UTC ``datetime`` objects (length n, monotonic).
+    gst_hours : list
+        Sequence of GST hours in [0, 24) (length n, same sampling as ``times_dt``).
 
     Returns
-    - (tickvals, ticktext) where ``tickvals`` is a list of UTC ``datetime`` objects placed
-      on rounded GST values and ``ticktext`` is the matching list of ``"HH:MM"`` strings
-      (always taken modulo 24h).
+    -------
+    tuple[list, list]
+        ``(tickvals, ticktext)`` where ``tickvals`` is a list of UTC ``datetime`` objects
+        placed on rounded GST values and ``ticktext`` is the matching list of ``"HH:MM"``
+        strings (always taken modulo 24h).
     """
     n = len(times_dt)
     if n < 2 or len(gst_hours) != n:
@@ -94,12 +106,26 @@ def _compute_gst_ticks(times_dt: list, gst_hours: list) -> tuple[list, list]:
 def _build_gst_axis_config(times_dt: list, gst_hours: list, time_range: list) -> Optional[dict]:
     """Builds the layout config for a GST top axis overlaying the UTC bottom axis.
 
-    Returns None when the GST axis cannot be built (insufficient samples, no span).
     The returned dict contains the ``xaxis2`` layout entry with rounded ``"HH:MM"`` ticks
     and an explicit ``range`` covering the same UTC window as the bottom axis. We do
     *not* use ``matches='x'`` / ``anchor='y'`` because they conflict with
     ``overlaying='x'`` in several plotly versions (the secondary axis silently fails
     to render).
+
+    Parameters
+    ----------
+    times_dt : list
+        Sequence of UTC ``datetime`` objects.
+    gst_hours : list
+        Sequence of GST hours in [0, 24).
+    time_range : list
+        ``[start, end]`` datetime range covered by the bottom UTC axis.
+
+    Returns
+    -------
+    dict or None
+        Layout config dict for the ``xaxis2`` GST top axis. None when the GST axis
+        cannot be built (insufficient samples, no span).
     """
     tickvals, ticktext = _compute_gst_ticks(times_dt, gst_hours)
     if not tickvals:
@@ -124,6 +150,20 @@ def _apply_gst_top_axis(fig: go.Figure, axis_cfg: dict, y_anchor: float = 0.0) -
     fully transparent markers and disabled hover, so the axis is rendered without
     visually touching the data.
     No-ops when ``axis_cfg`` does not request a GST top axis.
+
+    Parameters
+    ----------
+    fig : plotly.graph_objects.Figure
+        Figure to which the GST top axis and anchor trace are added, in place.
+    axis_cfg : dict
+        Axis configuration as returned by :func:`_get_axis_config` or
+        :func:`_get_axis_config_from_data`.
+    y_anchor : float, optional
+        Y-coordinate at which the invisible anchor trace is drawn. Default is 0.0.
+
+    Returns
+    -------
+    None
     """
     cfg = axis_cfg.get('xaxis2_config')
     if cfg is None:
@@ -140,16 +180,19 @@ def _apply_gst_top_axis(fig: go.Figure, axis_cfg: dict, y_anchor: float = 0.0) -
 def _get_axis_config(o):
     """Returns axis configuration for elevation plots based on observation time mode.
 
-    Inputs
-    - o : VLBIObs
+    Parameters
+    ----------
+    o : VLBIObs
         VLBI observation object with times and gstimes attributes.
 
     Returns
-    - dict with keys:
-        - xaxis_range: [start, end] datetime range for the bottom (UTC) x-axis.
-        - xaxis_title: title for the bottom x-axis.
-        - xaxis2_config: layout dict for the secondary GST x-axis (None when not applicable,
-          e.g. when the user has not picked an epoch and the bottom axis already shows GST).
+    -------
+    dict
+        Dict with keys ``xaxis_range`` ([start, end] datetime range for the bottom
+        (UTC) x-axis), ``xaxis_title`` (title for the bottom x-axis), and
+        ``xaxis2_config`` (layout dict for the secondary GST x-axis, None when not
+        applicable, e.g. when the user has not picked an epoch and the bottom axis
+        already shows GST).
     """
     time_range = [o.times.datetime[0], o.times.datetime[-1]]
 
@@ -167,6 +210,18 @@ def _get_axis_config(o):
 def elevation_plot_curves(o) -> Optional[go.Figure]:
     """Creates the plot showing when the different antennas can observe a given source,
     with the old style: with the elevation in the y-axis.
+
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object with computed scans, times, and elevations. If `o` is
+        None or has no scans, no figure can be built.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure or None
+        Line plot of elevation vs. time per antenna, one line per (source block, antenna)
+        pair. None if `o` is None or has no scans.
     """
     if o is None or not o.scans:
         return None
@@ -228,6 +283,20 @@ def elevation_plot_curves(o) -> Optional[go.Figure]:
 def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
     """Creates the plot showing when the different antennas can observe a given source.
     Optimized version using Heatmap instead of individual traces.
+
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object with computed scans, times, and elevations. If `o` is
+        None or has no scans, no figure can be built.
+    show_colorbar : bool, optional
+        Whether to show the Viridis elevation colorbar next to the heatmap. Default is False.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure or None
+        Heatmap of elevation (antennas x time), one subplot per source block (up to 4 rows,
+        wrapping into extra columns beyond that). None if `o` is None or has no scans.
     """
     if o is None or not o.scans:
         return None
@@ -324,7 +393,19 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
 
 def serialize_uv_data(o) -> Optional[dict]:
     """Serialize UV data for storage in dcc.Store.
-    Returns dict of baseline -> {'x': [...], 'y': [...]} with both +/- uv points.
+
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object with computed scans and (u, v) data. If `o` is None or
+        has no scans, no data can be serialized.
+
+    Returns
+    -------
+    dict or None
+        Mapping ``baseline_name -> {'x': [...], 'y': [...]}`` with both the +(u, v) and
+        the conjugate -(u, v) points as plain Python lists (JSON-serializable). None if
+        `o` is None or has no scans.
     """
     if o is None or not o.scans:
         return None
@@ -341,7 +422,23 @@ def serialize_uv_data(o) -> Optional[dict]:
 
 
 def uvplot_from_data(uv_data: dict, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure]:
-    """Creates UV coverage plot from serialized UV data."""
+    """Creates UV coverage plot from serialized UV data.
+
+    Parameters
+    ----------
+    uv_data : dict
+        Mapping ``baseline_name -> {'x': [...], 'y': [...]}`` as produced by
+        :func:`serialize_uv_data`. If None, no figure can be built.
+    filter_antennas : list[str], optional
+        Codenames of antennas to highlight with distinct colors. Baselines involving one
+        of these antennas are drawn in that antenna's color; all other baselines are black.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure or None
+        Scatter plot of (u, v) points in wavelength units, one trace per color group.
+        None if `uv_data` is None.
+    """
     if uv_data is None:
         return None
 
@@ -407,7 +504,23 @@ def uvplot_from_data(uv_data: dict, filter_antennas: Optional[list[str]] = None)
 
 
 def uvplot(o, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure]:
-    """Creates UV coverage plot. Optimized to batch all points into fewer traces."""
+    """Creates UV coverage plot. Optimized to batch all points into fewer traces.
+
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object with computed scans and (u, v) data. If `o` is None or
+        has no scans, no figure can be built.
+    filter_antennas : list[str], optional
+        Codenames of antennas to highlight with distinct colors. Baselines involving one
+        of these antennas are drawn in that antenna's color; all other baselines are black.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure or None
+        Scatter plot (using WebGL via Scattergl) of (u, v) points in wavelength units, one
+        trace per color group. None if `o` is None or has no scans.
+    """
     if o is None or not o.scans:
         return None
 
@@ -480,8 +593,17 @@ def uvplot(o, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure
 def serialize_elevation_data(o) -> Optional[dict]:
     """Serialize elevation/observability data for deferred plot rendering.
 
-    Returns a JSON-serializable dict with all data needed by elevation_plot_from_data
-    and elevation_curves_from_data. Returns None if no scans.
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object with computed scans, times, and elevations. If `o` is
+        None or has no scans, no data can be serialized.
+
+    Returns
+    -------
+    dict or None
+        JSON-serializable dict with all data needed by :func:`elevation_plot_from_data`
+        and :func:`elevation_curves_from_data`. None if `o` is None or has no scans.
     """
     if o is None or not o.scans:
         return None
@@ -530,6 +652,17 @@ def _get_axis_config_from_data(data: dict) -> dict:
     Mirrors :func:`_get_axis_config` but reads from the JSON-serialized payload produced by
     :func:`serialize_elevation_data` (``times_iso`` + ``gstimes_hours``). The GST top axis is
     only built for fixed-epoch observations that carry GST samples matching the time grid.
+
+    Parameters
+    ----------
+    data : dict
+        Payload produced by :func:`serialize_elevation_data`.
+
+    Returns
+    -------
+    dict
+        Axis configuration dict with keys ``xaxis_range``, ``xaxis_title``, and
+        ``xaxis2_config``, matching the shape returned by :func:`_get_axis_config`.
     """
     times = [datetime.fromisoformat(t) for t in data['times_iso']]
     time_range = [times[0], times[-1]]
@@ -543,7 +676,21 @@ def _get_axis_config_from_data(data: dict) -> dict:
 
 
 def elevation_plot_from_data(data: dict, show_colorbar: bool = False) -> Optional[go.Figure]:
-    """Render the heatmap elevation plot from serialized data (no obs object needed)."""
+    """Render the heatmap elevation plot from serialized data (no obs object needed).
+
+    Parameters
+    ----------
+    data : dict
+        Payload produced by :func:`serialize_elevation_data`. If None, no figure can be built.
+    show_colorbar : bool, optional
+        Whether to show the Viridis elevation colorbar next to the heatmap. Default is False.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure or None
+        Same heatmap figure as :func:`elevation_plot`, rebuilt from the serialized payload.
+        None if `data` is None.
+    """
     if data is None:
         return None
 
@@ -604,7 +751,19 @@ def elevation_plot_from_data(data: dict, show_colorbar: bool = False) -> Optiona
 
 
 def elevation_curves_from_data(data: dict) -> Optional[go.Figure]:
-    """Render the elevation curves plot from serialized data (no obs object needed)."""
+    """Render the elevation curves plot from serialized data (no obs object needed).
+
+    Parameters
+    ----------
+    data : dict
+        Payload produced by :func:`serialize_elevation_data`. If None, no figure can be built.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure or None
+        Same line plot figure as :func:`elevation_plot_curves`, rebuilt from the serialized
+        payload. None if `data` is None.
+    """
     if data is None:
         return None
 
@@ -653,7 +812,19 @@ def elevation_curves_from_data(data: dict) -> Optional[go.Figure]:
 def serialize_worldmap_data(o) -> Optional[dict]:
     """Serialize station location/observability data for deferred worldmap rendering.
 
-    Returns a JSON-serializable dict with all data needed by worldmap_from_data.
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object with station and observability data. If None, no data
+        can be serialized.
+
+    Returns
+    -------
+    dict or None
+        JSON-serializable dict with all data needed by :func:`worldmap_from_data`.
+        Has key ``'stations'`` mapping to a list of per-station dicts with ``lat``,
+        ``lon``, ``name``, ``country``, ``diameter``, and ``observes`` (bool).
+        None if `o` is None.
     """
     if o is None:
         return None
@@ -677,7 +848,19 @@ def serialize_worldmap_data(o) -> Optional[dict]:
 
 
 def worldmap_from_data(data: dict) -> Optional[go.Figure]:
-    """Render the worldmap from serialized data (no obs object needed)."""
+    """Render the worldmap from serialized data (no obs object needed).
+
+    Parameters
+    ----------
+    data : dict
+        Payload produced by :func:`serialize_worldmap_data`. If None, no figure can be built.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure or None
+        Orthographic world map with a marker per station (red if it observes the source,
+        yellow otherwise). None if `data` is None.
+    """
     if data is None:
         return None
 
@@ -699,6 +882,22 @@ def worldmap_from_data(data: dict) -> Optional[go.Figure]:
 
 
 def plot_worldmap_stations(o) -> Optional[go.Figure]:
+    """Creates the orthographic world map showing all participating station locations.
+    Non-serialized counterpart of :func:`worldmap_from_data`/:func:`serialize_worldmap_data`;
+    computes station observability directly from `o` instead of a pre-serialized payload.
+
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object with station and observability data. If None, no figure
+        can be built.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure or None
+        Orthographic world map with a marker per station (red if it observes the source,
+        yellow otherwise). None if `o` is None.
+    """
     if o is None:
         return None
 

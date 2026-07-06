@@ -12,15 +12,15 @@ from astropy.time import Time
 from astropy import coordinates as coord
 from astroplan import FixedTarget
 
+"""Module that defines a `Source` to be observed, its flux and type (target, calibrator...),
+and the `Scan`/`ScanBlock`/`SourceCatalog` objects used to arrange sources into an observing
+schedule.
+"""
 
 __all__ = ['SourceNotVisible', 'Source', 'SourceType', 'Scan', 'ScanBlock']
 
 # Module-level RFC catalog cache
 _RFC_CATALOG_CACHE: Optional[dict[str, tuple[str, str, str]]] = None
-
-"""Defines an observation, which basically consist of a given network of stations,
-observing a target source for a given time range and at an observing band.
-"""
 
 
 class SourceNotVisible(Exception):
@@ -34,11 +34,11 @@ class SourceNotVisible(Exception):
 class FluxMeasurement:
     """Stores the fluxes related to the given source at a particular band (or frequency).
 
-    - peak_flux : u.Quantity
+    - resolved : u.Quantity
         Refers to the peak brightness of the source. Meaning the peak expected in a map for the source in
-        a VLBI map, i.e. the unresolved flux of the source.
+        a VLBI map, i.e. the flux seen on the longest baselines.
 
-    - flux_density : u.Quantity
+    - unresolved : u.Quantity
         Refers to the total flux density of the source. Meaning the observed flux on the shortest baselines.
     """
     resolved: u.Quantity
@@ -55,10 +55,10 @@ class SourceFlux(object):
         """Initializes a SourceFlux, which contains the peak flux and flux density of a given source at the
         given band.
 
-        Input
-            - band_flux : dict[str, FluxDensity]
-                Dictionary of the form {band: FluxDensity}, with 'band' the different bands at which the
-                flux measurements are referring to, and the corresponding FluxDensity object.
+        Inputs
+        - band_flux : dict[str, FluxMeasurement]
+            Dictionary of the form {band: FluxMeasurement}, with 'band' the different bands at which the
+            flux measurements are referring to, and the corresponding FluxMeasurement object.
         """
         self._data: dict[str, FluxMeasurement] = band_flux
 
@@ -66,46 +66,50 @@ class SourceFlux(object):
         """Returns the bands at which there is flux information.
 
         Returns
-            - tuple[str]
-                Tuple of strings representing the bands.
+        - tuple[str]
+            Tuple of strings representing the bands.
         """
         return tuple(self._data.keys())  # type: ignore
 
     def flux_density(self, band: str) -> FluxMeasurement:
-        """Returns the flux density measurements associated to the source at the given band.
+        """Returns the flux density (unresolved flux) associated to the source at the given band.
 
         Inputs
-            - band : str
-                The band at which the flux density measurements are referring to.
+        - band : str
+            The band at which the flux density measurements are referring to.
 
         Returns
-            - FluxMeasurement
-                The flux density measurements.
+        - u.Quantity
+            The flux density (total, unresolved flux) of the source at the given band.
 
         Raises
-            KeyError : if band is not available.
+        - KeyError : if band is not available.
         """
         return self._data[band].unresolved
 
     def peak_flux(self, band: str) -> FluxMeasurement:
-        """Returns the peak flux (brightness) measurements associated to the source at the given band.
+        """Returns the peak flux (brightness, resolved flux) associated to the source at the given band.
 
-        Input
+        Inputs
         - band : str
             The band at which the flux density measurements are referring to.
 
+        Returns
+        - u.Quantity
+            The peak flux (brightness, resolved flux) of the source at the given band.
+
         Raises
-            KeyError : if band is not available.
+        - KeyError : if band is not available.
         """
         return self._data[band].resolved
 
     def has_band(self, band: str) -> bool:
-        """Returns if the band is present in the FluxMeasurement.
+        """Returns if the band is present in the SourceFlux.
         """
         return band in self._data
 
     def __contains__(self, band: str) -> bool:
-        """Returns if the band is present in the FluxMeasurement.
+        """Returns if the band is present in the SourceFlux.
         """
         return band in self._data
 
@@ -113,15 +117,15 @@ class SourceFlux(object):
         """Returns the flux measurements associated to the source at the given band.
 
         Inputs
-            - band : str
-                The band at which the flux density measurements are referring to.
+        - band : str
+            The band at which the flux density measurements are referring to.
 
         Returns
-            - FluxMeasurement
-                The flux density measurements.
+        - FluxMeasurement
+            The flux density measurements.
 
         Raises
-            KeyError : if band is not available.
+        - KeyError : if band is not available.
         """
         return self._data[band]
 
@@ -129,10 +133,10 @@ class SourceFlux(object):
         """Sets the flux measurements associated to the source at the given band.
 
         Inputs
-            - band : str
-                The band at which the flux density measurements are referring to.
-            - flux : FluxMeasurement
-                The flux density measurements.
+        - band : str
+            The band at which the flux density measurements are referring to.
+        - flux : FluxMeasurement
+            The flux density measurements.
         """
         self._data[band] = flux
 
@@ -451,12 +455,13 @@ class Source(FixedTarget):
 def _load_rfc_catalog() -> dict[str, tuple[str, str, str]]:
     """Load the RFC catalog file into memory and cache it.
 
-    Returns:
-        Dictionary mapping source names (uppercase) to tuples of (IVS name, J2000 name, coordinate string).
-        The coordinate string is in format 'XXhXXmXXs XXdXXmXXs'.
+    Returns
+    - dict[str, tuple[str, str, str]]
+        Dictionary mapping source names (uppercase) to tuples of (IVS name, J2000 name,
+        coordinate string). The coordinate string is in format 'XXhXXmXXs XXdXXmXXs'.
 
-    Raises:
-        RuntimeError: If no RFC catalog files are found.
+    Raises
+    - RuntimeError: If no RFC catalog files are found.
     """
     global _RFC_CATALOG_CACHE
 
@@ -489,11 +494,13 @@ def _load_rfc_catalog() -> dict[str, tuple[str, str, str]]:
 def _format_dec_coordinate(dec_str: str) -> str:
     """Ensure declination string has proper sign prefix for SkyCoord parsing.
 
-    Args:
-        dec_str: Declination string in format 'DD:MM:SS' or '+DD:MM:SS' or '-DD:MM:SS'
+    Inputs
+    - dec_str : str
+        Declination string in format 'DD:MM:SS' or '+DD:MM:SS' or '-DD:MM:SS'.
 
-    Returns:
-        Formatted declination string with guaranteed sign prefix
+    Returns
+    - str
+        Formatted declination string with guaranteed sign prefix.
     """
     if not dec_str.startswith(('+', '-')):
         dec_str = '+' + dec_str
@@ -510,12 +517,15 @@ def _resolve_coord_str(entry: dict, name: str) -> Optional[str]:
 
     Returns None and logs a warning if all methods fail.
 
-    Parameters
-    ----------
-    entry : dict
+    Inputs
+    - entry : dict
         Parsed TOML sub-dict for a phasecal, checksource, or target.
-    name : str
+    - name : str
         Source name, used for catalog/online lookup when coordinates are absent.
+
+    Returns
+    - str or None
+        A SkyCoord-parseable coordinate string, or None if no method could resolve the source.
     """
     import logging as _log
     if 'coordinates' in entry:
@@ -542,7 +552,18 @@ def _resolve_coord_str(entry: dict, name: str) -> Optional[str]:
 
 
 class SourceCatalog:
+    """Holds all the ScanBlock objects (targets, pulsars, and calibrator groups) read from a
+    personal catalog file, organized by block type (e.g. 'targets', 'pulsars', 'ampcals').
+    """
+
     def __init__(self, personal_catalog: Optional[str] = None):
+        """Initializes an (initially empty) SourceCatalog, optionally reading a personal catalog file.
+
+        Inputs
+        - personal_catalog : str [OPTIONAL]
+            Path to a TOML file containing the source catalog. If provided, it is read
+            immediately (see `read_personal_catalog`).
+        """
         self._blocks: dict[str, dict[str, ScanBlock]] = dict()
         # Per-instance caches for source_names()/sources(), keyed by include_calibrators.
         # Invalidated whenever a catalog file is (re)read.
@@ -553,30 +574,46 @@ class SourceCatalog:
 
     @property
     def blocknames(self):
+        """Returns the names of all ScanBlock entries (targets, pulsars, calibrators) in the catalog.
+        """
         return [bb for b in self._blocks.values() for bb in b.keys()]
 
     @property
     def blocks(self):
+        """Returns all ScanBlock entries in the catalog as a dict {name: ScanBlock}.
+        """
         return {bb_key: bb_value for b in self._blocks.values() for bb_key, bb_value in b.items()}
 
     @property
     def targets(self):
+        """Returns the dict {name: ScanBlock} of target sources in the catalog.
+        """
         return self._blocks['targets']
 
     @property
     def pulsars(self):
+        """Returns the dict {name: ScanBlock} of pulsar sources in the catalog, or None if there are none.
+        """
         return self._blocks['pulsars'] if 'pulsars' in self._blocks else None
 
     @property
     def ampcals(self):
+        """Returns the dict {name: ScanBlock} of amplitude calibrators in the catalog, or None if there
+        are none.
+        """
         return self._blocks['ampcals'] if 'ampcals' in self._blocks else None
 
     @property
     def fringefinders(self):
+        """Returns the dict {name: ScanBlock} of fringe finders in the catalog, or None if there are none.
+        """
         return self._blocks['fringefinders'] if 'fringefinders' in self._blocks else None
 
     @property
     def polcals(self):
+        """Returns the dict {name: ScanBlock} of polarization calibrators in the catalog, or None if
+        there are none.
+        """
         return self._blocks['polcals'] if 'polcals' in self._blocks else None
 
     def source_names(self, include_calibrators: bool = False) -> list[str]:
@@ -606,9 +643,16 @@ class SourceCatalog:
         return self._cache_sources[include_calibrators]
 
     def __contains__(self, item: str):
+        """Returns if a ScanBlock with the given name exists in the catalog.
+        """
         return item in self.blocknames
 
     def __getitem__(self, item: str):
+        """Returns the ScanBlock with the given name, searching across all block types.
+
+        Raises
+        - KeyError: If no ScanBlock with that name exists in the catalog.
+        """
         for key in self._blocks:
             if item in self._blocks[key]:
                 return self._blocks[key][item]
@@ -773,6 +817,17 @@ class SourceCatalog:
 
 @dataclass
 class Scan:
+    """Defines a single pointing to a `source` for a given `duration`, optionally repeated only
+    every `every` cycles within a ScanBlock.
+
+    - source : Source
+        The source to be observed in this scan.
+    - duration : u.Quantity
+        Duration of the scan (default 10 minutes).
+    - every : int
+        If > 0, this scan is only included every `every` cycles when a ScanBlock is filled
+        (see `ScanBlock.fill`). If <= 0 (default), the scan is included in every cycle.
+    """
     source: Source
     duration: u.Quantity = 10*u.min
     every: int = -1
@@ -809,6 +864,8 @@ class ScanBlock:
 
     @property
     def scans(self) -> list[Scan]:
+        """Returns the list of Scan objects that compose this block.
+        """
         return self._scans
 
     def has(self, source_type: SourceType) -> bool:
@@ -834,6 +891,19 @@ class ScanBlock:
         return [s.source.name for s in self.scans if s.source.type is source_type]
 
     def scan_with_sourcename(self, source_name: str) -> Optional[Scan]:
+        """Returns the Scan in this block whose source has the given name.
+
+        Inputs
+        - source_name : str
+            Name of the source to search for among the scans in this block.
+
+        Returns
+        - Scan
+            The scan pointing to the source with the given name.
+
+        Raises
+        - ValueError: If no scan in this block points to a source with that name.
+        """
         for scan in self._scans:
             if scan.source.name == source_name:
                 return scan
@@ -958,7 +1028,11 @@ class ScanBlock:
         return main_loop
 
     def __iter__(self):
+        """Iterates over the Scan objects that compose this block.
+        """
         yield from self._scans
 
     def __contains__(self, a_source_name: str):
+        """Returns if a source with the given name is observed in any scan of this block.
+        """
         return a_source_name in self.sourcenames()

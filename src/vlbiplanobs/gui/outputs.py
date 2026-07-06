@@ -11,6 +11,11 @@ from vlbiplanobs import cli
 from vlbiplanobs.sources import SourceNotVisible
 from vlbiplanobs.gui import plots, inputs
 
+"""Module that builds all Dash components shown in the results area of the GUI: summary cards
+(time, resolution, rms, field of view, data size), warning/error/info cards, the per-target
+tab panels assembled by the compute callback in `main.py`, and the PDF summary export.
+"""
+
 
 def quantity2str(val: u.Quantity) -> str:
     """Converts an astropy Quantity to a formatted string.
@@ -73,6 +78,20 @@ def message_card(title: str | list, body: str | list, mode: Literal['danger', 'i
     """Shows a card with a title and a body, with an icon and a mode that defines the color of the card:
     'info', 'warning', 'danger'. If 'icon' is not provided, it will take an icon by default depending on
     the mode.
+
+    Inputs
+    - title : str or list
+        Card title.
+    - body : str or list
+        Card content.
+    - mode : 'danger', 'info', or 'warning'
+        Selects the card color and the default icon.
+    - icon : str, optional
+        Font-Awesome icon class name. If not provided, a default icon is chosen based on `mode`.
+
+    Returns
+    - dash.html.Div
+        Colored message card component.
     """
     assert mode in ('danger', 'info', 'warning')
     if icon is None:
@@ -179,6 +198,16 @@ def warning_low_high_freq(o: Optional[cli.VLBIObs] = None) -> html.Div:
 def sun_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:
     """Returns a warning card if the Sun is too close to the target source.
     Otherwise it returns an empty Div.
+
+    Inputs
+    - o : VLBIObs, optional
+        VLBI observation object containing Sun-distance constraint data.
+
+    Returns
+    - dash.html.Div
+        Warning card describing the epoch(s) (or, for fixed-time observations, the
+        minimum separation) when the Sun is too close to the source.
+        Empty div if no observation provided or the Sun is never too close.
     """
     if o is None:
         return html.Div()
@@ -565,6 +594,28 @@ def ellipse(bmaj, bmin, pa, color='white', z_index=1, position='relative', margi
     """Returns a html.Div element that draws an ellipse with a semimajor axis bmaj,
     semiminor axis bmin, and position angle (as defined in radio astronomy) pa.
     bmaj,bmin, pa must be strings recognized by HTML/CSS.
+
+    Inputs
+    - bmaj : str
+        CSS width of the ellipse (e.g. '80px'), representing the beam semimajor axis.
+    - bmin : str
+        CSS height of the ellipse (e.g. '10px'), representing the beam semiminor axis.
+    - pa : str
+        CSS rotation angle (e.g. '30deg'), representing the beam position angle.
+    - color : str
+        CSS background color of the ellipse. 'white' by default.
+    - z_index : int
+        CSS z-index (stacking order) of the ellipse. 1 by default.
+    - position : str
+        CSS position property. 'relative' by default.
+    - margin_top : str
+        CSS margin-top value. Empty string by default.
+    - className : str
+        Extra CSS class name(s) to apply to the Div. Empty string by default.
+
+    Returns
+    - dash.html.Div
+        Div styled as a rotated ellipse (via border-radius and transform).
     """
     return html.Div(children=[],
                     style={'width': bmaj, 'height': bmin,
@@ -786,6 +837,17 @@ def _baseline_sensitivity_modal_for_target(o: cli.VLBIObs, target_spec: str) -> 
 
     The modal id uses pattern matching so a clientside callback can toggle each
     independently of the others. The body is fully rendered server-side.
+
+    Inputs
+    - o : VLBIObs
+        VLBI observation object containing baseline sensitivity data for this target.
+    - target_spec : str
+        The source spec (name or coords) this target corresponds to. Used as the
+        pattern-matching index for the modal id.
+
+    Returns
+    - dbc.Modal
+        Modal component with the per-baseline sensitivity table for this target.
     """
     return dbc.Modal(baseline_sensitivities(o),
                      id={'type': 'modal-sens', 'index': target_spec},
@@ -796,6 +858,19 @@ def _rms_card_for_target(o: cli.VLBIObs, target_spec: str) -> html.Div:
     """Returns a per-target rms card with a pattern-matched 'view sensitivity per baseline' button.
 
     Mirrors :func:`rms` but replaces the global button id with one specific to this target.
+
+    Inputs
+    - o : VLBIObs
+        VLBI observation object containing sensitivity data for this target.
+    - target_spec : str
+        The source spec (name or coords) this target corresponds to. Used as the
+        pattern-matching index for the 'view sensitivity per baseline' button id.
+
+    Returns
+    - dash.html.Div
+        Card containing thermal noise RMS for different integration times, with a button
+        that opens this target's baseline-sensitivity modal.
+        Empty div if no observation provided.
     """
     if o is None:
         return html.Div()
@@ -847,7 +922,18 @@ def _rms_card_for_target(o: cli.VLBIObs, target_spec: str) -> html.Div:
 
 
 def _target_pdf_button(target_spec: str) -> html.Div:
-    """Returns a per-target 'Export Summary as PDF' button + its dcc.Download sink."""
+    """Returns a per-target 'Export Summary as PDF' button + its dcc.Download sink.
+
+    Inputs
+    - target_spec : str
+        The source spec (name or coords) this target corresponds to. Used as the
+        pattern-matching index for the button, spinner, and download component ids.
+
+    Returns
+    - dash.html.Div
+        Div containing the spinner, the export button, and the dcc.Download sink for
+        this target's PDF summary.
+    """
     return html.Div(className='d-flex align-items-center justify-content-center my-3',
                     style={'gap': '5px'}, children=[
                         dbc.Spinner(id={'type': 'pdf-spinner', 'index': target_spec},
@@ -1033,7 +1119,10 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
 
     Raises
     - ValueError: If observation is None.
-    - AssertionError: If elevation plot cannot be created when show_figure is True.
+
+    Note: if `show_figure` is True but the elevation plot image cannot be generated
+    (e.g. missing renderer), the error is caught and a text placeholder paragraph is
+    written into the PDF instead of raising.
     """
     if o is None:
         raise ValueError("Observation cannot be None")

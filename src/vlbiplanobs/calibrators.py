@@ -1,5 +1,3 @@
-"""Calibrator source module for finding fringe finders and nearby sources."""
-
 import sys
 import argparse
 import json
@@ -19,16 +17,32 @@ from .sources import Source, SourceType, SourceCatalog
 from .stations import Stations, MountType
 from . import observation as obs
 
-_RFC_BANDS = {'l': 's', 's': 's', 'c': 'c', 'm': 'c', 'x': 'x', 'u': 'u', 'k': 'k', 'q': 'k'}
-_DEFAULT_MIN_ELEVATION = 20 * u.deg
-_DEFAULT_MIN_FLUX = 1.0 * u.Jy
-_BAND_INDEX = {'s': 0, 'c': 1, 'x': 2, 'u': 3, 'k': 4}
-_WAVELENGTH_BANDS = {'18cm': 's', '21cm': 's', '13cm': 'c', '6cm': 'c', '5cm': 'c',
+"""Calibrator source module for finding fringe finders (bright, compact sources used to check
+the fringe fit) and nearby phase calibrators for a target source, based on the RFC (Radio
+Fundamental Catalog).
+"""
+
+_RFC_BANDS: dict[str, str] = {'l': 's', 's': 's', 'c': 'c', 'm': 'c', 'x': 'x', 'u': 'u', 'k': 'k', 'q': 'k'}
+_DEFAULT_MIN_ELEVATION: u.Quantity = 20 * u.deg
+_DEFAULT_MIN_FLUX: u.Quantity = 1.0 * u.Jy
+_BAND_INDEX: dict[str, int] = {'s': 0, 'c': 1, 'x': 2, 'u': 3, 'k': 4}
+_WAVELENGTH_BANDS: dict[str, str] = {'18cm': 's', '21cm': 's', '13cm': 'c', '6cm': 'c', '5cm': 'c',
                        '3.6cm': 'x', '2cm': 'u', '1.3cm': 'k', '0.7cm': 'k'}
 
 
 def _round_to_nearest_wavelength(band_str: str) -> str:
-    """Round an unknown wavelength to the nearest known wavelength."""
+    """Round an unknown wavelength string to the nearest known wavelength key in _WAVELENGTH_BANDS.
+
+    Inputs
+    - band_str : str
+        Wavelength string (e.g. '6.2cm'). If it already matches a known key, or it does not
+        end in 'cm', it is returned unchanged.
+
+    Returns
+    - str
+        The closest known wavelength key (e.g. '6cm'), or `band_str` unchanged if it cannot
+        be matched.
+    """
     if band_str in _WAVELENGTH_BANDS:
         return band_str
     if not band_str.lower().endswith('cm'):
@@ -37,37 +51,98 @@ def _round_to_nearest_wavelength(band_str: str) -> str:
 
 
 class CalibratorSource(Source):
-    """Represents a calibrator source from the RFC catalog."""
+    """Represents a calibrator source from the RFC catalog.
+    Stores the RFC-specific metadata (IVS name, number of VLBI observations, resolved and
+    unresolved flux density per band, and whether it is flagged as a calibrator) on top of the
+    base `Source` attributes (name, coordinates).
+    """
     __slots__ = ('ivsname', 'n_observations', 'flux_resolved', 'flux_unresolved', 'is_calibrator')
 
     def __init__(self, name: str, ivsname: str, ra_deg: float, dec_deg: float, n_observations: int,
                  flux_resolved: np.ndarray, flux_unresolved: np.ndarray, is_calibrator: bool):
+        """Initializes a calibrator source.
+
+        Inputs
+        - name : str
+            Primary (IERS/RFC) name of the source.
+        - ivsname : str
+            IVS name of the source, as used in VLBI scheduling.
+        - ra_deg : float
+            Right ascension in degrees (J2000).
+        - dec_deg : float
+            Declination in degrees (J2000).
+        - n_observations : int
+            Number of VLBI observations of this source in the RFC catalog.
+        - flux_resolved : numpy.ndarray
+            Resolved flux density (Jy) at each of the five RFC bands (s, c, x, u, k), following
+            the order in `_BAND_INDEX`.
+        - flux_unresolved : numpy.ndarray
+            Unresolved (core) flux density (Jy) at each of the five RFC bands, same order as
+            `flux_resolved`.
+        - is_calibrator : bool
+            True if the source is flagged in the RFC catalog as a good calibrator ('C' entries).
+        """
         super().__init__(name=name, coordinates=coord.SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg),
                      source_type=SourceType.PHASECAL)
-        self.ivsname = ivsname
-        self.n_observations = n_observations
-        self.flux_resolved = flux_resolved
-        self.flux_unresolved = flux_unresolved
-        self.is_calibrator = is_calibrator
+        self.ivsname: str = ivsname
+        self.n_observations: int = n_observations
+        self.flux_resolved: np.ndarray = flux_resolved
+        self.flux_unresolved: np.ndarray = flux_unresolved
+        self.is_calibrator: bool = is_calibrator
 
     @property
     def ra_deg(self) -> float:
+        """Right ascension of the source in degrees (J2000)."""
         return float(self.coord.ra.deg)
 
     @property
     def dec_deg(self) -> float:
+        """Declination of the source in degrees (J2000)."""
         return float(self.coord.dec.deg)
 
     def unresolved_flux(self, band: str) -> float:
+        """Returns the unresolved (core) flux density of the source at the given RFC band.
+
+        Inputs
+        - band : str
+            RFC band letter code ('s', 'c', 'x', 'u', or 'k').
+
+        Returns
+        - float
+            Unresolved flux density in Jy, or 0.0 if the band is not recognized.
+        """
         idx = _BAND_INDEX.get(band)
         return float(self.flux_unresolved[idx]) if idx is not None else 0.0
 
     def resolved_flux(self, band: str) -> float:
+        """Returns the resolved flux density of the source at the given RFC band.
+
+        Inputs
+        - band : str
+            RFC band letter code ('s', 'c', 'x', 'u', or 'k').
+
+        Returns
+        - float
+            Resolved flux density in Jy, or 0.0 if the band is not recognized.
+        """
         idx = _BAND_INDEX.get(band)
         return float(self.flux_resolved[idx]) if idx is not None else 0.0
 
     def get_flux_at_band(self, band: str) -> tuple[float, float]:
-        """Get resolved and unresolved flux at a specific band with interpolation."""
+        """Get resolved and unresolved flux at a specific band, interpolating if not measured.
+
+        Accepts either a wavelength string (e.g. '6cm') or an RFC band letter. If the band has
+        no direct measurement (flux is zero or missing), falls back to `_interpolate_flux`.
+
+        Inputs
+        - band : str
+            Wavelength string (e.g. '18cm', '6cm') or RFC band letter ('s', 'c', 'x', 'u', 'k').
+
+        Returns
+        - tuple[float, float]
+            (resolved_flux_jy, unresolved_flux_jy). Both 0.0 if the band cannot be matched or
+            no flux data is available at all.
+        """
         if band in _WAVELENGTH_BANDS:
             band = _WAVELENGTH_BANDS[band]
         elif 'cm' in band.lower():
@@ -85,7 +160,23 @@ class CalibratorSource(Source):
         return self._interpolate_flux(band)
 
     def _interpolate_flux(self, target_band: str) -> tuple[float, float]:
-        """Interpolate flux for a band using nearby bands."""
+        """Interpolate resolved/unresolved flux for a band lacking a direct measurement.
+
+        Uses log-log linear interpolation in wavelength between the two closest bands (by
+        wavelength) that do have a positive measured unresolved flux. Falls back to a plain
+        average of the two closest bands when interpolation is not possible (identical
+        wavelengths, or a zero/negative flux at either band).
+
+        Inputs
+        - target_band : str
+            RFC band letter code ('s', 'c', 'x', 'u', or 'k') to interpolate flux for.
+
+        Returns
+        - tuple[float, float]
+            (resolved_flux_jy, unresolved_flux_jy) interpolated at the target band. Both 0.0
+            if no other band has measured flux data, or the target band's representative
+            wavelength cannot be determined.
+        """
         # Find the wavelength for the target band - check both direct band and wavelength mappings
         target_wavelength = None
         for wl, band in _WAVELENGTH_BANDS.items():
@@ -152,23 +243,38 @@ class CalibratorSource(Source):
         return res_interp, unres_interp
 
     def get_skycoord(self) -> coord.SkyCoord:
+        """Returns the source coordinates as an astropy.coordinates.SkyCoord object."""
         return self.coord
 
     def get_astrogeo_link(self) -> str:
+        """Builds the AstroGeo calibrator-search URL for this source's coordinates.
+
+        Returns
+        - str
+            URL to the AstroGeo (astrogeo.org) calibrator search form, pre-filled with this
+            source's RA/Dec.
+        """
         # Handle negative declinations properly - only degrees should be negative
         ra_h, ra_m, ra_s = self.coord.ra.hms
         dec_d, dec_m, dec_s = self.coord.dec.dms
-        
+
         # For negative declinations, make minutes and seconds positive
         if dec_d < 0:
             dec_m = abs(dec_m)
             dec_s = abs(dec_s)
-        
+
         fmt = "ra={:02.0f}:{:02.0f}:{:06.3f}&dec={:+03.0f}:{:02.0f}:{:06.3f}&num_sou=1&format=html"
         source_coord_str = parse.quote(fmt.format(ra_h, ra_m, ra_s, dec_d, dec_m, dec_s), safe='=&')
         return f"http://astrogeo.org/cgi-bin/calib_search_form.csh?{source_coord_str}"
 
     def get_observed_bands(self) -> str:
+        """Returns a comma-separated, upper-case list of RFC bands with measured flux data.
+
+        Returns
+        - str
+            Comma-separated band letters (e.g. 'S,C,X') for which either resolved or
+            unresolved flux is positive. Empty string if no band has data.
+        """
         bands = []
         for band in ['s', 'c', 'x', 'u', 'k']:
             idx = _BAND_INDEX[band]
@@ -178,12 +284,39 @@ class CalibratorSource(Source):
 
 
 class RFCCatalog:
-    """RFC (Radio Fundamental Catalog) of VLBI calibrator sources."""
+    """RFC (Radio Fundamental Catalog) of VLBI calibrator sources.
+    Loads and parses the catalog text file into a list of `CalibratorSource` objects, filtered
+    by a minimum unresolved flux threshold at a given band, and provides lookup and filtering
+    helpers (by name, by flux, calibrators-only).
+    """
     __slots__ = ('_sources', '_min_flux', '_band', '_catalog_filename',
                  '_name_index', '_ivsname_index', '_ra_arr', '_dec_arr', '_include_missing')
 
     def __init__(self, catalog_filename: Optional[str] = None, min_flux: u.Quantity = _DEFAULT_MIN_FLUX,
                  band: str = 'c', include_missing: bool = False):
+        """Initializes the catalog by loading and parsing the RFC catalog file.
+
+        Inputs
+        - catalog_filename : str [OPTIONAL]
+            Path to a custom RFC catalog text file. If not provided, the most recent
+            'rfc*.txt' file bundled in the `vlbiplanobs.data` package is used.
+        - min_flux : astropy.units.Quantity [OPTIONAL]
+            Minimum unresolved flux density (default in Jy) a source must have at `band` to be
+            kept in the catalog. Defaults to 1.0 Jy.
+        - band : str [OPTIONAL]
+            RFC band letter code ('s', 'c', 'x', 'u', or 'k') used to apply the `min_flux` cut.
+            Defaults to 'c'.
+        - include_missing : bool [OPTIONAL]
+            If True, sources with no flux measurement at `band` are kept (only sources with a
+            measured flux below `min_flux` are excluded); used for phase-calibrator mode. If
+            False (default), sources with no measurement or with flux below `min_flux` are both
+            excluded; used for fringe-finder mode.
+
+        Raises
+        - FileNotFoundError: If no RFC catalog file can be found, or the given/default file
+          does not exist.
+        - RuntimeError: If the catalog file exists but cannot be parsed.
+        """
         self._sources: list[CalibratorSource] = []
         self._min_flux = min_flux.to(u.Jy).value if hasattr(min_flux, 'to') else min_flux
         self._band = band
@@ -196,6 +329,16 @@ class RFCCatalog:
         self._load_catalog()
 
     def _get_catalog_path(self) -> str:
+        """Resolves the path to the RFC catalog file to load.
+
+        Returns
+        - str
+            `self._catalog_filename` if set; otherwise the path to the most recent
+            'rfc*.txt' file bundled in the `vlbiplanobs.data` package (sorted by filename).
+
+        Raises
+        - FileNotFoundError: If no bundled RFC catalog file is found.
+        """
         if self._catalog_filename is not None:
             return self._catalog_filename
         rfc_files = tuple(r.name for r in resources.files('vlbiplanobs.data').iterdir()
@@ -206,6 +349,14 @@ class RFCCatalog:
             return str(rfcfile)
 
     def _load_catalog(self) -> None:
+        """Reads the RFC catalog file, parses it, and populates `self._sources` and the
+        name/IVS-name/coordinate lookup indices, applying the `_min_flux`/`_band`/
+        `_include_missing` filters from `__init__`.
+
+        Raises
+        - FileNotFoundError: If the catalog file does not exist.
+        - RuntimeError: If a line-parsing error occurs while reading the file.
+        """
         catalog_path = self._get_catalog_path()
         try:
             band_idx = _BAND_INDEX[self._band]
@@ -273,19 +424,28 @@ class RFCCatalog:
 
     @property
     def sources(self) -> list[CalibratorSource]:
+        """List of all `CalibratorSource` objects currently in the catalog."""
         return self._sources
 
     @property
     def n_sources(self) -> int:
+        """Number of sources currently in the catalog."""
         return len(self._sources)
 
     def get_source(self, name: str) -> Optional[CalibratorSource]:
-        """Get a source by name, IVS name, or other names.
+        """Get a source by name, IVS name, or other names, all case-insensitive.
 
-        Searches in multiple fields:
-        - Primary name (case-insensitive)
-        - IVS name (case-insensitive)
-        - Other names/aliases (case-insensitive)
+        Tries, in order: exact match on primary name, exact match on IVS name, exact match on
+        any of `source.other_names`, then finally a partial (substring, either direction)
+        match on primary name and on IVS name.
+
+        Inputs
+        - name : str
+            Name, IVS name, alias, or substring thereof, to search for.
+
+        Returns
+        - CalibratorSource or None
+            The first matching source, or None if no match is found.
         """
         name_upper = name.upper()
 
@@ -317,6 +477,13 @@ class RFCCatalog:
         return None
 
     def calibrators_only(self) -> Self:
+        """Returns a new RFCCatalog containing only sources flagged as calibrators.
+
+        Returns
+        - RFCCatalog
+            A new catalog instance (same `min_flux`/`band`/`catalog_filename` settings) whose
+            sources are the subset of `self.sources` with `is_calibrator == True`.
+        """
         new_catalog = object.__new__(self.__class__)
         new_catalog._sources = [s for s in self._sources if s.is_calibrator]
         new_catalog._min_flux = self._min_flux
@@ -333,6 +500,20 @@ class RFCCatalog:
         return new_catalog
 
     def brighter_than(self, flux: float, band: Optional[str] = None) -> Self:
+        """Returns a new RFCCatalog containing only sources above a given unresolved flux.
+
+        Inputs
+        - flux : float
+            Minimum unresolved flux density (Jy) a source must have at `band` to be kept.
+        - band : str [OPTIONAL]
+            RFC band letter code to check the flux at. If not given, uses the catalog's own
+            `band` (the one used at load time).
+
+        Returns
+        - RFCCatalog
+            A new catalog instance (same `min_flux`/`band`/`catalog_filename` settings) whose
+            sources are the subset of `self.sources` with `unresolved_flux(band) >= flux`.
+        """
         check_band = band if band is not None else self._band
         new_catalog = object.__new__(self.__class__)
         new_catalog._sources = [s for s in self._sources if s.unresolved_flux(check_band) >= flux]
@@ -350,11 +531,33 @@ class RFCCatalog:
         return new_catalog
 
     def _get_coord_arrays(self) -> tuple[np.ndarray, np.ndarray]:
+        """Returns the cached RA/Dec coordinate arrays for all sources in the catalog.
+
+        Returns
+        - tuple[numpy.ndarray, numpy.ndarray]
+            (ra_deg_array, dec_deg_array), in the same order as `self.sources`.
+        """
         return self._ra_arr, self._dec_arr
 
 
 def _angular_separation(ra1_deg: float, dec1_deg: float, ra2_arr: np.ndarray, dec2_arr: np.ndarray) -> np.ndarray:
-    """Vectorized angular separation calculation."""
+    """Vectorized angular separation (haversine formula) between one point and an array of points.
+
+    Inputs
+    - ra1_deg : float
+        Right ascension of the reference point, in degrees.
+    - dec1_deg : float
+        Declination of the reference point, in degrees.
+    - ra2_arr : numpy.ndarray
+        Right ascensions of the target points, in degrees.
+    - dec2_arr : numpy.ndarray
+        Declinations of the target points, in degrees. Must be the same shape as `ra2_arr`.
+
+    Returns
+    - numpy.ndarray
+        Angular separation in degrees between the reference point and each target point,
+        same shape as `ra2_arr`.
+    """
     ra1_rad, dec1_rad = np.radians(ra1_deg), np.radians(dec1_deg)
     ra2_rad, dec2_rad = np.radians(ra2_arr), np.radians(dec2_arr)
 
@@ -370,9 +573,23 @@ def _batch_altaz_erfa(ra_rad: np.ndarray, dec_rad: np.ndarray, times: Time,
                       station) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute elevation, azimuth, and hour angle for all sources at all times using ERFA.
 
-    Returns (elevation_deg, azimuth_deg, ha_hours) each shaped (n_times, n_sources).
     Bypasses astroplan/astropy per-source overhead by computing ERFA astrometry params
     once per time step, then transforming all sources vectorized.
+
+    Inputs
+    - ra_rad : numpy.ndarray
+        Right ascensions of the sources, in radians, shape (n_sources,).
+    - dec_rad : numpy.ndarray
+        Declinations of the sources, in radians, shape (n_sources,).
+    - times : astropy.time.Time
+        Time array (length n_times) at which to evaluate the positions.
+    - station : Station
+        Station providing the observing location (`station.location`).
+
+    Returns
+    - tuple[numpy.ndarray, numpy.ndarray, numpy.ndarray]
+        (elevation_deg, azimuth_deg, ha_hours), each shaped (n_times, n_sources). `ha_hours`
+        is wrapped to [0, 24).
     """
     loc = station.location
     lon_rad, lat_rad = loc.lon.rad, loc.lat.rad
@@ -400,7 +617,25 @@ def _station_observable_mask(elev: np.ndarray, az: np.ndarray, ha_hours: np.ndar
 
     Uses the same constraint logic as astroplan: for ALTAZ mounts checks azimuth and elevation
     limits; for EQUAT mounts checks hour angle (in [0,24h) with wrapping), declination, and
-    a minimum 5-degree elevation.
+    a minimum 5-degree elevation. If the station defines a local horizon, also requires the
+    elevation to be above the interpolated horizon at each azimuth.
+
+    Inputs
+    - elev : numpy.ndarray
+        Elevation in degrees, shape (n_times, n_sources).
+    - az : numpy.ndarray
+        Azimuth in degrees, same shape as `elev`.
+    - ha_hours : numpy.ndarray
+        Hour angle in hours (wrapped to [0, 24)), same shape as `elev`.
+    - dec_deg : numpy.ndarray
+        Declination in degrees, shape (n_sources,).
+    - station : Station
+        Station providing the mount constraints (`station.mount`) and optional local horizon
+        (`station.horizon`, `station.horizon_min_elevation`).
+
+    Returns
+    - numpy.ndarray
+        Boolean mask, shape (n_times, n_sources), True where the source is observable.
     """
     mount = station.mount
     if mount.mount_type == MountType.ALTAZ:
@@ -436,6 +671,33 @@ def get_fringe_finder_sources(
 
     Uses ERFA directly for vectorized elevation computation across all sources,
     replacing per-source astroplan calls for major speedup.
+
+    Inputs
+    - stations : Stations
+        Network of stations to check visibility for.
+    - times : astropy.time.Time
+        Time array sampling the observation window.
+    - min_elevation : astropy.units.Quantity [OPTIONAL]
+        Minimum elevation a source must reach to be considered visible. Defaults to 20 deg.
+    - min_flux : astropy.units.Quantity [OPTIONAL]
+        Minimum unresolved flux density (in Jy) used to build the default catalog, when
+        `catalog` is not given. Defaults to 1.0 Jy. Ignored if `catalog` is provided.
+    - catalog : RFCCatalog [OPTIONAL]
+        Pre-loaded catalog to search. If not given, a new `RFCCatalog(min_flux=min_flux,
+        band='c')` is created.
+    - require_all_stations : bool [OPTIONAL]
+        If True (default), only sources visible by ALL stations for the entire time range are
+        returned. If False, sources visible by at least one station at any time are returned,
+        together with per-source antenna-visibility details.
+
+    Returns
+    - tuple[list[CalibratorSource], list[float], Optional[list[tuple[int, int, bool, float]]]]
+        (sources, min_elevations_deg, antenna_visibility). `sources` and `min_elevations_deg`
+        are sorted best-first (highest minimum elevation, or best visibility category when
+        `require_all_stations` is False). `antenna_visibility` is None when
+        `require_all_stations` is True; otherwise a list of
+        (n_stations_visible, n_stations_total, visible_all_times, min_elevation_deg_across_
+        visible_stations) tuples, one per returned source.
     """
     if catalog is None:
         catalog = RFCCatalog(min_flux=min_flux, band='c')
@@ -519,7 +781,24 @@ def get_fringe_finder_sources(
 def get_nearby_sources(source: CalibratorSource | Source, max_separation: u.Quantity = 5.0 * u.deg,
                        catalog: Optional[RFCCatalog] = None,
                        n_sources: Optional[int] = None) -> list[tuple[CalibratorSource, float]]:
-    """Find calibrator sources near a target source."""
+    """Find calibrator sources near a target source, sorted by increasing separation.
+
+    Inputs
+    - source : CalibratorSource or Source
+        Target source to search around.
+    - max_separation : astropy.units.Quantity [OPTIONAL]
+        Maximum angular separation from `source` to include. Defaults to 5 deg.
+    - catalog : RFCCatalog [OPTIONAL]
+        Pre-loaded catalog to search. If not given, a new default `RFCCatalog()` is created.
+    - n_sources : int [OPTIONAL]
+        Maximum number of sources to return. If not given, all matches are returned.
+
+    Returns
+    - list[tuple[CalibratorSource, float]]
+        List of (source, separation_deg) tuples, sorted by increasing separation, excluding
+        the target itself (separation == 0 is filtered out) and truncated to `n_sources` if
+        given.
+    """
     if catalog is None:
         catalog = RFCCatalog()
 
@@ -541,24 +820,23 @@ def select_phase_calibrator(target: Source, band: str, max_separation: u.Quantit
                             catalog: Optional[RFCCatalog] = None) -> Optional[CalibratorSource]:
     """Automatically select the best phase calibrator for a target source.
 
-    Prioritises the brightest unresolved emission among the closest sources.
-    The scoring formula is ``score = unresolved_flux / (1 + separation_deg)``
-    so that a bright, nearby, compact source is preferred.
+    Prioritises the brightest, most compact unresolved emission among the closest sources.
+    The scoring formula is ``score = unresolved_flux * compactness / (1 + separation_deg)``,
+    where ``compactness = min(unresolved_flux / resolved_flux, 1)``, so that a bright, nearby,
+    compact source is preferred.
 
-    Parameters
-    ----------
-    target : Source
+    Inputs
+    - target : Source
         The target source to find a phase calibrator for.
-    band : str
+    - band : str
         Observing band in RFC letter code (s/c/x/u/k) or wavelength string (e.g. '6cm').
-    max_separation : Quantity
-        Maximum angular separation from target (default 5 deg).
-    catalog : RFCCatalog or None
-        Pre-loaded catalog.  If None a new one is created with min_flux=0.
+    - max_separation : astropy.units.Quantity [OPTIONAL]
+        Maximum angular separation from target. Defaults to 5 deg.
+    - catalog : RFCCatalog [OPTIONAL]
+        Pre-loaded catalog. If None, a new one is created with min_flux=0 at the given band.
 
     Returns
-    -------
-    CalibratorSource or None
+    - CalibratorSource or None
         The best phase calibrator, or None if no candidates exist.
     """
     rfc_band = _wavelength_to_rfc_band(band)
@@ -605,22 +883,20 @@ def select_check_source(target: Source, phase_cal: Source, band: str,
     - compact (high unresolved / resolved ratio).
     It can be weaker than the phase calibrator.
 
-    Parameters
-    ----------
-    target : Source
+    Inputs
+    - target : Source
         The target source.
-    phase_cal : Source
+    - phase_cal : Source
         The already-selected phase calibrator.
-    band : str
+    - band : str
         Observing band (RFC letter or wavelength string).
-    max_separation : Quantity
-        Maximum angular separation from target.
-    catalog : RFCCatalog or None
-        Pre-loaded catalog.
+    - max_separation : astropy.units.Quantity [OPTIONAL]
+        Maximum angular separation from target. Defaults to 5 deg.
+    - catalog : RFCCatalog [OPTIONAL]
+        Pre-loaded catalog. If None, a new one is created with min_flux=0 at the given band.
 
     Returns
-    -------
-    CalibratorSource or None
+    - CalibratorSource or None
         The best check source, or None if no candidates exist.
     """
     rfc_band = _wavelength_to_rfc_band(band)
@@ -679,16 +955,16 @@ def select_check_source(target: Source, phase_cal: Source, band: str,
 def _wavelength_to_rfc_band(band: str) -> str:
     """Convert a wavelength string like '6cm' to an RFC band letter like 'c'.
 
-    Also accepts bare RFC band letters ('s', 'c', 'x', 'u', 'k') unchanged.
+    Also accepts bare RFC band letters ('s', 'c', 'x', 'u', 'k') unchanged, and unknown
+    wavelength strings (rounded to the nearest known one via `_round_to_nearest_wavelength`).
+    Falls back to 'c' if the band cannot be matched at all.
 
-    Parameters
-    ----------
-    band : str
+    Inputs
+    - band : str
         Wavelength string (e.g. '6cm', '18cm') or RFC letter.
 
     Returns
-    -------
-    str
+    - str
         Single-letter RFC band code.
     """
     if band in _BAND_INDEX:
@@ -705,6 +981,14 @@ def _wavelength_to_rfc_band(band: str) -> str:
 
 
 def main_fringe():
+    """CLI entry point ('planobs_fringefinder') to find and print fringe finder candidates
+    for a VLBI observation, given a network/station selection and a time range.
+
+    Parses command-line arguments, resolves the requested stations/networks, searches the RFC
+    catalog via `get_fringe_finder_sources`, and prints the results as a rich table or as JSON
+    (`--json`). Exits the process (`sys.exit`) on both success and error paths; does not
+    return a value.
+    """
     usage = "%(prog)s [-h] OPTIONS"
     description = "Find fringe finder sources for VLBI observations"
     parser = argparse.ArgumentParser(description=description, prog="planobs_fringefinder", usage=usage,
@@ -933,15 +1217,18 @@ def _target_from_personal_catalog(catalog_file: str, name: str) -> Optional[Sour
     """Looks up `name` in a personal source catalog (toml file, as used by 'planobs observe -sc').
 
     Inputs
-        catalog_file : str — path to the personal source catalog (toml).
-        name : str — block name or source name to look up.
+    - catalog_file : str
+        Path to the personal source catalog (toml).
+    - name : str
+        Block name or source name to look up.
 
     Returns
-        Optional[Source] — the (first) target source of the matching block, the source with
-        the given name, or None if not found.
+    - Source or None
+        The (first) target source of the matching block, the source with the given name, or
+        None if not found.
 
     Raises
-        FileNotFoundError — if catalog_file does not exist.
+    - FileNotFoundError: If catalog_file does not exist.
     """
     catalog = SourceCatalog(catalog_file)
     if name in catalog.blocknames:
@@ -953,6 +1240,15 @@ def _target_from_personal_catalog(catalog_file: str, name: str) -> Optional[Sour
 
 
 def main_phasecal():
+    """CLI entry point ('planobs_phasecal') to find and print phase calibrator candidates
+    near a target source.
+
+    Parses command-line arguments, resolves the target source (optionally via a personal
+    source catalog first, then the RFC catalog, then a free-form parse via
+    `Source.source_from_str`), searches nearby sources via `get_nearby_sources`, and prints
+    the results as a rich table or as JSON (`--json`). Exits the process (`sys.exit`) on both
+    success and error paths; does not return a value.
+    """
     usage = "%(prog)s [-h] OPTIONS"
     description = "Find phase calibrator sources near a target source"
     parser = argparse.ArgumentParser(description=description, prog="planobs_phasecal", usage=usage,

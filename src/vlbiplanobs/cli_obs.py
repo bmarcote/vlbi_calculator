@@ -16,11 +16,23 @@ from vlbiplanobs import sources
 def optimal_units(value: u.Quantity, units: list[u.Unit]):
     """Given a value (with some units), returns the unit choice from all
     `units` possibilities that better suits the value.
-    It is meant for the following use:
-    Given 0.02*u.Jy and units = [u.kJy, u.Jy, u.mJy, u.uJy], it will
-    return 20*u.mJy.
-    units should have a decreasing-scale of units, and all of them
-    compatible with the units in `value`.
+
+    It is meant for the following use: given 0.02*u.Jy and
+    units = [u.kJy, u.Jy, u.mJy, u.uJy], it will return 20*u.mJy.
+
+    Parameters
+    ----------
+    value : astropy.units.Quantity
+        The value to convert.
+    units : list[astropy.units.Unit]
+        Candidate units, in decreasing scale, all compatible with `value`'s units.
+
+    Returns
+    -------
+    astropy.units.Quantity
+        `value` converted to whichever unit in `units` best fits (a magnitude
+        between 0.8 and 800), falling back to the largest or smallest unit if
+        `value` is too high or too low for any of them.
     """
     for a_unit in units:
         if 0.8 < value.to(a_unit).value <= 800:
@@ -34,15 +46,40 @@ def optimal_units(value: u.Quantity, units: list[u.Unit]):
 
 
 class VLBIObs(obs.Observation):
-    # add __init__
-    def __init__(self, *args, **kwargs):
+    """CLI-facing extension of `observation.Observation` that adds terminal/GUI
+    summary printing, per-source elevation plots (via plotext), and tracking of
+    stations that were requested but excluded from the observation.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        """Initializes a VLBIObs, forwarding all arguments to `observation.Observation`.
+
+        Parameters
+        ----------
+        *args
+            Forwarded unchanged to `observation.Observation.__init__`.
+        **kwargs
+            Forwarded unchanged to `observation.Observation.__init__`.
+        """
         super().__init__(*args, **kwargs)
         self._excluded_stations: dict[str, str] = {}
 
     def summary(self, gui: bool = True, tui: bool = True):
         """Prints the observation summary. Uses the GUI variant when `gui` is set,
         otherwise the terminal (TUI) variant when `tui` is set; does nothing if both are False
-        (the CLI warns about that combination before calling)."""
+        (the CLI warns about that combination before calling).
+
+        Parameters
+        ----------
+        gui : bool, optional
+            If True, calls the GUI summary variant. Default is True.
+        tui : bool, optional
+            If True (and `gui` is False), calls the terminal (TUI) summary variant. Default is True.
+
+        Returns
+        -------
+        None
+        """
         if gui:
             return self._summary_gui()
 
@@ -52,15 +89,20 @@ class VLBIObs(obs.Observation):
         return None
 
     def _summary_gui(self):
+        """GUI variant of the observation summary.
+
+        TODO: for now it just calls the TUI variant (`_summary_tui`); no dedicated
+        GUI rendering exists yet.
+        """
         self._summary_tui()
-        # TODO: for now it just calls the TUI
 
     def per_source_elevations(self) -> dict[str, dict[str, np.ndarray]]:
         """Returns per-source elevation data across all stations in degrees.
 
         Returns
-            dict[source_name, dict[station_codename, np.ndarray[float]]]
-                Elevation values in degrees for each source and station.
+        -------
+        dict[str, dict[str, np.ndarray]]
+            Elevation values in degrees for each source name and station codename.
         """
         elevations = self.elevations()
         result = {}
@@ -81,14 +123,15 @@ class VLBIObs(obs.Observation):
         Color encodes elevation: red (<10°), yellow (10-20°), green (20-40°),
         cyan (40-60°), blue (>60°). Invisible steps are left blank.
 
-        Inputs
-        - src_name : str
+        Parameters
+        ----------
+        src_name : str
             Source name used as the plot title.
-        - src_vis : dict[str, np.ndarray]
+        src_vis : dict[str, np.ndarray]
             Boolean visibility array per antenna codename.
-        - src_elev : dict[str, np.ndarray]
+        src_elev : dict[str, np.ndarray]
             Elevation in degrees per antenna codename.
-        - time_labels : list[str]
+        time_labels : list[str]
             Time label string for every time step (x-axis tick labels).
         """
         import plotext as pltx
@@ -148,7 +191,11 @@ class VLBIObs(obs.Observation):
         pltx.show()
 
     def _summary_tui(self):
-        """Prints the infromation for the given Observation, for testing purposes
+        """Prints the observation summary to the terminal: band/time/duration, setup
+        (data rate, bandwidth, subbands, channels, polarizations), the participating
+        (and excluded) stations, the source list per scan block, and either a
+        phase-referencing feasibility warning or (if no sources are defined) the
+        expected thermal noise for a source at +/-45 degrees elevation.
         """
         rprint("\n[bold green]VLBI observation[/bold green]")
         rprint(f"To be conducted at {self.band.replace('cm', ' cm')} ", end='')
@@ -230,6 +277,18 @@ class VLBIObs(obs.Observation):
         print('\n')
 
     def plot_visibility(self, gui: bool = True, tui: bool = True):
+        """Shows visibility plots for the observation's sources.
+
+        Unlike `summary()`, both variants are shown when both flags are True
+        (they are not mutually exclusive here).
+
+        Parameters
+        ----------
+        gui : bool, optional
+            If True, shows the GUI visibility plot (via the `gui.plots` module). Default is True.
+        tui : bool, optional
+            If True, shows the terminal (TUI) visibility plot. Default is True.
+        """
         if gui:
             self._plot_visibility_gui()
 

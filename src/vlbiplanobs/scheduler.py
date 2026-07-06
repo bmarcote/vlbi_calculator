@@ -141,6 +141,10 @@ class ObservationScheduler:
     def __init__(self, observation: Observation, min_antennas: int = 2,
                  require_all_antennas: bool = False,
                  fringefinder_spec: Optional[list[str]] = None, polcal: bool = False):
+        """Initialise the scheduler and pre-compute visibility/elevation arrays for all blocks.
+
+        Parameters are as documented in the class docstring.
+        """
         self.obs = observation
         self.min_ant = min_antennas
         self.require_all = require_all_antennas
@@ -180,21 +184,27 @@ class ObservationScheduler:
                 self._elev[name] = np.zeros(self._n_times)
 
     def _ff_blocks(self) -> list[str]:
+        """Return the names of all registered fringe-finder blocks."""
         return [n for n in self._blocks if self._is_ff.get(n, False)]
 
     def _sci_blocks(self) -> list[str]:
+        """Return the names of all registered non-fringe-finder (science) blocks."""
         return [n for n in self._blocks if not self._is_ff.get(n, False)]
 
     def _t2i(self, t: Time) -> int:
+        """Return the index into ``self.obs.times`` closest to time *t*."""
         return int(np.argmin(np.abs(self.obs.times.mjd - t.mjd)))
 
     def _i2t(self, i: int) -> Time:
+        """Return the ``self.obs.times`` entry at index *i*, clamped to the last valid index."""
         return self.obs.times[min(i, self._n_times - 1)]
 
     def _vis_at(self, name: str, t: Time) -> int:
+        """Return the number of antennas that can observe block *name* at time *t*."""
         return int(self._vis[name][self._t2i(t)])
 
     def _elev_at(self, name: str, t: Time) -> float:
+        """Return the mean elevation (degrees) of block *name*'s target at time *t*."""
         return float(self._elev[name][self._t2i(t)])
 
     def _vis_mean(self, name: str, t0: Time, t1: Time) -> float:
@@ -403,6 +413,7 @@ class ObservationScheduler:
         return added
 
     def _has_emerlin(self) -> bool:
+        """Return True if any eMERLIN station (see ``_EMERLIN_CODES``) is in the array."""
         return any(s.codename.upper() in _EMERLIN_CODES for s in self.obs.stations)
 
     def _has_jb1(self) -> bool:

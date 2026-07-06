@@ -18,6 +18,12 @@ from .stations import Stations, Station, MountType
 from .sources import Source, Scan, ScanBlock, SourceType, SourceNotVisible
 from . import freqsetups
 
+"""Module that defines the `Observation` object, which represents a VLBI observation of a
+target source (or several sources, grouped in scan blocks) with a given network of stations.
+It provides methods to compute source visibility, thermal noise, baseline sensitivities,
+(u,v) coverage, synthesized beam, and other observational metrics.
+"""
+
 conf.auto_max_age = None
 
 _NETWORKS = Stations.get_networks_from_configfile()
@@ -182,23 +188,25 @@ class Observation(object):
                  inttime: u.Quantity = 2.0*u.s,
                  ontarget: float = 0.7, bits: u.Quantity = 2*u.bit):
         """Initializes an observation.
+
         Note that you can initialize an empty observation at this stage and add the
         information for the different attributes later. However, you may raise exception
         if running methods that require some of the unset attributes.
 
-        Inputs
-        - band : str
+        Parameters
+        ----------
+        band : str
             Observing band to conduct the observation. Note that while this is a
             free-format string, it should match the type used when defining the bands
             at which each station can observe, and the default is the str format `XXcm`
             where XX represents the wavelength to observe in cm units.
             You can always check the available bands in `{Stations object}.observing_bands`.
-        - stations : vlbiplanobs.stations.Stations
+        stations : vlbiplanobs.stations.Stations
             Network of stations that will participate in the given observation.
-        - scans : dict[str, ScanBlock]
+        scans : dict[str, ScanBlock]
             Scans to be observed during the observation.
             The key of the dict is just the name to refer to the specified ScanBlock as value.
-        - times : astropy.time.Time
+        times : astropy.time.Time, optional
             An array of times defining the duration of the observation. That is,
             the first time will define the start of the observation and the last one
             will be the end of the observation. Note that the higher time resolution
@@ -206,35 +214,37 @@ class Observation(object):
             visibility or determination of the rms noise levels. However, that will
             also imply a longer computing time. Steps of ~5-15 min seem appropriate
             for typical VLBI observations.
-        - duration : astropy.units.Quantity
+        duration : astropy.units.Quantity, optional
             Total duration of the observation. If 'times' provided, it will automatically be calculated
             from them. Otherwise it will be set from this value (e.g. for observations where the start
             time is not known). If not given it will default to 24 h.
-        - datarate : int or astropy.units.Quantity
+        datarate : int or astropy.units.Quantity, optional
             Data rate for each antenna. It assumes that all antennas will run at the same
             data rate, which may not be true. If an int is introduce, it will be assumed to
             be given in Mbit/s. Otherwise, you can specify a Quantity with compatible units.
-        - subbands : int
+        subbands : int, optional
             Number of subbands in which the total bandwidth of the observation will be divided
-            during correlation.
-        - channels : int
-            Number of channels for each subband to be created during correlation.
-        - polarizations : int (1, 2, 4)  or str (single, dual, full)
+            during correlation. Default is 8.
+        channels : int, optional
+            Number of channels for each subband to be created during correlation. Default is 64.
+        polarizations : int (1, 2, 4) or str (single, dual, full), optional
             Number of polarizations to record in the observation. Three values are only possible
             0: single polarization.
             2: dual polarization (only direct terms: RR and LL, or XX and YY, are kept).
             4: full polarization (crossed terms are kept: RR, LL, RL, LR; or XX, YY, XY, YX).
-        - inttime : float/int or astropy.units.Quantity
+            Default is 4.
+        inttime : float/int or astropy.units.Quantity, optional
             Integration time (time resolution) that the final, correlated, data will show.
-            If no units provided, seconds are assumed.
-        - ontarget : float
+            If no units provided, seconds are assumed. Default is 2.0 s.
+        ontarget : float, optional
             Fraction of the total observing time (end time minus start time) that will be
             spent on the target source. Note that in a typical VLBI observation only a fraction
             of the total observing time will end up in on-target source, commonly between 0.4-0.8
             (~40-80% of the time). This has an effect on the determination of the final rms noise level.
-        - bits : int
+            Default is 0.7.
+        bits : int, optional
             Number of bits at which the data have been recorded (sampled). A typical VLBI observation is
-            almost always recorded with 2-bit data.
+            almost always recorded with 2-bit data. Default is 2 bit.
         """
         self._mutex: threading.RLock = threading.RLock()
         self._mutex_uv: threading.RLock = threading.RLock()
@@ -292,16 +302,19 @@ class Observation(object):
 
     def sources(self, source_type: Optional[SourceType] = None) -> list[Source]:
         """Returns the sources included during the observation.
+
         It can return None if the target has not been set yet, showing a warning.
 
-        Inputs
-            source_type  : SourceType  (default = None)
-                If set, it will only return the sources of type source_type.
-                Otherwise, it returns all existing sources.
+        Parameters
+        ----------
+        source_type : SourceType, optional
+            If set, it will only return the sources of type source_type.
+            Otherwise, it returns all existing sources.
 
         Returns
-            list[Source]
-                List containing all existing sources matching the set criteria.
+        -------
+        list[Source]
+            List containing all existing sources matching the set criteria.
         """
         if self._scans is None:
             return []
@@ -319,6 +332,23 @@ class Observation(object):
             return [a_src for a_src in self._source_list if a_src.type == source_type]
 
     def _scanblock_name_from_source_name(self, source_name: str) -> str:
+        """Returns the name of the ScanBlock that contains the given source.
+
+        Parameters
+        ----------
+        source_name : str
+            Name of the source to look up.
+
+        Returns
+        -------
+        str
+            The name of the ScanBlock that contains a source with that name.
+
+        Raises
+        ------
+        ValueError
+            If no scan block contains a source with that name.
+        """
         if self.scans is not None:
             for scanblockname, scanblock in self.scans.items():
                 if source_name in scanblock:
@@ -370,6 +400,9 @@ class Observation(object):
 
     @property
     def fixed_time(self) -> bool:
+        """Returns True if the observation times have been explicitly set (via the `times` setter),
+        or False if the observation is only defined by a duration and thus uses reference times.
+        """
         return self._fixed_time
 
     @property
@@ -441,8 +474,10 @@ class Observation(object):
     def datarate(self, new_datarate: Optional[u.Quantity]):
         """Sets the data rate used at each station during the observation.
 
-        Inputs
-        - new_datarate : astropy.units.Quantity  [e.g. Mb/s]
+        Parameters
+        ----------
+        new_datarate : astropy.units.Quantity
+            Data rate, e.g. in Mb/s.
         """
         if new_datarate is None:
             self._datarate = None
@@ -483,15 +518,36 @@ class Observation(object):
             self._baseline_sensitivity = None
 
     def _guess_network(self) -> list[str]:
-        """Returns the VLBI network that is driving the observations, making a guess given
-        the antennas that are participating and the observing band.
+        """Returns the VLBI network(s) that are driving this observation, making a guess given
+        the antennas participating (`self.stations`) and the observing band (`self.band`).
+
+        Returns
+        -------
+        list[str]
+            Network names sorted by decreasing fraction of matching stations, restricted to
+            networks with at least one matching station.
         """
         return Observation.guess_network(self.band, list(self.stations))
 
     @staticmethod
     def guess_network(band: str, list_stations: list[Station]) -> list[str]:
-        """Returns the VLBI network that is driving the observations, making a guess given
+        """Returns the VLBI network(s) that are driving an observation, making a guess given
         the antennas that are participating and the observing band.
+
+        Parameters
+        ----------
+        band : str
+            Observing band (e.g. '18cm') used to restrict the candidate networks to those that
+            can observe at that band.
+        list_stations : list[Station]
+            List of stations participating in the observation.
+
+        Returns
+        -------
+        list[str]
+            Network names sorted by decreasing fraction of matching stations (i.e. fraction of
+            `list_stations` that belong to that network), restricted to networks with at least
+            one matching station.
         """
         rating: dict = {}
         for network in _NETWORKS:
@@ -507,6 +563,20 @@ class Observation(object):
 
     @staticmethod
     def _get_max_datarate(network: str, band: str) -> u.Quantity:
+        """Returns the maximum data rate (per station) allowed by a given network at a given band.
+
+        Parameters
+        ----------
+        network : str
+            Name of the network (e.g. 'EVN').
+        band : str
+            Observing band (e.g. '18cm').
+
+        Returns
+        -------
+        astropy.units.Quantity
+            The maximum data rate allowed by that network at that band.
+        """
         return _NETWORKS[network].max_datarate(band)
 
     @property
@@ -584,8 +654,10 @@ class Observation(object):
     @enforce_types
     def inttime(self, new_inttime: u.Quantity):
         """Sets the integration time of the observation.
-        Inputs
-        - new_inttime float/int or astropy.units.Quantity.
+
+        Parameters
+        ----------
+        new_inttime : float, int, or astropy.units.Quantity
             If no units provided, seconds are assumed.
         """
         if new_inttime <= 0:
@@ -651,8 +723,10 @@ class Observation(object):
     @enforce_types
     def bitsampling(self, new_bitsampling: u.Quantity):
         """Sets the bit sampling of the observation.
-        Inputs
-        - new_bitsampling : int | astropy.units.Quantity (bit-equivalent)
+
+        Parameters
+        ----------
+        new_bitsampling : int or astropy.units.Quantity (bit-equivalent)
             In bits.
         """
         if not new_bitsampling.unit.is_equivalent(u.bit):
@@ -700,9 +774,10 @@ class Observation(object):
         for all the given observing times.
 
         Returns
-            elevations : dict
-                Dictionary where they keys are: the ScanBlock name, the source name,
-                and then the station code names, and the values are the elevations at each time stamp.
+        -------
+        dict
+            Dictionary where they keys are: the ScanBlock name, the source name,
+            and then the station code names, and the values are the elevations at each time stamp.
         """
         if not self.sources():
             return {}
@@ -719,11 +794,12 @@ class Observation(object):
         in the observation for all the given observing times.
 
         Returns
-            altaz : dict
-                Dictionary where they keys are the station code names, and the values will be
-                another dictionary with the source name as keys, and
-                an astropy.coordinates.SkyCoord object with the altitude and azimuth
-                of the source at each observing time.
+        -------
+        dict
+            Dictionary where they keys are the station code names, and the values will be
+            another dictionary with the source name as keys, and
+            an astropy.coordinates.SkyCoord object with the altitude and azimuth
+            of the source at each observing time.
         """
         if not self.sources():
             return {}
@@ -735,6 +811,16 @@ class Observation(object):
             return self._altaz
 
     def _altaz_threads(self) -> dict:
+        """Computes the altitude/azimuth of each source for each station, in parallel using a
+        thread pool (one task per station-source pair).
+
+        Returns
+        -------
+        dict[str, dict[str, coord.SkyCoord]]
+            Dictionary where the keys are the source names, and the values are a dictionary
+            with the station code names as keys, and an astropy.coordinates.SkyCoord with the
+            altitude/azimuth of the source at each observing time as value.
+        """
         def compute_altaz_for_source(station_source: tuple) -> tuple:
             station, source = station_source[0], station_source[1]
             return station.codename, source.name, station.altaz(self.times, source)
@@ -751,20 +837,45 @@ class Observation(object):
         return combined_results
 
     def _compute_is_visible_for_source(self, ant_src_t: tuple) -> tuple:
+        """Computes whether a source is observable from a given station for a given time range.
+
+        Parameters
+        ----------
+        ant_src_t : tuple
+            A 3-element tuple (station, source, times) with a Station object, a Source object,
+            and an astropy.time.Time array of times to check.
+
+        Returns
+        -------
+        tuple
+            (station.codename, source.name, is_observable_array), where is_observable_array is
+            the result of `station.is_observable(times, source)`.
+        """
         return ant_src_t[0].codename, ant_src_t[1].name, ant_src_t[0].is_observable(ant_src_t[2],
                                                                                     ant_src_t[1])
 
     @staticmethod
     def _batch_visibility_erfa(stations: list[Station], sources_list: list[Source],
                                obs_times: Time) -> dict[str, dict[str, np.ndarray]]:
-        """Compute visibility for all stations × sources using vectorized ERFA.
-
-        Returns dict[source_name, dict[station_codename, bool_array]] where
-        bool_array has shape (n_times,) indicating if the source is visible
-        from that station at each timestep.
+        """Compute visibility for all stations x sources using vectorized ERFA.
 
         This replaces per-station astroplan.is_event_observable calls with a
         single ERFA computation per station, achieving ~5-10x speedup.
+
+        Parameters
+        ----------
+        stations : list[Station]
+            List of stations to check visibility for.
+        sources_list : list[Source]
+            List of sources to check visibility for.
+        obs_times : astropy.time.Time
+            Times at which to evaluate the visibility.
+
+        Returns
+        -------
+        dict[str, dict[str, np.ndarray]]
+            dict[source_name, dict[station_codename, bool_array]] where bool_array has shape
+            (n_times,) indicating if the source is visible from that station at each timestep.
         """
         n_sources = len(sources_list)
         if n_sources == 0:
@@ -831,15 +942,19 @@ class Observation(object):
         """Returns whenever the given ScanBlock can be observed by each station for each time
         of the observation. If times are not provided, then it will use the observation times.
 
-        Returns
-            is_visible : dict
-                Dictionary where they keys are the station code names, and the values will be
-                a dictionary with the sources names as keys, and a tuple containing
-                a numpy array with the indexes in the `Observation.times`
-                array with the times where the target source can be observed by the station.
+        Parameters
+        ----------
+        times : astropy.time.Time, optional
+            Times at which to evaluate the visibility. If not provided, `self.times` is used.
 
-                In this sense, you can e.g. call obs.times[obs.is_visible[a_station_codename]]
-                to get such times.
+        Returns
+        -------
+        dict[str, dict[str, np.ndarray]]
+            Dictionary where the keys are the scan block names, and the values are a
+            dictionary with the station code names as keys, and a boolean numpy array
+            (shape matching the times used) as value, indicating at each time stamp whether
+            all sources within that scan block can be observed by that station (i.e. the
+            per-source visibilities are ANDed together within a block).
         """
         if not self.sources():
             return {}
@@ -871,7 +986,9 @@ class Observation(object):
         each source's observability independently.
 
         Returns
-            dict[source_name, dict[station_codename, np.ndarray[bool]]]
+        -------
+        dict[str, dict[str, np.ndarray]]
+            dict[source_name, dict[station_codename, np.ndarray[bool]]].
         """
         self.is_observable()  # ensures _per_source_visible is populated
         return self._per_source_visible if self._per_source_visible is not None else {}
@@ -884,8 +1001,10 @@ class Observation(object):
         a Sun warning.
 
         Returns
-            dict[source_name, Optional[u.Quantity]]
-                Minimum Sun separation for each source, or None if above the limit.
+        -------
+        dict[str, Optional[u.Quantity]]
+            dict[source_name, Optional[u.Quantity]]: minimum Sun separation for each source,
+            or None if above the limit.
         """
         result: dict[str, Optional[u.Quantity]] = {}
         check_times = times if times is not None else (self._REF_YEAR if not self.fixed_time else self.times)
@@ -900,10 +1019,11 @@ class Observation(object):
         of the observation.
 
         Returns
-            is_observable : dict
-                Dictionary where they keys are the scan block names, and the values are
-                a dictionary with the station code names as keys, and a boolean containing
-                if the source can be observed by the station.
+        -------
+        dict
+            Dictionary where they keys are the scan block names, and the values are
+            a dictionary with the station code names as keys, and a boolean containing
+            if the source can be observed by the station.
         """
         return {s: {k: any(v) for k, v in i.items()} for s, i in self.is_observable().items()}
 
@@ -911,16 +1031,18 @@ class Observation(object):
         """Returns whether each scan block source can be observed by at least a minimum number
         of stations at some point during the observation.
 
-        Inputs
-        - min_stations : int  [default = 2]
+        Parameters
+        ----------
+        min_stations : int, optional
             Minimum number of stations that must be able to observe the source simultaneously
-            for it to be considered observable by the network.
+            for it to be considered observable by the network. Default is 2.
 
         Returns
-            is_observable_by_network : dict
-                Dictionary where the keys are the scan block names, and the values are
-                booleans indicating if at least `min_stations` can observe the source
-                at some point during the observation.
+        -------
+        dict
+            Dictionary where the keys are the scan block names, and the values are
+            booleans indicating if at least `min_stations` can observe the source
+            at some point during the observation.
         """
         result = {}
         is_obs = self.is_observable()
@@ -934,10 +1056,11 @@ class Observation(object):
         """Returns whenever the target source can be observed by each station along the whole observation.
 
         Returns
-            is_visible : dict
-                Dictionary where they keys are the station code names, and the values will be
-                a tuple containing a numpy array with the boolean indicating if the given BlockScan
-                (same order as in Observation.sources) is always visible for the given station.
+        -------
+        dict
+            Dictionary where they keys are the station code names, and the values will be
+            a tuple containing a numpy array with the boolean indicating if the given BlockScan
+            (same order as in Observation.sources) is always visible for the given station.
         """
         if not self.sources():
             return {}
@@ -973,36 +1096,42 @@ class Observation(object):
         If the time of the observation is set, it will check if the source is observable only within that
         time range, otherwise it will check at any possible time.
 
-        Inputs
-        - min_stations : int  [default = 3]
+        Parameters
+        ----------
+        min_stations : int, optional
             Minimum number of stations that are allowed to consider the source as observable.
-        - mandatory_stations : list[str]  [default = None]
+            Default is 3.
+        mandatory_stations : list[str], optional
             Defines the stations that must be able to observe the source to be consider for observations.
             It must be a list of strings with the codes or names of the stations.
             The wildcard 'all' is possible, indicating that only times where all antennas can observe
-            the source are allowed.
-        - stations_all_time : bool  [default = False]
+            the source are allowed. Default is None.
+        stations_all_time : bool, optional
             If all stations must be observing the source at all times or this is not required.
-        - within_time_range : Time  [default = None]
+            Default is False.
+        within_time_range : Time, optional
             Time range within which the source is observable.
-            Must contain only two times (start and end time).
-        - return_gst : bool  [default = False]
+            Must contain only two times (start and end time). Default is None.
+        return_gst : bool, optional
             Defines if the returned times for the start and end of the observation should be in GST time
-            instead of UTC.
+            instead of UTC. Default is False.
 
         Returns
-            - (t0, t1, ...)  : tuple with two astropy.units.Quantity[Longitude] objects.
-                The start and end (GST) time of the same period of time when the source is visible by
-                enough stations.
-                If 'return_gst' is False, the tuple will contain two astropy.time.Time objects instead,
-                with the UTC times for the start and end times.
-                It will be always an even number of entries. If more than two, means that there are
-                multiple time ranges where it can be observed following t0, t1, t2, t3, ...
-                so the source can be observed between t0 and t1, t2 and t3, etc.
+        -------
+        tuple
+            (t0, t1, ...): tuple with two astropy.units.Quantity[Longitude] objects.
+            The start and end (GST) time of the same period of time when the source is visible by
+            enough stations.
+            If 'return_gst' is False, the tuple will contain two astropy.time.Time objects instead,
+            with the UTC times for the start and end times.
+            It will be always an even number of entries. If more than two, means that there are
+            multiple time ranges where it can be observed following t0, t1, t2, t3, ...
+            so the source can be observed between t0 and t1, t2 and t3, etc.
 
-        Exceptions
-        - It may raise the exception SourceNotVisible if the target source is not visible by
-          enough stations.
+        Raises
+        ------
+        SourceNotVisible
+            If the target source is not visible by enough stations.
         """
         if self.sources is None:
             raise ValueError("The sources have not been initialized")
@@ -1049,6 +1178,12 @@ class Observation(object):
     def scheduler(self) -> list[Scan]:
         """For the given observing time and scan blocks, it will schedule in an optimal way the scans
         for the different sources along the observation.
+
+        Raises
+        ------
+        NotImplementedError
+            Currently not implemented. Always raised.
+            Use `vlbiplanobs.scheduler.ObservationScheduler` instead (see `schedule_file`).
         """
         raise NotImplementedError
 
@@ -1056,11 +1191,12 @@ class Observation(object):
         """Returns the longest baseline in the observation for each source.
 
         Returns
-        - 'source name': ('{ant1}-{ant2}', length) : dict[str, tuple[str, astropy.units.Quantity]]
-            - '{ant1}-{ant2}' : str
-                Composed by the codenames of the two antennas (ant1, ant2) conforming the longest baseline.
-            - length : astropy.units.Quantity
-                The projected length of the baseline as seen from the target source position.
+        -------
+        dict[str, tuple[str, astropy.units.Quantity]]
+            Maps source name to ('{ant1}-{ant2}', length), where '{ant1}-{ant2}' is composed
+            by the codenames of the two antennas (ant1, ant2) conforming the longest baseline,
+            and length is the projected length of the baseline as seen from the target source
+            position.
         """
         uv_data = self.get_uv_data()
         longest_bl: dict[str, Tuple[str, u.Quantity]] = {}
@@ -1079,12 +1215,12 @@ class Observation(object):
         """Returns the shortest baseline in the observation.
 
         Returns
-        - 'source name': ('{ant1}-{ant2}', length) : tuple
-            - '{ant1}-{ant2}' : str
-                Composed by the codenames of the two antennas (ant1, ant2) conforming the
-                shortest baseline.
-            - length : astropy.units.Quantity
-                The projected length of the baseline as seen from the target source position.
+        -------
+        dict[str, tuple[str, astropy.units.Quantity]]
+            Maps source name to ('{ant1}-{ant2}', length), where '{ant1}-{ant2}' is composed
+            by the codenames of the two antennas (ant1, ant2) conforming the shortest baseline,
+            and length is the projected length of the baseline as seen from the target source
+            position.
         """
         uv_data = self.get_uv_data()
         shortest_bl: dict[str, Tuple[str, u.Quantity]] = {}
@@ -1156,10 +1292,11 @@ class Observation(object):
         the observing band.
 
         Returns
-            dict[str, list[Time]]
-                A dictionary with the keys being the name of the scan blocks and the values
-                a list with the start and end time for the exclusion time range.
-                If the list is empty, implies that there is no risky times where the Sun is too close.
+        -------
+        dict[str, list[Time]]
+            A dictionary with the keys being the name of the scan blocks and the values
+            a list with the start and end time for the exclusion time range.
+            If the list is empty, implies that there is no risky times where the Sun is too close.
         """
         bad_epochs: dict[str, list[Time]] = {}
         for blockname, block in self.scans.items():
@@ -1294,22 +1431,25 @@ class Observation(object):
     def baseline_sensitivity(self, antenna1: Optional[str] = None, antenna2: Optional[str] = None,
                              integration_time: u.Quantity = u.Quantity(1, u.min)) -> u.Quantity:
         """Returns the sensitivity of a given baseline in the observation for
-        the expecifiedintegration time.
+        the specified integration time.
 
         If no antennas are defined, then it will return all baseline' sensitivities.
         If only one antenna is specified, then it will return all baseline' sensitivities to that
         particular antenna.
 
-        Inputs
-            - antenna1: str | None
-                Codename or antenna name of one of the antennas composing the baseline.
-            - antenna2: str | None
-                Codename or antenna name of the other antennas composing the baseline.
-            - integration_time: astropy.units.Quantity  [OPTIONAL]
-                Integration time to compute the sensitivity. By default, one minute.
+        Parameters
+        ----------
+        antenna1 : str, optional
+            Codename or antenna name of one of the antennas composing the baseline.
+        antenna2 : str, optional
+            Codename or antenna name of the other antennas composing the baseline.
+        integration_time : astropy.units.Quantity, optional
+            Integration time to compute the sensitivity. By default, one minute.
+
         Returns
-            - sensitivity: astropy.units.Quantity
-                The sensitivity of the baseline in the observation, in Jy/beam units.
+        -------
+        astropy.units.Quantity
+            The sensitivity of the baseline in the observation, in Jy/beam units.
         """
         # The cache stores the raw (1-second) sensitivities; the integration-time scaling
         # is applied on every call so different integration times give consistent results.
@@ -1338,6 +1478,15 @@ class Observation(object):
     # This implementation is ~5 times faster than with threads
     # Only for >20 antennas, it gets ~2 times slower. I think it's worth it.
     def _baseline_sensitivity_numpy(self) -> Optional[dict[str, u.Quantity]]:
+        """Computes the raw (1-second integration) sensitivity of every baseline in the
+        observation, vectorized with numpy.
+
+        Returns
+            Optional[dict[str, astropy.units.Quantity]]
+                Dictionary with keys '{ant1}-{ant2}' (codenames) for every unique baseline among
+                the stations with SEFD defined for the current band, and the 1-second sensitivity
+                (in Jy/beam) as value. Returns None if fewer than two stations have the band.
+        """
         valid_stations = [stat for stat in self.stations if stat.has_band(self.band)]
         if len(valid_stations) < 2:
             return None
@@ -1358,6 +1507,24 @@ class Observation(object):
         return basel_sens
 
     def _compute_uv_per_source(self, source: Optional[Source] = None) -> dict[str, u.Quantity]:
+        """Computes the (u,v) coverage for every baseline in the observation, either for a given
+        source (restricted to the times when the source is visible) or for a fixed declination of
+        45 deg covering the full time range (used when no source has been set).
+
+        Inputs
+        - source : Source or None  [OPTIONAL]
+            The source to compute the (u,v) coverage for. If None, computes coverage at a fixed
+            reference declination (45 deg) over the whole time range, ignoring visibility.
+
+        Returns
+            dict[str, astropy.units.Quantity]
+                Dictionary with keys '{ant1}-{ant2}' (codenames) for every baseline, and a 2-d
+                array of (u,v) points (in lambda units) as value, restricted to the times the
+                source is visible from both antennas (when `source` is given).
+
+        Exceptions
+        - Raises SourceNotVisible if a source is given but no baseline can observe it at any time.
+        """
         nstat = len(self.stations)
         positions = np.array([[xyz.value for xyz in ant.location.to_geocentric()]
                               for ant in self.stations])
@@ -1538,23 +1705,25 @@ class Observation(object):
     def get_dirtymap(self, pixsize: int = 1024, robust: str = "natural", oversampling: int = 4):
         """Returns the dirty beam produced for the given observation.
 
-        Input:
-            - pixsize : int
-                Size in pixels of the returned (squared) image. By default 1024.
-            - robust : str
-                The weighting Briggs robust used to compute the dirty map.
-                It must be either 'natural' or 'uniform'.
-            - oversampling : int
-                Oversampling factor when plotting the dirty map.
-                Recommended values are between 1 and 10.
-                CURRENTLY THIS PARAMETER IS IGNORED. WILL BE IMPLEMENTED IN A LATER VERSION
+        Inputs
+        - pixsize : int
+            Size in pixels of the returned (squared) image. By default 1024.
+        - robust : str
+            The weighting Briggs robust used to compute the dirty map.
+            It must be either 'natural' or 'uniform'.
+        - oversampling : int
+            Oversampling factor when plotting the dirty map.
+            Recommended values are between 1 and 10.
+            CURRENTLY THIS PARAMETER IS IGNORED. WILL BE IMPLEMENTED IN A LATER VERSION
 
-        Returns:
+        Returns
             - dirty_image : (pixsize x pixsize) np.array
                 The dirty image in intensity.
             - laxis : np.array
                 An array representing the values of each pixel in the image in mas for each axis.
 
+        Exceptions
+        - Currently not implemented. Always raises NotImplementedError before returning.
         """
         raise NotImplementedError
         assert robust in ('natural', 'uniform')
@@ -1625,12 +1794,13 @@ class Observation(object):
                 20 January 1971 10:00 to  24 January 1971 20:00 UTC
                 GST range: 05:00-15:00
 
-        Input:
-            - date_format : str [OPTIONAL]
-                Format for the date part (only the date part, not the times) of
-                the string to represent the time range.
-        Output:
-            - strtime : str
+        Inputs
+        - date_format : str  [OPTIONAL]
+            Format for the date part (only the date part, not the times) of
+            the string to represent the time range.
+
+        Returns
+            str
                 A string showing the time-range of the observation.
         """
         if self.gstimes is None:

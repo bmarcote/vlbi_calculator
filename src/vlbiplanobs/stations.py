@@ -24,6 +24,7 @@ __all__: list[str] = ["Station", "Stations", "Mount", "MountType"]
 
 
 class MountType(Enum):
+    """Type of telescope mount: ALTAZ (altitude-azimuth) or EQUAT (equatorial)."""
     ALTAZ = auto()
     EQUAT = auto()
 
@@ -68,42 +69,43 @@ class Station(object):
                  group: Optional[str] = None) -> None:
         """Initializes a station.
 
-        Inputs
-        - name : str
+        Parameters
+        ----------
+        name : str
             Name of the station.
             If it contains undercores (_), they will be converted to blank spaces.
-        - codename : str
+        codename : str
             A short code (accronym) for the name of the station. It is meant to follow the standard
             approach from the EVN: an (often) two-letter code unique for each station.
-        - networks : tuple[str]
+        networks : tuple[str]
             Name of the network(s) to which the station belongs (e.g. EVN).
-        - location : astropy.coordinates.EarthLocation
+        location : astropy.coordinates.EarthLocation
             Position of the station on Earth in (x,y,z) gecentric coordinates.
-        - freqs_sefds : dict
+        freqs_sefds : dict
             Dictionary with all frequencies the station can observe as keys of the dictionary, and
             the values representing the system equivalent flux density (SEFD; in Jansky units)
             at each frequency.
             Although the key format is in principle free, we recommend to use the syntax 'XXcm' (str type).
             This will be then consistent with the default station catalog and will avoid issues for some
             functions.
-        - fullname : str [OPTIONAL]
+        fullname : str, optional
             Full name of the station. If not given, same as `name` is assumed.
             It can be used to expand the full name if an abbreviation is typically used for the name.
             For example, name: VLA, fullname: Karl G. Jansky Very Large Array.
-        - country : str [OPTIONAL]
+        country : str, optional
             Country where the station is located.
-        - diameter : str [OPTIONAL]
+        diameter : str, optional
             Diameter of the station (free format string). We recommend a syntax of e.g. '30 m' for normal
             single-dish antennas, and in case of interferometers it can have a form like '25 x 20 m',
             meaning that the station is composed of 25 antennas of 20 m each.
-        - real_time : bool [OPTIONAL]
+        real_time : bool, optional
             If the station can participate in real-time observations (e.g. e-EVN), False by default.
-        - mount : Mount [OPTIONAL]
+        mount : Mount, optional
             The mount of the station, including the type of mount and the slewing limits, speed,
             and acceleration.
             If not provided, it will assume an ALTAZ mount with no pointing limits and very high
             slewing speed.
-        - max_datarate : u.Quantity or dict[str, u.Quantity]  [OPTIONAL]
+        max_datarate : u.Quantity or dict[str, u.Quantity], optional
             Specifies the maximum data rate that the station can record. If not provided, it will use the
             data rate assumed in the observation. It can be either a astropy.unit.Quantity value
             (equivalent to Mb/s), or a dictionary in the case that the antenna can show different data rates
@@ -111,14 +113,14 @@ class Station(object):
             network will be the key of the dictionary, with the quantity as value.
             For example, Darnhall can record at 4 Gbps when participating within e-MERLIN observations,
             but their data rate is limited to 512 Mbps when participating within the EVN.
-        - datarate : u.Quantity [OPTIONAL]
+        datarate : u.Quantity, optional
             Specifies the data rate that the station will record. If not provided, it will use the
             data rate assumed in the observation.
-        - decommissioned : bool [OPTIONAL]
+        decommissioned : bool, optional
             If the station is decommissioned, False by default.
-        - sched_name : str [OPTIONAL]
+        sched_name : str, optional
             Station name as used in the SCHED software catalog. If not provided, defaults to `name`.
-        - horizon : tuple[np.ndarray, np.ndarray] [OPTIONAL]
+        horizon : tuple[np.ndarray, np.ndarray], optional
             Azimuth-dependent local horizon as a tuple (azimuth_deg, elevation_deg) of two numpy
             arrays in degrees. The azimuths must be sorted ascending within [0, 360] and the
             elevations give the minimum observable elevation (local horizon) at each azimuth. A
@@ -126,7 +128,7 @@ class Station(object):
             must be above this interpolated horizon (in addition to the mount axis limits) to be
             considered observable. Used to model terrain/structure blockage that is higher than the
             nominal axis elevation limit.
-        - group : str [OPTIONAL]
+        group : str, optional
             Group identifier shared by multiple configurations of the same physical antenna
             (e.g. 'vla' for both Y1 and Y27). Used by the GUI to collapse related configurations
             into a single chip with a dropdown for selecting which configuration to use.
@@ -290,12 +292,14 @@ class Station(object):
     def horizon_min_elevation(self, azimuth_deg: np.ndarray) -> np.ndarray:
         """Returns the minimum observable elevation (local horizon) in degrees at each azimuth.
 
-        Inputs
-        - azimuth_deg : np.ndarray
+        Parameters
+        ----------
+        azimuth_deg : np.ndarray
             Azimuth(s) of the target in degrees (any shape).
 
         Returns
-        - np.ndarray
+        -------
+        np.ndarray
             Minimum observable elevation in degrees at each input azimuth (same shape as input).
             Returns an array of zeros if the station has no defined horizon.
         """
@@ -329,14 +333,16 @@ class Station(object):
     def elevation(self, obs_times: Time, target: FixedTarget) -> coord.angles.Latitude:
         """Returns the elevation of the target source as seen by the Station.
 
-        Inputs
-        - obs_times : astropy.time.Time
+        Parameters
+        ----------
+        obs_times : astropy.time.Time
             Time(s) to compute the elevation (single timestamp or array).
-        - target : astroplan.FixedTarget
+        target : astroplan.FixedTarget
             Target source to observe.
 
         Returns
-        - astropy.coordinates.angles.Latitude
+        -------
+        astropy.coordinates.angles.Latitude
             Elevation of the source at the given times.
         """
         return self.observer.altaz(obs_times, target).alt
@@ -344,14 +350,16 @@ class Station(object):
     def altaz(self, obs_times: Time, target: FixedTarget) -> coord.SkyCoord:
         """Returns altitude/azimuth coordinates of the target source.
 
-        Inputs
-        - obs_times : astropy.time.Time
+        Parameters
+        ----------
+        obs_times : astropy.time.Time
             Time(s) to compute coordinates (single timestamp or array).
-        - target : astroplan.FixedTarget
+        target : astroplan.FixedTarget
             Target source to observe.
 
         Returns
-        - astropy.coordinates.SkyCoord
+        -------
+        astropy.coordinates.SkyCoord
             Altitude and azimuth coordinates at each time.
         """
         return self.observer.altaz(obs_times, target)
@@ -359,14 +367,16 @@ class Station(object):
     def hour_angle(self, obs_times: Time, target: FixedTarget) -> coord.Angle:
         """Returns the local hour angle of the target.
 
-        Inputs
-        - obs_times : astropy.time.Time
+        Parameters
+        ----------
+        obs_times : astropy.time.Time
             Time(s) to compute hour angle (single timestamp or array).
-        - target : astroplan.FixedTarget
+        target : astroplan.FixedTarget
             Target source to observe.
 
         Returns
-        - astropy.coordinates.Angle
+        -------
+        astropy.coordinates.Angle
             Local hour angle of the target at each time.
         """
         return self.observer.target_hour_angle(time=obs_times, target=target)
@@ -374,14 +384,16 @@ class Station(object):
     def is_observable(self, obs_times: Time, target: FixedTarget) -> list[bool]:
         """Returns visibility of target source at each time.
 
-        Inputs
-        - obs_times : astropy.time.Time
+        Parameters
+        ----------
+        obs_times : astropy.time.Time
             Time(s) to check visibility (single timestamp or array).
-        - target : astroplan.FixedTarget
+        target : astroplan.FixedTarget
             Target source to observe.
 
         Returns
-        - list[bool]
+        -------
+        list[bool]
             Boolean array indicating if target is visible at each time
             given the station's constraints.
         """
@@ -390,14 +402,16 @@ class Station(object):
     def is_ever_observable(self, obs_times: Time, target: FixedTarget) -> list[bool]:
         """Returns if target is observable during any part of the time range.
 
-        Inputs
-        - obs_times : astropy.time.Time
+        Parameters
+        ----------
+        obs_times : astropy.time.Time
             Time range to check visibility.
-        - target : astroplan.FixedTarget
+        target : astroplan.FixedTarget
             Target source to observe.
 
         Returns
-        - list[bool]
+        -------
+        list[bool]
             Boolean array indicating if target is ever visible during the time range
             given the station's constraints.
         """
@@ -406,14 +420,16 @@ class Station(object):
     def is_always_observable(self, obs_times: Time, target: FixedTarget) -> bool:
         """Returns if target is observable during the entire time range.
 
-        Inputs
-        - obs_times : astropy.time.Time
+        Parameters
+        ----------
+        obs_times : astropy.time.Time
             Time range to check visibility.
-        - target : astroplan.FixedTarget
+        target : astroplan.FixedTarget
             Target source to observe.
 
         Returns
-        - bool
+        -------
+        bool
             True if target is visible during the entire time range given
             the station's constraints, False otherwise.
         """
@@ -422,12 +438,14 @@ class Station(object):
     def has_band(self, band: str) -> bool:
         """Returns if the station can observe at the given band.
 
-        Inputs
-        - band : str
+        Parameters
+        ----------
+        band : str
             Observing band name, using same syntax as in freqs_sefds.
 
         Returns
-        - bool
+        -------
+        bool
             True if station can observe at the given band, False otherwise.
         """
         return band in self.bands
@@ -435,36 +453,44 @@ class Station(object):
     def sefd(self, band: str) -> u.Quantity:
         """Returns the system equivalent flux density (SEFD) at the given band.
 
-        Inputs
-        - band : str
+        Parameters
+        ----------
+        band : str
             Observing band name, using same syntax as in freqs_sefds.
 
         Returns
-        - astropy.units.Quantity
+        -------
+        astropy.units.Quantity
             SEFD at the given band in Jansky (Jy) units.
 
         Raises
-        - KeyError: If the given band is not available for this station.
+        ------
+        KeyError
+            If the given band is not available for this station.
         """
         return self._freqs_sefds[band]
 
     def slewing_time(self, coordinates1: coord.AltAz, coordinates2: coord.AltAz, time: Time) -> u.Quantity:
         """Returns expected slewing time between two positions.
 
-        Inputs
-        - coordinates1 : astropy.coordinates.AltAz
+        Parameters
+        ----------
+        coordinates1 : astropy.coordinates.AltAz
             Starting position in AltAz coordinates.
-        - coordinates2 : astropy.coordinates.AltAz
+        coordinates2 : astropy.coordinates.AltAz
             Ending position in AltAz coordinates.
-        - time : astropy.time.Time
+        time : astropy.time.Time
             Time at which to calculate slewing.
 
         Returns
-        - astropy.units.Quantity
+        -------
+        astropy.units.Quantity
             Expected slewing time given mount velocity and acceleration.
 
         Raises
-        - AssertionError: If coordinates are not in AltAz format.
+        ------
+        AssertionError
+            If coordinates are not in AltAz format.
         """
         assert isinstance(coordinates1, coord.AltAz) and isinstance(coordinates2, coord.AltAz)
         # If the antenna mount is AltAz, then all the same; but if it's equatorial, then it needs to be RA/DEC.
@@ -504,27 +530,30 @@ class Stations(object):
                  name: Optional[str] = None) -> None:
         """Initializes a Stations of antennas.
 
-        Inputs
-        - filename : str  [OPTIONAL]
+        Parameters
+        ----------
+        filename : str, optional
             Name of the file that contains the information of the antennas
             (by default, the 'stations_catalog.inp').
-        - stations : list of Station-type elements  [OPTIONAL]
+        stations : list of Station-type elements, optional
             List with all stations belonging to the given network. If not provided, it will include
             all antennas present in the catalogs.
-        - observing_bands : list of str  [OPTIONAL]
+        observing_bands : list of str, optional
             List with all possible observing bands, as specified in the freqsetups.py file.
             If not provided, it will consider all observing bands from the available antennas.
-        - name : str  [OPTIONAL]
+        name : str, optional
             Full name (expanded) associated to the network.
             If not provided, it will be name
-        - max_datarates :  list of u.Quantity  or u.Quantity or None [OPTIONAL]
+        max_datarates : list of u.Quantity or u.Quantity or None, optional
             Maximum data rates to be able to record at each observing band. If provided as list,
             it must have the same dimensions as `observing_bands`. If scalar, means that the
             network has the same maximum data rate at all bands.
             If not provided, it will assume no upper limit on the data rate.
 
         Raises
-            ValueError: If 'max_datarates' is provided, 'observing_bands' must also be provided.
+        ------
+        ValueError
+            If 'max_datarates' is provided, 'observing_bands' must also be provided.
         """
         assert isinstance(stations, abc.Iterable) or stations is None, \
                "'stations' must be a list or be empty."
@@ -573,6 +602,7 @@ class Stations(object):
 
     @property
     def name(self) -> str:
+        """Full name (expanded) associated to the network."""
         return self._name
 
     @property
@@ -582,6 +612,7 @@ class Stations(object):
 
     @stations.setter
     def stations(self, new_stations: list[Station]):
+        """Replaces all stations in the network with the given list of Station objects."""
         self._stations = {s.codename: s for s in new_stations}
 
     @property
@@ -612,14 +643,32 @@ class Stations(object):
         return observing_band in self._bands
 
     def max_datarate(self, observing_band: str) -> Optional[u.Quantity]:
+        """Returns the maximum data rate allowed for the network at the given observing band.
+
+        Parameters
+        ----------
+        observing_band : str
+            Observing band name, using same syntax as in observing_bands.
+
+        Returns
+        -------
+        astropy.units.Quantity or None
+            Maximum data rate at the given band, or None if there is no upper limit defined.
+
+        Raises
+        ------
+        KeyError
+            If the given band is not available for this network.
+        """
         return self._bands[observing_band]
 
     def add_station(self, station: Union[Station, Iterable[Station]]):
         """Adds a new station to the network.
         If a station with the same codename is already present, it will do nothing.
 
-        Inputs
-        - station : Station
+        Parameters
+        ----------
+        station : Station
             Station to be added to the network.
         """
         assert isinstance(station, Station) or isinstance(station, Iterable), \
@@ -642,8 +691,9 @@ class Stations(object):
         """Removes a station from the network.
         If the station is not present, then it will do nothing.
 
-        Inputs
-        - a_station : Station
+        Parameters
+        ----------
+        a_station : Station
             Station to be added to the network.
         """
         if a_station.codename in self.station_codenames:
@@ -707,12 +757,14 @@ class Stations(object):
         """Returns the stations in the Stations that can observe at the given band.
         that can observe at the given band.
 
-        Inputs
-        - band : str
+        Parameters
+        ----------
+        band : str
             The observing band.
 
         Returns
-        - stations : Generator[Station]
+        -------
+        stations : Generator[Station]
             A list containing only the stations that can observe at the given band.
         """
         for station in self.stations:
@@ -723,16 +775,18 @@ class Stations(object):
         """Returns a new network which only contains the antennas that are part
         of the given network
 
-        Input
-            - networks : str or Sequence[str]
-                The name of the network or networks to which all stations need to belong to.
-            - only_defaults : bool  [DEFAULT = False]
-                If True, it will only return the antennas that are part of the default
-                network, ignoring all others.
+        Parameters
+        ----------
+        networks : str or Sequence[str]
+            The name of the network or networks to which all stations need to belong to.
+        only_defaults : bool, optional
+            If True, it will only return the antennas that are part of the default
+            network, ignoring all others. Default is False.
 
         Returns
-            - Stations
-                A new network object containing only the antennas that can observe in the network.
+        -------
+        Stations
+            A new network object containing only the antennas that can observe in the network.
         """
         if isinstance(networks, str):
             networks = [n.strip() for n in networks.split(',')]
@@ -770,13 +824,15 @@ class Stations(object):
         """Returns a new network which only contains the antennas that can observe
         at the given observing band.
 
-        Input
-            - band : str
-                The observing band.
+        Parameters
+        ----------
+        band : str
+            The observing band.
 
         Returns
-            - Stations
-                A new network object containing only the antennas that can observe at the given band.
+        -------
+        Stations
+            A new network object containing only the antennas that can observe at the given band.
         """
         return Stations(stations=(s for s in self.stations if band in s.bands), observing_bands=(band,),
                         max_datarates=self.max_datarate(band))
@@ -786,17 +842,21 @@ class Stations(object):
         defined by the given list of codenames. It will thus be a subset of the current
         network.
 
-        Input
-        - codenames : Sequence[str]
+        Parameters
+        ----------
+        codenames : Sequence[str]
             List with the codenames of the stations that should be present in the new
             network.
 
         Returns
-        - subnetwork : Stations
+        -------
+        subnetwork : Stations
             A new Stations object containing only the defined stations.
-        Exceptions
-        - It may raise KeyError if one of the given codenames are not present
-          among the current stations.
+
+        Raises
+        ------
+        KeyError
+            If one of the given codenames are not present among the current stations.
         """
         if not all([codename in self.station_codenames for codename in codenames]):
             unexpected_ant = set(codenames).difference(set(self.station_codenames))
@@ -820,8 +880,9 @@ class Stations(object):
         Returns a dictionary with the nickname of the VLBI network as keys, and the information as
         keys in a second-order dict.
 
-        Inputs
-        - filename : str  OPTIONAL
+        Parameters
+        ----------
+        filename : str, optional
             Path to the text file containing the information from all stations.
             If not provided, it reads the default station catalog file located in
                             data/network_catalog.inp
@@ -833,13 +894,13 @@ class Stations(object):
             - max_datarate - integer number with the maximum datarate allowed in the network.
             - observing_bands - comma-separated list with the bands that can be observed (following
               the definition done in vlbiplanobs/freqsetups.py; e.g. 21, 18, etc, in cm).
-
-        - stations_filename: str OPTIONAL
+        stations_filename : str, optional
             If given, it will read the provided file to load all stations into the program, instead
             of reading the default file (e.g. useful when the use has its own station catalog).
 
         Returns
-        - networks : dict[str, Stations]
+        -------
+        networks : dict[str, Stations]
             Returns a dictionary containing the differnet networks.
         """
         config = configparser.ConfigParser()
@@ -892,6 +953,24 @@ class Stations(object):
 
     @staticmethod
     def get_network_full_name(network: str) -> str:
+        """Returns the full (expanded) name of a VLBI network, as read from the default
+        network catalog file (data/network_catalog.inp).
+
+        Parameters
+        ----------
+        network : str
+            Nickname (section name) of the network in the network catalog file.
+
+        Returns
+        -------
+        str
+            Full name of the network.
+
+        Raises
+        ------
+        KeyError
+            If the given network nickname is not present in the catalog file.
+        """
         config = configparser.ConfigParser()
         with resources.as_file(resources.files("vlbiplanobs.data").joinpath("network_catalog.inp")) \
                 as networks_catalog_path:
@@ -903,10 +982,11 @@ class Stations(object):
     def _parse_station_from_configfile(stationname: str, station: dict) -> Station:
         """Parses the entry of a station from the config file and returns a Station object.
 
-        Inputs
-        - stationname : str
+        Parameters
+        ----------
+        stationname : str
             The name of the station as defined in the header of the entry for
-        - station : dict
+        station : dict
             A dictionary containing the different information from a station, with the following
             fields per station (whose name would be provided as the name of section):
             - station - full name of the station.
@@ -934,7 +1014,9 @@ class Stations(object):
               extensions of the code.
 
         Returns
-            Station
+        -------
+        Station
+            The parsed station object.
         """
         temp = [float(i.strip()) for i in station["position"].split(",")]
         a_loc = coord.EarthLocation(u.Quantity(temp[0], u.m), u.Quantity(temp[1], u.m),
@@ -1026,8 +1108,9 @@ class Stations(object):
         information from an input file. Optionally, it allows to select only a subset of
         all stations in the file.
 
-        Inputs
-        - filename : str
+        Parameters
+        ----------
+        filename : str, optional
             Path to the text file containing the information from all stations.
             If not provided, it reads the default station catalog file located in
                             data/stations_catalog.inp
@@ -1058,12 +1141,13 @@ class Stations(object):
               specify network name (e.g. EVN).
             - Any other attribute is accepted, but ignored in this code. That would easily allow future
               extensions of the code.
-        - codenames : list
+        codenames : list, optional
             If you only want to select a subset of all stations available in the input file,
             here you can pass a list with the codenames of the stations that should be imported.
 
         Returns
-        - network : Generator[Station]
+        -------
+        network : Generator[Station]
             Returns a Stations object containing the specified stations.
         """
         config = configparser.ConfigParser()

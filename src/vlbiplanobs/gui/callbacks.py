@@ -16,12 +16,38 @@ from vlbiplanobs import observation
 from vlbiplanobs import cli
 from vlbiplanobs.gui import inputs, plots
 
+"""Module that registers all Dash callbacks (server-side and clientside) that drive the
+interactive behavior of the PlanObs GUI: band/network/antenna selection, grouped-antenna
+chip toggling, target-source management, bandwidth display, input validation, theme
+toggling, and configuration export/import via URL. Layout components are built in
+`vlbiplanobs.gui.inputs`; this module only wires up reactivity.
+"""
+
 
 @callback([Output('band-slider', 'marks'),
            Output({'type': 'network-label-band', 'index': ALL}, 'children'),
            Output({'type': 'badge-band-ant', 'index': ALL}, 'children')],
           Input('switch-band-label', 'value'))
 def change_band_labels(show_wavelengths: bool):
+    """Dash callback: relabels the band slider, the per-network band labels, and the
+    per-antenna SEFD badges when the 'Show wavelengths' switch is toggled.
+
+    Parameters
+    ----------
+    show_wavelengths : bool
+        Value of Input('switch-band-label', 'value'). If True, labels are in wavelength (cm);
+        otherwise in frequency (GHz).
+
+    Returns
+    -------
+    tuple
+        ``(marks, network_labels, antenna_badges)`` matching the callback's `Output` list:
+        `marks` is a dict mapping slider index to label for Output('band-slider', 'marks');
+        `network_labels` is one label str per network for
+        Output({'type': 'network-label-band', 'index': ALL}, 'children'); `antenna_badges` is
+        one bands/SEFD table per antenna for
+        Output({'type': 'badge-band-ant', 'index': ALL}, 'children').
+    """
     return {i: label for i, label in enumerate(inputs.pick_band_labels(show_wavelengths))}, \
            [inputs.network_band_labels(network, show_wavelengths)
             for network in observation._NETWORKS], \
@@ -36,11 +62,31 @@ def change_band_labels(show_wavelengths: bool):
           State({'type': 'network-card', 'index': ALL}, 'style'))
 def enable_networks_with_band(band_index: int, target_specs: Optional[list[str]],
                               card_styles):
-    """Disable/enable network cards based on selected band and source observability.
+    """Dash callback: disable/enable network cards based on selected band and source observability.
 
     A network is enabled only when it supports the selected band (if any) AND any of the
     specified target sources is observable by at least 3 of its stations (if any sources
     are given).
+
+    Parameters
+    ----------
+    band_index : int
+        Value of Input('band-slider', 'value'). 0 means no band selected.
+    target_specs : list[str], optional
+        Value of Input('store-targets', 'data'): the list of target source spec strings.
+        Only the first non-empty spec is used as a quick gating heuristic.
+    card_styles : list[dict]
+        State({'type': 'network-card', 'index': ALL}, 'style'): current inline styles of the
+        network cards, used as the base to update the 'opacity' entry.
+
+    Returns
+    -------
+    tuple
+        ``(switch_disabled, card_styles)`` matching the callback's `Output` list:
+        `switch_disabled` is a bool per network for
+        Output({'type': 'network-switch', 'index': ALL}, 'disabled'); `card_styles` is the
+        updated style dict per network (opacity dimmed when the network is disabled) for
+        Output({'type': 'network-card', 'index': ALL}, 'style').
     """
     the_band = inputs.band_from_index(band_index) if band_index != 0 else None
     band_ok = {k: (the_band in net.observing_bands if the_band else True)
@@ -92,6 +138,32 @@ def enable_networks_with_band(band_index: int, target_specs: Optional[list[str]]
           prevent_initial_call=True)
 def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: list[bool],
                              datarate: int = 2048, prev_channels: int = 64, prev_subbands: int = 8):
+    """Dash callback: updates the data-rate dropdown options/value and, when spectral-line mode
+    is on, forces a lower data rate with more channels and a single subband; when off, restores
+    the max data rate available for the selected band/networks and the previous channels/subbands.
+
+    Inputs
+    - do_spectral_line : bool
+        Value of Input('switch-specify-continuum', 'value'). True means optimize for spectral line.
+    - band : int
+        Value of Input('band-slider', 'value'). 0 means no band selected (raises PreventUpdate).
+    - network_bools : list[bool]
+        Value of Input({'type': 'network-switch', 'index': ALL}, 'value'): which networks are on.
+    - datarate : int [OPTIONAL]
+        State('datarate', 'value'): current data rate (Mbps). 2048 by default.
+    - prev_channels : int [OPTIONAL]
+        State('store-prev-channels', 'data'): channels/subband to restore when leaving
+        spectral-line mode. 64 by default.
+    - prev_subbands : int [OPTIONAL]
+        State('store-prev-subbands', 'data'): subbands to restore when leaving spectral-line
+        mode. 8 by default.
+
+    Returns
+    - Output('datarate', 'options') : data rate options, grayed out above the max allowed rate.
+    - Output('datarate', 'value') : new data rate, or no_update if no network supports the band.
+    - Output('channels', 'value') : new channels/subband value.
+    - Output('subbands', 'value') : new number of subbands.
+    """
     if band == 0:
         raise PreventUpdate
 
@@ -129,6 +201,21 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
           [Input('band-slider', 'value'),
            Input('switch-specify-e-evn', 'value')])
 def enable_antennas_with_band(band_index: int, do_e_evn: bool):
+    """Dash callback: disables ungrouped antenna chips that cannot observe the selected band,
+    or (when e-EVN mode is on) that do not support real-time observing.
+
+    Grouped antennas (see `inputs.station_groups`) are excluded here and handled instead by
+    `update_group_chip_appearance`, since they are rendered as a single chip per group.
+
+    Inputs
+    - band_index : int
+        Value of Input('band-slider', 'value'). 0 means no band selected (all enabled).
+    - do_e_evn : bool
+        Value of Input('switch-specify-e-evn', 'value'). If True, also disables antennas
+        that cannot participate in real-time (e-EVN) observations.
+
+    Returns Output({'type': 'antenna-chip', 'index': ALL}, 'disabled'): bool per ungrouped antenna.
+    """
     grouped_codenames = {s.codename for slist in inputs.station_groups().values() for s in slist}
     ungrouped = [ant for ant in observation._STATIONS if ant.codename not in grouped_codenames]
     if band_index == 0:
@@ -148,14 +235,31 @@ def enable_antennas_with_band(band_index: int, do_e_evn: bool):
     prevent_initial_call=True
 )
 def toggle_group_chip(n_clicks_list, is_selected_list, active_codenames, current_antennas):
-    """Toggle a grouped antenna chip on/off, adding or removing its active codename
-    from the switches-antennas selection.
+    """Dash callback: toggle a grouped antenna chip on/off, adding or removing its active
+    codename from the switches-antennas selection.
 
     Uses ALL patterns (not MATCH) so the per-group `group-is-selected` output can share one
     callback with the plain `switches-antennas` output: Dash forbids mixing a MATCH-wildcard
     Output with a non-wildcard Output ("Mismatched MATCH wildcards across Outputs"), which
     disables the whole callback graph. Only the toggled group's state changes; the rest stay
     `no_update`. Mirrors `switch_group_config` above.
+
+    Inputs
+    - n_clicks_list : list[int]
+        Value of Input({'type': 'group-toggle-btn', 'index': ALL}, 'n_clicks').
+    - is_selected_list : list[bool]
+        State({'type': 'group-is-selected', 'index': ALL}, 'data'): current selected state
+        per group.
+    - active_codenames : list[str]
+        State({'type': 'group-active-codename', 'index': ALL}, 'data'): active station
+        codename per group.
+    - current_antennas : list[str]
+        State('switches-antennas', 'value'): currently selected antenna codenames.
+
+    Returns
+    - Output({'type': 'group-is-selected', 'index': ALL}, 'data') : updated selected state
+      per group (only the triggered group changes; others are no_update).
+    - Output('switches-antennas', 'value') : updated antenna codename selection.
     """
     if not ctx.triggered_id:
         raise PreventUpdate
@@ -198,10 +302,29 @@ def toggle_group_chip(n_clicks_list, is_selected_list, active_codenames, current
     prevent_initial_call=True
 )
 def switch_group_config(menu_clicks, active_codenames, is_selected_list, current_antennas):
-    """Switch the active configuration for a grouped antenna when the user picks a menu item.
-    Always selects the group (turns it on) when a config is chosen — picking a config implies
-    including that antenna in the observation. Removes the old codename and adds the new one
-    to switches-antennas.
+    """Dash callback: switch the active configuration for a grouped antenna when the user
+    picks a menu item. Always selects the group (turns it on) when a config is chosen —
+    picking a config implies including that antenna in the observation. Removes the old
+    codename and adds the new one to switches-antennas.
+
+    Inputs
+    - menu_clicks : list[int]
+        Value of Input({'type': 'group-menu-item', 'index': ALL}, 'n_clicks'). The triggered
+        item's index is 'groupname__codename'.
+    - active_codenames : list[str]
+        State({'type': 'group-active-codename', 'index': ALL}, 'data'): active codename per group.
+    - is_selected_list : list[bool]
+        State({'type': 'group-is-selected', 'index': ALL}, 'data'): current selected state
+        per group.
+    - current_antennas : list[str]
+        State('switches-antennas', 'value'): currently selected antenna codenames.
+
+    Returns
+    - Output({'type': 'group-active-codename', 'index': ALL}, 'data') : updated active codename
+      per group (only the triggered group changes; others are no_update).
+    - Output({'type': 'group-is-selected', 'index': ALL}, 'data') : updated selected state per
+      group (the triggered group is forced True; others are no_update).
+    - Output('switches-antennas', 'value') : updated antenna codename selection.
     """
     if not ctx.triggered_id:
         raise PreventUpdate
@@ -239,13 +362,27 @@ def switch_group_config(menu_clicks, active_codenames, is_selected_list, current
      Input('switches-antennas', 'value')],
 )
 def highlight_active_menu_item(active_codenames, is_selected_list, _switches):
-    """Set className on each menu item to mark the active configuration.
+    """Dash callback: set className on each menu item to mark the active configuration.
 
     A menu item is highlighted only when its group is currently selected AND the item is
     that group's active configuration, so the dropdown follows the user's choice (and shows
     no highlight when the group is not selected). Uses a CSS class rather than Mantine style
     props so the highlight survives Dash re-renders triggered by unrelated callbacks.
     Re-triggered by switches-antennas changes to re-apply after any full update.
+
+    Inputs
+    - active_codenames : list[str]
+        Value of Input({'type': 'group-active-codename', 'index': ALL}, 'data'): active
+        codename per group.
+    - is_selected_list : list[bool]
+        Value of Input({'type': 'group-is-selected', 'index': ALL}, 'data'): selected state
+        per group.
+    - _switches : list[str]
+        Value of Input('switches-antennas', 'value'). Unused directly, only used to
+        re-trigger the callback after unrelated updates.
+
+    Returns Output({'type': 'group-menu-item', 'index': ALL}, 'className'): CSS class per
+    menu item, either 'group-menu-item' or 'group-menu-item group-menu-item-active'.
     """
     # Map each group name to its active codename and selected state (both are ALL patterns
     # over the same set of group indices, so build dicts keyed by group name to stay robust).
@@ -273,9 +410,31 @@ def highlight_active_menu_item(active_codenames, is_selected_list, _switches):
      Input('switch-specify-e-evn', 'value')],
 )
 def update_group_chip_appearance(active_codename, is_selected, band_index, do_e_evn):
-    """Update the toggle button label and styling to reflect the active config and
-    selected/disabled state. Also dims the group chip wrapper when the active config
-    cannot observe the selected band."""
+    """Dash callback: update the toggle button label and styling to reflect the active config
+    and selected/disabled state. Also dims the group chip wrapper when the active config
+    cannot observe the selected band.
+
+    Inputs
+    - active_codename : str
+        Value of Input({'type': 'group-active-codename', 'index': MATCH}, 'data'): the
+        currently active station codename for this group.
+    - is_selected : bool
+        Value of Input({'type': 'group-is-selected', 'index': MATCH}, 'data'): whether this
+        group is currently selected (on).
+    - band_index : int
+        Value of Input('band-slider', 'value'). 0 or falsy means no band restriction.
+    - do_e_evn : bool
+        Value of Input('switch-specify-e-evn', 'value'). If True, also disables the chip when
+        the active config cannot participate in real-time observations.
+
+    Returns
+    - Output({'type': 'group-toggle-btn', 'index': MATCH}, 'children') : button label (active
+      station name).
+    - Output({'type': 'group-toggle-btn', 'index': MATCH}, 'className') : CSS class reflecting
+      disabled/on/off state.
+    - Output({'type': 'group-chip-wrapper', 'index': MATCH}, 'style') : wrapper style, dimmed
+      (opacity 0.45) when disabled.
+    """
     ant = observation._STATIONS[active_codename]
     # Label follows the active configuration chosen by the user (e.g. 'VLA 1' vs 'VLA 27'),
     # instead of the generic group name, so the chip reflects the current selection.
@@ -310,8 +469,26 @@ def update_group_chip_appearance(active_codename, is_selected, band_index, do_e_
     prevent_initial_call=True
 )
 def update_selected_antennas_from_networks(networks, current_antennas, *group_active_codenames):
-    """When a network switch is toggled, update both the ungrouped chip selection and
-    the is-selected state for each grouped antenna whose active codename is in the network."""
+    """Dash callback: when a network switch is toggled, update both the ungrouped chip
+    selection and the is-selected state for each grouped antenna whose active codename is
+    in the network.
+
+    Inputs
+    - networks : list[bool]
+        Value of Input({'type': 'network-switch', 'index': ALL}, 'value'): which networks
+        are switched on.
+    - current_antennas : list[str]
+        State('switches-antennas', 'value'): currently selected antenna codenames.
+    - *group_active_codenames : str
+        One State({'type': 'group-active-codename', 'index': gname}, 'data') per group in
+        `inputs.station_groups()`, in that order: the active codename for each group.
+
+    Returns
+    - Output('switches-antennas', 'value') : updated antenna codename selection.
+    - Output({'type': 'group-is-selected', 'index': gname}, 'data') : one per group, set to
+      True/False when the group's active codename is included/excluded by the network
+      change, or no_update if the change didn't affect that group's active codename.
+    """
     current_antennas = set(current_antennas)
     ants2include = set()
     ants2exclude = set()
@@ -363,8 +540,12 @@ clientside_callback(
 def _validate_source_spec(spec: str) -> tuple[bool, str]:
     """Validate a single source spec string.
 
-    Returns (ok, message). The message describes the resolved coordinates on success
-    or the reason for failure otherwise.
+    Inputs
+    - spec : str
+        Source name or 'hh:mm:ss dd:mm:ss' / 'XXhXXmXXs XXdXXmXXs' coordinate string.
+
+    Returns (ok, message): a tuple[bool, str]. The message describes the resolved
+    coordinates (hmsdms, 3-decimal precision) on success or the reason for failure otherwise.
     """
     spec = (spec or '').strip()
     if not spec:
@@ -399,10 +580,35 @@ def _validate_source_spec(spec: str) -> tuple[bool, str]:
           prevent_initial_call=True)
 def manage_target_sources(add_clicks, submit_n, upload_contents, clear_clicks,
                           remove_clicks, modal_input, upload_filename, store_data):
-    """Single dispatcher for all target-source mutations driven from the modal.
+    """Dash callback: single dispatcher for all target-source mutations driven from the modal.
 
     Handles: add via text input, add via file upload, remove individual, and clear all.
-    Returns the updated store plus user feedback messages.
+    Dispatches on `ctx.triggered_id`, so only the input that actually fired is handled;
+    all others are left as `no_update`.
+
+    Inputs
+    - add_clicks : int
+        Value of Input('button-add-source', 'n_clicks').
+    - submit_n : int
+        Value of Input('modal-source-input', 'n_submit') (Enter key in the input field).
+    - upload_contents : str
+        Value of Input('upload-sources', 'contents'): base64-encoded uploaded file contents.
+    - clear_clicks : int
+        Value of Input('button-clear-sources', 'n_clicks').
+    - remove_clicks : list[int]
+        Value of Input({'type': 'modal-remove-target', 'index': ALL}, 'n_clicks').
+    - modal_input : str
+        State('modal-source-input', 'value'): the text typed in the add-source field.
+    - upload_filename : str
+        State('upload-sources', 'filename'): name of the uploaded file, used in feedback text.
+    - store_data : list[str]
+        State('store-targets', 'data'): current list of target source spec strings.
+
+    Returns
+    - Output('store-targets', 'data') : updated list of target source spec strings.
+    - Output('modal-source-input', 'value') : cleared ('') after a successful add, else no_update.
+    - Output('modal-source-feedback', 'children') / 'className' : feedback for text-input add.
+    - Output('upload-sources-feedback', 'children') / 'className' : feedback for file upload.
     """
     targets: list[str] = list(store_data or [])
     triggered = ctx.triggered_id
@@ -485,9 +691,20 @@ def manage_target_sources(add_clicks, submit_n, upload_contents, clear_clicks,
            Output('modal-source-list', 'children')],
           Input('store-targets', 'data'))
 def render_target_sources(targets: Optional[list[str]]):
-    """Render the chip list shown in the inputs panel and the detailed list inside the modal.
+    """Dash callback: render the chip list shown in the inputs panel and the detailed list
+    inside the modal.
 
     Each modal entry has an X button (pattern-matching id `modal-remove-target`).
+
+    Inputs
+    - targets : list[str] [OPTIONAL]
+        Value of Input('store-targets', 'data'): list of target source spec strings.
+        None/empty shows placeholder text in both views.
+
+    Returns
+    - Output('target-chips-display', 'children') : chip badges (or placeholder text).
+    - Output('modal-source-list', 'children') : detailed list with remove buttons (or
+      placeholder text).
     """
     targets = targets or []
 
@@ -529,8 +746,24 @@ def render_target_sources(targets: Optional[list[str]]):
            Input('subbands', 'value')],
           State('switch-specify-continuum', 'value'))
 def update_bandwidth_label(datarate: int, npols: int, chans: int, subbands: int, do_spectral_line: bool):
-    """Updates the total bandwidth label as a function of the selected datarate and number of
-    polarizations. Returns a string with the value and units.
+    """Dash callback: updates the total bandwidth label as a function of the selected data
+    rate and number of polarizations.
+
+    Inputs
+    - datarate : int
+        Value of Input('datarate', 'value'): data rate per station in Mbps.
+    - npols : int
+        Value of Input('pols', 'value'): number of polarizations (1 or 2).
+    - chans : int
+        Value of Input('channels', 'value'): channels per subband. Only used to gate on None.
+    - subbands : int
+        Value of Input('subbands', 'value'): number of subbands. Only used to gate on None.
+    - do_spectral_line : bool
+        State('switch-specify-continuum', 'value'). Currently unused by the computation
+        itself, only accepted as a State.
+
+    Returns Output('bandwidth-label', 'children'): a string with the max bandwidth value and
+    units, e.g. "The maximum bandwidth is 512 MHz.". Raises PreventUpdate if any input is None.
     """
     if None in (datarate, npols, chans, subbands):
         raise PreventUpdate
@@ -559,6 +792,19 @@ clientside_callback(
           State({'type': 'store-uv-data', 'index': MATCH}, 'data'),
           prevent_initial_call=True)
 def update_uv_figure(highlight_antennas: list[str], uv_data: dict):
+    """Dash callback: redraws a per-source UV-coverage figure highlighting the antennas
+    selected in that source's antenna dropdown.
+
+    Inputs
+    - highlight_antennas : list[str]
+        Value of Input({'type': 'select-ant-uv', 'index': MATCH}, 'value'): codenames of
+        antennas to highlight.
+    - uv_data : dict
+        State({'type': 'store-uv-data', 'index': MATCH}, 'data'): serialized UV data for this
+        source. Raises PreventUpdate if None.
+
+    Returns Output({'type': 'fig-uv', 'index': MATCH}, 'figure'): the updated Plotly figure.
+    """
     if uv_data is None:
         raise PreventUpdate
     return plots.uvplot_from_data(uv_data, highlight_antennas)
@@ -569,11 +815,22 @@ def update_uv_figure(highlight_antennas: list[str], uv_data: dict):
            Output('duration', 'className')],
           Input('duration', 'value'), prevent_initial_call=True)
 def check_initial_obstime(duration: Optional[int | float]):
-    """Verify the introduced times/dates for correct values.
-    Once the user has introduced all values for the start and end of the observation,
-    it guarantees that they have the correct shape:
-        - the duration of the observation is > 0 hours.
-        - The total observing length is less than five days (value chosen for computational reasons).
+    """Dash callback: validates the observation duration input.
+
+    Ensures the duration is a number, is at least 0.1 h, and is no more than 4 days
+    (96 hours). Note: the docstring previously said "five days"; the actual check is 4*24 h.
+
+    Inputs
+    - duration : int or float [OPTIONAL]
+        Value of Input('duration', 'value'), in hours. If None, no validation is performed
+        (all outputs are no_update).
+
+    Returns
+    - Output('error_duration', 'children') : error message, or '' if valid.
+    - Output('error_duration', 'className') : 'form-text text-danger' on error, no_update
+      otherwise.
+    - Output('duration', 'className') : 'form-control is-invalid' on error, 'form-control'
+      otherwise.
     """
     if duration is None:
         return no_update, no_update, no_update
@@ -665,6 +922,22 @@ clientside_callback(
     Input('url', 'href')
     )
 def url_open(href):
+    """Dash callback: parses `targetversion` and `config` URL query parameters (as produced by
+    the export-to-Polaris clientside callback below) and applies the encoded component values
+    to restore a shared configuration, then strips those parameters from the URL.
+
+    Inputs
+    - href : str
+        Value of Input('url', 'href'): the current page URL.
+
+    Returns
+    - one Output(id_, 'value') per id_ in `export_component_ids`, either the restored value
+      or no_update if that component was not present in the config.
+    - Output('url', 'href') : the URL with 'targetversion' and 'config' query params removed.
+
+    Raises PreventUpdate if there is no 'config' parameter, if parsing fails, or if
+    'targetversion' in the URL is newer than the currently running version.
+    """
     parsed_href = furl(href)
     target_version = parsed_href.args.get('targetversion')
     config = parsed_href.args.get('config')

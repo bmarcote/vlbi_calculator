@@ -9,9 +9,15 @@ from vlbiplanobs import freqsetups as fs
 from vlbiplanobs import stations
 from vlbiplanobs import observation
 
+"""Module that builds the Dash layout components (inputs) shown in the PlanObs GUI:
+modals, antenna/network selection cards, band/duration/correlation pickers, and the
+target-source modal. These are pure layout-construction functions (no callbacks);
+the interactive behavior is wired up in `vlbiplanobs.gui.callbacks`.
+"""
+
 
 def modal_welcome() -> html.Div:
-    """Welcoming window announcing the new version
+    """Welcoming window announcing the new version.
     """
     return html.Div([
         dcc.Store(id='welcome-modal-shown', storage_type='local'),
@@ -37,6 +43,11 @@ def modal_welcome() -> html.Div:
 
 def modal_general_info() -> html.Div:
     """Returns the modal window that shows all relevant information concerning PlanObs.
+
+    Returns
+    -------
+    html.Div
+        The modal window content.
     """
     return html.Div(className='sidebar',
                     children=[
@@ -104,6 +115,25 @@ def modal_general_info() -> html.Div:
 
 def card(children: Optional[list | html.Div] = None, className: Optional[str] = None,
          classNameDiv: Optional[str] = None, style: Optional[dict] = None) -> html.Div:
+    """Returns a generic Bootstrap-style card wrapper (outer DIV, card DIV, card-body DIV)
+    around the given children.
+
+    Parameters
+    ----------
+    children : list or html.Div, optional
+        Content to place inside the card body. None by default.
+    className : str, optional
+        Extra CSS class(es) appended to 'card' for the card DIV. None by default.
+    classNameDiv : str, optional
+        CSS class for the outer wrapper DIV. Defaults to 'm-0 p-2' if not given.
+    style : dict, optional
+        Inline style for the card DIV. Defaults to {'margin': '10px'} if not given.
+
+    Returns
+    -------
+    html.Div
+        The card wrapper DIV.
+    """
     return html.Div(className='m-0 p-2' if classNameDiv is None else classNameDiv,
                     children=html.Div(className='card m-0 p-0' if className is None else 'card ' + className,
                                       style={'margin': '10px'} if style is None else style,
@@ -113,6 +143,23 @@ def card(children: Optional[list | html.Div] = None, className: Optional[str] = 
 def antenna_card_hover(app, target, ant: stations.Station, show_wavelengths: bool = False) -> html.Div:
     """Creates a Card showing all the relevant information for a given antenna, which
     will be displayed as a pop up window when hovering the name of a given antenna.
+
+    Parameters
+    ----------
+    app : Dash app instance
+        Used to resolve the antenna image asset URL.
+    target : Dash component
+        The component that triggers the hover card (e.g. an antenna chip).
+    ant : stations.Station
+        The antenna to describe in the card.
+    show_wavelengths : bool, optional
+        If True, shows the observing bands in wavelength (cm); otherwise in frequency (GHz).
+        False by default.
+
+    Returns
+    -------
+    html.Div
+        The hover-card wrapper DIV.
     """
     return html.Div(dmc.HoverCard(shadow="lg", radius="lg",
                                   openDelay=700, position='right',
@@ -126,11 +173,36 @@ def antenna_card_hover(app, target, ant: stations.Station, show_wavelengths: boo
 def parse_str_list(a_list: Sequence[str]) -> str:
     """Returns a string with the list elements as a comma-separated string list.
     For the last element, it adds an 'and' instead of the comma.
+
+    Parameters
+    ----------
+    a_list : Sequence[str]
+        The list of strings to join.
+
+    Returns
+    -------
+    str
+        A single string with all elements joined, e.g. "A, B, and C".
     """
     return ', '.join(a_list)[::-1].replace(',', ' dna ,' if len(a_list) > 3 else 'dna ', 1)[::-1]
 
 
 def print_table_bands_sefds(ant: stations.Station, show_wavelengths: bool = False) -> html.Div:
+    """Returns a two-column DIV listing, for each band the antenna can observe, the band label
+    (wavelength or frequency) alongside its SEFD value.
+
+    Parameters
+    ----------
+    ant : stations.Station
+        The antenna whose observable bands and SEFDs are listed.
+    show_wavelengths : bool, optional
+        If True, labels bands in wavelength (cm); otherwise in frequency (GHz). False by default.
+
+    Returns
+    -------
+    html.Div
+        The two-column DIV with band labels and SEFD values.
+    """
     bands_str = [fs.bands[band].split('or')[0].replace('cm', ' cm').strip() if show_wavelengths else
                  fs.bands[band].split('or')[1].replace('GHz', ' GHz') for band in ant.bands]
 
@@ -145,6 +217,24 @@ def print_table_bands_sefds(ant: stations.Station, show_wavelengths: bool = Fals
 
 
 def antenna_card(app, ant: stations.Station, show_wavelengths: bool = True) -> html.Div:
+    """Returns the Card content describing an antenna: picture, name, diameter, country,
+    default network membership, decommissioned status, and observable bands with SEFDs.
+
+    Parameters
+    ----------
+    app : Dash app instance
+        Used to resolve the antenna image asset URL.
+    ant : stations.Station
+        The antenna to describe.
+    show_wavelengths : bool, optional
+        If True, shows the observing bands in wavelength (cm); otherwise in frequency (GHz).
+        True by default.
+
+    Returns
+    -------
+    html.Div
+        The Card content DIV.
+    """
     return html.Div(dmc.Card(children=[html.Div(
                         dmc.CardSection(
                             dmc.Image(src=app.get_asset_url(
@@ -172,7 +262,7 @@ def antenna_card(app, ant: stations.Station, show_wavelengths: bool = True) -> h
 
 
 def compute_button() -> html.Div:
-    """Returns the button to compute the observation
+    """Returns the button to compute the observation.
     """
     return html.Div(
                 html.Div([
@@ -186,7 +276,7 @@ def compute_button() -> html.Div:
         className='col-6', style={'position': 'relative'})
 
 def export_button() -> html.Div:
-    """Returns the button to export the observation to Polaris
+    """Returns the button to export the observation to Polaris.
     """
     return html.Div(
                 html.Div([
@@ -200,6 +290,21 @@ def export_button() -> html.Div:
 
 @functools.cache
 def pick_band_labels(show_wavelengths: bool) -> list:
+    """Returns the list of slider marks/labels for the band-selection slider, prefixed with
+    a bold axis-name label ('λ (cm)' or 'ν (GHz)').
+
+    Cached since the result only depends on `show_wavelengths`.
+
+    Parameters
+    ----------
+    show_wavelengths : bool
+        If True, labels the bands by wavelength (cm); otherwise by frequency (GHz).
+
+    Returns
+    -------
+    list
+        The axis label dict followed by one label string per band, in `freqsetups.bands` order.
+    """
     if show_wavelengths:
         return [{'label': 'λ\n(cm)', 'style': {'font-weight': 'bold', 'color': '#004990',
                                                'white-space': 'pre'}}] + \
@@ -213,7 +318,21 @@ def pick_band_labels(show_wavelengths: bool) -> list:
 @functools.cache
 def band_from_index(ind: int) -> str:
     """Returns the band selected by the slider, given the index of the slider.
-    If no band is selected, returns None.
+
+    Parameters
+    ----------
+    ind : int
+        The index of the slider.
+
+    Returns
+    -------
+    str
+        The band key selected by the slider.
+
+    Raises
+    ------
+    ValueError
+        If no band is selected (index is 0).
     """
     if ind == 0:
         raise ValueError("No band selected")
@@ -223,6 +342,17 @@ def band_from_index(ind: int) -> str:
 
 def pick_band(bands: dict[str, str]) -> html.Div:
     """Returns the card allowing the user to pick up the band.
+
+    Parameters
+    ----------
+    bands : dict[str, str]
+        Currently unused by the function body (labels are always built from
+        `freqsetups.bands` via `pick_band_labels`); kept for API compatibility.
+
+    Returns
+    -------
+    html.Div
+        The band-picker card DIV.
     """
     labels = pick_band_labels(False)
     return html.Div(className='row col-12',
@@ -243,6 +373,21 @@ def pick_band(bands: dict[str, str]) -> html.Div:
 
 
 def network_band_labels(network: str, show_wavelengths: bool = False) -> str:
+    """Returns a human-readable, comma-separated string of the bands a network can observe.
+
+    Parameters
+    ----------
+    network : str
+        Key of the network in `observation._NETWORKS`.
+    show_wavelengths : bool, optional
+        If True, lists bands in wavelength (cm); otherwise in frequency (GHz). False by default.
+
+    Returns
+    -------
+    str
+        'N/A' if the network has no observing bands, the single band label if there is
+        only one, or a comma-separated list ending in 'and <last band> cm.'/'GHz.' otherwise.
+    """
     if show_wavelengths:
         label_bands = [b.replace('cm', '').strip() for b in observation._NETWORKS[network].observing_bands]
     else:
@@ -259,7 +404,19 @@ def network_band_labels(network: str, show_wavelengths: bool = False) -> str:
 
 
 def network_entry(app, network: str) -> html.Div:
-    """Returns the DIV that shows a given VLBI network to be selected
+    """Returns the DIV that shows a given VLBI network to be selected.
+
+    Parameters
+    ----------
+    app : Dash app instance
+        Used to resolve the network background image asset URL.
+    network : str
+        Key of the network in `observation._NETWORKS`.
+
+    Returns
+    -------
+    html.Div
+        The network card DIV.
     """
 
     # has_full_name = stations.Stations.get_network_full_name(network) != network
@@ -290,6 +447,19 @@ def network_entry(app, network: str) -> html.Div:
 
 
 def networks(app) -> html.Div:
+    """Returns the DIV listing all default VLBI networks, each rendered as a selectable card
+    (via `network_entry`).
+
+    Parameters
+    ----------
+    app : Dash app instance
+        Passed through to `network_entry` to resolve image asset URLs.
+
+    Returns
+    -------
+    html.Div
+        The DIV listing all default VLBI network cards.
+    """
     return html.Div([html.H4("Select default VLBI Network(s)",
                              className='text-dark font-weight-bold mb-0 pl-2 ml-4'),
                      html.Div([network_entry(app, network_name) for network_name in observation._NETWORKS],
@@ -299,6 +469,11 @@ def networks(app) -> html.Div:
 def station_groups() -> dict[str, list[stations.Station]]:
     """Returns an ordered dict mapping group_name -> [Station, ...] for all grouped stations.
     Stations without a group are not included. Order follows the catalog order.
+
+    Returns
+    -------
+    dict[str, list[stations.Station]]
+        Mapping of group name to the list of stations in that group.
     """
     groups: dict[str, list[stations.Station]] = {}
     for s in observation._STATIONS:
@@ -314,11 +489,21 @@ def _grouped_chip_component(app, group_name: str, group_stations: list[stations.
     be in the selected set at a time. Each dropdown item shows a HoverCard tooltip with the
     antenna info card.
 
-    Inputs
-    - app : Dash app instance
-    - group_name : str  — group identifier (e.g. 'vla')
-    - group_stations : list[Station]  — stations in this group, in catalog order
-    - show_wavelengths : bool  — passed through to antenna_card
+    Parameters
+    ----------
+    app : Dash app instance
+        Used to resolve antenna image asset URLs.
+    group_name : str
+        Group identifier (e.g. 'vla').
+    group_stations : list[stations.Station]
+        Stations in this group, in catalog order.
+    show_wavelengths : bool, optional
+        Passed through to `antenna_card`. False by default.
+
+    Returns
+    -------
+    html.Div
+        The grouped-antenna chip wrapper DIV.
     """
     default_codename = group_stations[0].codename
 
@@ -383,7 +568,25 @@ def _grouped_chip_component(app, group_name: str, group_stations: list[stations.
 
 
 def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
-    """Returns the DIV that shows all the antennas that can be selected, and allows searching through them
+    """Returns the DIV that shows all the antennas that can be selected, and allows searching
+    through them.
+
+    Ungrouped antennas are rendered as individual chips inside the `switches-antennas`
+    `dmc.ChipGroup`; antennas that belong to a group (see `station_groups`) are instead
+    rendered once per group as a combined toggle+dropdown chip via `_grouped_chip_component`.
+
+    Parameters
+    ----------
+    app : Dash app instance
+        Passed through to build antenna hover cards.
+    show_wavelengths : bool, optional
+        If True, shows the observing bands in wavelength (cm); otherwise in frequency (GHz).
+        False by default.
+
+    Returns
+    -------
+    html.Div
+        The DIV listing all selectable antenna chips.
     """
     groups = station_groups()
     grouped_codenames = {s.codename for slist in groups.values() for s in slist}
@@ -421,6 +624,14 @@ def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
 
 
 def duration() -> html.Div:
+    """Returns the DIV with the inputs to set the observation duration (in hours, `duration`)
+    and the percentage of time spent on target (`onsourcetime`).
+
+    Returns
+    -------
+    html.Div
+        The duration-and-on-source-time input DIV.
+    """
     return html.Div([html.H4("Duration of the Observation", className='text-dark font-weight-bold mb-1'),
                      html.Div(className='col-12', children=[
                         html.Div(className='row d-flex align-items-bottom', children=[
@@ -439,6 +650,16 @@ def duration() -> html.Div:
                                                 persistence=True, allow_direct_input=False)])])])])])
 
 def source_and_epoch_selection() -> html.Div:
+    """Returns the DIV with the epoch selection (start date/time, `startdate`/`starttime`, only
+    applied to the computation when `switch-specify-epoch` is on) and the button that opens the
+    target-sources modal (`target_sources_modal`), plus the chip display of currently added
+    target sources (`target-chips-display`).
+
+    Returns
+    -------
+    html.Div
+        The source-and-epoch selection DIV.
+    """
     return html.Div([html.H4("Source  &  Epoch", className='text-dark font-weight-bold mb-1'),
                      html.Div(className='col-12', children=[
                         html.Div(className='row d-flex align-items-bottom', children=[
@@ -491,6 +712,11 @@ def target_sources_modal() -> html.Div:
     Sources can be added by typing a name or coordinates, or by uploading a text file
     where each line contains one source. The list of selected target sources is
     persisted in the `store-targets` `dcc.Store`.
+
+    Returns
+    -------
+    html.Div
+        The target-sources modal window.
     """
     return dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle("Target Sources")),
@@ -543,6 +769,11 @@ def target_sources_modal() -> html.Div:
 
 def correlations() -> html.Div:
     """Creates the inputs to specify if the user wants continuum correlation and/or spectral line.
+
+    Returns
+    -------
+    html.Div
+        The observation-setup input DIV.
     """
     return html.Div([html.H4("Observation Setup", className='text-dark font-weight-bold mb-1'),
                      html.Div(className='col-12', children=[

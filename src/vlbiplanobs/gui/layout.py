@@ -4,7 +4,25 @@ from vlbiplanobs import freqsetups as fs
 from vlbiplanobs.gui import inputs, outputs
 
 
+"""Module that assembles the top-level page layout blocks (banner, input column, compute
+buttons, output column) from the individual Dash components defined in `gui.inputs` and
+`gui.outputs`. `gui.main` wires these blocks together into the final `app.layout`.
+"""
+
+
 def top_banner(app) -> html.Div:
+    """Builds the top banner card with the EVN and JIVE logos and the page title.
+
+    Parameters
+    ----------
+    app : dash.Dash
+        The Dash app instance, used to resolve asset URLs (`app.get_asset_url`) for the logos.
+
+    Returns
+    -------
+    html.Div
+        The banner as a `html.Div` (wrapped in an `inputs.card`).
+    """
     # return html.Div(id='banner',
     return inputs.card([html.Div(className='card-body m-0 p-0', children=[
                        html.A(className='d-inline-block mr-md-auto',
@@ -32,6 +50,20 @@ def top_banner(app) -> html.Div:
 
 
 def inputs_column(app) -> html.Div:
+    """Builds the left-hand column of input cards: band, duration, source/epoch, networks,
+    antenna list, and correlation setup.
+
+    Parameters
+    ----------
+    app : dash.Dash
+        The Dash app instance, forwarded to the `inputs.networks` and `inputs.antenna_list`
+        builders that need it to resolve asset URLs.
+
+    Returns
+    -------
+    html.Div
+        The input column as a `html.Div` containing one `inputs.card` per input section.
+    """
     return html.Div(children=[
             inputs.card(inputs.pick_band(fs.bands)),
             inputs.card(inputs.duration()),
@@ -42,6 +74,20 @@ def inputs_column(app) -> html.Div:
 
 
 def compute_buttons(app) -> html.Div:
+    """Builds the compute/download button row for the non-real-time (button-triggered) mode.
+
+    Parameters
+    ----------
+    app : dash.Dash
+        The Dash app instance. Currently unused by this function, kept for signature
+        consistency with the other layout builders.
+
+    Returns
+    -------
+    html.Div
+        The button row as a `html.Div` containing the compute button, the download button, and
+        the `dcc.Download` component.
+    """
     return html.Div([html.Div(className='m-0 p-0', children=[
         html.Div(className='row d-flex m-0 p-0', children=[
             inputs.compute_button(),
@@ -63,6 +109,17 @@ def compute_buttons_realtime(app) -> html.Div:
     The PDF download button is rendered per-target inside each output tab (and inside
     the simple panel when no target source is specified), so a global button is no
     longer needed here.
+
+    Parameters
+    ----------
+    app : dash.Dash
+        The Dash app instance. Currently unused by this function, kept for signature
+        consistency with the other layout builders.
+
+    Returns
+    -------
+    html.Div
+        The spinner row as a `html.Div`.
     """
     return html.Div(className='m-0 p-0', children=[
         html.Div(className='row d-flex m-0 p-0 justify-content-center', children=[
@@ -72,6 +129,20 @@ def compute_buttons_realtime(app) -> html.Div:
 
 
 def outputs_column(app) -> html.Div:
+    """Builds the right-hand output column: the shared top-level user message plus the empty
+    `outputs-container` that the compute callback fills in with the results.
+
+    Parameters
+    ----------
+    app : dash.Dash
+        The Dash app instance. Currently unused by this function, kept for signature
+        consistency with the other layout builders.
+
+    Returns
+    -------
+    html.Div
+        The output column as a `html.Div` with the `user-message` and `outputs-container` children.
+    """
     return html.Div(children=[
         # Top-level user message (shared across tabs)
         html.Div(id='user-message', className='m-0 p-0',

@@ -324,7 +324,8 @@ def compute_observation_realtime(band: int,
         return hidden_outputs
 
     selected_antennas = [ant for ant in selected_antennas
-                         if observation._STATIONS[ant].has_band(inputs.band_from_index(band))
+                         if ant in observation._STATIONS
+                         and observation._STATIONS[ant].has_band(inputs.band_from_index(band))
                          and (not e_evn or observation._STATIONS[ant].real_time)]
     if not selected_antennas:
         return hidden_outputs

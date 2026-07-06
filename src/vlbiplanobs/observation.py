@@ -1113,7 +1113,7 @@ class Observation(object):
     def when_is_observable(self, min_stations: int = 3,
                           return_gst: bool = False,
                           within_time_range: Optional[list[Time]] = None,
-                          mandatory_stations: Optional[list[str]] = None) -> dict[str, list[Time]]:
+                          mandatory_stations: Optional[list[str] | str] = None) -> dict[str, list[Time]]:
         """Returns times when each source is observable by at least min_stations stations.
 
         Parameters
@@ -1124,8 +1124,9 @@ class Observation(object):
             If True, returns GST time ranges instead of UTC. Default is False.
         within_time_range : list[Time], optional
             Time range to restrict observation to. Default is None (use full observation time).
-        mandatory_stations : list[str], optional
-            List of station codenames that must observe the source. Default is None.
+        mandatory_stations : list[str] | str, optional
+            List of station codenames that must observe the source. The special value 'all'
+            requires every station in the network to observe simultaneously. Default is None.
 
         Returns
         -------

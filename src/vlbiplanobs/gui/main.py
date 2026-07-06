@@ -6,7 +6,7 @@ from typing import Optional
 from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
-from dash import Dash, html, dcc, Output, Input, State, MATCH, no_update
+from dash import Dash, html, dcc, Output, Input, State, MATCH, ALL, no_update
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
@@ -254,6 +254,7 @@ def _compute_one_target(target_spec: Optional[str], shared_kwargs: dict) -> tupl
                Input('inttime', 'value'),
                Input('switch-specify-e-evn', 'value'),
                Input('switches-antennas', 'value')],
+              [State({'type': 'network-switch', 'index': ALL}, 'value')],
               suppress_callback_exceptions=True)
 def compute_observation_realtime(band: int,
                                   target_specs: Optional[list[str]],
@@ -261,7 +262,8 @@ def compute_observation_realtime(band: int,
                                   defined_epoch: bool, startdate: str, starttime: str,
                                   duration: int | float, datarate: int, subbands: int,
                                   channels: int, pols: int, inttime: int, e_evn: bool,
-                                  selected_antennas: list[str]):
+                                  selected_antennas: list[str],
+                                  network_switches: Optional[list[bool]] = None):
     """Real-time computation: builds the outputs container with one tab per target.
 
     The container shows:
@@ -299,6 +301,8 @@ def compute_observation_realtime(band: int,
         Whether e-EVN mode is enabled.
     selected_antennas : list[str]
         List of selected antenna codenames.
+    network_switches : list[bool] or None
+        On/off state of each network switch, ordered as observation._NETWORKS.
 
     Returns
     -------
@@ -354,8 +358,11 @@ def compute_observation_realtime(band: int,
         polarizations=pols or 2,
         inttime=(inttime or 2) * u.s)
 
+    selected_networks = [name for name, on in zip(observation._NETWORKS,
+                                                   network_switches or []) if on]
     logger.info(f"Real-time update: band={inputs.band_from_index(band)}, "
-                f"antennas={len(selected_antennas)}, "
+                f"antennas={','.join(sorted(selected_antennas))}, "
+                f"networks={','.join(selected_networks) if selected_networks else 'none'}, "
                 f"targets={target_specs if has_targets else 'none'}, duration={duration}")
 
     if has_targets:

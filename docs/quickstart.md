@@ -27,6 +27,14 @@ planobs -b 6cm -t 'M87' --network EVN
 
 This prints source visibility per antenna, expected thermal noise, and optimal observing windows.
 
+For scheduling with auto-selected calibrators:
+
+```bash
+planobs -b 6cm -t 'M87' --network EVN \
+  --starttime '2025-03-15 08:00' --duration 8 \
+  --sched eg123a --fringefinders 3 --phasecal
+```
+
 :material-arrow-right: **[Full observe reference](mode-observe.md)**
 
 ---

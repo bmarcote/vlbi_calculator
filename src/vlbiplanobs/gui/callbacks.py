@@ -22,6 +22,7 @@ from vlbiplanobs.gui import inputs, plots
            Output({'type': 'badge-band-ant', 'index': ALL}, 'children')],
           Input('switch-band-label', 'value'))
 def change_band_labels(show_wavelengths: bool):
+    """Update band labels to show wavelength or frequency format."""
     return {i: label for i, label in enumerate(inputs.pick_band_labels(show_wavelengths))}, \
            [inputs.network_band_labels(network, show_wavelengths)
             for network in observation._NETWORKS], \
@@ -41,6 +42,20 @@ def enable_networks_with_band(band_index: int, target_specs: Optional[list[str]]
     A network is enabled only when it supports the selected band (if any) AND any of the
     specified target sources is observable by at least 3 of its stations (if any sources
     are given).
+
+    Parameters
+    ----------
+    band_index : int
+        Selected band index.
+    target_specs : list[str] or None
+        Target source specifications.
+    card_styles : list
+        Current card styles.
+
+    Returns
+    -------
+    tuple
+        (disabled_states, new_card_styles).
     """
     the_band = inputs.band_from_index(band_index) if band_index != 0 else None
     band_ok = {k: (the_band in net.observing_bands if the_band else True)
@@ -92,6 +107,28 @@ def enable_networks_with_band(band_index: int, target_specs: Optional[list[str]]
           prevent_initial_call=True)
 def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: list[bool],
                              datarate: int = 2048, prev_channels: int = 64, prev_subbands: int = 8):
+    """Adjust datarate, channels, and subbands for spectral line observations.
+
+    Parameters
+    ----------
+    do_spectral_line : bool
+        Whether spectral line mode is enabled.
+    band : int
+        Selected band index.
+    network_bools : list[bool]
+        Network selection states.
+    datarate : int, optional
+        Current datarate value.
+    prev_channels : int, optional
+        Previous channels value.
+    prev_subbands : int, optional
+        Previous subbands value.
+
+    Returns
+    -------
+    tuple
+        (datarate_options, datarate_value, channels_value, subbands_value).
+    """
     if band == 0:
         raise PreventUpdate
 
@@ -129,6 +166,20 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
           [Input('band-slider', 'value'),
            Input('switch-specify-e-evn', 'value')])
 def enable_antennas_with_band(band_index: int, do_e_evn: bool):
+    """Disable antenna chips that don't support the selected band.
+
+    Parameters
+    ----------
+    band_index : int
+        Selected band index.
+    do_e_evn : bool
+        Whether e-EVN mode is enabled.
+
+    Returns
+    -------
+    list[bool]
+        Disabled states for ungrouped antenna chips.
+    """
     grouped_codenames = {s.codename for slist in inputs.station_groups().values() for s in slist}
     ungrouped = [ant for ant in observation._STATIONS if ant.codename not in grouped_codenames]
     if band_index == 0:
@@ -139,26 +190,65 @@ def enable_antennas_with_band(band_index: int, do_e_evn: bool):
 
 
 @callback(
-    [Output({'type': 'group-is-selected', 'index': MATCH}, 'data'),
+    [Output({'type': 'group-is-selected', 'index': ALL}, 'data', allow_duplicate=True),
      Output('switches-antennas', 'value', allow_duplicate=True)],
-    Input({'type': 'group-toggle-btn', 'index': MATCH}, 'n_clicks'),
-    [State({'type': 'group-is-selected', 'index': MATCH}, 'data'),
-     State({'type': 'group-active-codename', 'index': MATCH}, 'data'),
+    Input({'type': 'group-toggle-btn', 'index': ALL}, 'n_clicks'),
+    [State({'type': 'group-is-selected', 'index': ALL}, 'data'),
+     State({'type': 'group-active-codename', 'index': ALL}, 'data'),
      State('switches-antennas', 'value')],
     prevent_initial_call=True
 )
-def toggle_group_chip(n_clicks, is_selected, active_codename, current_antennas):
-    """Toggle a grouped antenna chip on/off, adding or removing its active codename
-    from the switches-antennas selection."""
-    if n_clicks is None:
+def toggle_group_chip(n_clicks_list, is_selected_list, active_codenames, current_antennas):
+    """Toggle a grouped antenna chip on/off, adding or removing its active codename.
+
+    Uses ALL patterns (not MATCH) so the per-group `group-is-selected` output can share one
+    callback with the plain `switches-antennas` output. Only the toggled group's state changes;
+    the rest stay `no_update`.
+
+    Parameters
+    ----------
+    n_clicks_list : list
+        Click counts for all group toggle buttons.
+    is_selected_list : list
+        Selection states for all groups.
+    active_codenames : list
+        Active codenames for all groups.
+    current_antennas : list
+        Currently selected antenna codenames.
+
+    Returns
+    -------
+    tuple
+        (new_is_selected_list, new_antenna_list).
+    """
+    if not ctx.triggered_id:
         raise PreventUpdate
-    new_selected = not bool(is_selected)
+    group_name_triggered = ctx.triggered_id.get('index', '')
+
+    # Ordered group names matching the ALL store order.
+    group_names = [item['id']['index'] for item in ctx.states_list[0]]
+    try:
+        group_idx = group_names.index(group_name_triggered)
+    except ValueError:
+        raise PreventUpdate
+
+    # Ignore the initial (n_clicks=None) dispatch for a freshly-rendered button.
+    if not n_clicks_list[group_idx]:
+        raise PreventUpdate
+
+    new_selected = not bool(is_selected_list[group_idx])
+    active_codename = active_codenames[group_idx]
+
+    new_is_selected = [no_update] * len(is_selected_list)
+    new_is_selected[group_idx] = new_selected
+
     current_set = set(current_antennas or [])
     if new_selected:
         current_set.add(active_codename)
     else:
         current_set.discard(active_codename)
-    return new_selected, list(current_set)
+
+    return new_is_selected, list(current_set)
 
 
 @callback(
@@ -173,9 +263,26 @@ def toggle_group_chip(n_clicks, is_selected, active_codename, current_antennas):
 )
 def switch_group_config(menu_clicks, active_codenames, is_selected_list, current_antennas):
     """Switch the active configuration for a grouped antenna when the user picks a menu item.
+
     Always selects the group (turns it on) when a config is chosen — picking a config implies
     including that antenna in the observation. Removes the old codename and adds the new one
     to switches-antennas.
+
+    Parameters
+    ----------
+    menu_clicks : list
+        Click counts for all menu items.
+    active_codenames : list
+        Active codenames for all groups.
+    is_selected_list : list
+        Selection states for all groups.
+    current_antennas : list
+        Currently selected antenna codenames.
+
+    Returns
+    -------
+    tuple
+        (new_active_codenames, new_is_selected_list, new_antenna_list).
     """
     if not ctx.triggered_id:
         raise PreventUpdate
@@ -209,21 +316,45 @@ def switch_group_config(menu_clicks, active_codenames, is_selected_list, current
 @callback(
     Output({'type': 'group-menu-item', 'index': ALL}, 'className'),
     [Input({'type': 'group-active-codename', 'index': ALL}, 'data'),
+     Input({'type': 'group-is-selected', 'index': ALL}, 'data'),
      Input('switches-antennas', 'value')],
 )
-def highlight_active_menu_item(active_codenames, _switches):
+def highlight_active_menu_item(active_codenames, is_selected_list, _switches):
     """Set className on each menu item to mark the active configuration.
-    Uses a CSS class rather than Mantine style props so the highlight survives
-    Dash re-renders triggered by unrelated callbacks (e.g. observation compute).
+
+    A menu item is highlighted only when its group is currently selected AND the item is
+    that group's active configuration, so the dropdown follows the user's choice (and shows
+    no highlight when the group is not selected). Uses a CSS class rather than Mantine style
+    props so the highlight survives Dash re-renders triggered by unrelated callbacks.
     Re-triggered by switches-antennas changes to re-apply after any full update.
+
+    Parameters
+    ----------
+    active_codenames : list
+        Active codenames for all groups.
+    is_selected_list : list
+        Selection states for all groups.
+    _switches : list
+        Current antenna selection (unused but triggers re-apply).
+
+    Returns
+    -------
+    list[str]
+        CSS class names for all menu items.
     """
-    active_set = set(active_codenames)
+    # Map each group name to its active codename and selected state (both are ALL patterns
+    # over the same set of group indices, so build dicts keyed by group name to stay robust).
+    group_active = {it['id']['index']: it.get('value') for it in ctx.inputs_list[0]}
+    group_selected = {it['id']['index']: it.get('value') for it in ctx.inputs_list[1]}
 
     classes = []
-    for item in ctx.outputs_list[0]:
+    # Single (non-list) Output declaration: ctx.outputs_list is already the flat
+    # list of item specs for the ALL pattern, not wrapped in an outer list.
+    for item in ctx.outputs_list:
         index = item['id']['index']  # format: 'groupname__codename'
-        codename = index.split('__', 1)[1] if '__' in index else ''
-        classes.append('group-menu-item-active' if codename in active_set else '')
+        group_name, _, codename = index.partition('__')
+        is_active = bool(group_selected.get(group_name)) and group_active.get(group_name) == codename
+        classes.append('group-menu-item group-menu-item-active' if is_active else 'group-menu-item')
     return classes
 
 
@@ -239,10 +370,28 @@ def highlight_active_menu_item(active_codenames, _switches):
 def update_group_chip_appearance(active_codename, is_selected, band_index, do_e_evn):
     """Update the toggle button label and styling to reflect the active config and
     selected/disabled state. Also dims the group chip wrapper when the active config
-    cannot observe the selected band."""
+    cannot observe the selected band.
+
+    Parameters
+    ----------
+    active_codename : str
+        Active station codename for the group.
+    is_selected : bool
+        Whether the group is selected.
+    band_index : int
+        Selected band index.
+    do_e_evn : bool
+        Whether e-EVN mode is enabled.
+
+    Returns
+    -------
+    tuple
+        (label, css_class, wrapper_style).
+    """
     ant = observation._STATIONS[active_codename]
-    group_name = ctx.outputs_list[0]['id']['index']
-    label = group_name.upper()
+    # Label follows the active configuration chosen by the user (e.g. 'VLA 1' vs 'VLA 27'),
+    # instead of the generic group name, so the chip reflects the current selection.
+    label = ant.name
 
     disabled = False
     if band_index and band_index != 0:
@@ -274,7 +423,22 @@ def update_group_chip_appearance(active_codename, is_selected, band_index, do_e_
 )
 def update_selected_antennas_from_networks(networks, current_antennas, *group_active_codenames):
     """When a network switch is toggled, update both the ungrouped chip selection and
-    the is-selected state for each grouped antenna whose active codename is in the network."""
+    the is-selected state for each grouped antenna whose active codename is in the network.
+
+    Parameters
+    ----------
+    networks : list[bool]
+        Network selection states.
+    current_antennas : list
+        Currently selected antenna codenames.
+    *group_active_codenames : str
+        Active codenames for all groups.
+
+    Returns
+    -------
+    list
+        [new_antenna_list] + group_selected_states.
+    """
     current_antennas = set(current_antennas)
     ants2include = set()
     ants2exclude = set()
@@ -301,14 +465,10 @@ def update_selected_antennas_from_networks(networks, current_antennas, *group_ac
     return [list(new_antennas)] + group_selected_states
 
 
-# Clientside callback for epoch toggle.
-# Uses className ('d-none' vs '') instead of `hidden` so that persistence-restored
-# switch values are reliably reflected on page load without race conditions.
-clientside_callback(
-    "function(value) { return value ? '' : 'd-none'; }",
-    Output('epoch-selection-div', 'className'),
-    Input('switch-specify-epoch', 'value')
-)
+# NOTE: The epoch date/time fields (`epoch-selection-div`) are ALWAYS visible now.
+# The 'Specify an epoch' switch (`switch-specify-epoch`) only controls whether the chosen
+# epoch is applied to the computation (see `compute_observation_realtime`), not the
+# visibility of the fields. No show/hide callback is therefore needed.
 
 
 # --------------------------------------------------------------------------------------
@@ -330,8 +490,16 @@ clientside_callback(
 def _validate_source_spec(spec: str) -> tuple[bool, str]:
     """Validate a single source spec string.
 
-    Returns (ok, message). The message describes the resolved coordinates on success
-    or the reason for failure otherwise.
+    Parameters
+    ----------
+    spec : str
+        Source specification string.
+
+    Returns
+    -------
+    tuple[bool, str]
+        (ok, message) where message describes resolved coordinates on success
+        or the reason for failure otherwise.
     """
     spec = (spec or '').strip()
     if not spec:
@@ -370,6 +538,30 @@ def manage_target_sources(add_clicks, submit_n, upload_contents, clear_clicks,
 
     Handles: add via text input, add via file upload, remove individual, and clear all.
     Returns the updated store plus user feedback messages.
+
+    Parameters
+    ----------
+    add_clicks : int
+        Add button click count.
+    submit_n : int
+        Modal input submit count.
+    upload_contents : str
+        File upload contents.
+    clear_clicks : int
+        Clear button click count.
+    remove_clicks : list
+        Remove button click counts.
+    modal_input : str
+        Modal input value.
+    upload_filename : str
+        Uploaded filename.
+    store_data : list
+        Current target sources.
+
+    Returns
+    -------
+    tuple
+        (targets, modal_input, feedback_text, feedback_class, upload_text, upload_class).
     """
     targets: list[str] = list(store_data or [])
     triggered = ctx.triggered_id
@@ -455,6 +647,16 @@ def render_target_sources(targets: Optional[list[str]]):
     """Render the chip list shown in the inputs panel and the detailed list inside the modal.
 
     Each modal entry has an X button (pattern-matching id `modal-remove-target`).
+
+    Parameters
+    ----------
+    targets : list[str] or None
+        List of target source specifications.
+
+    Returns
+    -------
+    tuple
+        (chips_display, modal_list) HTML components.
     """
     targets = targets or []
 
@@ -496,8 +698,25 @@ def render_target_sources(targets: Optional[list[str]]):
            Input('subbands', 'value')],
           State('switch-specify-continuum', 'value'))
 def update_bandwidth_label(datarate: int, npols: int, chans: int, subbands: int, do_spectral_line: bool):
-    """Updates the total bandwidth label as a function of the selected datarate and number of
-    polarizations. Returns a string with the value and units.
+    """Update the total bandwidth label as a function of the selected datarate and polarizations.
+
+    Parameters
+    ----------
+    datarate : int
+        Selected datarate in Mbps.
+    npols : int
+        Number of polarizations.
+    chans : int
+        Number of channels.
+    subbands : int
+        Number of subbands.
+    do_spectral_line : bool
+        Whether spectral line mode is enabled.
+
+    Returns
+    -------
+    str
+        Bandwidth label with value and units.
     """
     if None in (datarate, npols, chans, subbands):
         raise PreventUpdate
@@ -526,6 +745,20 @@ clientside_callback(
           State({'type': 'store-uv-data', 'index': MATCH}, 'data'),
           prevent_initial_call=True)
 def update_uv_figure(highlight_antennas: list[str], uv_data: dict):
+    """Update the UV plot figure when antenna selection changes.
+
+    Parameters
+    ----------
+    highlight_antennas : list[str]
+        Antennas to highlight in the plot.
+    uv_data : dict
+        Serialized UV plot data.
+
+    Returns
+    -------
+    dict
+        Updated plotly figure.
+    """
     if uv_data is None:
         raise PreventUpdate
     return plots.uvplot_from_data(uv_data, highlight_antennas)
@@ -536,11 +769,19 @@ def update_uv_figure(highlight_antennas: list[str], uv_data: dict):
            Output('duration', 'className')],
           Input('duration', 'value'), prevent_initial_call=True)
 def check_initial_obstime(duration: Optional[int | float]):
-    """Verify the introduced times/dates for correct values.
-    Once the user has introduced all values for the start and end of the observation,
-    it guarantees that they have the correct shape:
-        - the duration of the observation is > 0 hours.
-        - The total observing length is less than five days (value chosen for computational reasons).
+    """Verify the observation duration for correct values.
+
+    Ensures the duration is > 0.1 hours and less than 4 days.
+
+    Parameters
+    ----------
+    duration : int or float or None
+        Observation duration in hours.
+
+    Returns
+    -------
+    tuple
+        (error_message, error_class, input_class).
     """
     if duration is None:
         return no_update, no_update, no_update
@@ -638,18 +879,34 @@ clientside_callback(
     Input('url', 'href')
     )
 def url_open(href):
+    """Parse URL parameters to restore configuration from Polaris.
+
+    Parameters
+    ----------
+    href : str
+        URL with targetversion and config parameters.
+
+    Returns
+    -------
+    tuple
+        (component_values, cleaned_url) for all export_component_ids.
+    """
     parsed_href = furl(href)
     target_version = parsed_href.args.get('targetversion')
     config = parsed_href.args.get('config')
     if config is None:
         raise PreventUpdate
-    if target_version is not None:
-        target_version = Version(unquote(target_version))
-        if target_version > current_version:
-            # current running version too old??
-            raise PreventUpdate
-    config_list = json.loads(unquote(config))
-    id_list, value_list = map(list, zip(*config_list))
+    # The URL parameters come from the user's browser and may be hand-edited or truncated:
+    # ignore malformed values instead of erroring the callback.
+    try:
+        target_version = Version(unquote(target_version)) if target_version is not None else None
+        config_list = json.loads(unquote(config))
+        id_list, value_list = map(list, zip(*config_list))
+    except Exception:
+        raise PreventUpdate
+    if target_version is not None and target_version > current_version:
+        # current running version too old??
+        raise PreventUpdate
     update_list = []
     for component in export_component_id_properties:
         try:

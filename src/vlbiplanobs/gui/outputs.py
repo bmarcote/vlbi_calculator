@@ -13,14 +13,16 @@ from vlbiplanobs.gui import plots, inputs
 
 
 def quantity2str(val: u.Quantity) -> str:
-    """Converts an astropy Quantity to a formatted string.
+    """Convert an astropy Quantity to a formatted string.
 
-    Inputs
-    - val : astropy.units.Quantity
+    Parameters
+    ----------
+    val : u.Quantity
         The quantity to convert to string.
 
     Returns
-    - str
+    -------
+    str
         Formatted string with value and unit.
     """
     return f"{val.value:.3g} {val.unit.to_string('unicode')}"
@@ -31,24 +33,26 @@ card = inputs.card
 
 def card_result(number: str | list, label: str | list, id: str, extra_rows: Optional[list] = None,
                 second_column_n: int = 0, second_column_content: Optional[list] = None) -> html.Div:
-    """Creates a card component for displaying results.
+    """Create a card component for displaying results.
 
-    Inputs
-    - number : str or list
+    Parameters
+    ----------
+    number : str or list
         Main value to display.
-    - label : str or list
+    label : str or list
         Label describing the value.
-    - id : str
+    id : str
         HTML element ID.
-    - extra_rows : list, optional
+    extra_rows : list, optional
         Additional rows to add below main content.
-    - second_column_n : int
+    second_column_n : int
         Width of second column (0-12).
-    - second_column_content : list, optional
+    second_column_content : list, optional
         Content for second column.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Card component.
     """
     return card(className='bg-primary opacity-10 p-0 m-0 card-text-shadow', style={'height': '100%', 'min-width': '200px'}, children=[
@@ -70,9 +74,23 @@ def card_result(number: str | list, label: str | list, id: str, extra_rows: Opti
 
 def message_card(title: str | list, body: str | list, mode: Literal['danger', 'info', 'warning'],
                  icon: Optional[str] = None) -> html.Div:
-    """Shows a card with a title and a body, with an icon and a mode that defines the color of the card:
-    'info', 'warning', 'danger'. If 'icon' is not provided, it will take an icon by default depending on
-    the mode.
+    """Show a card with a title and body, with an icon and mode-defined color.
+
+    Parameters
+    ----------
+    title : str or list
+        Card title.
+    body : str or list
+        Card content.
+    mode : Literal['danger', 'info', 'warning']
+        Color mode for the card.
+    icon : str, optional
+        Icon class name. If None, a default icon is used based on mode.
+
+    Returns
+    -------
+    html.Div
+        Message card component.
     """
     assert mode in ('danger', 'info', 'warning')
     if icon is None:
@@ -102,64 +120,80 @@ def message_card(title: str | list, body: str | list, mode: Literal['danger', 'i
 
 
 def warning_card(title: str | list, body: str | list, icon: Optional[str] = None) -> html.Div:
-    """Creates a warning message card.
+    """Create a warning message card.
 
-    Inputs
-    - title : str or list
+    Parameters
+    ----------
+    title : str or list
         Card title.
-    - body : str or list
+    body : str or list
         Card content.
-    - icon : str, optional
+    icon : str, optional
         Icon class name.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Warning card component.
     """
     return message_card(title, body, 'warning', icon)
 
 
 def error_card(title: str | list, body: str | list, icon: Optional[str] = None) -> html.Div:
-    """Creates an error message card.
+    """Create an error message card.
 
-    Inputs
-    - title : str or list
+    Parameters
+    ----------
+    title : str or list
         Card title.
-    - body : str or list
+    body : str or list
         Card content.
-    - icon : str, optional
+    icon : str, optional
         Icon class name.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Error card component.
     """
     return message_card(title, body, 'danger', icon)
 
 
 def info_card(title: str | list, body: str | list, icon: Optional[str] = None) -> html.Div:
-    """Creates an info message card.
+    """Create an info message card.
 
-    Inputs
-    - title : str or list
+    Parameters
+    ----------
+    title : str or list
         Card title.
-    - body : str or list
+    body : str or list
         Card content.
-    - icon : str, optional
+    icon : str, optional
         Icon class name.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Info card component.
     """
     return message_card(title, body, 'info', icon)
 
 
 def warning_low_high_freq(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    """For observations at high frequencies, it shows a warning mentioning that
-    phase referencing is not possible.
-    For observations at low frequencies, it shows a warning mentioning that there
-    may be significant RFI and the thermal rms may be affected.
+    """Show warning for high or low frequency observations.
+
+    For high frequencies, warns that phase referencing is not possible.
+    For low frequencies, warns about significant RFI and thermal rms effects.
+
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
+        VLBI observation object.
+
+    Returns
+    -------
+    html.Div
+        Warning card component, or empty div if no warning needed.
     """
     if o is None:
         return html.Div()
@@ -177,8 +211,17 @@ def warning_low_high_freq(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
 
 def sun_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    """Returns a warning card if the Sun is too close to the target source.
-    Otherwise it returns an empty Div.
+    """Return a warning card if the Sun is too close to the target source.
+
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
+        VLBI observation object.
+
+    Returns
+    -------
+    html.Div
+        Warning card component, or empty div if no warning needed.
     """
     if o is None:
         return html.Div()
@@ -226,14 +269,16 @@ def sun_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
 
 def ant_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    """Creates a warning card for antennas that cannot observe the source.
+    """Create a warning card for antennas that cannot observe the source.
 
-    Inputs
-    - o : VLBIObs, optional
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
         VLBI observation object containing station visibility data.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Warning card listing antennas that cannot observe.
         Empty div if no observation provided or all antennas can observe.
     """
@@ -242,7 +287,8 @@ def ant_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
     ants_excluded = []
     for src_is_visible in o.can_be_observed().values():
-        ants_excluded = [ant for ant in src_is_visible if not src_is_visible[ant]]
+        ants_excluded += [ant for ant in src_is_visible
+                          if not src_is_visible[ant] and ant not in ants_excluded]
 
     if not ants_excluded:
         return html.Div()
@@ -253,14 +299,16 @@ def ant_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
 
 def summary_freq_res(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    """Creates a card showing frequency resolution information.
+    """Create a card showing frequency resolution information.
 
-    Inputs
-    - o : VLBIObs, optional
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
         VLBI observation object containing frequency setup data.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Card containing frequency and velocity resolution info.
         Empty div if no observation provided.
     """
@@ -300,14 +348,16 @@ def summary_freq_res(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
 
 def field_of_view(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    """Creates a card showing field of view information.
+    """Create a card showing field of view information.
 
-    Inputs
-    - o : VLBIObs, optional
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
         VLBI observation object containing bandwidth and time smearing data.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Card containing field of view limitations from bandwidth and time smearing.
         Empty div if no observation provided or smearing cannot be calculated.
     """
@@ -343,14 +393,16 @@ def field_of_view(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
 
 def data_size(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    """Creates a card showing expected data size information.
+    """Create a card showing expected data size information.
 
-    Inputs
-    - o : VLBIObs, optional
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
         VLBI observation object containing data rate and duration info.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Card containing expected correlated data size in FITS format.
         Empty div if no observation provided.
     """
@@ -370,14 +422,16 @@ def data_size(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
 
 def obs_time(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    """Creates a card showing observation time information.
+    """Create a card showing observation time information.
 
-    Inputs
-    - o : VLBIObs, optional
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
         VLBI observation object containing timing data.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Card containing total duration and on-target time info.
         Empty div if no observation or target time provided.
     """
@@ -406,14 +460,16 @@ def obs_time(o: Optional[cli.VLBIObs] = None) -> html.Div:
                                         f"(wavelength of {wavelength:.3n})."))])
 
 def rms(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    """Creates a card showing RMS noise information.
+    """Create a card showing RMS noise information.
 
-    Inputs
-    - o : VLBIObs, optional
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
         VLBI observation object containing sensitivity data.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Card containing thermal noise RMS for different integration times.
         Empty div if no observation provided.
     """
@@ -471,14 +527,16 @@ def rms(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
 
 def baseline_sensitivities(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    """Creates a modal showing per-baseline sensitivity information.
+    """Create a modal showing per-baseline sensitivity information.
 
-    Inputs
-    - o : VLBIObs, optional
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
         VLBI observation object containing baseline sensitivity data.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Modal with table showing sensitivity for each baseline.
         Shows "No information provided" if no observation provided.
     """
@@ -524,14 +582,16 @@ def baseline_sensitivities(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
 
 def resolution(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    """Creates a card showing angular resolution information.
+    """Create a card showing angular resolution information.
 
-    Inputs
-    - o : VLBIObs, optional
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
         VLBI observation object containing synthesized beam data.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Card containing synthesized beam size and visual representation.
         Empty div if no observation provided.
     """
@@ -561,9 +621,31 @@ def resolution(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
 
 def ellipse(bmaj, bmin, pa, color='white', z_index=1, position='relative', margin_top='', className=''):
-    """Returns a html.Div element that draws an ellipse with a semimajor axis bmaj,
-    semiminor axis bmin, and position angle (as defined in radio astronomy) pa.
-    bmaj,bmin, pa must be strings recognized by HTML/CSS.
+    """Return an html.Div element that draws an ellipse.
+
+    Parameters
+    ----------
+    bmaj : str
+        Semimajor axis (HTML/CSS string).
+    bmin : str
+        Semiminor axis (HTML/CSS string).
+    pa : str
+        Position angle in degrees (HTML/CSS string).
+    color : str, optional
+        Ellipse color. Default is 'white'.
+    z_index : int, optional
+        CSS z-index. Default is 1.
+    position : str, optional
+        CSS position. Default is 'relative'.
+    margin_top : str, optional
+        CSS margin-top. Default is ''.
+    className : str, optional
+        CSS class name. Default is ''.
+
+    Returns
+    -------
+    html.Div
+        Div element styled as an ellipse.
     """
     return html.Div(children=[],
                     style={'width': bmaj, 'height': bmin,
@@ -573,14 +655,16 @@ def ellipse(bmaj, bmin, pa, color='white', z_index=1, position='relative', margi
 
 
 def plot_elevations(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    """Creates a card with elevation plots for sources.
+    """Create a card with elevation plots for sources.
 
-    Inputs
-    - o : VLBIObs, optional
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
         VLBI observation object containing source and station data.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Card containing elevation plots and observability info.
     """
     return card([html.Div(className='card-header pb-0', children=html.H5('Source Elevation')),
@@ -592,14 +676,16 @@ def plot_elevations(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
 
 def print_observability_ranges(o: Optional[cli.VLBIObs]) -> html.Div:
-    """Creates a div showing when sources are observable by stations.
+    """Create a div showing when sources are observable by stations.
 
-    Inputs
-    - o : VLBIObs, optional
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
         VLBI observation object containing source visibility data.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Div containing text description of source observability windows.
         Empty div if no observation provided.
     """
@@ -656,14 +742,16 @@ def print_observability_ranges(o: Optional[cli.VLBIObs]) -> html.Div:
 
 
 def plot_uv_coverage(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    """Creates a card with UV coverage plot and baseline information.
+    """Create a card with UV coverage plot and baseline information.
 
-    Inputs
-    - o : VLBIObs, optional
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
         VLBI observation object containing source and station data.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Card containing UV coverage plot, antenna selection dropdown,
         and baseline length information.
     """
@@ -681,14 +769,16 @@ def plot_uv_coverage(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
 
 def put_antenna_options(o: Optional[cli.VLBIObs] = None) -> list:
-    """Creates list of antenna options for dropdown selection.
+    """Create list of antenna options for dropdown selection.
 
-    Inputs
-    - o : VLBIObs, optional
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
         VLBI observation object containing station data.
 
     Returns
-    - list
+    -------
+    list
         List of dicts with label and value for each antenna.
         Empty list if no observation provided.
     """
@@ -699,14 +789,16 @@ def put_antenna_options(o: Optional[cli.VLBIObs] = None) -> list:
 
 
 def print_baseline_lengths(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    """Creates a div showing longest and shortest baseline information.
+    """Create a div showing longest and shortest baseline information.
 
-    Inputs
-    - o : VLBIObs, optional
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
         VLBI observation object containing station data.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Div containing baseline length information.
         Empty div if no observation provided or no baselines available.
     """
@@ -750,14 +842,16 @@ def print_baseline_lengths(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
 
 def plot_worldmap(o: Optional[cli.VLBIObs] = None) -> html.Div:
-    """Creates a card with world map showing station locations.
+    """Create a card with world map showing station locations.
 
-    Inputs
-    - o : VLBIObs, optional
+    Parameters
+    ----------
+    o : VLBIObs or None, optional
         VLBI observation object containing station data.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Card containing world map plot.
     """
     return card(html.Div(className='justify-content-center',
@@ -781,10 +875,22 @@ def plot_worldmap(o: Optional[cli.VLBIObs] = None) -> html.Div:
 
 
 def _baseline_sensitivity_modal_for_target(o: cli.VLBIObs, target_spec: str) -> dbc.Modal:
-    """Returns a per-target Modal containing the per-baseline sensitivity table.
+    """Return a per-target Modal containing the per-baseline sensitivity table.
 
     The modal id uses pattern matching so a clientside callback can toggle each
     independently of the others. The body is fully rendered server-side.
+
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object.
+    target_spec : str
+        Target specification for pattern matching.
+
+    Returns
+    -------
+    dbc.Modal
+        Modal component with sensitivity table.
     """
     return dbc.Modal(baseline_sensitivities(o),
                      id={'type': 'modal-sens', 'index': target_spec},
@@ -792,9 +898,21 @@ def _baseline_sensitivity_modal_for_target(o: cli.VLBIObs, target_spec: str) -> 
 
 
 def _rms_card_for_target(o: cli.VLBIObs, target_spec: str) -> html.Div:
-    """Returns a per-target rms card with a pattern-matched 'view sensitivity per baseline' button.
+    """Return a per-target rms card with a pattern-matched sensitivity button.
 
-    Mirrors :func:`rms` but replaces the global button id with one specific to this target.
+    Mirrors rms but replaces the global button id with one specific to this target.
+
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object.
+    target_spec : str
+        Target specification for pattern matching.
+
+    Returns
+    -------
+    html.Div
+        RMS card component with target-specific button.
     """
     if o is None:
         return html.Div()
@@ -846,7 +964,18 @@ def _rms_card_for_target(o: cli.VLBIObs, target_spec: str) -> html.Div:
 
 
 def _target_pdf_button(target_spec: str) -> html.Div:
-    """Returns a per-target 'Export Summary as PDF' button + its dcc.Download sink."""
+    """Return a per-target 'Export Summary as PDF' button + its dcc.Download sink.
+
+    Parameters
+    ----------
+    target_spec : str
+        Target specification for pattern matching.
+
+    Returns
+    -------
+    html.Div
+        PDF download button component.
+    """
     return html.Div(className='d-flex align-items-center justify-content-center my-3',
                     style={'gap': '5px'}, children=[
                         dbc.Spinner(id={'type': 'pdf-spinner', 'index': target_spec},
@@ -865,19 +994,21 @@ def build_target_tab_content(o: cli.VLBIObs, target_spec: str,
                              error: Optional[str] = None) -> html.Div:
     """Assemble the full output panel for one target source.
 
-    Inputs
-    - o : VLBIObs or None
+    Parameters
+    ----------
+    o : VLBIObs or None
         Observation built for this single target. May be None if the observation
-        could not be computed (the resulting panel will only show ``error``).
-    - target_spec : str
+        could not be computed (the resulting panel will only show error).
+    target_spec : str
         The source spec (name or coords) the user added. Used as the pattern-matching
         index for interactive child components.
-    - error : str or None
+    error : str or None
         Human-readable error message to display at the top of the panel.
 
     Returns
-    - dash.html.Div
-        Panel content ready to be embedded inside a ``dbc.Tab``.
+    -------
+    html.Div
+        Panel content ready to be embedded inside a dbc.Tab.
     """
     if error is not None:
         return html.Div(className='m-2', children=error_card(
@@ -964,6 +1095,16 @@ def build_no_target_panel(o: Optional[cli.VLBIObs]) -> html.Div:
     Reuses the existing component functions (cards + worldmap), plus a single PDF
     download button. The sensitivity-per-baseline modal is omitted because no
     source-dependent geometry is available.
+
+    Parameters
+    ----------
+    o : VLBIObs or None
+        VLBI observation object.
+
+    Returns
+    -------
+    html.Div
+        Panel content for no-target case.
     """
     if o is None:
         return html.Div()
@@ -988,10 +1129,11 @@ def build_no_target_panel(o: Optional[cli.VLBIObs]) -> html.Div:
 
 
 def download_button_div() -> html.Div:
-    """Creates a placeholder div for the PDF download button.
+    """Create a placeholder div for the PDF download button.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Container div for the download button, initially hidden.
     """
     # return html.Div(html.Div(html.Div(), hidden=True, id='download-summary-div'),
@@ -1000,10 +1142,11 @@ def download_button_div() -> html.Div:
 
 
 def download_button() -> html.Div:
-    """Creates a button for downloading observation summary.
+    """Create a button for downloading observation summary.
 
     Returns
-    - dash.html.Div
+    -------
+    html.Div
         Button component with spinner for downloading PDF summary.
     """
     return html.Div([dbc.Spinner(id='downloading', color='#004990',
@@ -1018,21 +1161,26 @@ def download_button() -> html.Div:
 
 
 def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
-    """Creates a PDF file summarizing the observation.
+    """Create a PDF file summarizing the observation.
 
-    Inputs
-    - o : VLBIObs
+    Parameters
+    ----------
+    o : VLBIObs
         VLBI observation object containing all observation data.
-    - show_figure : bool
-        Whether to include elevation plot figure (default: True).
+    show_figure : bool, optional
+        Whether to include elevation plot figure. Default is True.
 
     Returns
-    - str
+    -------
+    str
         Path to generated PDF file.
 
     Raises
-    - ValueError: If observation is None.
-    - AssertionError: If elevation plot cannot be created when show_figure is True.
+    ------
+    ValueError
+        If observation is None.
+    AssertionError
+        If elevation plot cannot be created when show_figure is True.
     """
     if o is None:
         raise ValueError("Observation cannot be None")
@@ -1192,11 +1340,13 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
         layout.append_layout_element(pdf.Paragraph(f"Field of view limited to {bw_smearing:.2g} (from frequency smearing) "
                                 f"and {tm_smearing:.2g} (from time smearing), considering 10% loss."))
 
+    figpath: Optional[Path] = None
     if len(o.scans) > 0 and show_figure:
         fig = plots.elevation_plot(o, show_colorbar=True)
         if fig is not None:
             try:
                 with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tempfig:
+                    figpath = Path(tempfig.name)
                     fig.update_layout(
                         plot_bgcolor='white',
                         paper_bgcolor='white',
@@ -1204,7 +1354,6 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
                         margin=dict(l=60, r=20, t=50, b=50)
                     )
                     fig.write_image(tempfig.name, scale=2, width=800, height=400)
-                    figpath = Path(tempfig.name)
 
                 layout.append_layout_element(pdf.Image(figpath, size=(414, 265)))
             except Exception as e:
@@ -1214,6 +1363,10 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
 
     tmp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
     pdf.PDF.write(where_to=tmp.name, what=doc)
+    # The figure PNG is embedded in the written PDF, so the temp file can go now.
+    # The PDF temp file itself is removed by the download callback after serving it.
+    if figpath is not None:
+        figpath.unlink(missing_ok=True)
     return tmp.name
 
     # def get_fig_dirty_map(self):

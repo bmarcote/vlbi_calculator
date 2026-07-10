@@ -1,6 +1,5 @@
 from typing import Optional, Union, Self, Sequence
 from importlib import resources
-import functools
 import numpy as np
 import tomllib
 import operator
@@ -35,11 +34,12 @@ class SourceNotVisible(Exception):
 class FluxMeasurement:
     """Stores the fluxes related to the given source at a particular band (or frequency).
 
-    - peak_flux : u.Quantity
+    Attributes
+    ----------
+    resolved : u.Quantity
         Refers to the peak brightness of the source. Meaning the peak expected in a map for the source in
         a VLBI map, i.e. the unresolved flux of the source.
-
-    - flux_density : u.Quantity
+    unresolved : u.Quantity
         Refers to the total flux density of the source. Meaning the observed flux on the shortest baselines.
     """
     resolved: u.Quantity
@@ -48,18 +48,19 @@ class FluxMeasurement:
 
 class SourceFlux(object):
     """Fluxes attributed to a given source.
+
     It provides the flux density (total flux) and peak flux (flux on the longest baselines)
     for a particular frequency.
     """
 
     def __init__(self, band_flux: dict[str, FluxMeasurement]):
-        """Initializes a SourceFlux, which contains the peak flux and flux density of a given source at the
-        given band.
+        """Initializes a SourceFlux, which contains the peak flux and flux density of a given source at the given band.
 
-        Input
-            - band_flux : dict[str, FluxDensity]
-                Dictionary of the form {band: FluxDensity}, with 'band' the different bands at which the
-                flux measurements are referring to, and the corresponding FluxDensity object.
+        Parameters
+        ----------
+        band_flux : dict[str, FluxMeasurement]
+            Dictionary of the form {band: FluxMeasurement}, with 'band' the different bands at which the
+            flux measurements are referring to, and the corresponding FluxMeasurement object.
         """
         self._data: dict[str, FluxMeasurement] = band_flux
 
@@ -67,85 +68,106 @@ class SourceFlux(object):
         """Returns the bands at which there is flux information.
 
         Returns
-            - tuple[str]
-                Tuple of strings representing the bands.
+        -------
+        tuple[str]
+            Tuple of strings representing the bands.
         """
         return tuple(self._data.keys())  # type: ignore
 
     def flux_density(self, band: str) -> FluxMeasurement:
         """Returns the flux density measurements associated to the source at the given band.
 
-        Inputs
-            - band : str
-                The band at which the flux density measurements are referring to.
+        Parameters
+        ----------
+        band : str
+            The band at which the flux density measurements are referring to.
 
         Returns
-            - FluxMeasurement
-                The flux density measurements.
+        -------
+        FluxMeasurement
+            The flux density measurements.
 
         Raises
-            KeyError : if band is not available.
+        ------
+        KeyError
+            If band is not available.
         """
         return self._data[band].unresolved
 
     def peak_flux(self, band: str) -> FluxMeasurement:
         """Returns the peak flux (brightness) measurements associated to the source at the given band.
 
-        Input
-        - band : str
+        Parameters
+        ----------
+        band : str
             The band at which the flux density measurements are referring to.
 
+        Returns
+        -------
+        FluxMeasurement
+            The peak flux measurements.
+
         Raises
-            KeyError : if band is not available.
+        ------
+        KeyError
+            If band is not available.
         """
         return self._data[band].resolved
 
     def has_band(self, band: str) -> bool:
-        """Returns if the band is present in the FluxMeasurement.
-        """
+        """Returns if the band is present in the FluxMeasurement."""
         return band in self._data
 
     def __contains__(self, band: str) -> bool:
-        """Returns if the band is present in the FluxMeasurement.
-        """
+        """Returns if the band is present in the FluxMeasurement."""
         return band in self._data
 
     def __getitem__(self, band: str) -> FluxMeasurement:
         """Returns the flux measurements associated to the source at the given band.
 
-        Inputs
-            - band : str
-                The band at which the flux density measurements are referring to.
+        Parameters
+        ----------
+        band : str
+            The band at which the flux density measurements are referring to.
 
         Returns
-            - FluxMeasurement
-                The flux density measurements.
+        -------
+        FluxMeasurement
+            The flux density measurements.
 
         Raises
-            KeyError : if band is not available.
+        ------
+        KeyError
+            If band is not available.
         """
         return self._data[band]
 
     def __setitem__(self, band: str, flux: FluxMeasurement):
         """Sets the flux measurements associated to the source at the given band.
 
-        Inputs
-            - band : str
-                The band at which the flux density measurements are referring to.
-            - flux : FluxMeasurement
-                The flux density measurements.
+        Parameters
+        ----------
+        band : str
+            The band at which the flux density measurements are referring to.
+        flux : FluxMeasurement
+            The flux density measurements.
         """
         self._data[band] = flux
 
     def add_band(self, band: str, flux: FluxMeasurement):
-        """Adds a new measurement of the flux at a new frequency, or overwrites a previous
-        one if the band exists.
+        """Adds a new measurement of the flux at a new frequency, or overwrites a previous one if the band exists.
 
-        Inputs
-            - band : str
-                The band at which the flux density measurements are referring to.
-            - flux : FluxMeasurement
-                The flux density measurements.
+        Parameters
+        ----------
+        band : str
+            The band at which the flux density measurements are referring to.
+        flux : FluxMeasurement
+            The flux density measurements.
+
+        Raises
+        ------
+        TypeError
+            If 'band' is not a str or 'flux' is not a FluxMeasurement.
         """
         if (not isinstance(band, str)) or (not isinstance(flux, FluxMeasurement)):
             raise TypeError("Expected 'band' to be a str and 'flux' to be a FluxMeasurement.")
@@ -154,8 +176,7 @@ class SourceFlux(object):
 
 
 class SourceType(Enum):
-    """Types of sources in a regular VLBI observation
-    """
+    """Types of sources in a regular VLBI observation."""
     TARGET = auto()
     PHASECAL = auto()
     FRINGEFINDER = auto()
@@ -167,8 +188,7 @@ class SourceType(Enum):
 
 
 class Source(FixedTarget):
-    """Defines a target source located at some coordinates and with a given name.
-    """
+    """Defines a target source located at some coordinates and with a given name."""
 
     def __init__(self, name: str,
                  coordinates: Optional[Union[str, coord.SkyCoord]] = None,
@@ -178,32 +198,39 @@ class Source(FixedTarget):
                  other_names: Optional[list[str]] = None, **kwargs):
         """Initializes a Source object.
 
-        Inputs
-        - name : str
+        Parameters
+        ----------
+        name : str
             Name associated to the source.
-        - coordinates : str or astropy.coordinates.SkyCoord [OPTIONAL]
+        coordinates : str or astropy.coordinates.SkyCoord, optional
             Coordinates of the target source in a str format recognized by
             astropy.coordinates.SkyCoord (e.g. XXhXXmXXs XXdXXmXXs).
-            J2000 coordinates are assumed.
-            If not provided, name must be a source name recognized by the RFC catalog or astroquery.
-        - source_type : SourceType  [default = UNKNOWN]
-            Defines the type of the source.
-        - flux : SourceFlux  [default = None]
+            J2000 coordinates are assumed. If not provided, name must be a source name
+            recognized by the RFC catalog or astroquery.
+        source_type : SourceType, optional
+            Defines the type of the source. Default is UNKNOWN.
+        flux : SourceFlux, optional
             Estimated flux density of the source at some given frequencies.
-        - notes : str  [default = None]
+        notes : str, optional
             Some notes that you want to add for further information on the source.
-        - other_names : list[str]  [default = None]
+        other_names : list[str], optional
             A list of other possible names that the source may have.
-        - kwargs
-            keyword arguments to be passed to astropy.coordinates.SkyCoord() if needed.
+        **kwargs
+            Keyword arguments to be passed to astropy.coordinates.SkyCoord() if needed.
             For example, the 'unit=' parameter.
 
-        If both provided, the given coordinates will be used for the given source.
+        Notes
+        -----
+        If both name and coordinates are provided, the given coordinates will be used for the given source.
 
-        It may raise:
-        - NameResolveError: if the name is not recognized (and no coordinates are provided)
-        - ValueError: if the coordinates have an unrecognized format.
-        - AttributeError: if neither name or coordinates are provided, or name is empty.
+        Raises
+        ------
+        NameResolveError
+            If the name is not recognized (and no coordinates are provided).
+        ValueError
+            If the coordinates have an unrecognized format.
+        AttributeError
+            If neither name or coordinates are provided, or name is empty.
         """
         if not isinstance(name, str):
             raise ValueError("'name' for Source needs to be a string (single source allowed).")
@@ -226,51 +253,51 @@ class Source(FixedTarget):
 
     @property
     def other_names(self) -> list[str]:
-        """Returns a list of other possible names to refer to this source.
-        It may be None, if there are no other names.
-        """
+        """List of other possible names to refer to this source."""
         return self._other_names
 
     @other_names.setter
     def other_names(self, other_names: list[str]):
-        """Sets a list of other possible names to refer to this source.
-        """
+        """Sets a list of other possible names to refer to this source."""
         self._other_names = other_names
 
     @property
     def type(self) -> SourceType:
-        """Returns the type of the source.
-        """
+        """Type of the source."""
         return self._type
 
     @property
     def flux(self) -> Optional[SourceFlux]:
-        """Returns the estimated flux of the source.
-        """
+        """Estimated flux of the source."""
         return self._flux
 
     @property
     def notes(self) -> Optional[str]:
-        """Returns some notes on the source.
-        """
+        """Notes on the source."""
         return self._notes
 
     @staticmethod
     def get_coordinates_from_name(src_name: str) -> coord.SkyCoord:
         """Returns the coordinates of a source by searching for them given the source name.
+
         First it searches in the RFC catalog, and if not found, in the ICRS catalogs.
 
-        Inputs
-        - src_name : str
+        Parameters
+        ----------
+        src_name : str
             Name of the source to search for.
 
         Returns
-        - astropy.coordinates.SkyCoord
+        -------
+        astropy.coordinates.SkyCoord
             The coordinates of the source, if found.
 
         Raises
-        - NameResolveError: If there is no connection or unable to find ICRS sources.
-        - ValueError: If the coordinates have an unrecognized format.
+        ------
+        NameResolveError
+            If there is no connection or unable to find ICRS sources.
+        ValueError
+            If the coordinates have an unrecognized format.
         """
         try:
             return Source.get_rfc_coordinates(src_name)
@@ -281,19 +308,24 @@ class Source(FixedTarget):
     def source_from_name(cls, src_name: str, source_type: SourceType = SourceType.TARGET) -> Self:
         """Returns a Source object by finding the coordinates from its name.
 
-        Inputs
-        - src_name : str
+        Parameters
+        ----------
+        src_name : str
             Name of the source to search for.
-        - source_type : SourceType
-            Type of the source (default: TARGET).
+        source_type : SourceType, optional
+            Type of the source. Default is TARGET.
 
         Returns
-        - Self
+        -------
+        Self
             A new Source object with coordinates from either RFC catalog or ICRS catalogs.
 
         Raises
-        - NameResolveError: If the source cannot be found in any catalog.
-        - ValueError: If the coordinates have an unrecognized format.
+        ------
+        NameResolveError
+            If the source cannot be found in any catalog.
+        ValueError
+            If the coordinates have an unrecognized format.
         """
         return cls(src_name, coordinates=Source.get_coordinates_from_name(src_name), source_type=source_type)
 
@@ -301,15 +333,17 @@ class Source(FixedTarget):
     def parse_source_spec(spec: str) -> tuple[Optional[str], Optional[str]]:
         """Parse a source specification that may contain 'name/coordinates'.
 
-        Inputs
-        - spec : str
+        Parameters
+        ----------
+        spec : str
             Source spec in one of these forms:
             a) 'name/coordinates' — both a custom name and explicit coordinates.
             b) 'coordinates' only (contains h/m/d/s or ':' patterns).
             c) 'name' only — to be resolved via catalog lookup.
 
         Returns
-        - tuple[str | None, str | None]
+        -------
+        tuple[str | None, str | None]
             (name, coord_str). At least one will be non-None.
             If '/' is present, name is the part before '/' and coord_str the part after.
             If no '/', returns (None, spec) when spec looks like coordinates,
@@ -329,15 +363,19 @@ class Source(FixedTarget):
     def _parse_coord_str(cls, coord_str: str) -> coord.SkyCoord:
         """Parse a coordinate string in 'XXhXXmXXs XXdXXmXXs' or 'HH:MM:SS DD:MM:SS' format.
 
-        Inputs
-        - coord_str : str
+        Parameters
+        ----------
+        coord_str : str
             Coordinate string to parse.
 
         Returns
-        - astropy.coordinates.SkyCoord
+        -------
+        astropy.coordinates.SkyCoord
 
         Raises
-        - ValueError: If the coordinate format is invalid.
+        ------
+        ValueError
+            If the coordinate format is invalid.
         """
         if all(char in coord_str for char in ('h', 'm', 'd', 's')):
             return coord.SkyCoord(coord_str)
@@ -354,22 +392,27 @@ class Source(FixedTarget):
     def source_from_str(cls, src: str, source_type: SourceType = SourceType.TARGET) -> Self:
         """Returns a Source object from a source name, coordinate string, or 'name/coordinates'.
 
-        Inputs
-        - src : str
+        Parameters
+        ----------
+        src : str
             One of:
             a) 'name/coordinates' — use the given name with explicit coordinates.
             b) Coordinates in 'XXhXXmXXs XXdXXmXXs' or 'HH:MM:SS DD:MM:SS' format.
             c) A source name to be looked up in catalogs.
-        - source_type : SourceType
-            Type of the source (default: TARGET).
+        source_type : SourceType, optional
+            Type of the source. Default is TARGET.
 
         Returns
-        - Self
+        -------
+        Self
             A new Source object with the specified coordinates.
 
         Raises
-        - ValueError: If the coordinate format is invalid.
-        - NameResolveError: If the source name cannot be found in catalogs.
+        ------
+        ValueError
+            If the coordinate format is invalid.
+        NameResolveError
+            If the source name cannot be found in catalogs.
         """
         name, coord_str = cls.parse_source_spec(src)
 
@@ -388,17 +431,22 @@ class Source(FixedTarget):
         This method uses an in-memory cache of the RFC catalog for fast lookups,
         avoiding subprocess calls and file I/O on repeated accesses.
 
-        Inputs
-        - src_name : str
+        Parameters
+        ----------
+        src_name : str
             Name of the source to search for in the RFC catalog (case-insensitive).
 
         Returns
-        - astropy.coordinates.SkyCoord
+        -------
+        astropy.coordinates.SkyCoord
             The coordinates of the source from the RFC catalog.
 
         Raises
-        - ValueError: If the source name is not found in the RFC catalog.
-        - RuntimeError: If no RFC catalog files are found.
+        ------
+        ValueError
+            If the source name is not found in the RFC catalog.
+        RuntimeError
+            If no RFC catalog files are found.
         """
         catalog = _load_rfc_catalog()
         src_upper = src_name.upper()
@@ -412,14 +460,16 @@ class Source(FixedTarget):
     def sun_separation(self, times: Time) -> Sequence[u.Quantity]:
         """Returns the separation of the source to the Sun at the given epoch(s).
 
-        Inputs
-        - times : astropy.time.Time
+        Parameters
+        ----------
+        times : astropy.time.Time
             An array of times defining the duration of the observation. The first time
             defines the start and the last one the end of the observation. Higher time
             resolution provides more precise values but increases computation time.
 
         Returns
-        - Sequence[astropy.units.Quantity]
+        -------
+        Sequence[astropy.units.Quantity]
             The angular separation between the source and the Sun at each given time.
         """
         return self.coord.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
@@ -427,16 +477,18 @@ class Source(FixedTarget):
     def sun_constraint(self, min_separation: u.Quantity, times: Optional[Time] = None) -> Time:
         """Returns times when the Sun is too close to observe the source.
 
-        Inputs
-        - min_separation : astropy.units.Quantity
+        Parameters
+        ----------
+        min_separation : astropy.units.Quantity
             Minimum allowed angular separation between source and Sun.
             See `freqsetups.solar_separations` for default values per band.
-        - times : astropy.time.Time
+        times : astropy.time.Time, optional
             Times to check Sun separation. If None, checks full current year
             at 1-day resolution.
 
         Returns
-        - astropy.time.Time
+        -------
+        astropy.time.Time
             Times when Sun is closer than min_separation. Empty if never too close.
         """
         if times is None:
@@ -452,12 +504,16 @@ class Source(FixedTarget):
 def _load_rfc_catalog() -> dict[str, tuple[str, str, str]]:
     """Load the RFC catalog file into memory and cache it.
 
-    Returns:
+    Returns
+    -------
+    dict[str, tuple[str, str, str]]
         Dictionary mapping source names (uppercase) to tuples of (IVS name, J2000 name, coordinate string).
         The coordinate string is in format 'XXhXXmXXs XXdXXmXXs'.
 
-    Raises:
-        RuntimeError: If no RFC catalog files are found.
+    Raises
+    ------
+    RuntimeError
+        If no RFC catalog files are found.
     """
     global _RFC_CATALOG_CACHE
 
@@ -490,11 +546,15 @@ def _load_rfc_catalog() -> dict[str, tuple[str, str, str]]:
 def _format_dec_coordinate(dec_str: str) -> str:
     """Ensure declination string has proper sign prefix for SkyCoord parsing.
 
-    Args:
-        dec_str: Declination string in format 'DD:MM:SS' or '+DD:MM:SS' or '-DD:MM:SS'
+    Parameters
+    ----------
+    dec_str : str
+        Declination string in format 'DD:MM:SS' or '+DD:MM:SS' or '-DD:MM:SS'.
 
-    Returns:
-        Formatted declination string with guaranteed sign prefix
+    Returns
+    -------
+    str
+        Formatted declination string with guaranteed sign prefix.
     """
     if not dec_str.startswith(('+', '-')):
         dec_str = '+' + dec_str
@@ -517,6 +577,11 @@ def _resolve_coord_str(entry: dict, name: str) -> Optional[str]:
         Parsed TOML sub-dict for a phasecal, checksource, or target.
     name : str
         Source name, used for catalog/online lookup when coordinates are absent.
+
+    Returns
+    -------
+    str or None
+        SkyCoord-parseable coordinate string, or None if resolution fails.
     """
     import logging as _log
     if 'coordinates' in entry:
@@ -543,61 +608,111 @@ def _resolve_coord_str(entry: dict, name: str) -> Optional[str]:
 
 
 class SourceCatalog:
+    """Catalog of source blocks for scheduling."""
+
     def __init__(self, personal_catalog: Optional[str] = None):
+        """Initializes a SourceCatalog.
+
+        Parameters
+        ----------
+        personal_catalog : str, optional
+            Path to a personal TOML catalog file to read.
+        """
         self._blocks: dict[str, dict[str, ScanBlock]] = dict()
+        # Per-instance caches for source_names()/sources(), keyed by include_calibrators.
+        # Invalidated whenever a catalog file is (re)read.
+        self._cache_source_names: dict[bool, list[str]] = {}
+        self._cache_sources: dict[bool, dict[str, Source]] = {}
         if personal_catalog is not None:
             self.read_personal_catalog(personal_catalog)
 
     @property
     def blocknames(self):
+        """List of all block names in the catalog."""
         return [bb for b in self._blocks.values() for bb in b.keys()]
 
     @property
     def blocks(self):
+        """Dictionary of all blocks in the catalog."""
         return {bb_key: bb_value for b in self._blocks.values() for bb_key, bb_value in b.items()}
 
     @property
     def targets(self):
+        """Target blocks in the catalog."""
         return self._blocks['targets']
 
     @property
     def pulsars(self):
+        """Pulsar blocks in the catalog, or None if none."""
         return self._blocks['pulsars'] if 'pulsars' in self._blocks else None
 
     @property
     def ampcals(self):
+        """Amplitude calibrator blocks in the catalog, or None if none."""
         return self._blocks['ampcals'] if 'ampcals' in self._blocks else None
 
     @property
     def fringefinders(self):
+        """Fringe finder blocks in the catalog, or None if none."""
         return self._blocks['fringefinders'] if 'fringefinders' in self._blocks else None
 
     @property
     def polcals(self):
+        """Polarization calibrator blocks in the catalog, or None if none."""
         return self._blocks['polcals'] if 'polcals' in self._blocks else None
 
-    @functools.cache
     def source_names(self, include_calibrators: bool = False) -> list[str]:
         """Returns the names of all sources in the database.
+
+        Parameters
+        ----------
+        include_calibrators : bool, optional
+            If True, includes calibrator sources. Default is False.
+
+        Returns
+        -------
+        list[str]
+            List of source names.
         """
-        if include_calibrators:
-            return list([s.name for b in self._blocks.values() for bs in b.values() for s in bs.sources()])
+        if include_calibrators not in self._cache_source_names:
+            if include_calibrators:
+                self._cache_source_names[include_calibrators] = \
+                    [s.name for b in self._blocks.values() for bs in b.values() for s in bs.sources()]
+            else:
+                self._cache_source_names[include_calibrators] = \
+                    [s.name for b in self._blocks['targets'].values() for s in b.sources()]
 
-        return list([s.name for b in self._blocks['targets'].values() for s in b.sources()])
+        return self._cache_source_names[include_calibrators]
 
-    @functools.cache
     def sources(self, include_calibrators: bool = False) -> dict[str, Source]:
         """Returns all sources.
-        """
-        if include_calibrators:
-            return {s.name: s for b in self._blocks.values() for bs in b.values() for s in bs.sources()}
 
-        return {s.name: s for b in self._blocks['targets'].values() for s in b.sources()}
+        Parameters
+        ----------
+        include_calibrators : bool, optional
+            If True, includes calibrator sources. Default is False.
+
+        Returns
+        -------
+        dict[str, Source]
+            Dictionary mapping source names to Source objects.
+        """
+        if include_calibrators not in self._cache_sources:
+            if include_calibrators:
+                self._cache_sources[include_calibrators] = \
+                    {s.name: s for b in self._blocks.values() for bs in b.values() for s in bs.sources()}
+            else:
+                self._cache_sources[include_calibrators] = \
+                    {s.name: s for b in self._blocks['targets'].values() for s in b.sources()}
+
+        return self._cache_sources[include_calibrators]
 
     def __contains__(self, item: str):
+        """Returns True if the item is in the catalog."""
         return item in self.blocknames
 
     def __getitem__(self, item: str):
+        """Returns the block with the given name."""
         for key in self._blocks:
             if item in self._blocks[key]:
                 return self._blocks[key][item]
@@ -607,15 +722,22 @@ class SourceCatalog:
     def read_personal_catalog(self, path: str):
         """Reads a TOML file containing source information for scheduling.
 
-        Inputs
-        - path : str
+        Parameters
+        ----------
+        path : str
             Path to the TOML containing the source catalog.
 
         Raises
-        - FileNotFoundError: If the catalog file cannot be found.
-        - tomllib.TOMLDecodeError: If the TOML file is malformed.
-        - ValueError: If the source type is not recognized.
+        ------
+        FileNotFoundError
+            If the catalog file cannot be found.
+        tomllib.TOMLDecodeError
+            If the TOML file is malformed.
+        ValueError
+            If the source type is not recognized.
         """
+        self._cache_source_names.clear()
+        self._cache_sources.clear()
         with open(path, 'rb') as sources_toml:
             catalog = tomllib.load(sources_toml)
 
@@ -706,13 +828,21 @@ class SourceCatalog:
     def read_rfc_catalog(self, path: Optional[Union[str, Path]] = None):
         """Reads the RFC catalog file.
 
-        Inputs
-        - path : str or Path, optional
+        Parameters
+        ----------
+        path : str or Path, optional
             Path to the RFC catalog file. If None, uses the default catalog.
 
         Raises
-        - FileNotFoundError: If the catalog file cannot be found.
-        - ValueError: If the catalog format is invalid.
+        ------
+        FileNotFoundError
+            If the catalog file cannot be found.
+        ValueError
+            If the catalog format is invalid.
+
+        Notes
+        -----
+        This method is not implemented.
         """
         raise NotImplementedError
         # TODO: convert this to another module and use duckDB, should be much faster
@@ -760,6 +890,17 @@ class SourceCatalog:
 
 @dataclass
 class Scan:
+    """Defines a single scan of a source.
+
+    Attributes
+    ----------
+    source : Source
+        The source to observe.
+    duration : u.Quantity
+        Duration of the scan. Default is 10 minutes.
+    every : int
+        If positive, repeat this scan every N cycles. If -1, observe on every cycle. Default is -1.
+    """
     source: Source
     duration: u.Quantity = 10*u.min
     every: int = -1
@@ -767,23 +908,29 @@ class Scan:
 
 class ScanBlock:
     """Defines a list of scans, each of them defined as a pointing to a given source during a given time.
+
+    A block can consist of a single target scan (for non phase-referencing observations),
+    which will be repeated until the maximum observing time is filled.
+    In phase-referencing observations, a scan block can consist of one or multiple target scans,
+    the associated phase-referencing scans, and possible check sources to be observed every
+    certain number of target scans.
     """
 
     def __init__(self, scans: list[Scan]):
-        """Creates a block of scans, ideally a block to be observed with the target scans, phase-reference
-        calibrator source (if needed), and check sources.
+        """Creates a block of scans.
 
-        For example, a block can consist on a single target scan (if this is a non phase-referencing
-        observation).
-        Then such scan will be repeated until fill the maximum observing time.
+        Ideally a block to be observed with the target scans, phase-reference calibrator source
+        (if needed), and check sources.
 
-        On the contrary, in a phase-referencing observation a scan block can consist on one or
-        multiple target scans, the associated phase-referencing scans, and possible check sources
-        to be observed every certain number of target scans.
+        Parameters
+        ----------
+        scans : list[Scan]
+            List of scans to include in the block.
 
-        If you want to schedule a fringe finder regularly during the observation, that is also possible.
-        However, for isolated scans on these sources it will be preferred to be defined as different
-        scan blocks.
+        Raises
+        ------
+        ValueError
+            If the scan block contains an empty list of scans or if any element is not a Scan.
         """
         if len(scans) == 0:
             raise ValueError("The scan block cannot contain an empty list of scans.")
@@ -796,16 +943,36 @@ class ScanBlock:
 
     @property
     def scans(self) -> list[Scan]:
+        """List of scans in the block."""
         return self._scans
 
     def has(self, source_type: SourceType) -> bool:
-        """Returns if the given source type is included among the ones observed in the provided
-        list of scans.
+        """Returns if the given source type is included among the ones observed in the provided list of scans.
+
+        Parameters
+        ----------
+        source_type : SourceType
+            The source type to check for.
+
+        Returns
+        -------
+        bool
+            True if the source type is present in the block.
         """
         return any([s.source.type is source_type for s in self.scans])
 
     def sources(self, source_type: Optional[SourceType] = None) -> list[Source]:
         """Returns the sources with the given source types in this block.
+
+        Parameters
+        ----------
+        source_type : SourceType, optional
+            The source type to filter by. If None, returns all sources.
+
+        Returns
+        -------
+        list[Source]
+            List of sources matching the given type, or all sources if type is None.
         """
         if source_type is None:
             return [s.source for s in self.scans]
@@ -814,6 +981,16 @@ class ScanBlock:
 
     def sourcenames(self, source_type: Optional[SourceType] = None) -> list[str]:
         """Returns the source names with the given source types in this block.
+
+        Parameters
+        ----------
+        source_type : SourceType, optional
+            The source type to filter by. If None, returns all source names.
+
+        Returns
+        -------
+        list[str]
+            List of source names matching the given type, or all names if type is None.
         """
         if source_type is None:
             return [s.source.name for s in self.scans]
@@ -821,6 +998,23 @@ class ScanBlock:
         return [s.source.name for s in self.scans if s.source.type is source_type]
 
     def scan_with_sourcename(self, source_name: str) -> Optional[Scan]:
+        """Returns the scan with the given source name.
+
+        Parameters
+        ----------
+        source_name : str
+            The source name to search for.
+
+        Returns
+        -------
+        Scan or None
+            The scan with the given source name, or None if not found.
+
+        Raises
+        ------
+        ValueError
+            If the source is not present in any scan.
+        """
         for scan in self._scans:
             if scan.source.name == source_name:
                 return scan
@@ -829,6 +1023,16 @@ class ScanBlock:
 
     def scans_with_sources(self, source_type: SourceType) -> list[Scan]:
         """Returns the scans with the given source types in this block.
+
+        Parameters
+        ----------
+        source_type : SourceType
+            The source type to filter by.
+
+        Returns
+        -------
+        list[Scan]
+            List of scans matching the given source type.
         """
         return [s for s in self._scans if s.source.type == source_type]
 
@@ -836,11 +1040,12 @@ class ScanBlock:
         """Returns the fractional time dedicated to each source observed within the scan block.
 
         Returns
-            fractional_time : dict[str, float]
-                The fraction of time estimated to be spent on each particular source assuming
-                the durations of the other scans to be observed in this block.
-                The keys of the dict are the source names, and the values are the fraction of time,
-                from the total scan block time, spent on the source.
+        -------
+        dict[str, float]
+            The fraction of time estimated to be spent on each particular source assuming
+            the durations of the other scans to be observed in this block. The keys of the dict
+            are the source names, and the values are the fraction of time, from the total scan block
+            time, spent on the source.
         """
         if len(self._frac_time.keys()) > 0:
             return self._frac_time
@@ -853,24 +1058,26 @@ class ScanBlock:
 
         total_duration = sum([s.duration for s in valid_scans if s.every <= 0])
 
-        # Get positive every values
+        # Over mcm_every cycles, a scan with 'every = N > 0' is observed mcm_every/N times,
+        # while the base scans (every <= 0) are observed on every cycle.
         positive_every = [s.every for s in valid_scans if s.every > 0]
         if positive_every:
             mcm_every = np.lcm.reduce(positive_every)
             total_duration = total_duration*mcm_every + \
-                sum([s.duration*(s.every/mcm_every) for s in valid_scans if s.every > 0])
+                sum([s.duration*(mcm_every/s.every) for s in valid_scans if s.every > 0])
         else:
             mcm_every = 1
 
         for ascan in valid_scans:
             if ascan.duration is not None:
                 self._frac_time[ascan.source.name] = ascan.duration*mcm_every / \
-                                                     (ascan.every if ascan.every >= 0 else 1) / total_duration
+                                                     (ascan.every if ascan.every > 0 else 1) / total_duration
 
         return self._frac_time
 
     def fill(self, max_duration: u.Quantity) -> list[Scan]:
         """Given the list of scans, returns the final arrangement of scans that fills the available time.
+
         This will follow the following conditions:
         - Repeats the target scan within the given time. If a `phasecal` is provided, then it will always
           bracket each target scan with this `phasecal`. If two or more phasecal are provided (e.g. P1, P2),
@@ -880,8 +1087,26 @@ class ScanBlock:
           For example, if no phasecal are provided and N = 3 for the C source, then: T T C T T C ...
           And if one phasecal is provided: P T P T P C P T P...
 
-         NOTE: block scans should be easy!  This program is not prepared for the situation when you have
-         multiple targets with multiple phase reference sources mixed.
+        Parameters
+        ----------
+        max_duration : u.Quantity
+            Maximum duration to fill with scans.
+
+        Returns
+        -------
+        list[Scan]
+            The final arrangement of scans that fills the available time.
+
+        Raises
+        ------
+        ValueError
+            If the max_duration is shorter than the time of all single scans, or if phase calibrator
+            scans are provided without target scans.
+
+        Notes
+        -----
+        Block scans should be easy! This program is not prepared for the situation when you have
+        multiple targets with multiple phase reference sources mixed.
         """
         # safety Checks
         if reduce(operator.add, [s.duration.to(u.min) for s in self.scans]) > max_duration:
@@ -944,7 +1169,9 @@ class ScanBlock:
         return main_loop
 
     def __iter__(self):
+        """Iterate over scans in the block."""
         yield from self._scans
 
     def __contains__(self, a_source_name: str):
+        """Returns True if the source name is in the block."""
         return a_source_name in self.sourcenames()

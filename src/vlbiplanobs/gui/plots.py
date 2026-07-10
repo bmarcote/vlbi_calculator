@@ -11,20 +11,21 @@ from vlbiplanobs import sources
 def _compute_gst_ticks(times_dt: list, gst_hours: list) -> tuple[list, list]:
     """Compute rounded major-tick positions for a GST top axis paired with a UTC bottom axis.
 
-    The GST values returned by astropy live in [0, 24) and therefore wrap around midnight.
-    To produce monotonically-increasing tick positions, the GST series is first unwrapped
-    (so it spans, e.g., 22h .. 30h instead of 22h .. 6h). Major-tick positions are picked
-    on rounded values (whole hours, half hours, ...) inside that unwrapped range and then
-    mapped back to UTC datetimes via linear interpolation between consecutive samples.
+    The GST values are unwrapped to handle midnight wraparound, then rounded tick
+    positions are mapped back to UTC datetimes via linear interpolation.
 
-    Inputs
-    - times_dt: sequence of UTC ``datetime`` objects (length n, monotonic).
-    - gst_hours: sequence of GST hours in [0, 24) (length n, same sampling as ``times_dt``).
+    Parameters
+    ----------
+    times_dt : list
+        Sequence of UTC datetime objects (length n, monotonic).
+    gst_hours : list
+        Sequence of GST hours in [0, 24) (length n, same sampling as times_dt).
 
     Returns
-    - (tickvals, ticktext) where ``tickvals`` is a list of UTC ``datetime`` objects placed
-      on rounded GST values and ``ticktext`` is the matching list of ``"HH:MM"`` strings
-      (always taken modulo 24h).
+    -------
+    tuple[list, list]
+        (tickvals, ticktext) where tickvals is a list of UTC datetime objects
+        placed on rounded GST values and ticktext is the matching list of "HH:MM" strings.
     """
     n = len(times_dt)
     if n < 2 or len(gst_hours) != n:
@@ -92,12 +93,29 @@ def _compute_gst_ticks(times_dt: list, gst_hours: list) -> tuple[list, list]:
 
 
 def _build_gst_axis_config(times_dt: list, gst_hours: list, time_range: list) -> Optional[dict]:
-    """Builds the layout config for a GST top axis overlaying the UTC bottom axis.
+    """Build the layout config for a GST top axis overlaying the UTC bottom axis.
 
     Returns None when the GST axis cannot be built (insufficient samples, no span).
-    The returned dict contains the ``xaxis2`` layout entry with rounded ``"HH:MM"`` ticks
-    and an explicit ``range`` covering the same UTC window as the bottom axis. We do
-    *not* use ``matches='x'`` / ``anchor='y'`` because they conflict with
+    The returned dict contains the xaxis2 layout entry with rounded "HH:MM" ticks
+    and an explicit range covering the same UTC window as the bottom axis.
+
+    Parameters
+    ----------
+    times_dt : list
+        Sequence of UTC datetime objects.
+    gst_hours : list
+        Sequence of GST hours in [0, 24).
+    time_range : list
+        UTC time range for the plot.
+
+    Returns
+    -------
+    dict or None
+        Layout config for the GST axis, or None if it cannot be built.
+
+    Notes
+    -----
+    Does not use ``matches='x'`` / ``anchor='y'`` because they conflict with
     ``overlaying='x'`` in several plotly versions (the secondary axis silently fails
     to render).
     """
@@ -115,15 +133,21 @@ def _build_gst_axis_config(times_dt: list, gst_hours: list, time_range: list) ->
 
 
 def _apply_gst_top_axis(fig: go.Figure, axis_cfg: dict, y_anchor: float = 0.0) -> None:
-    """Adds the GST top axis (xaxis2) to ``fig`` plus a fully transparent anchor trace.
+    """Add the GST top axis (xaxis2) to fig plus a fully transparent anchor trace.
 
-    Plotly only draws a secondary axis when at least one trace is bound to it *and*
-    that trace contributes points (a scatter with ``y=[None, None]`` is treated as
-    empty and the axis silently disappears). This helper therefore plots two markers
-    at ``y=y_anchor`` (defaulting to ``0``, which sits on the existing y-axis) with
-    fully transparent markers and disabled hover, so the axis is rendered without
-    visually touching the data.
-    No-ops when ``axis_cfg`` does not request a GST top axis.
+    Plotly only draws a secondary axis when at least one trace is bound to it and
+    that trace contributes points. This helper plots two markers at y=y_anchor
+    with fully transparent markers and disabled hover, so the axis is rendered
+    without visually touching the data.
+
+    Parameters
+    ----------
+    fig : go.Figure
+        Plotly figure to add the axis to.
+    axis_cfg : dict
+        Axis configuration dictionary.
+    y_anchor : float, optional
+        Y-coordinate for the anchor trace. Default is 0.0.
     """
     cfg = axis_cfg.get('xaxis2_config')
     if cfg is None:
@@ -138,18 +162,20 @@ def _apply_gst_top_axis(fig: go.Figure, axis_cfg: dict, y_anchor: float = 0.0) -
 
 
 def _get_axis_config(o):
-    """Returns axis configuration for elevation plots based on observation time mode.
+    """Return axis configuration for elevation plots based on observation time mode.
 
-    Inputs
-    - o : VLBIObs
+    Parameters
+    ----------
+    o : VLBIObs
         VLBI observation object with times and gstimes attributes.
 
     Returns
-    - dict with keys:
+    -------
+    dict
+        Dictionary with keys:
         - xaxis_range: [start, end] datetime range for the bottom (UTC) x-axis.
         - xaxis_title: title for the bottom x-axis.
-        - xaxis2_config: layout dict for the secondary GST x-axis (None when not applicable,
-          e.g. when the user has not picked an epoch and the bottom axis already shows GST).
+        - xaxis2_config: layout dict for the secondary GST x-axis (None when not applicable).
     """
     time_range = [o.times.datetime[0], o.times.datetime[-1]]
 
@@ -165,8 +191,19 @@ def _get_axis_config(o):
 
 
 def elevation_plot_curves(o) -> Optional[go.Figure]:
-    """Creates the plot showing when the different antennas can observe a given source,
-    with the old style: with the elevation in the y-axis.
+    """Create the plot showing when antennas can observe a source (old style).
+
+    Shows elevation on the y-axis.
+
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object.
+
+    Returns
+    -------
+    go.Figure or None
+        Plotly figure, or None if observation is invalid.
     """
     if o is None or not o.scans:
         return None
@@ -226,8 +263,21 @@ def elevation_plot_curves(o) -> Optional[go.Figure]:
 
 
 def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
-    """Creates the plot showing when the different antennas can observe a given source.
+    """Create the plot showing when antennas can observe a source.
+
     Optimized version using Heatmap instead of individual traces.
+
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object.
+    show_colorbar : bool, optional
+        Whether to show the colorbar. Default is False.
+
+    Returns
+    -------
+    go.Figure or None
+        Plotly figure, or None if observation is invalid.
     """
     if o is None or not o.scans:
         return None
@@ -239,10 +289,13 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
                         subplot_titles=[f"Elevations for {src_block}" for src_block in srcup]
                         if len(srcup) > 1 else '')
 
+    # (row, col, ant_names) per subplot so each one gets its own y-axis labels
+    subplot_ant_names: list[tuple[int, int, list[str]]] = []
     for src_i, src_block in enumerate(srcup):
         ant_names = list(srcup[src_block].keys())
         n_ants = len(ant_names)
         n_times = len(o.times.datetime)
+        subplot_ant_names.append((src_i % 4 + 1, src_i // 4 + 1, ant_names))
 
         # Build elevation matrix (antennas x times)
         z_matrix = np.full((n_ants, n_times), np.nan)
@@ -301,15 +354,16 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
                    mirror=bottom_mirror, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
                    showgrid=False, zeroline=False,
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
-                   tickmode='array',
-                   tickvals=list(range(1, n_ants + 1)),
-                   ticktext=list(reversed(ant_names)),
-                   showgrid=False, zeroline=False,
-                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         margin=dict(l=2, r=2, t=45, b=0))
 
     fig.update_layout(**layout_kwargs)
+    # Style all y axes, then label each subplot with its own block's antenna names.
+    fig.update_yaxes(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
+                     showgrid=False, zeroline=False,
+                     minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False))
+    for row, col, names in subplot_ant_names:
+        fig.update_yaxes(tickmode='array', tickvals=list(range(1, len(names) + 1)),
+                         ticktext=list(reversed(names)), row=row, col=col)
     if show_colorbar:
         fig.update_layout(coloraxis=dict(colorscale='Viridis'),
                           coloraxis_colorbar=dict(title='Elevation (degrees)'))
@@ -320,7 +374,18 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
 
 def serialize_uv_data(o) -> Optional[dict]:
     """Serialize UV data for storage in dcc.Store.
+
     Returns dict of baseline -> {'x': [...], 'y': [...]} with both +/- uv points.
+
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object.
+
+    Returns
+    -------
+    dict or None
+        Serialized UV data, or None if observation is invalid.
     """
     if o is None or not o.scans:
         return None
@@ -337,7 +402,20 @@ def serialize_uv_data(o) -> Optional[dict]:
 
 
 def uvplot_from_data(uv_data: dict, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure]:
-    """Creates UV coverage plot from serialized UV data."""
+    """Create UV coverage plot from serialized UV data.
+
+    Parameters
+    ----------
+    uv_data : dict
+        Serialized UV data from serialize_uv_data.
+    filter_antennas : list[str] or None, optional
+        Antennas to highlight in the plot. Default is None.
+
+    Returns
+    -------
+    go.Figure or None
+        Plotly figure, or None if data is invalid.
+    """
     if uv_data is None:
         return None
 
@@ -403,7 +481,20 @@ def uvplot_from_data(uv_data: dict, filter_antennas: Optional[list[str]] = None)
 
 
 def uvplot(o, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure]:
-    """Creates UV coverage plot. Optimized to batch all points into fewer traces."""
+    """Create UV coverage plot optimized to batch points into fewer traces.
+
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object.
+    filter_antennas : list[str] or None, optional
+        Antennas to highlight in the plot. Default is None.
+
+    Returns
+    -------
+    go.Figure or None
+        Plotly figure, or None if observation is invalid.
+    """
     if o is None or not o.scans:
         return None
 
@@ -477,7 +568,17 @@ def serialize_elevation_data(o) -> Optional[dict]:
     """Serialize elevation/observability data for deferred plot rendering.
 
     Returns a JSON-serializable dict with all data needed by elevation_plot_from_data
-    and elevation_curves_from_data. Returns None if no scans.
+    and elevation_curves_from_data.
+
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object.
+
+    Returns
+    -------
+    dict or None
+        Serialized elevation data, or None if no scans.
     """
     if o is None or not o.scans:
         return None
@@ -521,11 +622,21 @@ def serialize_elevation_data(o) -> Optional[dict]:
 
 
 def _get_axis_config_from_data(data: dict) -> dict:
-    """Build axis config (incl. GST top axis when applicable) from serialized elevation data.
+    """Build axis config from serialized elevation data.
 
-    Mirrors :func:`_get_axis_config` but reads from the JSON-serialized payload produced by
-    :func:`serialize_elevation_data` (``times_iso`` + ``gstimes_hours``). The GST top axis is
-    only built for fixed-epoch observations that carry GST samples matching the time grid.
+    Mirrors _get_axis_config but reads from JSON-serialized payload produced by
+    serialize_elevation_data. The GST top axis is only built for fixed-epoch
+    observations that carry GST samples matching the time grid.
+
+    Parameters
+    ----------
+    data : dict
+        Serialized elevation data from serialize_elevation_data.
+
+    Returns
+    -------
+    dict
+        Axis configuration dictionary.
     """
     times = [datetime.fromisoformat(t) for t in data['times_iso']]
     time_range = [times[0], times[-1]]
@@ -539,7 +650,20 @@ def _get_axis_config_from_data(data: dict) -> dict:
 
 
 def elevation_plot_from_data(data: dict, show_colorbar: bool = False) -> Optional[go.Figure]:
-    """Render the heatmap elevation plot from serialized data (no obs object needed)."""
+    """Render the heatmap elevation plot from serialized data.
+
+    Parameters
+    ----------
+    data : dict
+        Serialized elevation data from serialize_elevation_data.
+    show_colorbar : bool, optional
+        Whether to show the colorbar. Default is False.
+
+    Returns
+    -------
+    go.Figure or None
+        Plotly figure, or None if data is invalid.
+    """
     if data is None:
         return None
 
@@ -550,9 +674,12 @@ def elevation_plot_from_data(data: dict, show_colorbar: bool = False) -> Optiona
     fig = make_subplots(rows=min(len(blocks), 4), cols=len(blocks) // 4 + 1,
                         subplot_titles=[f"Elevations for {sb}" for sb in blocks] if len(blocks) > 1 else '')
 
+    # (row, col, ant_names) per subplot so each one gets its own y-axis labels
+    subplot_ant_names: list[tuple[int, int, list[str]]] = []
     for src_i, (src_block, bdata) in enumerate(blocks.items()):
         ant_names = bdata['ant_names']
         n_ants = len(ant_names)
+        subplot_ant_names.append((src_i % 4 + 1, src_i // 4 + 1, ant_names))
         z_matrix = np.full((n_ants, n_times), np.nan)
         for anti, ant in enumerate(ant_names):
             vis = np.array(bdata['observability'][ant], dtype=bool)
@@ -584,17 +711,31 @@ def elevation_plot_from_data(data: dict, show_colorbar: bool = False) -> Optiona
                    mirror=bottom_mirror, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
                    showgrid=False, zeroline=False,
                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
-                   tickmode='array', tickvals=list(range(1, n_ants + 1)), ticktext=list(reversed(ant_names)),
-                   showgrid=False, zeroline=False,
-                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
         margin=dict(l=2, r=2, t=45, b=0))
+    # Style all y axes, then label each subplot with its own block's antenna names.
+    fig.update_yaxes(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
+                     showgrid=False, zeroline=False,
+                     minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False))
+    for row, col, names in subplot_ant_names:
+        fig.update_yaxes(tickmode='array', tickvals=list(range(1, len(names) + 1)),
+                         ticktext=list(reversed(names)), row=row, col=col)
     _apply_gst_top_axis(fig, axis_cfg)
     return fig
 
 
 def elevation_curves_from_data(data: dict) -> Optional[go.Figure]:
-    """Render the elevation curves plot from serialized data (no obs object needed)."""
+    """Render the elevation curves plot from serialized data.
+
+    Parameters
+    ----------
+    data : dict
+        Serialized elevation data from serialize_elevation_data.
+
+    Returns
+    -------
+    go.Figure or None
+        Plotly figure, or None if data is invalid.
+    """
     if data is None:
         return None
 
@@ -644,6 +785,16 @@ def serialize_worldmap_data(o) -> Optional[dict]:
     """Serialize station location/observability data for deferred worldmap rendering.
 
     Returns a JSON-serializable dict with all data needed by worldmap_from_data.
+
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object.
+
+    Returns
+    -------
+    dict or None
+        Serialized worldmap data, or None if observation is invalid.
     """
     if o is None:
         return None
@@ -667,7 +818,18 @@ def serialize_worldmap_data(o) -> Optional[dict]:
 
 
 def worldmap_from_data(data: dict) -> Optional[go.Figure]:
-    """Render the worldmap from serialized data (no obs object needed)."""
+    """Render the worldmap from serialized data.
+
+    Parameters
+    ----------
+    data : dict
+        Serialized worldmap data from serialize_worldmap_data.
+
+    Returns
+    -------
+    go.Figure or None
+        Plotly figure, or None if data is invalid.
+    """
     if data is None:
         return None
 
@@ -689,6 +851,18 @@ def worldmap_from_data(data: dict) -> Optional[go.Figure]:
 
 
 def plot_worldmap_stations(o) -> Optional[go.Figure]:
+    """Create a worldmap showing station locations and observability.
+
+    Parameters
+    ----------
+    o : VLBIObs
+        VLBI observation object.
+
+    Returns
+    -------
+    go.Figure or None
+        Plotly figure, or None if observation is invalid.
+    """
     if o is None:
         return None
 

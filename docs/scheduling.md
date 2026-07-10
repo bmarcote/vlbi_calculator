@@ -6,7 +6,11 @@ PlanObs includes a scheduler that generates pySCHED-compatible `.key` files for 
 
 The scheduler arranges scan blocks across your observation following VLBI conventions:
 
-- **Fringe finders**: 2× at start, 1× at end, every ~2h for long observations
+- **Fringe finders**: Auto-selected or specified sources, distributed throughout the observation
+- **Phase calibrators**: Auto-selected or specified sources for phase referencing
+- **Check sources**: Auto-selected or specified sources for calibration verification
+- **Polarization calibration**: Standard polcal sources (3C84, OQ208, DA193) at 10%, 50%, 90% of observation time
+- **eMERLIN 3C286**: Automatically added when eMERLIN stations are present
 - **Science blocks**: Optimized for antenna participation and elevation
 
 ## Generating a Schedule File
@@ -86,6 +90,14 @@ This produces the VEX file and other outputs needed for correlation.
 
 ## Scheduler Configuration
 
+### Auto-Selection Features
+
+The scheduler can automatically select calibrators for your observation:
+
+- **Fringe finders**: Use `--fringefinders N` to auto-select N bright calibrators from the RFC catalog, or specify named sources with `--fringefinders '3C273' '3C279'`.
+- **Phase calibrators**: Use `--phasecal` (empty) to auto-select the best phase calibrator based on unresolved flux, compactness, and proximity to the target. Specify named sources with `--phasecal 'J1229+0203'`.
+- **Check sources**: Use `--check-source` (empty) to auto-select a check source close to the target with similar properties to the phase calibrator.
+
 ### Fringe Finder Rules
 
 | Duration | Fringe Finders |
@@ -93,7 +105,7 @@ This produces the VEX file and other outputs needed for correlation.
 | < 3 hours | 2 at start, 1 at end |
 | ≥ 3 hours | 2 at start, 1 at end, + every ~2h |
 
-Each fringe finder scan is 5 minutes.
+Each fringe finder scan is 5 minutes. When multiple fringe finders are specified, they are distributed round-robin throughout the observation.
 
 ### Science Block Optimization
 

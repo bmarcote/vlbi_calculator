@@ -6,7 +6,7 @@ from typing import Optional
 from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
-from dash import Dash, html, dcc, Output, Input, State, MATCH, no_update
+from dash import Dash, html, dcc, Output, Input, State, MATCH, ALL, no_update
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
@@ -68,10 +68,22 @@ app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_
 def _params_to_obs(obs_params: dict, target_spec: Optional[str] = None) -> Optional[cli.VLBIObs]:
     """Rebuild a VLBIObs from serialised observation parameters.
 
-    The compute callback stores all the inputs it used in `store-obs-params` so the PDF
+    The compute callback stores all the inputs it used in store-obs-params so the PDF
     download callback can reconstruct the same observation without reading the GUI state
-    again. When ``target_spec`` is given, only that single target is included in the
-    rebuilt observation; otherwise the rebuild matches what the user saw on the page.
+    again. When target_spec is given, only that single target is included in the
+    rebuilt observation.
+
+    Parameters
+    ----------
+    obs_params : dict
+        Serialized observation parameters from store-obs-params.
+    target_spec : str or None, optional
+        Target specification to include. If None, all targets are included.
+
+    Returns
+    -------
+    VLBIObs or None
+        Reconstructed observation object, or None if params is invalid.
     """
     if obs_params is None:
         return None
@@ -100,8 +112,27 @@ def _params_to_obs(obs_params: dict, target_spec: Optional[str] = None) -> Optio
 def download_pdf_per_target(n_clicks, btn_id, obs_params: dict):
     """Generate and download a PDF summary for the target identified by the clicked button.
 
-    The button id is `{'type': 'btn-pdf', 'index': <target_spec>}`. A special index
-    ``'__no_target__'`` is used for the duration-only panel.
+    The button id is {'type': 'btn-pdf', 'index': <target_spec>}. A special index
+    '__no_target__' is used for the duration-only panel.
+
+    Parameters
+    ----------
+    n_clicks : int
+        Number of clicks on the download button.
+    btn_id : dict
+        Button ID with target specification in the 'index' field.
+    obs_params : dict
+        Serialized observation parameters from store-obs-params.
+
+    Returns
+    -------
+    dict
+        Download data for dcc.send_file.
+
+    Raises
+    ------
+    PreventUpdate
+        If no clicks or invalid observation parameters.
     """
     if not n_clicks or obs_params is None:
         raise PreventUpdate
@@ -122,7 +153,13 @@ def download_pdf_per_target(n_clicks, btn_id, obs_params: dict):
             logger.warning(f"Could not include figure in PDF: {fig_error}")
             tmpfile = outputs.summary_pdf(obs, show_figure=False)
         logger.info(f"PDF created at {tmpfile}.")
-        return dcc.send_file(tmpfile, filename=f"planobs_{safe_label}.pdf")
+        # send_file reads the file content into the response, so the temp file can go now.
+        download_data = dcc.send_file(tmpfile, filename=f"planobs_{safe_label}.pdf")
+        try:
+            os.remove(tmpfile)
+        except OSError:
+            logger.warning(f"Could not remove temporary PDF file {tmpfile}.")
+        return download_data
     except Exception as e:
         logger.exception(f"While downloading the PDF: {e}")
         raise PreventUpdate
@@ -159,7 +196,17 @@ app.clientside_callback(
 def _compute_one_target(target_spec: Optional[str], shared_kwargs: dict) -> tuple[Optional[cli.VLBIObs], Optional[str]]:
     """Run cli.main for a single target (or no target) and warm up its caches.
 
-    Returns ``(obs, error_message)``. ``error_message`` is None on success.
+    Parameters
+    ----------
+    target_spec : str or None
+        Target specification, or None for no target.
+    shared_kwargs : dict
+        Shared keyword arguments for cli.main.
+
+    Returns
+    -------
+    tuple[VLBIObs or None, str or None]
+        (obs, error_message). error_message is None on success.
     """
     targets = [target_spec] if target_spec is not None else None
     try:
@@ -207,6 +254,7 @@ def _compute_one_target(target_spec: Optional[str], shared_kwargs: dict) -> tupl
                Input('inttime', 'value'),
                Input('switch-specify-e-evn', 'value'),
                Input('switches-antennas', 'value')],
+              [State({'type': 'network-switch', 'index': ALL}, 'value')],
               suppress_callback_exceptions=True)
 def compute_observation_realtime(band: int,
                                   target_specs: Optional[list[str]],
@@ -214,13 +262,53 @@ def compute_observation_realtime(band: int,
                                   defined_epoch: bool, startdate: str, starttime: str,
                                   duration: int | float, datarate: int, subbands: int,
                                   channels: int, pols: int, inttime: int, e_evn: bool,
-                                  selected_antennas: list[str]):
+                                  selected_antennas: list[str],
+                                  network_switches: Optional[list[bool]] = None):
     """Real-time computation: builds the outputs container with one tab per target.
 
     The container shows:
     - nothing while the inputs are not enough to run any computation;
     - a single panel with duration-only outputs when no target source is specified;
-    - a `dbc.Tabs` (one tab per target) otherwise.
+    - a dbc.Tabs (one tab per target) otherwise.
+
+    Parameters
+    ----------
+    band : int
+        Selected band index.
+    target_specs : list[str] or None
+        List of target specifications.
+    onsourcetime : int
+        Percentage of on-source time.
+    defined_epoch : bool
+        Whether an epoch is specified.
+    startdate : str
+        Start date string.
+    starttime : str
+        Start time string.
+    duration : int or float
+        Observation duration in hours.
+    datarate : int
+        Data rate in Mbit/s.
+    subbands : int
+        Number of subbands.
+    channels : int
+        Number of channels.
+    pols : int
+        Number of polarizations.
+    inttime : int
+        Integration time in seconds.
+    e_evn : bool
+        Whether e-EVN mode is enabled.
+    selected_antennas : list[str]
+        List of selected antenna codenames.
+    network_switches : list[bool] or None
+        On/off state of each network switch, ordered as observation._NETWORKS.
+
+    Returns
+    -------
+    tuple
+        (user_message, loading_div, outputs_container, prev_datarate, prev_channels,
+         prev_subbands, obs_params).
     """
     empty_message = html.Blockquote(
         className='text-secondary text-bold ms-2 px-2',
@@ -236,7 +324,8 @@ def compute_observation_realtime(band: int,
         return hidden_outputs
 
     selected_antennas = [ant for ant in selected_antennas
-                         if observation._STATIONS[ant].has_band(inputs.band_from_index(band))
+                         if ant in observation._STATIONS
+                         and observation._STATIONS[ant].has_band(inputs.band_from_index(band))
                          and (not e_evn or observation._STATIONS[ant].real_time)]
     if not selected_antennas:
         return hidden_outputs
@@ -270,8 +359,11 @@ def compute_observation_realtime(band: int,
         polarizations=pols or 2,
         inttime=(inttime or 2) * u.s)
 
+    selected_networks = [name for name, on in zip(observation._NETWORKS,
+                                                   network_switches or []) if on]
     logger.info(f"Real-time update: band={inputs.band_from_index(band)}, "
-                f"antennas={len(selected_antennas)}, "
+                f"antennas={','.join(sorted(selected_antennas))}, "
+                f"networks={','.join(selected_networks) if selected_networks else 'none'}, "
                 f"targets={target_specs if has_targets else 'none'}, duration={duration}")
 
     if has_targets:

@@ -1,457 +1,112 @@
+from __future__ import annotations
 import os
 import sys
 import argparse
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from datetime import datetime as dt
 from importlib.metadata import version
-import numpy as np
-from astropy import units as u
-from astropy.time import Time
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from rich import print as rprint
 from rich import box
 from rich.table import Table
 from rich.text import Text
 from rich.live import Live
 from rich_argparse import RawTextRichHelpFormatter
-from vlbiplanobs import stations
-from vlbiplanobs import observation as obs
-from vlbiplanobs import sources
-from vlbiplanobs import calibrators
-from vlbiplanobs import freqsetups
-from vlbiplanobs.gui import plots
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-from astropy.coordinates import SkyCoord
-from .scheduler import ObservationScheduler
-from .gui.main import main as gui_main
+
+if TYPE_CHECKING:
+    # Static bindings for the lazily-imported heavy names (see `_load_heavy`).
+    import numpy as np
+    from astropy import units as u
+    from astropy.time import Time
+    from astropy.coordinates import SkyCoord
+    from vlbiplanobs import stations, sources, calibrators, freqsetups
+    from vlbiplanobs import observation as obs
+    from vlbiplanobs.cli_obs import VLBIObs, optimal_units  # noqa: F401
+
+# Heavy dependencies (numpy, astropy, computation modules) are imported lazily via
+# `_load_heavy()` so that `planobs`, `planobs -h` and `planobs -V` respond immediately.
+_HEAVY_LOADED = False
+
+# Names made available in the module globals by `_load_heavy()`.
+_HEAVY_NAMES = ('np', 'u', 'Time', 'SkyCoord', 'stations', 'obs', 'sources',
+                'calibrators', 'freqsetups', 'VLBIObs', 'optimal_units')
 
 
-def optimal_units(value: u.Quantity, units: list[u.Unit]):
-    """Given a value (with some units), returns the unit choice from all
-    `units` possibilities that better suits the value.
-    It is meant for the following use:
-    Given 0.02*u.Jy and units = [u.kJy, u.Jy, u.mJy, u.uJy], it will
-    return 20*u.mJy.
-    units should have a decreasing-scale of units, and all of them
-    compatible with the units in `value`.
+def _load_heavy() -> None:
+    """Import the heavy dependencies and expose them as module globals.
+
+    Idempotent: subsequent calls return immediately. Must be called before using
+    any of the names listed in `_HEAVY_NAMES` inside this module.
     """
-    for a_unit in units:
-        if 0.8 < value.to(a_unit).value <= 800:
-            return value.to(a_unit)
+    global _HEAVY_LOADED
+    if _HEAVY_LOADED:
+        return
 
-    # Value too high or too low
-    if value.to(units[0]).value > 1:
-        return value.to(units[0])
+    import numpy as np
+    from astropy import units as u
+    from astropy.time import Time
+    from astropy.coordinates import SkyCoord
+    from vlbiplanobs import stations, sources, calibrators, freqsetups
+    from vlbiplanobs import observation as obs
+    from vlbiplanobs.cli_obs import VLBIObs, optimal_units
 
-    return value.to(units[-1])
+    globals().update(np=np, u=u, Time=Time, SkyCoord=SkyCoord, stations=stations,
+                     obs=obs, sources=sources, calibrators=calibrators,
+                     freqsetups=freqsetups, VLBIObs=VLBIObs, optimal_units=optimal_units)
+    _HEAVY_LOADED = True
 
 
-class VLBIObs(obs.Observation):
-    # add __init__
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._excluded_stations: dict[str, str] = {}
+def __getattr__(name: str):
+    """Module-level lazy attribute access (PEP 562).
 
-    def summary(self, gui: bool = True, tui: bool = True):
-        if gui:
-            return self._summary_gui()
+    Allows `from vlbiplanobs.cli import VLBIObs` (and friends) to keep working
+    while deferring the heavy imports until actually needed.
 
-        if tui:
-            return self._summary_tui()
+    Parameters
+    ----------
+    name : str
+        Attribute name to access.
 
-    def _summary_gui(self):
-        self._summary_tui()
-        # TODO: for now it just calls the TUI
+    Returns
+    -------
+    object
+        The requested attribute.
 
-    def per_source_elevations(self) -> dict[str, dict[str, np.ndarray]]:
-        """Returns per-source elevation data across all stations in degrees.
-
-        Returns
-            dict[source_name, dict[station_codename, np.ndarray[float]]]
-                Elevation values in degrees for each source and station.
-        """
-        elevations = self.elevations()
-        result = {}
-        for source_name, station_elevs in elevations.items():
-            result[source_name] = {}
-            for station_codename, elev_values in station_elevs.items():
-                # Convert to degrees and handle astropy Quantities
-                if hasattr(elev_values, 'to'):
-                    result[source_name][station_codename] = elev_values.to(u.deg).value
-                else:
-                    result[source_name][station_codename] = np.asarray(elev_values)
-        return result
-
-    def _plot_source_elevation_terminal(self, src_name: str, src_vis: dict, src_elev: dict, time_labels: list[str]) -> None:
-        """Render a per-antenna elevation plot for one source using plotext.
-
-        Each visible time step is plotted as a colored scatter point.
-        Color encodes elevation: red (<10°), yellow (10-20°), green (20-40°),
-        cyan (40-60°), blue (>60°). Invisible steps are left blank.
-
-        Inputs
-        - src_name : str
-            Source name used as the plot title.
-        - src_vis : dict[str, np.ndarray]
-            Boolean visibility array per antenna codename.
-        - src_elev : dict[str, np.ndarray]
-            Elevation in degrees per antenna codename.
-        - time_labels : list[str]
-            Time label string for every time step (x-axis tick labels).
-        """
-        import plotext as pltx
-        import shutil
-
-        antenna_names = list(src_vis.keys())
-        n_times = len(next(iter(src_vis.values())))
-        n_ants = len(antenna_names)
-        if n_times == 0 or n_ants == 0:
-            return
-
-        pltx.clf()
-        pltx.theme('clear')
-
-        # Elevation color bands — same scheme as GUI.
-        # 256-colour index 226 = bright yellow (avoids 'yellow' rendering as white).
-        bands = [
-            (0,  10, 'red',  '< 10°'),
-            (10, 20, 226,    '10–20°'),
-            (20, 40, 'green','20–40°'),
-            (40, 60, 'cyan', '40–60°'),
-            (60, 90, 'blue', '> 60°'),
-        ]
-
-        # Legend width = "▪▪ " prefix (3) + longest label + 1 padding.
-        # Extend xlim left by this amount so the legend occupies negative x space
-        # and never overlaps the data.  Widen the canvas by the same amount so
-        # data density stays at ~1 column per time step.
-        legend_offset = max(len(label) for *_, label in bands) + 4
-        y_margin = max(len(a) for a in antenna_names) + 4
-        term_width = shutil.get_terminal_size((120, 24)).columns
-        canvas_width = min(term_width, n_times + y_margin + legend_offset)
-        pltx.plot_size(canvas_width, n_ants + 6)
-
-        for el_min, el_max, color, label in bands:
-            xs: list[int] = []
-            ys: list[int] = []
-            for y_idx, ant in enumerate(antenna_names):
-                visibility = src_vis.get(ant, np.zeros(n_times, dtype=bool))
-                elevations = src_elev.get(ant, np.zeros(n_times))
-                for x_idx, (is_vis, elev) in enumerate(zip(visibility, elevations)):
-                    if is_vis and el_min <= float(elev) < el_max:
-                        xs.append(x_idx)
-                        ys.append(y_idx)
-            if xs:
-                pltx.scatter(xs, ys, color=color, marker='▪', label=label)
-
-        pltx.yticks(list(range(n_ants)), antenna_names)
-        pltx.ylim(-0.5, n_ants - 0.5)
-
-        # Show three x-axis ticks: start, middle, end
-        mid = n_times // 2
-        pltx.xticks([0, mid, n_times - 1], [time_labels[0], time_labels[mid], time_labels[-1]])
-        pltx.xlim(-legend_offset, n_times - 0.5)
-
-        pltx.title(src_name)
-        pltx.show()
-
-    def _summary_tui(self):
-        """Prints the infromation for the given Observation, for testing purposes
-        """
-        rprint("\n[bold green]VLBI observation[/bold green]")
-        rprint(f"To be conducted at {self.band.replace('cm', ' cm')} ", end='')
-        if self.fixed_time:
-            rprint(f"from {self.times[0].strftime('%d %b %Y %H:%M')}–"
-                   f"{self.times[-1].strftime('%H:%M')} UTC")
-        else:
-            rprint("at unspecified times.")
-
-        if self.duration is not None:
-            rprint(f"With a total duration of {optimal_units(self.duration, [u.h, u.min, u.s]):.01f}.")
-
-        rprint("\n[bold green]Setup[/bold green]")
-        if None not in (self.datarate, self.bandwidth, self.subbands):
-            val = optimal_units(self.datarate, [u.Gbit/u.s, u.Mbit/u.s])
-            rprint(f"\nData rate of {val.value:.0f} {val.unit.to_string('unicode')}, "
-                   f"producing a total bandwidth of {optimal_units(self.bandwidth, [u.MHz, u.GHz])}, "
-                   f"divided in {self.subbands} x {int(self.bandwidth.value/self.subbands)}-"
-                   f"{self.bandwidth.unit} subbands, with {self.channels} channels each, "  # type: ignore
-                   f"{self.polarizations} polarization.")
-        else:
-            rprint("[dim]No setup (data rate, bandwidth, number of subbands) specified[/dim]")
-
-        rprint(f"\n[bold green]Stations ({len(self.stations)})[/bold green]: "
-               f"{', '.join(self.stations.station_codenames)}")
-        if any([s.datarate < self.datarate for s in self.stations]):
-            rprint("Note that the following stations have a reduced bandwidth:")
-            for s in self.stations:
-                if s.datarate < self.datarate:
-                    rprint(f"    [dim]{s.codename:3}: {s.datarate.value:4.0f} "
-                           f"{s.datarate.unit.to_string('unicode')} "
-                           f"({int(self.subbands*s.datarate/self.datarate)} subbands)[/dim]")
-
-        # Report stations that were requested but excluded
-        excluded_msgs: list[str] = []
-        for code, reason in self._excluded_stations.items():
-            excluded_msgs.append(f"{code} ({reason})")
-        if self.sources() and self.fixed_time:
-            can_obs = self.can_be_observed()
-            never_visible = set()
-            for blk_obs in can_obs.values():
-                for ant, visible in blk_obs.items():
-                    if not visible:
-                        never_visible.add(ant)
-            # Only flag stations that cannot observe ANY block
-            all_blocks_invisible = never_visible.copy()
-            for blk_obs in can_obs.values():
-                all_blocks_invisible &= {ant for ant, v in blk_obs.items() if not v}
-            for ant in sorted(all_blocks_invisible):
-                excluded_msgs.append(f"{ant} (source not visible)")
-        if excluded_msgs:
-            rprint(f"    [yellow]Not observing: {', '.join(excluded_msgs)}[/yellow]")
-
-        rprint("\n[bold green]Sources[/bold green]:")
-        if len(self.scans) > 0:
-            for ablockname, ablock in self.scans.items():
-                rprint(f"    - [dim]ScanBlock[/dim] '{ablockname}'")
-                rprint('      ' +
-                       '\n      '.join([s.name + ' [dim](' + s.coord.to_string('hmsdms') + ')[/dim]'
-                                        for s in ablock.sources()]))
-                if not ablock.sources(sources.SourceType.PHASECAL) and self.frequency > 80*u.GHz:
-                    rprint("[red]Phase-referencing is not feasible anymore at this band.\n"
-                           "Slewing times would be too short due to the coherent time.\n"
-                           "A bright target is thus mandatory.[/red]")
-
-        else:
-            rprint("[dim]No sources defined.[/dim]")
-            if self.fixed_time or self.duration is not None:
-                rms = self.thermal_noise()
-                if rms is not None:
-                    rprint("\n[bold green]Expected outcome[/bold green]:")
-                    val = optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
-                    rprint("[bold]Thermal rms noise (for a +/- 45° elevation source)[/bold]: ", end='')
-                    rprint(f"{val.value:.01f} {val.unit.to_string('unicode')}")
-                    rprint("[dim](for a +/- 45° elevation source)[/dim]")
-                else:
-                    rprint("\n[yellow]Cannot compute thermal noise (no stations with this band).[/yellow]")
-
-        print('\n')
-
-    def plot_visibility(self, gui: bool = True, tui: bool = True):
-        if gui:
-            self._plot_visibility_gui()
-
-        if tui:
-            self._plot_visibility_tui()
-
-    def _plot_visibility_tui(self):
-        """Show plots on the Terminal User Interface with the different sources and
-        when they are visible within the observation.
-
-        Displays per-source visibility bars (not per-block AND) so the user can see
-        each source's observability independently.  The 'when everyone can observe'
-        and 'optimal visibility range' messages refer to the TARGET source only.
-        Sun proximity warnings identify the specific source that is too close.
-        """
-        if not self.fixed_time:
-            rprint("[bold green]Searching for suitable GST range "
-                   "(no pre-defined observing time)[/bold green]\n")
-            self.times = Time('2025-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01)*u.day
-            doing_gst = True
-        else:
-            doing_gst = False
-
-        per_src = self.per_source_observable()
-        per_src_elev = self.per_source_elevations()
-        rms_noise = self.thermal_noise()
-        ontarget_time = self.ontarget_time
-        sun_per_src = self.sun_constraint_per_source(times=self._REF_YEAR if doing_gst else None)
-        sun_limit = self.sun_limiting_epochs()
-        if doing_gst:
-            gstimes = self.gstimes
-            localtimes = self.times[:]
-            self.times = None
-
-        rprint("[bold]The blocks are observable for:[/bold]")
-        for ablockname, ablock in self.scans.items():
-            rprint(f"    - '{ablockname}':")
-            # Show only science targets (TARGET or PULSAR) in the CLI plot; fall back to all if none exist.
-            block_sources = (ablock.sources(sources.SourceType.TARGET) or
-                             ablock.sources(sources.SourceType.PULSAR) or
-                             ablock.sources())
-            for src in block_sources:
-                src_vis = per_src.get(src.name, {})
-                src_elev = per_src_elev.get(src.name, {})
-                if not src_vis:
-                    continue
-                # Check if source is always observable by all stations
-                always_all = all(np.all(v) for v in src_vis.values())
-                always_some = [ant for ant, v in src_vis.items() if np.all(v)]
-                rprint(f"      [dim]{src.name}[/dim]", end='')
-                if always_all:
-                    rprint(" [dim](always observable)[/dim]")
-                elif always_some:
-                    cant = [ant for ant in self.stations.station_codenames if ant not in always_some]
-                    rprint(f" [dim](always observable by everyone but {','.join(cant)})[/dim]")
-                else:
-                    rprint(' [dim](nobody can observe it all the time)[/dim]')
-
-                # Build time-axis labels then hand off to plotext
-                if doing_gst:
-                    t_wrap = (24*u.hourangle
-                              if np.abs(localtimes[-1].mjd - localtimes[0].mjd - 1) < 0.1
-                              else 0.0*u.hourangle)
-                    time_labels = [f"{gst.to_string(sep=':', fields=2, pad=True)} GST"
-                                   for gst in gstimes]
-                    time_labels[-1] = (gstimes[-1] + t_wrap).to_string(sep=':', fields=2, pad=True)
-                else:
-                    time_labels = [f"{t.strftime('%H:%M')} UTC" for t in self.times.datetime]
-
-                self._plot_source_elevation_terminal(src.name, src_vis, src_elev, time_labels)
-
-            # "When everyone can observe" and "optimal visibility" — use block-level
-            if doing_gst:
-                when_everyone = self.when_is_observable(mandatory_stations='all',
-                                                        return_gst=True)[ablockname]
-                if len(when_everyone) > 0:
-                    rprint("\n[bold]All antennas can observe the block simultaneously at: [/bold]", end='')
-                    rprint(', '.join([t1.to_string(sep=':', fields=2, pad=True) + '-' +
-                           t2.to_string(sep=':', fields=2, pad=True) +
-                           ' GST' for t1, t2 in when_everyone]))
-                else:
-                    rprint("\nThe block cannot be observed by all stations at the same time.")
-            else:
-                when_everyone = self.when_is_observable(mandatory_stations='all')[ablockname]
-                if len(when_everyone) > 0:
-                    rprint("\n[bold]All antennas can observe the block simultaneously at: [/bold]", end='')
-                    rprint(', '.join([t1.strftime('%d %b %Y %H:%M')+'-'+t2.strftime('%H:%M') +
-                           ' UTC' for t1, t2 in when_everyone]))
-                else:
-                    rprint("\nThe block cannot be observed by all stations at the same time.")
-
-            min_stat = 3 if len(self.stations) > 3 else min(2, len(self.stations))
-            if len(self.stations) > 2:
-                rprint(f"[bold]Optimal visibility window (> {min_stat} antennas simultaneously):[/bold] ", end='')
-                if doing_gst:
-                    rprint(', '.join([t1.to_string(sep=':', fields=2, pad=True) + '--' +
-                                      (t2 + (24*u.hourangle if np.abs(t1 - t2) < 0.1*u.hourangle
-                                             else 0.0*u.hourangle)).to_string(sep=':', fields=2, pad=True) +
-                                      ' GST' for t1, t2
-                                      in self.when_is_observable(min_stations=min_stat,
-                                                                 return_gst=True)[ablockname]]))
-                else:
-                    rprint(', '.join([t1.strftime('%d %b %Y %H:%M')+'--'+t2.strftime('%H:%M') +
-                                      ' UTC' for t1, t2
-                                      in self.when_is_observable(min_stations=min_stat)[ablockname]]))
-
-            # Sun constraint — per source, so the user knows which source is the problem
-            if doing_gst:
-                if len(sun_limit[ablockname]) > 0:
-                    offending = [(s.name, sun_per_src[s.name])
-                                 for s in block_sources if sun_per_src.get(s.name) is not None]
-                    src_label = ', '.join(s for s, _ in offending) if offending else 'a source in this block'
-                    min_sep = min((sep for _, sep in offending), default=None) if offending else None
-                    sep_str = f" (min separation {min_sep:.1f})" if min_sep is not None else ''
-                    rprint(f"[bold red]Note that the Sun is too close to {src_label}{sep_str}[/bold red]",
-                           end='')
-                    t0, t1 = sun_limit[ablockname][0].datetime, sun_limit[ablockname][-1].datetime
-                    if t0 == t1:
-                        rprint(f"[bold red] on {t0.strftime('%d %b')}![/bold red]")
-                    elif t0.month == t1.month:
-                        rprint(f"[bold red] on {t0.day}-{t1.day} {t0.strftime('%b')}![/bold red]")
-                    elif t0.year == t1.year:
-                        rprint(f"[bold red] on {t0.strftime('%d %b')} to "
-                               f"{t1.strftime('%d %b')}![/bold red]")
-                    else:
-                        rprint(f"[bold red]{t0.strftime('%d %b %Y')} to "
-                               f"{t1.strftime('%d %b %Y')}![/bold red]")
-            else:
-                offending = [(s.name, sun_per_src[s.name])
-                             for s in block_sources if sun_per_src.get(s.name) is not None]
-                for src_name, sep in offending:
-                    rprint(f"[bold red]Note that the Sun is too close to {src_name} during "
-                           f"this observation (separation of {sep:.1f}).[/bold red]")
-
-            rprint("[bold]Expected rms thermal noise for the target source: [/bold]", end='')
-            if rms_noise is None:
-                rprint("[yellow]Cannot be computed (not enough simultaneous antenna coverage).[/yellow]")
-            else:
-                for src, rms in rms_noise.items():
-                    if rms is None:
-                        if src in self.sourcenames_in_block(ablockname):
-                            rprint(f"[yellow]{src}: cannot be computed "
-                                   "(not enough simultaneous antenna coverage).[/yellow]")
-                        continue
-                    if any([s.type is sources.SourceType.TARGET for s in self.sources()]):
-                        if src in self.sourcenames_in_block(ablockname, sources.SourceType.TARGET):
-                            val = optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
-                            rprint(f"{src}: {val.value:.02f} {val.unit.to_string('unicode')}")
-                            val = optimal_units(ontarget_time[src], [u.h, u.min, u.s, u.ms])
-                            rprint("[dim]for a total on-source time of ~ "
-                                   f"{val.value:.2f} {val.unit.to_string('unicode')} "
-                                   f"(assuming the total observing time).[/dim]")
-                    else:
-                        if src in self.sourcenames_in_block(ablockname):
-                            val = optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
-                            rprint(f"{src}: {val.value:.2f} {val.unit.to_string('unicode')}.")
-
-            print('\n')
-
-    def _plot_visibility_gui(self):
-        """Show plots with the different sources and when they are visible within the
-        observation
-        """
-        if self.scans is None:
-            # rprint("No scans have been defined.")
-            sys.exit(0)
-
-        figs = plots.elevation_plot(self)
-        figs.show()
-
-    def print_baseline_sensitivities(self):
-        """Prints the sensitivity of all baselines in the observation per one minute of time
-        """
-        rprint("[bold green]Sensitivity per baseline (in mJy/beam)[/bold green]\n")
-        rprint(" "*8, end='')
-        for s in self.stations:
-            rprint(f"{s.codename:6}", end='')
-
-        rprint('\n' + '------' * (len(self.stations) + 1))
-        for i in range(len(self.stations)):
-            rprint(f"{self.stations[i].codename:3} | {' '*i*6}", end='')
-            for j in range(i, len(self.stations)):
-                try:
-                    temp = self.baseline_sensitivity(self.stations[i].codename,
-                                                     self.stations[j].codename).to(u.mJy/u.beam).value
-                    rprint(f"{temp:6.3}", end='')
-                except TypeError:
-                    rprint("     ", end='')
-
-            rprint('')
+    Raises
+    ------
+    AttributeError
+        If the attribute is not found.
+    """
+    if name in _HEAVY_NAMES:
+        _load_heavy()
+        return globals()[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def get_stations(band: str, list_networks: Optional[list[str]] = None,
                  list_stations: Optional[list[str]] = None
                  ) -> tuple[stations.Stations, dict[str, str]]:
     """Returns a VLBI array including the required stations and any that were excluded.
-    Each argument is a comma-separated list of names.
 
-    Inputs
-        band : str
-            The observing band. It will drop the stations that do not observe at such band.
-        list_networks : list[str] | None
-            If you want to pick the default antennas participating in one of the
-            known VLBI networks, then you can include directly the network name
-            here.
-        list_stations : list[str] | None
-            If you want a particular list of stations, or adding some that are not
-            in the default network, then you can quote them here, using either the
-            station code names or their names.
+    Parameters
+    ----------
+    band : str
+        The observing band. It will drop the stations that do not observe at such band.
+    list_networks : list[str] or None
+        If you want to pick the default antennas participating in one of the
+        known VLBI networks, then you can include directly the network name here.
+    list_stations : list[str] or None
+        If you want a particular list of stations, or adding some that are not
+        in the default network, then you can quote them here, using either the
+        station code names or their names.
 
     Returns
-        tuple[Stations, dict[str, str]]
-            The selected Stations object and a dict mapping excluded station codenames
-            to the reason they were dropped (e.g. 'no band').
+    -------
+    tuple[Stations, dict[str, str]]
+        The selected Stations object and a dict mapping excluded station codenames
+        to the reason they were dropped (e.g. 'no band').
     """
+    _load_heavy()
     selected = []
     no_band: dict[str, str] = {}
     if list_networks is not None:
@@ -544,6 +199,7 @@ def _resolve_calibrators(names: list[str], target: sources.Source, band: str,
     list[Source]
         Resolved Source objects with the given source_type assigned.
     """
+    _load_heavy()
     resolved: list[sources.Source] = []
     rfc_band = calibrators._wavelength_to_rfc_band(band)
     cat = calibrators.RFCCatalog(min_flux=0.0 * u.Jy, band=rfc_band)
@@ -603,76 +259,80 @@ def main(band: str, networks: Optional[list[str]] = None,
          start_time: Optional[Time] = None,
          duration: Optional[u.Quantity] = None, datarate: Optional[u.Quantity] = None,
          ontarget: float = 0.7, subbands: int = 4,
-         channels: int = 64, polarizations: int = 4, inttime: float = 2.0*u.s,
+         channels: int = 64, polarizations: int = 4, inttime: Optional[u.Quantity] = None,
          phasecal_names: Optional[list[str]] = None,
          check_source_names: Optional[list[str]] = None,
          fringefinder_spec: Optional[list[str]] = None,
          polcal: bool = False) -> VLBIObs:
     """Planner for VLBI observations.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
+    band : str
+        Observing band, as defined in the catalogs as 'XXcm', with 'XX' being
+        the wavelength in cm. See .freqsetups.bands to get a list.
+    networks : list of str, optional
+        The VLBI network(s) that will participate in the observation.
+    stations : list of str, optional
+        List of the antennas that will participate in the observation.
+        You can use either antenna codenames or the standard name,
+        as given in the catalogs. See .STATIONS.stations to get a list.
+    station_catalog : str, optional
+        Path to the file containing the list of antennas that will
+        participate in the observation, if you have a local file different from the one
+        distributed by PlanObs.
+    src_catalog : str, optional
+        Path to the toml file containing the list of sources that will be observed.
+        This allows you to store a large number of sources of define them in a more detail.
+        See the documentaion for help.
+    targets : list[str], optional
+        List of sources to be observed. Each entry can be:
+        a) the name defining a block in the source catalog file (if provided),
+        b) the coordinates of the source, in RA, DEC (J2000), as 'hh:mm:ss dd:mm:ss'
+           or 'XXhXXmXXs XXdXXmXXs',
+        c) the name of the source, if it is a known one so it can be found in the
+           SIMBAD/NEW/VizieR databases,
+        d) 'name/coordinates' to provide both a custom name and explicit coordinates
+           (the coordinates override any catalog lookup).
+        A mix of the previous ones can also be used for each entry.
+    start_time : Time, optional
+        Start of the observation, of Time class and in UTC.
+    duration : astropy.units.Quantity, optional
+        Total duration of the observation, as a Quantity (e.g. 1.5*u.hour).
+    datarate : astropy.units.Quantity, optional
+        Maximum data rate of the observation (e.g. 4*Gbit/s).
+    ontarget : float, optional
+        Fraction of the total time of the observation spent on the target source.
+        If multiple sources are given (e.g. already specifying scan lengths), this will be ignored.
+        Default is 0.7.
+    subbands : int, optional
+        Number of subbands in which the total bandwidth is split. Default is 4.
+    channels : int, optional
+        Number of spectral channels in which each subband is divided. Default is 64.
+    polarizations : int, optional
+        Number of polarizations recorded. It can be 1 (single pol.), 2 (dual pol.), or 4 (full stokes
+        recorded: RR, LL, RL, LR). Default is 4.
+    inttime : astropy.units.Quantity, optional
+        Integration time used in the observations (e.g. time resolution on the correlated data).
+        Default is 2 s.
+    phasecal_names : list[str], optional
+        Phase calibrator source names for the target.
+    check_source_names : list[str], optional
+        Check source names for the target.
+    fringefinder_spec : list[str], optional
+        Fringe finder source specification.
+    polcal : bool, optional
+        Requires polarization calibration for the observation. Default is False.
 
-        band : str
-            Observing band, as defined in the catalogs as 'XXcm', with 'XX' being
-            the wavelength in cm. See .freqsetups.bands to get a list.
-
-        stations : list of str, optional
-            List of the antennas that will participate in the observation.
-            You can use either antenna codenames or the standard name,
-            as given in the catalogs. See .STATIONS.stations to get a list.
-
-        station_catalog : str, optional
-            Path to the file containing the list of antennas that will
-            participate in the observation, if you have a local file different from the one
-            distributed by PlanObs.
-
-        src_catalog : str, optional
-            Path to the toml file containing the list of sources that will be observed.
-            This allows you to store a large number of sources of define them in a more detail.
-            See the documentaion for help.
-
-        targets: list[str]
-            List of sources to be observed. Each entry can be:
-            a) the name defining a block in the source catalog file (if provided),
-            b) the coordinates of the source, in RA, DEC (J2000), as 'hh:mm:ss dd:mm:ss'
-               or 'XXhXXmXXs XXdXXmXXs',
-            c) the name of the source, if it is a known one so it can be found in the
-               SIMBAD/NEW/VizieR databases,
-            d) 'name/coordinates' to provide both a custom name and explicit coordinates
-               (the coordinates override any catalog lookup).
-            A mix of the previous ones can also be used for each entry.
-
-        start_time : Time, optional
-            Start of the observation, of Time class and in UTC.
-
-        duration : astropy.units.Quantity, optional
-            Total duration of the observation, as a Quantity (e.g. 1.5*u.hour).
-
-        datarate : astropy.units.Quantity, optional
-            Maximum data rate of the observation (e.g. 4*Gbit/s).
-
-        ontarget : float (default = 0.7)
-            Fraction of the total time of the observation spent on the target source.
-            If multiple sources are given (e.g. already specifying scan lengths), this will be ignored.
-
-        subbads : int (default = 4)
-            Number of subbands in which the total bandwidth is split.
-
-        channels : int (defualt = 64)
-            Number of spectral channels in which each subband is divided.
-
-        polarizations : int (defualt = 4)
-            Number of polarizations recorded. It can be 1 (single pol.), 2 (dual pol.), or 4 (full stokes
-            recorded: RR, LL, RL, LR).
-
-        inttime : astropy.units.Quantity (default 2 s)
-            Integration time used in the observations (e.g. time resolution on the correlated data).
-
-    Returns:
-    --------
-        VLBIObs: a VLBI Observation object with all defined parameters.
+    Returns
+    -------
+    VLBIObs
+        A VLBI Observation object with all defined parameters.
     """
+    _load_heavy()
+    if inttime is None:
+        inttime = 2.0*u.s
+
     if networks is None and stations is None:
         rprint("[bold red]You need to provide at least a VLBI network "
                "or a list of antennas that will participate in the observation.[/bold red]")
@@ -783,7 +443,21 @@ def main(band: str, networks: Optional[list[str]] = None,
         duration_val = duration.to(u.min).value
 
     if datarate is None:
-        obs_networks = networks or obs.Observation.guess_network(band, obs._STATIONS.filter_antennas(stations or []))
+        if networks is not None:
+            network_station_codes = []
+            for n in networks:
+                if n in obs._NETWORKS:
+                    for s in obs._NETWORKS[n].station_codenames:
+                        if s not in network_station_codes:
+                            network_station_codes.append(s)
+            filtered_stations = obs._STATIONS.filter_antennas(
+                network_station_codes + (stations or [])
+            )
+        else:
+            filtered_stations = obs._STATIONS.filter_antennas(stations or [])
+        if not filtered_stations:
+            raise ValueError(f"No valid stations provided. Check station codes: {stations}")
+        obs_networks = networks or obs.Observation.guess_network(band, filtered_stations)
         for a_network in obs._NETWORKS:
             if a_network in obs_networks:
                 datarate = obs._NETWORKS[a_network].max_datarate(band)
@@ -938,7 +612,7 @@ def add_observation_arguments(parser):
                         "  c) 'name/coordinates' to provide both (coordinates override lookup).\n"
                         "Or if '--source-catalog' is defined, selects the block(s) in that file.\n"
                         "Multiple sources can be provided.")
-    parser.add_argument('-sc', '--source-catalog', type=str, default=None,
+    parser.add_argument('-sc', '--source-catalog', '--sc', type=str, default=None,
                         help="Input file containing the personal source catalog.\n"
                         "If provided, then '--targets' will select the block(s) "
                         "defined in\nthis file, ignoring the rest.")
@@ -1036,7 +710,12 @@ def add_fringe_finder_arguments(parser):
 def add_phase_cal_arguments(parser):
     """Add arguments for phase calibrator search."""
     parser.add_argument('-t', '--target', type=str, required=True,
-                        help="Target source name (J2000 or IVS name from RFC catalog).")
+                        help="Target source name (J2000 or IVS name from RFC catalog;\n"
+                        "or a block/source name from '--source-catalog' if provided).")
+    parser.add_argument('-sc', '--source-catalog', '--sc', type=str, default=None,
+                        help="Input file containing the personal source catalog.\n"
+                        "If provided, then '--target' will first be looked up in\nthis file "
+                        "(block or source name), as in the observe mode.")
     parser.add_argument('--max-separation', type=float, default=5.0,
                         help="Maximum angular separation in degrees (default: 5.0).")
     parser.add_argument('--min-flux', type=float, default=0.1,
@@ -1083,6 +762,7 @@ def add_logging_argument(parser):
 
 def handle_observation_command(args):
     """Handle the observation planning command."""
+    _load_heavy()
     t0 = dt.now() if args.debug else None
 
     if args.list_networks:
@@ -1162,6 +842,7 @@ def handle_observation_command(args):
 
     if args.sched is not None:
         key_filename = args.sched if args.sched.endswith('.key') else f"{args.sched}.key"
+        from vlbiplanobs.scheduler import ObservationScheduler
         scheduler = ObservationScheduler(
             o, fringefinder_spec=fringefinder_arg, polcal=polcal_arg)
         scheduler.schedule()
@@ -1177,6 +858,7 @@ def handle_observation_command(args):
 
 def handle_fringe_finder_command(args):
     """Handle the fringe finder command."""
+    _load_heavy()
     if args.network is None and args.stations is None:
         rprint("[bold red]You need to provide at least a VLBI network "
                "or a list of antennas that will participate in the observation.[/bold red]")
@@ -1211,12 +893,15 @@ def handle_fringe_finder_command(args):
 
 def handle_phase_cal_command(args):
     """Handle the phase calibrator command."""
+    _load_heavy()
     original_argv = sys.argv.copy()
     sys.argv = ['planobs_phasecal', '-t', args.target]
+    if args.source_catalog is not None:
+        sys.argv.extend(['-sc', args.source_catalog])
     if args.max_separation != 5.0:
         sys.argv.extend(['--max-separation', str(args.max_separation)])
-    if args.min_flux != 0.1:
-        sys.argv.extend(['--min-flux', str(args.min_flux)])
+    # Always forward: keeps the effective default in sync with main_phasecal's parser.
+    sys.argv.extend(['--min-flux', str(args.min_flux)])
     if args.n_sources is not None:
         sys.argv.extend(['-n', str(args.n_sources)])
     if args.band is not None:
@@ -1232,7 +917,18 @@ def handle_phase_cal_command(args):
 
 
 def _format_gst_ranges(gst_pairs: list[tuple]) -> str:
-    """Format a list of GST (Longitude) start/end pairs as 'HH:MM-HH:MM, ...' string."""
+    """Format a list of GST (Longitude) start/end pairs as 'HH:MM-HH:MM, ...' string.
+
+    Parameters
+    ----------
+    gst_pairs : list[tuple]
+        List of (start, end) Time pairs.
+
+    Returns
+    -------
+    str
+        Formatted string like 'HH:MM-HH:MM, HH:MM-HH:MM, ...'.
+    """
     parts = []
     for pair in gst_pairs:
         t0, t1 = pair
@@ -1246,9 +942,18 @@ def _check_obs_worker(args):
     """Module-level worker for ProcessPoolExecutor: checks if a network can observe a source.
 
     Must be defined at module level (not as a closure) to be picklable.
-    Accepts (net_key, band, source_name, ra_deg, dec_deg[, return_gst]).
-    Returns (net_key, band, is_observable, gst_ranges_str | None).
+
+    Parameters
+    ----------
+    args : tuple
+        (net_key, band, source_name, ra_deg, dec_deg[, return_gst]).
+
+    Returns
+    -------
+    tuple
+        (net_key, band, is_observable, gst_ranges_str or None).
     """
+    _load_heavy()
     return_gst = args[5] if len(args) > 5 else False
     net_key, band, source_name, ra_deg, dec_deg = args[:5]
     try:
@@ -1325,9 +1030,13 @@ def _show_observability_table(source: sources.Source, show_gst: bool = False) ->
     to ThreadPoolExecutor if process spawning fails. Results are displayed as they
     arrive via Rich Live, so the table fills in progressively rather than all at once.
 
-    Inputs
-        - source : sources.Source — the source to check observability for.
-        - show_gst : bool — if True, appends a GST column with time ranges where >3 antennas observe.
+    Parameters
+    ----------
+    source : sources.Source
+        The source to check observability for.
+    show_gst : bool, optional
+        If True, appends a GST column with time ranges where >3 antennas observe.
+        Default is False.
     """
     all_bands: set[str] = set()
     for network in obs._NETWORKS.values():
@@ -1382,6 +1091,7 @@ def _show_observability_table(source: sources.Source, show_gst: bool = False) ->
 
 def handle_source_command(args):
     """Handle the source information command."""
+    _load_heavy()
     try:
         source_obj = None
         calibrator = calibrators.RFCCatalog(min_flux=0.0).get_source(args.source_name)
@@ -1431,6 +1141,8 @@ def handle_source_command(args):
 
 def handle_server_command(args):
     """Handle the server command."""
+    # Lazy import: pulls in dash and the whole GUI stack.
+    from vlbiplanobs.gui.main import main as gui_main
     gui_main(debug=args.debug, host=args.host, port=args.port)
 
 
@@ -1439,8 +1151,13 @@ def _render_horizontal_band_table(bands_to_show: list[str], ant) -> None:
 
     First column shows row labels ('Band (cm)', 'SEFD (Jy)'); each subsequent column is one band.
     Splits into multiple sub-tables if total width exceeds terminal width.
-    - bands_to_show: list of band strings to display (e.g. ['6cm', '18cm'])
-    - ant: Station object with sefd(band) method
+
+    Parameters
+    ----------
+    bands_to_show : list[str]
+        List of band strings to display (e.g. ['6cm', '18cm']).
+    ant : Station
+        Station object with sefd(band) method.
     """
     from rich.console import Console as _Console
     term_width = _Console().width
@@ -1496,8 +1213,19 @@ def add_antenna_arguments(parser):
 
 def _normalize_band(band: str) -> str:
     """Normalize band string to include 'cm' suffix if missing.
+
     Returns the normalized band string (e.g. '18' -> '18cm', '18cm' -> '18cm').
     Only appends 'cm' if the string contains no unit suffix (no letters).
+
+    Parameters
+    ----------
+    band : str
+        Band string to normalize.
+
+    Returns
+    -------
+    str
+        Normalized band string with 'cm' suffix.
     """
     band = band.strip()
     if band.replace('.', '').isdigit():
@@ -1507,7 +1235,16 @@ def _normalize_band(band: str) -> str:
 
 def _find_antenna(name: str) -> Optional[object]:
     """Search obs._STATIONS for an antenna matching name, fullname, or codename (case-insensitive).
-    Returns the matching Station object or None if not found.
+
+    Parameters
+    ----------
+    name : str
+        Antenna name, fullname, or codename to search for.
+
+    Returns
+    -------
+    Station or None
+        The matching Station object or None if not found.
     """
     name_lower = name.lower()
     for ant in obs._STATIONS:
@@ -1525,7 +1262,13 @@ def handle_antenna_command(args):
     - antenna_name only: show full info for that antenna.
     - band only: list all antennas that can observe at that band.
     - neither: list all antennas (same as --list-antennas).
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed command-line arguments.
     """
+    _load_heavy()
     band = _normalize_band(args.band) if args.band else None
     if band is not None and band not in obs.freqsetups.bands:
         rprint(f"[bold red]Band '{band}' is not recognized.[/bold red] "

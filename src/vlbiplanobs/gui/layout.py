@@ -65,6 +65,25 @@ def inputs_column(app) -> html.Div:
             inputs.card(inputs.correlations())])
 
 
+def export_button_div() -> html.Div:
+    """Return the Dash elements used by the export/import to/from Polaris.
+    The Location is used to parse import parameters.
+    The Alert pops up when the Button is clicked to show whether the export
+    was done directly to Polaris or to clipboard.
+
+    Returns
+    -------
+    html.Div
+        Export/import components.
+    """
+    return html.Div(className='m-0 p-0', children=[
+        dcc.Location(id='url', refresh=False),
+        inputs.export_button(),
+        dbc.Alert("Nothing to see here", id='export-alert',
+              is_open=False, color='success',
+              duration=5000, dismissable=True)
+    ])
+
 def compute_buttons(app) -> html.Div:
     """Return the compute buttons section.
 
@@ -82,16 +101,9 @@ def compute_buttons(app) -> html.Div:
         html.Div(className='row d-flex m-0 p-0', children=[
             inputs.compute_button(),
             outputs.download_button_div(),
-            dcc.Download(id="download-data")])]),
-            # html.Div(className='m-0 p-0', children=[
-            #     dcc.Location(id='url', refresh=False),
-            #     inputs.export_button(),
-            #     Alert("Nothing to see here", id='export-alert',
-            #           is_open=False, color='success',
-            #           duration=5000, dismissable=True)
-            # ])
+            dcc.Download(id="download-data")])
+        ])
     ])
-
 
 def compute_buttons_realtime(app) -> html.Div:
     """Return the layout for real-time mode with loading spinner.

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, NamedTuple
 import base64
 import json
 import importlib.metadata
@@ -517,7 +517,7 @@ def _validate_source_spec(spec: str) -> tuple[bool, str]:
     return True, src.coord.to_string('hmsdms', precision=3)
 
 
-@callback([Output('store-targets', 'data'),
+@callback([Output('store-targets', 'data', allow_duplicate=True),
            Output('modal-source-input', 'value'),
            Output('modal-source-feedback', 'children'),
            Output('modal-source-feedback', 'className'),
@@ -818,32 +818,38 @@ clientside_callback(
     prevent_initial_call=True
 )
 
-# list of component IDs that constitute the user's configuration
-export_component_ids = [
-    'switch-band-label',
-    'band-slider',
-    'duration',
-    'onsourcetime',
+# list of components' ID and property that constitute the user's configuration
+class IdProperty(NamedTuple):
+    id: str | dict
+    property: str
+
+export_component_id_properties: list[IdProperty] = [
+    IdProperty('switch-band-label', 'value'),
+    IdProperty('band-slider', 'value'),
+    IdProperty('duration', 'value'),
+    IdProperty('onsourcetime', 'value'),
 ] + [
-    {'type': 'network-switch', 'index': network_name}
+    IdProperty({'type': 'network-switch', 'index': network_name}, 'value')
     for network_name in observation._NETWORKS
 ] + [
-    'switches-antennas',
-    'switch-specify-epoch',
-    'startdate',
-    'starttime',
-    'switch-specify-e-evn',
-    'switch-specify-continuum',
-    'datarate',
-    'subbands',
-    'channels',
-    'pols',
-    'inttime',
+    IdProperty('switches-antennas', 'value'),
+    IdProperty('switch-specify-epoch', 'value'),
+    IdProperty('startdate', 'value'),
+    IdProperty('starttime', 'value'),
+    IdProperty('store-targets', 'data'),
+    IdProperty('switch-specify-e-evn', 'value'),
+    IdProperty('switch-specify-continuum', 'value'),
+    IdProperty('datarate', 'value'),
+    IdProperty('subbands', 'value'),
+    IdProperty('channels', 'value'),
+    IdProperty('pols', 'value'),
+    IdProperty('inttime', 'value'),
 ]
 
 current_version = Version(importlib.metadata.version('vlbiplanobs'))
 
-json_config = '[' + ','.join(f'[{json.dumps(export_component_ids[i])}, args[{i}]]' for i in range(len(export_component_ids))) + ']'
+json_config = '[' + ','.join(f'[{json.dumps(export_component_id_properties[i].id)}, args[{i}]]'
+                             for i in range(len(export_component_id_properties))) + ']'
 callback_javascript = f"""
     function(n_clicks, ...args) {{
         const value = '?targetversion={quote(str(current_version))}&config=' + encodeURIComponent(JSON.stringify({json_config}));
@@ -862,12 +868,12 @@ clientside_callback(
     Output('export-alert', 'is_open'),
     Output('export-alert', 'children'),
     Input('export-state-of-the-system', 'n_clicks'),
-    [State(id_, 'value') for id_ in export_component_ids],
+    [State(e.id, e.property) for e in export_component_id_properties],
     prevent_initial_call=True
     )
 
 @callback(
-    [Output(id_, 'value') for id_ in export_component_ids],
+    [Output(e.id, e.property) for e in export_component_id_properties],
     # delete targetversion and config from the url parameters after parsing it
     Output('url', 'href'),
     Input('url', 'href')
@@ -902,9 +908,9 @@ def url_open(href):
         # current running version too old??
         raise PreventUpdate
     update_list = []
-    for component_id in export_component_ids:
+    for component in export_component_id_properties:
         try:
-            index = id_list.index(component_id)
+            index = id_list.index(component.id)
             update_list.append(value_list[index])
         except ValueError:
             update_list.append(no_update)

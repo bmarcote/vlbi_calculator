@@ -449,6 +449,7 @@ app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-10
                                                children=layout.inputs_column(app)),
                                       html.Div(id='left-column', className='col-12 col-sm-6 m-0 p-0',
                                                children=[layout.compute_buttons_realtime(app),
+                                                         layout.export_button_div(),
                                                          layout.outputs_column(app)])]),
                    # Modal allowing the user to add/remove multiple target sources.
                    inputs.target_sources_modal(),

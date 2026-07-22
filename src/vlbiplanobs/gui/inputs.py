@@ -630,7 +630,7 @@ def duration() -> html.Div:
                                     html.Label('In hours', htmlFor='duration'),
                                     dbc.Input(id='duration', value=24.0, type='number', className='form-control',
                                             placeholder="In hours", min=0.1,
-                                            persistence=True, debounce=True, inputMode='numeric', max=50.0, step=0.1),
+                                            persistence=True, debounce=True, inputMode='numeric', max=50.0, step='any'),
                                     html.Small(id='error_duration', className='form-text text-muted')])]),
                             html.Div(className='col-7', children=[
                                 html.Div(className='row form-group', children=[

@@ -251,11 +251,6 @@ class Source(FixedTarget):
     # def coordinates(self) -> coord.SkyCoord
     #     return self.
     @property
-    def name(self) -> str:
-        return self.name
-
-
-    @property
     def other_names(self) -> list[str]:
         """List of other possible names to refer to this source."""
         return self._other_names

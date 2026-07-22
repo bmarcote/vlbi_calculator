@@ -324,7 +324,7 @@ def compute_observation_realtime(band: int, target_specs: Optional[list[str]], o
 
     target_specs = [t for t in (target_specs or []) if t and t.strip()]
     has_targets = bool(target_specs)
-    has_duration = duration is not None and duration >= 0.1
+    has_duration = duration is not None and duration > 0
 
     if defined_epoch:
         epoch_complete = startdate is not None and starttime is not None and has_duration

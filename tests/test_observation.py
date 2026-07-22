@@ -137,3 +137,30 @@ def test_thermal_noise():
     o = cli.VLBIObs(band='18cm', stations=obs._STATIONS.filter_antennas(evn6), duration=10*u.h, scans={},
                     datarate=1024*u.Mbit/u.s)
     assert o.thermal_noise() > rmss[2]*u.Jy/u.beam
+
+
+def test_very_small_durations():
+    """Very small durations (1 ms, 1 us) must be accepted and produce finite results."""
+    evn6 = ['Ef', 'Jb2', 'O8', 'T6', 'Wb']
+    small_durations = [1*u.ms, 1*u.us]
+    for duration in small_durations:
+        o = cli.VLBIObs(band='18cm', stations=obs._STATIONS.filter_antennas(evn6), duration=duration,
+                        scans={}, datarate=1024*u.Mbit/u.s)
+        assert o.duration == duration, f"Duration was not preserved for {duration}"
+        assert o.duration.to(u.h).value > 0, f"Duration should be positive for {duration}"
+
+        rms = o.thermal_noise()
+        assert rms is not None and np.isfinite(rms.value) and rms.value > 0, \
+            f"Thermal noise should be a finite positive value for {duration}, got {rms}"
+
+        datasize = o.datasize()
+        assert datasize is not None and np.isfinite(datasize.value) and datasize.value > 0, \
+            f"Data size should be a finite positive value for {duration}, got {datasize}"
+
+    # A shorter duration must yield a higher thermal noise (rms scales as 1/sqrt(time)).
+    o_ms = cli.VLBIObs(band='18cm', stations=obs._STATIONS.filter_antennas(evn6), duration=1*u.ms,
+                       scans={}, datarate=1024*u.Mbit/u.s)
+    o_us = cli.VLBIObs(band='18cm', stations=obs._STATIONS.filter_antennas(evn6), duration=1*u.us,
+                       scans={}, datarate=1024*u.Mbit/u.s)
+    assert o_us.thermal_noise() > o_ms.thermal_noise(), \
+        "Shorter duration (1 us) should give a higher rms than 1 ms."

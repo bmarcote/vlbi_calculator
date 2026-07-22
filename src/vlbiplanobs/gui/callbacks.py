@@ -771,7 +771,7 @@ def update_uv_figure(highlight_antennas: list[str], uv_data: dict):
 def check_initial_obstime(duration: Optional[int | float]):
     """Verify the observation duration for correct values.
 
-    Ensures the duration is > 0.1 hours and less than 4 days.
+    Ensures the duration is positive and less than 4 days.
 
     Parameters
     ----------
@@ -789,9 +789,8 @@ def check_initial_obstime(duration: Optional[int | float]):
     if (not isinstance(duration, float)) and (not isinstance(duration, int)):
         return 'Must be a number',  'form-text text-danger', 'form-control is-invalid'
 
-    if duration < 0.1:
-        return 'Duration too short. Minimum duration is 0.1 h, but you can check the instantaneous ' \
-               'sensitivity in the provided values (they are also calculated per minute integration).', \
+    if duration <= 0:
+        return 'Duration must be a positive number of hours.', \
                'form-text text-danger', 'form-control is-invalid'
     elif duration > 4*24:
         return 'Must be shorter than 4 days',  'form-text text-danger', 'form-control is-invalid'

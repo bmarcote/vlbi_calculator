@@ -80,12 +80,12 @@ def __getattr__(name: str):
     if name in _HEAVY_NAMES:
         _load_heavy()
         return globals()[name]
+
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def get_stations(band: str, list_networks: Optional[list[str]] = None,
-                 list_stations: Optional[list[str]] = None
-                 ) -> tuple[stations.Stations, dict[str, str]]:
+                 list_stations: Optional[list[str]] = None) -> tuple[stations.Stations, dict[str, str]]:
     """Returns a VLBI array including the required stations and any that were excluded.
 
     Parameters
@@ -107,7 +107,7 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
         to the reason they were dropped (e.g. 'no band').
     """
     _load_heavy()
-    selected = []
+    selected: list[str] = []
     no_band: dict[str, str] = {}
     if list_networks is not None:
         try:
@@ -121,7 +121,7 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
                             no_band[s] = 'no band'
         except KeyError:
             unknown_networks: list = [n for n in list_networks if n not in obs._NETWORKS]  # type: ignore
-            n_networks = len(unknown_networks)  # type: ignore
+            n_networks: int = len(unknown_networks)  # type: ignore
             rprint(f"[bold red]The network{'s' if n_networks > 1 else ''} {', '.join(unknown_networks)}"
                    f" {'are' if n_networks > 1 else 'is'} not known.[/bold red]")
             raise ValueError(f"Network ({unknown_networks}) not known")
@@ -209,21 +209,20 @@ def _resolve_calibrators(names: list[str], target: sources.Source, band: str,
         if auto_func == 'phasecal':
             rprint("[yellow]No phase calibrator name given — auto-selecting the best candidate. "
                    "A better source may be found manually via 'planobs phasecals'.[/yellow]")
-            src = calibrators.select_phase_calibrator(target, band, catalog=cat)
+            src: calibrators.CalibratorSource | None = calibrators.select_phase_calibrator(target, band, catalog=cat)
         else:
             rprint("[yellow]No check source name given — auto-selecting the best candidate. "
                    "A better source may be found manually via 'planobs phasecals'.[/yellow]")
             if phase_cal_ref is None:
                 phase_cal_ref = target
-            src = calibrators.select_check_source(target, phase_cal_ref, band, catalog=cat)
+            src: calibrators.CalibratorSource | None = calibrators.select_check_source(target, phase_cal_ref, band, catalog=cat)
 
         if src is not None:
             rprint(f"[green]  → Selected {src.name} (sep "
                    f"{target.coord.separation(src.coord).deg:.2f}°, "
                    f"unresolved {src.unresolved_flux(rfc_band):.2f} Jy)[/green]")
-            resolved.append(sources.Source(
-                name=src.name, coordinates=src.coord,
-                source_type=source_type, other_names=[src.ivsname]))
+            resolved.append(sources.Source(name=src.name, coordinates=src.coord,
+                                           source_type=source_type, other_names=[src.ivsname]))
         else:
             rprint(f"[bold red]Could not auto-select a {source_type.name.lower()} "
                    f"near {target.name}.[/bold red]")

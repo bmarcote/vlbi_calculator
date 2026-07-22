@@ -250,6 +250,10 @@ class Source(FixedTarget):
     # @property
     # def coordinates(self) -> coord.SkyCoord
     #     return self.
+    @property
+    def name(self) -> str:
+        return self.name
+
 
     @property
     def other_names(self) -> list[str]:

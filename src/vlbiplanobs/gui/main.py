@@ -50,6 +50,7 @@ def setup_file_logging(logfilename: Optional[str] = None) -> int:
     return logger.add(logfilename, backtrace=True, diagnose=True,
                       format="{time:YYYY-MM-DD HH:mm} |  {level} {message}")
 
+
 current_directory = os.path.dirname(os.path.realpath(__file__))
 external_stylesheets: list = ['https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css']
 external_scripts: list = []
@@ -88,20 +89,13 @@ def _params_to_obs(obs_params: dict, target_spec: Optional[str] = None) -> Optio
     if obs_params is None:
         return None
     targets = [target_spec] if target_spec is not None else obs_params.get('targets')
-    return cli.main(
-        band=obs_params['band'],
-        stations=obs_params['stations'],
-        targets=targets,
-        duration=obs_params['duration'] * u.h if obs_params['duration'] is not None else None,
-        ontarget=obs_params['ontarget'],
-        start_time=Time(dt.strptime(f"{obs_params['startdate']} {obs_params['starttime']}",
-                                    '%Y-%m-%d %H:%M'),
-                        format='datetime', scale='utc') if obs_params.get('startdate') else None,
-        datarate=obs_params['datarate'] * u.Mbit / u.s,
-        subbands=obs_params['subbands'],
-        channels=obs_params['channels'],
-        polarizations=obs_params['polarizations'],
-        inttime=obs_params['inttime'] * u.s)
+    return cli.main(band=obs_params['band'], stations=obs_params['stations'], targets=targets,
+                    duration=float(obs_params['duration']) * u.h if obs_params['duration'] is not None else None,
+                    ontarget=obs_params['ontarget'], start_time=Time(dt.strptime(f"{obs_params['startdate']} {obs_params['starttime']}",
+                                                                                     '%Y-%m-%d %H:%M'),
+                                                                     format='datetime', scale='utc') if obs_params.get('startdate') else None,
+                    datarate=obs_params['datarate'] * u.Mbit / u.s, subbands=obs_params['subbands'],
+                    channels=obs_params['channels'], polarizations=obs_params['polarizations'], inttime=obs_params['inttime'] * u.s)
 
 
 @app.callback(Output({'type': 'download-pdf', 'index': MATCH}, 'data'),
@@ -152,6 +146,7 @@ def download_pdf_per_target(n_clicks, btn_id, obs_params: dict):
         except Exception as fig_error:
             logger.warning(f"Could not include figure in PDF: {fig_error}")
             tmpfile = outputs.summary_pdf(obs, show_figure=False)
+
         logger.info(f"PDF created at {tmpfile}.")
         # send_file reads the file content into the response, so the temp file can go now.
         download_data = dcc.send_file(tmpfile, filename=f"planobs_{safe_label}.pdf")
@@ -159,6 +154,7 @@ def download_pdf_per_target(n_clicks, btn_id, obs_params: dict):
             os.remove(tmpfile)
         except OSError:
             logger.warning(f"Could not remove temporary PDF file {tmpfile}.")
+
         return download_data
     except Exception as e:
         logger.exception(f"While downloading the PDF: {e}")
@@ -256,14 +252,10 @@ def _compute_one_target(target_spec: Optional[str], shared_kwargs: dict) -> tupl
                Input('switches-antennas', 'value')],
               [State({'type': 'network-switch', 'index': ALL}, 'value')],
               suppress_callback_exceptions=True)
-def compute_observation_realtime(band: int,
-                                  target_specs: Optional[list[str]],
-                                  onsourcetime: int,
-                                  defined_epoch: bool, startdate: str, starttime: str,
-                                  duration: int | float, datarate: int, subbands: int,
-                                  channels: int, pols: int, inttime: int, e_evn: bool,
-                                  selected_antennas: list[str],
-                                  network_switches: Optional[list[bool]] = None):
+def compute_observation_realtime(band: int, target_specs: Optional[list[str]], onsourcetime: int,
+                                 defined_epoch: bool, startdate: str, starttime: str, duration: int | float,
+                                 datarate: int, subbands: int, channels: int, pols: int, inttime: int, e_evn: bool,
+                                 selected_antennas: list[str], network_switches: Optional[list[bool]] = None):
     """Real-time computation: builds the outputs container with one tab per target.
 
     The container shows:

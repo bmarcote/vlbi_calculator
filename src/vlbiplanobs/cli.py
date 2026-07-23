@@ -468,9 +468,14 @@ def main(band: str, networks: Optional[list[str]] = None,
         raise ValueError("Data rate is a str! ", datarate)
 
     selected_stations, excluded_stations = get_stations(band, networks, stations)
+    if start_time is not None and duration_val is not None:
+        times_array = np.arange(0, duration_val + 5, 10)*u.min
+        times_array = np.append(times_array, duration_val*u.min)
+        times = start_time + times_array
+    else:
+        times = None
     o = VLBIObs(band, selected_stations, scans=src2observe,
-                times=start_time + np.arange(0, duration_val + 5, 10)*u.min
-                if start_time is not None and duration_val is not None else None, duration=duration,
+                times=times, duration=duration,
                 datarate=datarate,
                 subbands=subbands, channels=channels,
                 polarizations=polarizations,

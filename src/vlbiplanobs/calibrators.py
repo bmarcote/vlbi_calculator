@@ -261,12 +261,9 @@ class CalibratorSource(Source):
         str
             Comma-separated uppercase band letters (e.g., 'S,C,X').
         """
-        bands = []
-        for band in ['s', 'c', 'x', 'u', 'k']:
-            idx = _BAND_INDEX[band]
-            if self.flux_unresolved[idx] > 0 or self.flux_resolved[idx] > 0:
-                bands.append(band.upper())
-        return ','.join(bands)
+        return ','.join(band.upper()
+                        for band, idx in _BAND_INDEX.items()
+                        if self.flux_unresolved[idx] > 0 or self.flux_resolved[idx] > 0)
 
 
 class RFCCatalog:
@@ -321,7 +318,7 @@ class RFCCatalog:
             return self._catalog_filename
         rfc_files = tuple(r.name for r in resources.files('vlbiplanobs.data').iterdir()
                        if r.is_file() and 'rfc' in r.name and r.name.endswith('.txt'))
-        if len(rfc_files) == 0:
+        if not rfc_files:
             raise FileNotFoundError('No RFC catalog files found in the data directory.')
         with resources.as_file(resources.files('vlbiplanobs.data').joinpath(sorted(rfc_files)[-1])) as rfcfile:
             return str(rfcfile)
@@ -724,7 +721,7 @@ def get_fringe_finder_sources(
         passes_all = np.all(all_times_per_station, axis=0)
         visible_idx = np.where(passes_all)[0]
 
-        if len(visible_idx) == 0:
+        if not visible_idx.size:
             return [], [], None
 
         min_elevs = np.min(elev_matrices[:, :, visible_idx], axis=(0, 1))
@@ -739,7 +736,7 @@ def get_fringe_finder_sources(
         any_visible = visible_counts > 0
         visible_idx = np.where(any_visible)[0]
 
-        if len(visible_idx) == 0:
+        if not visible_idx.size:
             return [], [], []
 
         n_vis = len(visible_idx)
@@ -796,7 +793,7 @@ def get_nearby_sources(source: CalibratorSource | Source, max_separation: u.Quan
 
     max_sep_deg = max_separation.to(u.deg).value if hasattr(max_separation, 'to') else max_separation
     ra_arr, dec_arr = catalog._get_coord_arrays()
-    if len(ra_arr) == 0:
+    if not ra_arr.size:
         return []
 
     separations_deg = _angular_separation(source.coord.ra.deg, source.coord.dec.deg, ra_arr, dec_arr)

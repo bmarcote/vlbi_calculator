@@ -301,7 +301,7 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
         z_matrix = np.full((n_ants, n_times), np.nan)
         for anti, ant in enumerate(ant_names):
             targets = o.scans[src_block].sources(sources.SourceType.TARGET)
-            if len(targets) > 0:
+            if targets:
                 elev_values = elevs[targets[0].name][ant].value
             else:
                 elev_values = elevs[o.scans[src_block].sources()[0].name][ant].value
@@ -596,12 +596,8 @@ def serialize_elevation_data(o) -> Optional[dict]:
         targets = o.scans[src_block].sources(sources.SourceType.TARGET)
         target_name = targets[0].name if targets else o.scans[src_block].sources()[0].name
 
-        observability = {}
-        elevation_vals = {}
-        for ant in ant_names:
-            observability[ant] = [bool(v) for v in srcup[src_block][ant]]
-            elev_arr = elevs[target_name][ant].value
-            elevation_vals[ant] = [float(v) for v in elev_arr]
+        observability = {ant: srcup[src_block][ant].astype(bool).tolist() for ant in ant_names}
+        elevation_vals = {ant: elevs[target_name][ant].value.tolist() for ant in ant_names}
 
         blocks[src_block] = {
             'ant_names': ant_names,

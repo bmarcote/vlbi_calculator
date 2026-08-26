@@ -931,7 +931,7 @@ class ScanBlock:
         ValueError
             If the scan block contains an empty list of scans or if any element is not a Scan.
         """
-        if len(scans) == 0:
+        if not scans:
             raise ValueError("The scan block cannot contain an empty list of scans.")
 
         if not all([isinstance(s, Scan) for s in scans]):
@@ -1046,7 +1046,7 @@ class ScanBlock:
             are the source names, and the values are the fraction of time, from the total scan block
             time, spent on the source.
         """
-        if len(self._frac_time.keys()) > 0:
+        if self._frac_time:
             return self._frac_time
 
         # Get scans with valid durations
@@ -1139,7 +1139,7 @@ class ScanBlock:
                         if n_loop % a_scan.every == 0:
                             target_in_this_scan += [a_scan,]
 
-                    if len(target_in_this_scan) == 0:
+                    if not target_in_this_scan:
                         target_in_this_scan = self.scans_with_sources(SourceType.TARGET)
 
                     to_append = self.scans_with_sources(SourceType.PHASECAL) + target_in_this_scan

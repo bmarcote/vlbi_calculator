@@ -1029,8 +1029,9 @@ class Observation(object):
         result: dict[str, Optional[u.Quantity]] = {}
         check_times = times if times is not None else (self._REF_YEAR if not self.fixed_time else self.times)
         min_sep_limit = freqsetups.min_separation_sun(self.band)
+        sun = coord.get_sun(check_times)
         for src in self.sources():
-            sep = np.min(src.sun_separation(times=check_times))
+            sep = np.min(src.coord.transform_to(coord.GCRS(obstime=check_times)).separation(sun))
             result[src.name] = sep if sep <= min_sep_limit else None
         return result
 
@@ -1196,13 +1197,14 @@ class Observation(object):
         uv_data = self.get_uv_data()
         longest_bl: dict[str, Tuple[str, u.Quantity]] = {}
         for src, src_uv in uv_data.items():
-            max_temp = -1.0
-            for a_bl, uv in src_uv.items():
-                if len(uv) > 0:
-                    bl_length = np.sqrt(np.max((uv**2).sum(axis=1)))
-                    if bl_length > max_temp:
-                        longest_bl[src] = (a_bl, (bl_length*self.wavelength).to(u.km))
-                        max_temp = bl_length
+            nonempty = [(bl, uv) for bl, uv in src_uv.items() if uv.size > 0]
+            if not nonempty:
+                continue
+            bl_names, uv_arrays = zip(*nonempty)
+            max_lengths2 = np.array([np.max(np.einsum('ij,ij->i', uv, uv)) for uv in uv_arrays])
+            max_idx = np.argmax(max_lengths2)
+            longest_bl[src] = (bl_names[max_idx],
+                               (np.sqrt(max_lengths2[max_idx])*self.wavelength).to(u.km))
 
         return longest_bl
 
@@ -1217,13 +1219,14 @@ class Observation(object):
         uv_data = self.get_uv_data()
         shortest_bl: dict[str, Tuple[str, u.Quantity]] = {}
         for src, src_uv in uv_data.items():
-            min_temp = -1
-            for a_bl, uv in src_uv.items():
-                if len(uv) > 0:
-                    bl_length = np.sqrt(np.max((uv**2).sum(axis=1)))
-                    if bl_length < min_temp or min_temp < 0:
-                        shortest_bl[src] = (a_bl, (bl_length*self.wavelength).to(u.km))
-                        min_temp = bl_length
+            nonempty = [(bl, uv) for bl, uv in src_uv.items() if uv.size > 0]
+            if not nonempty:
+                continue
+            bl_names, uv_arrays = zip(*nonempty)
+            max_lengths2 = np.array([np.max(np.einsum('ij,ij->i', uv, uv)) for uv in uv_arrays])
+            min_idx = np.argmin(max_lengths2)
+            shortest_bl[src] = (bl_names[min_idx],
+                                (np.sqrt(max_lengths2[min_idx])*self.wavelength).to(u.km))
 
         return shortest_bl
 
@@ -1281,15 +1284,19 @@ class Observation(object):
         for blockname, block in self.scans.items():
             bad_epochs[blockname] = []
             for src in block.sources():
-                bad_epochs[blockname] += src.sun_constraint(freqsetups.min_separation_sun(self.band))
+                bad_epochs[blockname].extend(src.sun_constraint(freqsetups.min_separation_sun(self.band)))
 
             # Keep only the first and last epochs
-            if len(bad_epochs[blockname]) > 0:
+            if bad_epochs[blockname]:
                 t0, t1 = min(bad_epochs[blockname]), max(bad_epochs[blockname])
                 if t0.datetime.month < 3 and t1.datetime.month > 10:
                     mid_year = Time(f'{t0.datetime.year}-06-01')
-                    before_mid = [t for t in bad_epochs[blockname] if t <= mid_year]
-                    after_mid = [t for t in bad_epochs[blockname] if t >= mid_year]
+                    before_mid, after_mid = [], []
+                    for t in bad_epochs[blockname]:
+                        if t <= mid_year:
+                            before_mid.append(t)
+                        if t >= mid_year:
+                            after_mid.append(t)
                     if before_mid and after_mid:
                         t1 = max(before_mid)
                         t0 = min(after_mid)
@@ -1312,16 +1319,13 @@ class Observation(object):
         dict[str, Optional[u.Quantity]]
             Dictionary mapping source names to Time arrays when Sun is too close.
         """
+        per_src = self.sun_constraint_per_source(times=times)
+        min_sep_limit = freqsetups.min_separation_sun(self.band)
         sun_seps: dict[str, Optional[u.Quantity]] = {}
         for blockname, block in self.scans.items():
-            min_sep = np.min([s.sun_separation(times=times if times is not None else self._REF_YEAR
-                                               if not self.fixed_time else self.times)
-                              for s in block.sources()])
-            if isinstance(min_sep, float):
-                min_sep *= u.deg
-
-            sun_seps[blockname] = min_sep if min_sep <= freqsetups.min_separation_sun(self.band) \
-                else None
+            min_sep = min((per_src[src.name] for src in block.sources() if per_src[src.name] is not None),
+                          default=None)
+            sun_seps[blockname] = min_sep if min_sep is not None and min_sep <= min_sep_limit else None
 
         return sun_seps
 
@@ -1339,7 +1343,7 @@ class Observation(object):
 
             # Filter stations that have SEFD for the requested band
             valid_stations = [stat for stat in self.stations if stat.has_band(self.band)]
-            if len(valid_stations) < 1:
+            if not valid_stations:
                 return None
 
             if self.datarate is None:
@@ -1362,45 +1366,54 @@ class Observation(object):
                                   else self.datarate.to(u.bit/u.s).value for s in valid_stations]) / \
                 (2 * self.bitsampling.to(u.bit).value)  # In Hz
             bandwidth_min = np.minimum.outer(bandwidths, bandwidths)
+            pol = min(self.polarizations.value, 2)
+            # Precompute the per-baseline weighting matrix; only the upper triangle has unique baselines.
+            weight_matrix = (bandwidth_min / np.outer(sefds, sefds)) * \
+                np.triu(np.ones_like(bandwidth_min), k=1)
+
             if not self.sources():
                 if not self.fixed_time:
                     dt = self.duration.to(u.s).value * self.ontarget_fraction
                 else:
                     dt = (self.times[-1]-self.times[0]).to(u.s).value * self.ontarget_fraction
 
-                temp = np.sum((bandwidth_min/np.outer(sefds, sefds)) *
-                              np.triu(np.ones_like(bandwidth_min), k=1))
-                self._rms = ((1/0.7)/np.sqrt(temp * dt * min(self.polarizations.value, 2)))*u.Jy/u.beam
+                temp = np.sum(weight_matrix)
+                self._rms = ((1/0.7)/np.sqrt(temp * dt * pol))*u.Jy/u.beam
                 return self._rms
             elif not self.fixed_time:
-                self._rms = {}
-                for sourcename in self.sourcenames:
-                    temp = np.sum((bandwidth_min/np.outer(sefds, sefds)) *
-                                  np.triu(np.ones_like(bandwidth_min), k=1))
-                    self._rms[sourcename] = ((1/0.7)/np.sqrt(temp*self.duration.to(u.s).value *
-                                                             min(self.polarizations.value, 2) *
-                                                             self.ontarget_fraction))*u.Jy/u.beam
-
+                temp = np.sum(weight_matrix)
+                rms_value = ((1/0.7)/np.sqrt(temp * self.duration.to(u.s).value * pol *
+                                             self.ontarget_fraction))*u.Jy/u.beam
+                self._rms = {sourcename: rms_value for sourcename in self.sourcenames}
                 return self._rms
             else:
                 self._rms = {}
                 delta_t = (self.times[1] - self.times[0]).to(u.s).value * self.ontarget_fraction
                 obs_data = self.is_observable()
-                for sourcename in self.sourcenames:
-                    scanname = self._scanblock_name_from_source_name(sourcename)
-                    assert scanname is not None, f"No scan found related to the source {sourcename}"
-                    visible = np.array([obs_data[scanname].get(stat.codename, np.zeros(len(self.times), dtype=bool))
-                                        for stat in valid_stations])
-                    integrated_time = np.sum(visible[:, None] & visible[None, :], axis=2) * delta_t
-                    if np.sum(integrated_time) == 0:
-                        self._rms[sourcename] = None
-                        continue
-                    temp = np.sum((bandwidth_min*integrated_time /
-                                  np.outer(sefds, sefds)) * np.triu(np.ones_like(bandwidth_min), k=1))
-                    if temp <= 0:
-                        self._rms[sourcename] = None
+
+                n_sources = len(self.sourcenames)
+                n_stations = len(valid_stations)
+                n_times = len(self.times)
+                visibility_stack = np.empty((n_sources, n_stations, n_times), dtype=bool)
+
+                source_index = {name: idx for idx, name in enumerate(self.sourcenames)}
+                for blockname, block in self.scans.items():
+                    block_vis = obs_data[blockname]
+                    rows = np.array([block_vis.get(stat.codename, np.zeros(n_times, dtype=bool))
+                                     for stat in valid_stations])  # shape (n_stations, n_times)
+                    for src in block.sources():
+                        visibility_stack[source_index[src.name], :, :] = rows
+
+                # Pairwise integration time per source, summed over all unique baselines.
+                integrated_time = np.einsum('sit,sjt->sij', visibility_stack, visibility_stack,
+                                            dtype=np.int64) * delta_t
+                temp = np.einsum('sij,ij->s', integrated_time, weight_matrix)
+
+                for s_idx, sourcename in enumerate(self.sourcenames):
+                    if temp[s_idx] > 0:
+                        self._rms[sourcename] = ((1/0.7)/np.sqrt(temp[s_idx] * pol))*u.Jy/u.beam
                     else:
-                        self._rms[sourcename] = ((1/0.7)/np.sqrt(temp * min(self.polarizations.value, 2)))*u.Jy/u.beam
+                        self._rms[sourcename] = None
 
             return self._rms if any(v is not None for v in self._rms.values()) else None
 
@@ -1464,7 +1477,6 @@ class Observation(object):
         if len(valid_stations) < 2:
             return None
 
-        basel_sens: dict[str, u.Quantity] = {}
         sefds = np.array([stat.sefd(self.band).to(u.Jy).value for stat in valid_stations])
         datarates = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
                               else self.datarate.to(u.bit/u.s).value for s in valid_stations])
@@ -1472,12 +1484,9 @@ class Observation(object):
         sens = (1/0.7)*np.sqrt(np.outer(sefds, sefds)) / \
                                 np.sqrt(datarates_min/(min(self.polarizations.value, 2) * \
                                         self.bitsampling.to(u.bit).value))
-        for i in range(len(valid_stations)):
-            for j in range(i, len(valid_stations)):
-                basel_sens[f"{valid_stations[i].codename}-{valid_stations[j].codename}"] = \
-                    sens[i, j]*u.Jy/u.beam
-
-        return basel_sens
+        idx_i, idx_j = np.triu_indices(len(valid_stations))
+        return {f"{valid_stations[i].codename}-{valid_stations[j].codename}": sens[i, j]*u.Jy/u.beam
+                for i, j in zip(idx_i, idx_j)}
 
     def _compute_uv_per_source(self, source: Optional[Source] = None) -> dict[str, u.Quantity]:
         """Computes UV coordinates for a source.
@@ -1531,16 +1540,14 @@ class Observation(object):
         # Use einsum for batch matrix multiplication
         bl_uv = (np.einsum('tij,bj->tbi', m, bl_xyz)*u.m/self.wavelength).decompose()
         # shape (ntimes, nbl, 3)
-        bl_uv_up: dict[str, u.Quantity] = {}
         if source is None:
-            for i, bl_name in enumerate(bl_names):
-                bl_uv_up[bl_name] = bl_uv[:, i, :2]  # Only u,v
-            return bl_uv_up
+            return {bl_name: bl_uv[:, i, :2] for i, bl_name in enumerate(bl_names)}  # Only u,v
 
         # Source is provided: filter by visibility
         ants_up = self.is_observable()
         blockname = [ablock for ablock in self.scans if source.name in self.scans[ablock].sourcenames()][0]
 
+        bl_uv_up: dict[str, u.Quantity] = {}
         for bl_idx, bl_name in enumerate(bl_names):
             ant1, ant2 = bl_name.split('-')
             # Find times where both antennas are up
@@ -1549,9 +1556,7 @@ class Observation(object):
             # NOTE: type(ants_up)=<class 'dict'>, type(ants_up[blockname])=<class 'dict'>,
             # type(ants_up[blockname][ant1])=<class 'numpy.ndarray'>
             up_times = ants_up[blockname][ant1] & ants_up[blockname][ant2]  # type: ignore
-            if len(up_times) > 0:
-                # up_times are indices into the time array
-                bl_uv_up[bl_name] = bl_uv[up_times, bl_idx, :2]
+            bl_uv_up[bl_name] = bl_uv[up_times, bl_idx, :2]
 
         if not bl_uv_up:
             raise SourceNotVisible
@@ -1594,11 +1599,11 @@ class Observation(object):
             self._uv_array = {}
             bl_uv_up = self.get_uv_data()
             for src, bl_uv in bl_uv_up.items():
-                self._uv_array[src] = np.empty((np.sum([bl_uv[bl_name].shape[0] for bl_name in bl_uv]), 2))
-                last_i = 0
-                for bl_name in bl_uv:
-                    self._uv_array[src][last_i:last_i+bl_uv[bl_name].shape[0], :] = bl_uv[bl_name]
-                    last_i += bl_uv[bl_name].shape[0]
+                if bl_uv:
+                    self._uv_array[src] = np.asarray(np.concatenate([bl_uv[bl_name]
+                                                                     for bl_name in bl_uv], axis=0))
+                else:
+                    self._uv_array[src] = np.empty((0, 2))
 
             return self._uv_array
 
@@ -1650,17 +1655,15 @@ class Observation(object):
 
             uvvis = self.get_uv_values()
             for src, uv in uvvis.items():
-                # Transform the uv points into r,theta (polar) points
-                uvvis_polar = np.empty_like(uv)
-                uvvis_polar[:, 0] = np.sqrt((uv**2).sum(axis=1))  # radius
-                uvvis_polar[:, 1] = np.arctan2(uv[:, 1], uv[:, 0])  # theta
-                # Defines the BMAJ and PA
-                bl_bmaj = np.max(uvvis_polar[:, 0])
-                bl_bmaj_theta = uvvis_polar[:, 1][np.where(uvvis_polar[:, 0] == bl_bmaj)][0]
+                radii = np.linalg.norm(uv, axis=1)
+                theta = np.arctan2(uv[:, 1], uv[:, 0])
+                max_idx = np.argmax(radii)
+                bl_bmaj = radii[max_idx]
+                bl_bmaj_theta = theta[max_idx]
                 # Gets the BMIN and an orthogonal projection
                 bl_bmin_theta = (bl_bmaj_theta + np.pi/2) % (2*np.pi)
-                bl_bmin = np.max(np.abs(uv.dot(np.array([np.cos(bl_bmin_theta),
-                                                         np.sin(bl_bmin_theta)]))))
+                direction = np.array([np.cos(bl_bmin_theta), np.sin(bl_bmin_theta)])
+                bl_bmin = np.max(np.abs(uv @ direction))
 
                 self._synth_beam[src] = {'bmaj': resolution(bl_bmin), 'bmin': resolution(bl_bmaj),
                                          'pa': (bl_bmaj_theta*u.rad).to(u.deg)}

@@ -241,7 +241,7 @@ def antenna_card(app, ant: stations.Station, show_wavelengths: bool = True) -> h
                             else None,
                             dmc.Text(ant.country, c='dimmed', mt='0', mb='1rem'),
                             dmc.Text(f"Default antenna in {parse_str_list(ant.networks)}.", mb='1rem',
-                                     size='sm') if len(ant.networks) > 0 else None,
+                                     size='sm') if ant.networks else None,
                             dmc.Text("No longer operational.", mb='1rem', c='#a01d26', size='sm')
                             if ant.decommissioned else None,
                             dmc.Text("Can observe at the following bands (System Equivalent Flux "
@@ -391,7 +391,7 @@ def network_band_labels(network: str, show_wavelengths: bool = False) -> str:
         label_bands = [fs.bands[b].split('or')[1].replace('GHz', '').strip()
                        for b in observation._NETWORKS[network].observing_bands]
 
-    if len(label_bands) == 0:
+    if not label_bands:
         return 'N/A'
     elif len(label_bands) == 1:
         return label_bands[0]
@@ -474,7 +474,7 @@ def station_groups() -> dict[str, list[stations.Station]]:
     """
     groups: dict[str, list[stations.Station]] = {}
     for s in observation._STATIONS:
-        if s.group is not None:
+        if s.group:
             groups.setdefault(s.group, []).append(s)
     return groups
 
@@ -713,7 +713,7 @@ def target_sources_modal() -> html.Div:
                            htmlFor='modal-source-input', className='form-label'),
                 dbc.InputGroup([
                     dbc.Input(id='modal-source-input', type='text',
-                              placeholder="3C273  or  hh:mm:ss dd:mm:ss",
+                              placeholder="As in '3C273' or  hh:mm:ss dd:mm:ss coordinates",
                               debounce=False, n_submit=0),
                     dbc.Button("Add", id='button-add-source',
                                color='success', n_clicks=0,

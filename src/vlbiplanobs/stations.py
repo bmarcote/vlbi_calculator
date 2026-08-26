@@ -783,7 +783,7 @@ class Stations(object):
 
         if only_defaults:
             all_networks = self.get_networks_from_configfile()
-            if len(networks) > 0:
+            if networks:
                 the_network = all_networks[networks[0]]
                 for a_network in networks[1:]:
                     the_network += all_networks[a_network]

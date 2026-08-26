@@ -109,6 +109,16 @@ def test_observation_lba_no_visible():
     assert o.thermal_noise() is None
 
 
+def test_get_uv_values_no_baselines():
+    """Empty baseline list must not raise TypeError in get_uv_values."""
+    o = obs.Observation(band='18cm',
+                        stations=obs._STATIONS.filter_antennas(['Ef']),
+                        scans={},
+                        times=Time('2020-06-15 20:00', scale='utc') + np.arange(0, 720, 10)*u.min)
+    uv = o.get_uv_values()
+    assert 'DUMMY' in uv
+    assert uv['DUMMY'].shape == (0, 2)
+
 
 # TODO:
 # test uv coverage: same number of points in +x,+y than -x,-y., and the other quarter.

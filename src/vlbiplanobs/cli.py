@@ -26,8 +26,6 @@ if TYPE_CHECKING:
 # Heavy dependencies (numpy, astropy, computation modules) are imported lazily via
 # `_load_heavy()` so that `planobs`, `planobs -h` and `planobs -V` respond immediately.
 _HEAVY_LOADED = False
-
-# Names made available in the module globals by `_load_heavy()`.
 _HEAVY_NAMES = ('np', 'u', 'Time', 'SkyCoord', 'stations', 'obs', 'sources',
                 'calibrators', 'freqsetups', 'VLBIObs', 'optimal_units')
 
@@ -109,7 +107,7 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
     _load_heavy()
     selected: list[str] = []
     no_band: dict[str, str] = {}
-    if list_networks is not None:
+    if list_networks:
         try:
             networks = [obs._NETWORKS[n] for n in list_networks]
             for n in networks:
@@ -120,13 +118,13 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
                         else:
                             no_band[s] = 'no band'
         except KeyError:
-            unknown_networks: list = [n for n in list_networks if n not in obs._NETWORKS]  # type: ignore
-            n_networks: int = len(unknown_networks)  # type: ignore
+            unknown_networks: list = [n for n in list_networks if n not in obs._NETWORKS]
+            n_networks: int = len(unknown_networks)
             rprint(f"[bold red]The network{'s' if n_networks > 1 else ''} {', '.join(unknown_networks)}"
                    f" {'are' if n_networks > 1 else 'is'} not known.[/bold red]")
             raise ValueError(f"Network ({unknown_networks}) not known")
 
-    if list_stations is not None:
+    if list_stations:
         try:
             for s in list_stations:
                 try:
@@ -970,7 +968,7 @@ def _check_obs_worker(args):
             scans={src.name: sources.ScanBlock([sources.Scan(src, duration=5 * u.min)])}
         )
         observable_times = observation.when_is_observable(min_stations=3)
-        is_obs = len(observable_times[src.name]) > 0
+        is_obs = bool(observable_times[src.name])
         if return_gst and is_obs:
             gst_times = observation.when_is_observable(min_stations=3, return_gst=True)
             gst_str = _format_gst_ranges(gst_times.get(src.name, []))

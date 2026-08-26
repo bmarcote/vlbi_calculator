@@ -81,7 +81,7 @@ def enable_networks_with_band(band_index: int, target_specs: Optional[list[str]]
                             scans={src.name: sources.ScanBlock([sources.Scan(src, duration=5 * u.min)])}
                         )
                         observable = obs_obj.when_is_observable(min_stations=3)
-                        source_ok[net_key] = len(observable[src.name]) > 0
+                        source_ok[net_key] = bool(observable[src.name])
                     except Exception:
                         source_ok[net_key] = False
             except Exception:
@@ -143,10 +143,10 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
             dr = observation._NETWORKS['EVN'].max_datarate(the_band)
             max_datarate = int(dr.value) if dr is not None else 2048
         else:
-            rates = [observation._NETWORKS[net].max_datarate(the_band)
-                     for net in network_names if observation._NETWORKS[net].has_band(the_band)]
-            valid_rates = [r.value for r in rates if r is not None]
-            max_datarate = int(min(valid_rates)) if valid_rates else 2048
+            rates = [r.value for net in network_names
+                     if observation._NETWORKS[net].has_band(the_band)
+                     and (r := observation._NETWORKS[net].max_datarate(the_band)) is not None]
+            max_datarate = int(min(rates)) if rates else 2048
     except (AttributeError, ValueError):
         raise PreventUpdate
 

@@ -235,7 +235,7 @@ def sun_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:
             sun_const_src = sun_const[list(sun_const.keys())[0]]
             assert sun_const_src is not None, \
                 "And error occured while checking if the Sun gets too close to the source."
-            assert len(sun_limits) > 0, \
+            assert sun_limits, \
                 "And error occured while checking if the Sun gets too close to the source."
             t0, t1 = sun_limits[0].datetime, sun_limits[-1].datetime
             if t0 == t1:
@@ -259,7 +259,7 @@ def sun_warning(o: Optional[cli.VLBIObs] = None) -> html.Div:
                                     f"(with a minimum separation of {sun_const_src.value:.0f}"
                                     f"{sun_const_src.unit.to_string('unicode')}).", icon='fa fa-solid fa-sun')
     else:
-        if len(sun_separation := list(sun_const.values())) > 0 and sun_separation[0] is not None:
+        if (sun_separation := list(sun_const.values())) and sun_separation[0] is not None:
             return warning_card("The Sun is too close to the source!",
                                 f"With a minimum separation of {sun_separation[0].value:.0f}"
                                 f"{sun_separation[0].unit.to_string('unicode')} during the observation.",
@@ -560,8 +560,7 @@ def baseline_sensitivities(o: Optional[cli.VLBIObs] = None) -> html.Div:
         # a_row = [html.Td(" ")]*i
         a_row = [html.Td(" ")]*i
         for j in range(i, len(o.stations)):
-            val = o.baseline_sensitivity(s.codename,
-                                         o.stations[j].codename).to(u.mJy/u.beam).value
+            val = bl_sens[f"{s.codename}-{o.stations[j].codename}"].to(u.mJy/u.beam).value
             val_badge = 'bg-success' if val < lower_div else 'bg-danger' \
                         if val > higher_div else 'bg-warning'
             a_row.append(html.Td(html.Span(f"{val:4.2f}", className='badge ' + val_badge)))
@@ -1224,7 +1223,7 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
     sun_limit = o.sun_limiting_epochs()
     for ablockname in o.sun_limiting_epochs():
         if not o.fixed_time:
-            if len(sun_limit[ablockname]) > 0:
+            if sun_limit[ablockname]:
                 text = "Note the the Sun is too close to this source"
                 t0, t1 = sun_limit[ablockname][0].datetime, sun_limit[ablockname][-1].datetime
                 if t0 == t1:
@@ -1341,7 +1340,7 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
                                 f"and {tm_smearing:.2g} (from time smearing), considering 10% loss."))
 
     figpath: Optional[Path] = None
-    if len(o.scans) > 0 and show_figure:
+    if o.scans and show_figure:
         fig = plots.elevation_plot(o, show_colorbar=True)
         if fig is not None:
             try:

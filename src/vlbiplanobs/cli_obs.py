@@ -62,17 +62,13 @@ class VLBIObs(obs.Observation):
             dict[source_name, dict[station_codename, np.ndarray[float]]]
                 Elevation values in degrees for each source and station.
         """
-        elevations = self.elevations()
-        result = {}
-        for source_name, station_elevs in elevations.items():
-            result[source_name] = {}
-            for station_codename, elev_values in station_elevs.items():
-                # Convert to degrees and handle astropy Quantities
-                if hasattr(elev_values, 'to'):
-                    result[source_name][station_codename] = elev_values.to(u.deg).value
-                else:
-                    result[source_name][station_codename] = np.asarray(elev_values)
-        return result
+        return {
+            src_name: {
+                st_name: (elev.to(u.deg).value if hasattr(elev, 'to') else np.asarray(elev))
+                for st_name, elev in st_elevs.items()
+            }
+            for src_name, st_elevs in self.elevations().items()
+        }
 
     def _plot_source_elevation_terminal(self, src_name: str, src_vis: dict, src_elev: dict, time_labels: list[str]) -> None:
         """Render a per-antenna elevation plot for one source using plotext.
@@ -123,18 +119,14 @@ class VLBIObs(obs.Observation):
         canvas_width = min(term_width, n_times + y_margin + legend_offset)
         pltx.plot_size(canvas_width, n_ants + 6)
 
+        vis_matrix = np.array([src_vis.get(ant, np.zeros(n_times, dtype=bool)) for ant in antenna_names])
+        elev_matrix = np.array([src_elev.get(ant, np.zeros(n_times)) for ant in antenna_names])
+
         for el_min, el_max, color, label in bands:
-            xs: list[int] = []
-            ys: list[int] = []
-            for y_idx, ant in enumerate(antenna_names):
-                visibility = src_vis.get(ant, np.zeros(n_times, dtype=bool))
-                elevations = src_elev.get(ant, np.zeros(n_times))
-                for x_idx, (is_vis, elev) in enumerate(zip(visibility, elevations)):
-                    if is_vis and el_min <= float(elev) < el_max:
-                        xs.append(x_idx)
-                        ys.append(y_idx)
-            if xs:
-                pltx.scatter(xs, ys, color=color, marker='▪', label=label)
+            mask = vis_matrix & (elev_matrix >= el_min) & (elev_matrix < el_max)
+            if np.any(mask):
+                ys, xs = np.where(mask)
+                pltx.scatter(xs.tolist(), ys.tolist(), color=color, marker='▪', label=label)
 
         pltx.yticks(list(range(n_ants)), antenna_names)
         pltx.ylim(-0.5, n_ants - 0.5)
@@ -183,27 +175,20 @@ class VLBIObs(obs.Observation):
                            f"({int(self.subbands*s.datarate/self.datarate)} subbands)[/dim]")
 
         # Report stations that were requested but excluded
-        excluded_msgs: list[str] = []
-        for code, reason in self._excluded_stations.items():
-            excluded_msgs.append(f"{code} ({reason})")
+        excluded_msgs = [f"{code} ({reason})" for code, reason in self._excluded_stations.items()]
         if self.sources() and self.fixed_time:
             can_obs = self.can_be_observed()
-            never_visible = set()
-            for blk_obs in can_obs.values():
-                for ant, visible in blk_obs.items():
-                    if not visible:
-                        never_visible.add(ant)
             # Only flag stations that cannot observe ANY block
-            all_blocks_invisible = never_visible.copy()
-            for blk_obs in can_obs.values():
-                all_blocks_invisible &= {ant for ant, v in blk_obs.items() if not v}
+            block_false_sets = [{ant for ant, v in blk_obs.items() if not v}
+                                for blk_obs in can_obs.values()]
+            all_blocks_invisible = set.intersection(*block_false_sets) if block_false_sets else set()
             for ant in sorted(all_blocks_invisible):
                 excluded_msgs.append(f"{ant} (source not visible)")
         if excluded_msgs:
             rprint(f"    [yellow]Not observing: {', '.join(excluded_msgs)}[/yellow]")
 
         rprint("\n[bold green]Sources[/bold green]:")
-        if len(self.scans) > 0:
+        if self.scans:
             for ablockname, ablock in self.scans.items():
                 rprint(f"    - [dim]ScanBlock[/dim] '{ablockname}'")
                 rprint('      ' +
@@ -305,7 +290,7 @@ class VLBIObs(obs.Observation):
             if doing_gst:
                 when_everyone = self.when_is_observable(mandatory_stations='all',
                                                         return_gst=True)[ablockname]
-                if len(when_everyone) > 0:
+                if when_everyone:
                     rprint("\n[bold]All antennas can observe the block simultaneously at: [/bold]", end='')
                     rprint(', '.join([t1.to_string(sep=':', fields=2, pad=True) + '-' +
                            t2.to_string(sep=':', fields=2, pad=True) +
@@ -314,7 +299,7 @@ class VLBIObs(obs.Observation):
                     rprint("\nThe block cannot be observed by all stations at the same time.")
             else:
                 when_everyone = self.when_is_observable(mandatory_stations='all')[ablockname]
-                if len(when_everyone) > 0:
+                if when_everyone:
                     rprint("\n[bold]All antennas can observe the block simultaneously at: [/bold]", end='')
                     rprint(', '.join([t1.strftime('%d %b %Y %H:%M')+'-'+t2.strftime('%H:%M') +
                            ' UTC' for t1, t2 in when_everyone]))
@@ -338,7 +323,7 @@ class VLBIObs(obs.Observation):
 
             # Sun constraint — per source, so the user knows which source is the problem
             if doing_gst:
-                if len(sun_limit[ablockname]) > 0:
+                if sun_limit[ablockname]:
                     offending = [(s.name, sun_per_src[s.name])
                                  for s in block_sources if sun_per_src.get(s.name) is not None]
                     src_label = ', '.join(s for s, _ in offending) if offending else 'a source in this block'

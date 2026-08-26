@@ -52,13 +52,39 @@ def setup_file_logging(logfilename: Optional[str] = None) -> int:
 
 
 current_directory = os.path.dirname(os.path.realpath(__file__))
-external_stylesheets: list = ['https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css']
+# All styling assets are served locally (no third-party CDNs) so the app makes zero
+# external font/CSS requests and therefore embeds no trackers (a GDPR concern for the
+# previously-used Google Fonts / Font Awesome / jsDelivr CDNs). Vendored copies live
+# under assets/vendor/ and the fonts under assets/css/local-fonts.css:
+#   - vendor/flatly/bootstrap.min.css   : Bootswatch Flatly theme (was dbc.themes.FLATLY CDN).
+#   - vendor/fontawesome/css/all.min.css : Font Awesome 6.7.2 Free (was dbc.icons.FONT_AWESOME
+#                                          + the cdnjs FA 5.15.4 sheet; covers both the
+#                                          "fa-solid ..." and legacy "fa fa-..." class syntaxes).
+# Google Fonts @import lines were stripped from the vendored CSS; Inter/Lato now load from
+# local files via css/local-fonts.css. dbc.icons.BOOTSTRAP was dropped (no "bi-" classes are
+# used) and dmc.styles.DATES resolves to an empty string in this dmc version.
+# Order matters: the Bootstrap theme must load before the component/soft-ui overrides.
+external_stylesheets: list = ['/assets/vendor/flatly/bootstrap.min.css',
+                              '/assets/vendor/fontawesome/css/all.min.css']
 external_scripts: list = []
 
+# Dash auto-loads every file under assets/. Exclude files that would otherwise throw
+# console errors or double-load on every page:
+#   - soft-ui-dashboard.min.js: duplicate of soft-ui-dashboard.js -> "duplicate variable 'className'".
+#   - Chart.extension.js + chartjs.min.js: Chart.js plugin/lib; app charts with Plotly, not Chart.js.
+#   - bootstrap-notify.js: jQuery notification plugin; jQuery is never loaded and never used.
+#   - font-awesome.min.css: old Font Awesome 4.7.0 sheet whose webfonts are absent (would 404) and
+#     whose ".fa" rule would clash with the vendored FA6; superseded by vendor/fontawesome.
+#   - bootstrap.min.css / all.min.css: the vendored Flatly + FA6 sheets, loaded (in order) via
+#     external_stylesheets above, so they must NOT also be auto-loaded from assets/ (double load).
+assets_ignore = (r'soft-ui-dashboard\.min\.js|Chart\.extension\.js|chartjs\.min\.js|'
+                 r'bootstrap-notify\.js|font-awesome\.min\.css|bootstrap\.min\.css|all\.min\.css')
+
 app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_scripts,
-           external_stylesheets=[dbc.themes.FLATLY, dbc.icons.BOOTSTRAP,
-                                 dbc.icons.FONT_AWESOME, dmc.styles.DATES] + external_stylesheets,
-           assets_folder=current_directory+'/assets/', eager_loading=False,
+           external_stylesheets=external_stylesheets,
+           assets_folder=current_directory+'/assets/', assets_ignore=assets_ignore,
+           serve_locally=True,
+           eager_loading=False,
            suppress_callback_exceptions=True,
            prevent_initial_callbacks=False)  # Allow initial callbacks for real-time updates
 

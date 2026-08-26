@@ -1,0 +1,75 @@
+/*
+ * Local (tracker-free) web fonts.
+ *
+ * Replaces the Google Fonts @import statements that previously lived in
+ * soft-ui-dashboard.css and in the Bootswatch Flatly theme. Loading fonts from
+ * fonts.googleapis.com / fonts.gstatic.com leaks the visitor's IP to Google and
+ * counts as third-party tracking (a GDPR concern), so every font used by the app
+ * is now served from this repository's own assets/ folder instead.
+ *
+ * Inter: served from the two local variable TTFs (single file covers weights
+ *        100-900 for each of upright / italic).
+ * Lato : served from per-weight woff2 files vendored under assets/vendor/lato/.
+ *
+ * Paths are relative to this file (assets/css/), so ../fonts and ../vendor.
+ */
+
+/* ---- Inter (variable, 100..900) ---- */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../fonts/Inter-VariableFont_opsz,wght.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../fonts/Inter-Italic-VariableFont_opsz,wght.ttf') format('truetype');
+}
+
+/* ---- Lato ---- */
+@font-face {
+  font-family: 'Lato';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('../vendor/lato/lato-latin-300-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Lato';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../vendor/lato/lato-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Lato';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../vendor/lato/lato-latin-700-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Lato';
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url('../vendor/lato/lato-latin-900-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Lato';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../vendor/lato/lato-latin-400-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Lato';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../vendor/lato/lato-latin-700-italic.woff2') format('woff2');
+}

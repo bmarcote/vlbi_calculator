@@ -664,7 +664,7 @@ def source_and_epoch_selection() -> html.Div:
                                                                          initial_visible_month=dt.today(),
                                                                          date=dt.today().date(),
                                                                          className='date-picker',
-                                                                         display_format='DD MMM Y'),
+                                                                         display_format='DD MMM y'),
                                                     # dcc.Input(id='startdate', type='date',
                                                     #           value=dt.today().date().isoformat(),
                                                     #           min="1950-01-01", max="2100-01-01",

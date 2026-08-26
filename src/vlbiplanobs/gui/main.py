@@ -433,6 +433,7 @@ app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-10
                    dcc.Store(id='store-obs-params', data=None),
                    # Persists the user's list of target source specs (strings) across reloads.
                    dcc.Store(id='store-targets', data=[], storage_type='local'),
+                   dcc.Store(id='suppress-network-antenna-update', data=False),
                    # Hidden compute button (needed for callback compatibility but not shown)
                    html.Div(html.Button(id='compute-observation', style={'display': 'none'})),
                    layout.top_banner(app),
@@ -441,6 +442,7 @@ app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-10
                                                children=layout.inputs_column(app)),
                                       html.Div(id='left-column', className='col-12 col-sm-6 m-0 p-0',
                                                children=[layout.compute_buttons_realtime(app),
+                                                         layout.export_button_div(),
                                                          layout.outputs_column(app)])]),
                    # Modal allowing the user to add/remove multiple target sources.
                    inputs.target_sources_modal(),

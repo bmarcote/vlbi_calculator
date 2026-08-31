@@ -143,6 +143,7 @@ planobs -b 6cm -t 'M87' --network EVN --starttime '2025-06-15 08:00' --duration 
 | Argument | Description |
 |----------|-------------|
 | `--sched` | Generate a pySCHED `.key` schedule file. The value is used as the experiment code and filename. |
+| `--setup` | Frequency setup written in the `setup = ...` line of the `.key` file. If not given, PlanObs guesses it. |
 | `--fringefinders` | Fringe finder source(s) or a number of automatic selections (default: `2`). |
 | `--polcal` | Include polarization calibration scans. |
 | `--phasecal` | Phase calibrator source(s) or empty for auto-selection. |

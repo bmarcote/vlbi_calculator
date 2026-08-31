@@ -647,6 +647,10 @@ def add_observation_arguments(parser):
     parser.add_argument('--sched', default=None, type=str,
                         help="Produces a (SCHED) .key schedule file for "
                         "the observation with the\ngiven name.")
+    parser.add_argument('--setup', default=None, type=str,
+                        help="Frequency setup to write in the 'setup = ...' line of the .key\n"
+                        "file produced by --sched. If not given, PlanObs guesses it from the\n"
+                        "observation setup.")
     parser.add_argument('--fringefinders', default='2', type=str, nargs='+',
                         help="Defines the fringe finder source(s) to be scheduled "
                         "in the observation.\nIt can be either a list of source names "
@@ -817,6 +821,10 @@ def handle_observation_command(args):
         rprint("[bold yellow]Note that you supressed both GUI and TUI. "
                "No output will be provided.[/bold yellow]")
 
+    if getattr(args, 'setup', None) is not None and args.sched is None:
+        rprint("[bold yellow]--setup is only used when producing a schedule file (--sched). "
+               "Ignoring it.[/bold yellow]")
+
     # Resolve phasecal / check-source arguments (None = not requested, [] = auto-select)
     phasecal_arg = getattr(args, 'phasecal', None)
     check_source_arg = getattr(args, 'check_source', None)
@@ -849,7 +857,8 @@ def handle_observation_command(args):
             o, fringefinder_spec=fringefinder_arg, polcal=polcal_arg)
         scheduler.schedule()
         key_content = scheduler.generate_key_file(
-            experiment_code=args.sched.replace('.key', '').upper())
+            experiment_code=args.sched.replace('.key', '').upper(),
+            setup_file=getattr(args, 'setup', None))
         with open(key_filename, 'w') as f:
             f.write(key_content)
         rprint(f"[green]Schedule file written to: {key_filename}[/green]")

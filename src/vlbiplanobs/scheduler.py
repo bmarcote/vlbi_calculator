@@ -59,6 +59,31 @@ def _fmt_dur(q: u.Quantity) -> str:
     return f"{total_sec // 60}:{total_sec % 60:02d}"
 
 
+def format_setup_line(setup_file: Optional[str]) -> str:
+    """Build the frequency-setup line of a SCHED key file.
+
+    Parameters
+    ----------
+    setup_file : str or None
+        Frequency setup given by the user (e.g. 'evn6cm-2Gbps-32MHz.set' or 'EFF_BAND_32').
+        Surrounding quotes and whitespace are ignored. If None or empty, no setup is written
+        and a placeholder is left in the key file instead.
+
+    Returns
+    -------
+    str
+        Either "setup = '<setup_file>'" or the 'nosetup' placeholder line.
+    """
+    if setup_file is None:
+        return "nosetup   ! TODO: Add frequency setup"
+
+    cleaned = setup_file.strip().strip('\'"').strip()
+    if not cleaned:
+        return "nosetup   ! TODO: Add frequency setup"
+
+    return f"setup = '{cleaned}'"
+
+
 def _intent_str(stype: SourceType) -> str:
     """Map a SourceType to a SCHED intent string (empty if none applies).
 
@@ -1963,7 +1988,7 @@ class ObservationScheduler:
             scan_lines.append('')  # blank line between blocks
 
         # ---- Template substitution ----
-        setup_str = f"setup = '{setup_file}'" if setup_file else "nosetup   ! TODO: Add frequency setup"
+        setup_str = format_setup_line(setup_file)
         obs_mode = (f"{self.obs.band} {int(self.obs.datarate.to(u.Mbit / u.s).value)} Mbps"
                     if self.obs.band and self.obs.datarate is not None else "VLBI")
         replacements = {

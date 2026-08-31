@@ -100,6 +100,14 @@ planobs -b 6cm -t 'M87' --network EVN \
   --starttime '2025-03-15 08:00' --duration 8 --sched eg123a
 ```
 
+### Generate a schedule file with a given frequency setup
+
+```bash
+planobs -b 6cm -t 'M87' --network EVN \
+  --starttime '2025-03-15 08:00' --duration 8 --sched eg123a \
+  --setup 'evn6cm-2Gbps-32MHz.set'
+```
+
 ### Auto-select calibrators in schedule
 
 ```bash

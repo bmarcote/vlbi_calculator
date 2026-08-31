@@ -1836,7 +1836,8 @@ class Observation(object):
 
         scans_str = '\n'.join(scans_lines)
 
-        setup_str = f"setup = '{setup_file}'" if setup_file else "nosetup   ! TODO: Add frequency setup"
+        from .scheduler import format_setup_line
+        setup_str = format_setup_line(setup_file)
 
         obs_mode = f"{self.band} {int(self.datarate.to(u.Mbit/u.s).value)} Mbps" \
             if self.band and (self.datarate is not None) else "VLBI"

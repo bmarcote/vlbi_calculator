@@ -26,6 +26,21 @@ planobs -b 6cm -t 'M87' --network EVN \
 
 This creates `my_experiment.key`.
 
+### Frequency setup
+
+Use `--setup` to write a given frequency setup in the `setup = ...` line of the `.key` file:
+
+```bash
+planobs -b 6cm -t 'M87' --network EVN \
+  --starttime '2025-03-15 08:00' \
+  --duration 8 \
+  --sched my_experiment \
+  --setup 'evn6cm-2Gbps-32MHz.set'
+```
+
+If `--setup` is not given, PlanObs guesses the setup from the observation, and writes a
+`nosetup` placeholder in the `.key` file when it cannot determine one.
+
 ### Via Python
 
 ```python

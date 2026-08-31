@@ -124,23 +124,17 @@ def _params_to_obs(obs_params: dict, target_spec: Optional[str] = None) -> Optio
                     channels=obs_params['channels'], polarizations=obs_params['polarizations'], inttime=obs_params['inttime'] * u.s)
 
 
-@app.callback(Output({'type': 'download-pdf', 'index': MATCH}, 'data'),
-              Input({'type': 'btn-pdf', 'index': MATCH}, 'n_clicks'),
-              State({'type': 'btn-pdf', 'index': MATCH}, 'id'),
+@app.callback(Output('download-data', 'data'),
+              Input('button-download', 'n_clicks'),
               State('store-obs-params', 'data'),
               prevent_initial_call=True)
-def download_pdf_per_target(n_clicks, btn_id, obs_params: dict):
-    """Generate and download a PDF summary for the target identified by the clicked button.
-
-    The button id is {'type': 'btn-pdf', 'index': <target_spec>}. A special index
-    '__no_target__' is used for the duration-only panel.
+def download_pdf(n_clicks: int, obs_params: dict):
+    """Generate one PDF summary with a separate section for every target source.
 
     Parameters
     ----------
     n_clicks : int
         Number of clicks on the download button.
-    btn_id : dict
-        Button ID with target specification in the 'index' field.
     obs_params : dict
         Serialized observation parameters from store-obs-params.
 
@@ -152,35 +146,30 @@ def download_pdf_per_target(n_clicks, btn_id, obs_params: dict):
     Raises
     ------
     PreventUpdate
-        If no clicks or invalid observation parameters.
+        If no clicks or invalid observation parameters are available.
     """
     if not n_clicks or obs_params is None:
         raise PreventUpdate
 
-    target_spec = btn_id['index']
-    use_target: Optional[str] = None if target_spec == '__no_target__' else target_spec
-    safe_label = 'summary' if use_target is None else target_spec
-    safe_label = ''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in safe_label)
-
     try:
-        logger.info(f"PDF generation started for target='{target_spec}'.")
-        obs = _params_to_obs(obs_params, target_spec=use_target)
-        if obs is None:
+        target_specs = obs_params.get('targets') or [None]
+        observations = [_params_to_obs(obs_params, target_spec=target_spec) for target_spec in target_specs]
+        observations = [observation for observation in observations if observation is not None]
+        if not observations:
             raise PreventUpdate
+        logger.info(f"PDF generation started for {len(observations)} target page(s).")
         try:
-            tmpfile = outputs.summary_pdf(obs, show_figure=True)
+            tmpfile = outputs.summary_pdf_for_sources(observations, show_figure=True)
         except Exception as fig_error:
-            logger.warning(f"Could not include figure in PDF: {fig_error}")
-            tmpfile = outputs.summary_pdf(obs, show_figure=False)
+            logger.warning(f"Could not include figures in PDF: {fig_error}")
+            tmpfile = outputs.summary_pdf_for_sources(observations, show_figure=False)
 
         logger.info(f"PDF created at {tmpfile}.")
-        # send_file reads the file content into the response, so the temp file can go now.
-        download_data = dcc.send_file(tmpfile, filename=f"planobs_{safe_label}.pdf")
+        download_data = dcc.send_file(tmpfile, filename='planobs_summary.pdf')
         try:
             os.remove(tmpfile)
         except OSError:
             logger.warning(f"Could not remove temporary PDF file {tmpfile}.")
-
         return download_data
     except Exception as e:
         logger.exception(f"While downloading the PDF: {e}")

@@ -1029,9 +1029,6 @@ def build_target_tab_content(o: cli.VLBIObs, target_spec: str,
 
     children: list = []
 
-    # Per-target PDF download at top of tab
-    children.append(_target_pdf_button(target_spec))
-
     # Warnings
     children.append(html.Div(sun_warning(o), className='m-0 p-0'))
     children.append(html.Div(warning_low_high_freq(o), className='m-0 p-0'))
@@ -1109,7 +1106,6 @@ def build_no_target_panel(o: Optional[cli.VLBIObs]) -> html.Div:
         return html.Div()
 
     return html.Div([
-        _target_pdf_button('__no_target__'),
         html.Div(warning_low_high_freq(o), className='m-0 p-0'),
         html.Div(className='col-12 m-0 p-0', children=html.Div(
             className='row d-flex m-0 p-0', children=[
@@ -1159,8 +1155,8 @@ def download_button() -> html.Div:
                           style={'gap': '5px'})
 
 
-def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
-    """Create a PDF file summarizing the observation.
+def summary_pdf(o: cli.VLBIObs, show_figure: bool = True, document=None):
+    """Create a PDF summary page and optionally write it to a file.
 
     Parameters
     ----------
@@ -1168,11 +1164,13 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
         VLBI observation object containing all observation data.
     show_figure : bool, optional
         Whether to include elevation plot figure. Default is True.
+    document : Document or None, optional
+        Existing document to append the summary page to. A new document is written when omitted.
 
     Returns
     -------
-    str
-        Path to generated PDF file.
+    str or Document
+        Generated PDF path, or the supplied document after appending the page.
 
     Raises
     ------
@@ -1184,9 +1182,12 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
     if o is None:
         raise ValueError("Observation cannot be None")
 
-    doc: pdf.Document = pdf.Document()
+    doc: pdf.Document = document if document is not None else pdf.Document()
     page = pdf.Page()
-    doc.append_page(page)
+    if hasattr(doc, 'append_page'):
+        doc.append_page(page)
+    else:
+        doc.add_page(page)
     layout: pdf.PageLayout = pdf.SingleColumnLayout(page)
     layout.append_layout_element(pdf.Paragraph("EVN Observation Planner - Summary Report", font_size=20,
                              font='Helvetica-bold'))
@@ -1360,13 +1361,56 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True):
                     f"[Figure could not be generated: {type(e).__name__}]",
                     font_color=pdf.HexColor("#999999")))
 
-    tmp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
-    pdf.PDF.write(where_to=tmp.name, what=doc)
-    # The figure PNG is embedded in the written PDF, so the temp file can go now.
-    # The PDF temp file itself is removed by the download callback after serving it.
     if figpath is not None:
         figpath.unlink(missing_ok=True)
+    if document is not None:
+        return doc
+
+    tmp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
+    tmp.close()
+    if hasattr(pdf.PDF, 'write'):
+        pdf.PDF.write(where_to=tmp.name, what=doc)
+    else:
+        with open(tmp.name, 'wb') as pdf_file:
+            pdf.PDF.dumps(pdf_file, doc)
     return tmp.name
+
+
+def summary_pdf_for_sources(observations: list[cli.VLBIObs], show_figure: bool = True) -> str:
+    """Create one PDF with each source summary starting in a separate document section.
+
+    Parameters
+    ----------
+    observations : list[VLBIObs]
+        Single-source observations to include in order.
+    show_figure : bool, optional
+        Whether to include an elevation plot for each source.
+
+    Returns
+    -------
+    str
+        Path to the merged PDF file.
+
+    Raises
+    ------
+    ValueError
+        If no observations are provided.
+    """
+    if not observations:
+        raise ValueError("At least one observation is required")
+
+    document = pdf.Document()
+    for observation in observations:
+        summary_pdf(observation, show_figure=show_figure, document=document)
+
+    merged_file = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
+    merged_file.close()
+    if hasattr(pdf.PDF, 'write'):
+        pdf.PDF.write(where_to=merged_file.name, what=document)
+    else:
+        with open(merged_file.name, 'wb') as pdf_file:
+            pdf.PDF.dumps(pdf_file, document)
+    return merged_file.name
 
     # def get_fig_dirty_map(self):
     #     raise NotImplementedError

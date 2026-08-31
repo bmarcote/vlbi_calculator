@@ -273,7 +273,7 @@ def compute_button() -> html.Div:
         className='col-6', style={'position': 'relative'})
 
 def export_button() -> html.Div:
-    """Return the export to Polaris button.
+    """Return the button for exporting or copying the current observation setup.
 
     Returns
     -------
@@ -282,10 +282,12 @@ def export_button() -> html.Div:
     """
     return html.Div(
                 html.Div([
-                    html.Button('Export to Polaris',
-                                id='export-state-of-the-system',
-                                className='btn btn-evn text-bolder btn-lg mx-auto w-75 m-4 p-2',
-                                style={'position': 'sticky', 'top': '20px', 'z-index': '1000'}),
+                    dbc.Button('Copy link',
+                               id='export-state-of-the-system',
+                               title='Copy a link that opens PlanObs with this observation setup',
+                               color='secondary', outline=True, n_clicks=0,
+                               className='btn btn-lg btn-outline-secondary text-bolder mx-auto w-75 m-4 p-2',
+                               style={'position': 'sticky', 'top': '20px', 'z-index': '1000'}),
                 ], className='d-flex align-items-center justify-content-center', style={'gap': '5px'}),
         className='col-6', style={'position': 'relative'})
 

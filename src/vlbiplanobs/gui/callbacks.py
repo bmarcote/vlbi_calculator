@@ -100,13 +100,17 @@ def enable_networks_with_band(band_index: int, target_specs: Optional[list[str]]
            Output('subbands', 'value', allow_duplicate=True)],
           [Input('switch-specify-continuum', 'value'),
            Input('band-slider', 'value'),
-           Input({'type': 'network-switch', 'index': ALL}, 'value')],
+           Input({'type': 'network-switch', 'index': ALL}, 'value'),
+           Input('url', 'href')],
           [State('datarate', 'value'),
            State('store-prev-channels', 'data'),
-           State('store-prev-subbands', 'data')],
+           State('store-prev-subbands', 'data'),
+           State('channels', 'value'),
+           State('subbands', 'value')],
           prevent_initial_call=True)
-def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: list[bool],
-                             datarate: int = 2048, prev_channels: int = 64, prev_subbands: int = 8):
+def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: list[bool], href: str,
+                             datarate: int = 2048, prev_channels: int = 64, prev_subbands: int = 8,
+                             channels: int = 64, subbands: int = 8):
     """Adjust datarate, channels, and subbands for spectral line observations.
 
     Parameters
@@ -117,12 +121,18 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
         Selected band index.
     network_bools : list[bool]
         Network selection states.
+    href : str
+        Current page URL, used to preserve correlation values restored from a shared link.
     datarate : int, optional
         Current datarate value.
     prev_channels : int, optional
         Previous channels value.
     prev_subbands : int, optional
         Previous subbands value.
+    channels : int, optional
+        Current channels-per-subband value.
+    subbands : int, optional
+        Current subband count.
 
     Returns
     -------
@@ -153,10 +163,12 @@ def prioritize_spectral_line(do_spectral_line: bool, band: int, network_bools: l
     # This is here to check if this avoids the state when somehow datarate value is None, which I do not see why
     if datarate is None:
         datarate = 2048
-    return  \
-        tuple({'value': dr, 'label': html.Span([drl], style={'color': '#888888'
-                                                             if dr > max_datarate else '#000000'})}
-              for dr, drl in fs.data_rates.items()), \
+    datarate_options = tuple({'value': dr, 'label': html.Span([drl], style={'color': '#888888'
+                                                                           if dr > max_datarate else '#000000'})}
+                             for dr, drl in fs.data_rates.items())
+    if 'url.href' in ctx.triggered_prop_ids:
+        return datarate_options, datarate, channels, subbands
+    return datarate_options, \
         32 if do_spectral_line else max_datarate if max_datarate is not None else datarate, \
         4096 if do_spectral_line else prev_channels, \
         1 if do_spectral_line else prev_subbands
@@ -840,9 +852,15 @@ export_component_id_properties: list[IdProperty] = [
     IdProperty({'type': 'network-switch', 'index': network_name}, 'value')
     for network_name in observation._NETWORKS
 ] + [
+    IdProperty({'type': 'group-active-codename', 'index': group_name}, 'data')
+    for group_name in inputs.station_groups()
+] + [
+    IdProperty({'type': 'group-is-selected', 'index': group_name}, 'data')
+    for group_name in inputs.station_groups()
+] + [
     IdProperty('switches-antennas', 'value'),
     IdProperty('switch-specify-epoch', 'value'),
-    IdProperty('startdate', 'value'),
+    IdProperty('startdate', 'date'),
     IdProperty('starttime', 'value'),
     IdProperty('store-targets', 'data'),
     IdProperty('switch-specify-e-evn', 'value'),
@@ -859,25 +877,33 @@ current_version = Version(importlib.metadata.version('vlbiplanobs'))
 json_config = '[' + ','.join(f'[{json.dumps(export_component_id_properties[i].id)}, args[{i}]]'
                              for i in range(len(export_component_id_properties))) + ']'
 callback_javascript = f"""
-    function(n_clicks, ...args) {{
+    function(n_clicks, href, ...args) {{
+        const hasPolarisOpener = Boolean(window.opener && !window.opener.closed);
+        const label = hasPolarisOpener ? 'Export to Polaris' : 'Copy link';
+        const tooltip = hasPolarisOpener ? '' : 'Copy a link that opens PlanObs with this observation setup';
+        if (!n_clicks) {{
+            return [label, tooltip];
+        }}
         const value = '?targetversion={quote(str(current_version))}&config=' + encodeURIComponent(JSON.stringify({json_config}));
-        if (window.opener && !window.opener.closed) {{
+        if (hasPolarisOpener) {{
             window.opener.postMessage(value, '*'); // FIX set the true targetOrigin
-            return [true, "Configuration sent to Polaris"];
+        }} else {{
+            navigator.clipboard.writeText(window.location.origin + window.location.pathname + value);
         }}
-        else {{
-            navigator.clipboard.writeText(value);
-            return [true, "Configuration copied to clipboard, paste in Polaris"];
-        }}
+        window.clearTimeout(window.planobsExportResetTimer);
+        window.planobsExportResetTimer = window.setTimeout(function() {{
+            dash_clientside.set_props('export-state-of-the-system', {{children: label, title: tooltip, n_clicks: 0}});
+        }}, 3000);
+        return ['✓', tooltip];
     }}
 """
 clientside_callback(
     callback_javascript,
-    Output('export-alert', 'is_open'),
-    Output('export-alert', 'children'),
+    Output('export-state-of-the-system', 'children'),
+    Output('export-state-of-the-system', 'title'),
     Input('export-state-of-the-system', 'n_clicks'),
-    [State(e.id, e.property) for e in export_component_id_properties],
-    prevent_initial_call=True
+    Input('url', 'href'),
+    [State(e.id, e.property) for e in export_component_id_properties]
     )
 
 @callback(

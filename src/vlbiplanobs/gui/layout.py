@@ -68,10 +68,11 @@ def inputs_column(app) -> html.Div:
 def export_button_div() -> html.Div:
     return html.Div(className='m-0 p-0', children=[
         dcc.Location(id='url', refresh=False),
-        inputs.export_button(),
-        dbc.Alert("Nothing to see here", id='export-alert',
-              is_open=False, color='success',
-              duration=5000, dismissable=True)
+        html.Div(className='row d-flex m-0 p-0', children=[
+            inputs.export_button(),
+            html.Div([outputs.download_button(), dcc.Download(id='download-data')],
+                     className='col-6', style={'position': 'relative'})
+        ])
     ])
 
 def compute_buttons(app) -> html.Div:

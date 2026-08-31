@@ -84,9 +84,16 @@ planobs -b 6cm --source-catalog my_sources.toml --station-catalog my_stations.in
   -t MyTarget --network EVN
 ```
 
-### JSON output
+### Observation reports
 
-The fringefinders and phasecals modes support `--json` for machine-readable output:
+The observe mode accepts `-o`/`--output` with a `.pdf`, `.txt`, `.md`, or `.json` filename. The extension selects the format; JSON includes both reusable inputs and calculated outputs.
+
+```bash
+planobs observe -b 6cm -t 'M87' --network EVN -o m87-summary.pdf
+planobs observe -b 6cm -t 'M87' --network EVN -o m87-results.json
+```
+
+The fringefinders and phasecals modes separately support `--json` for machine-readable terminal output:
 
 ```bash
 planobs fringefinders -s Ef Hh Mc Tr -t '2025-03-15 08:00' -d 8 -b 6cm --json

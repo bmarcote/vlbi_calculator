@@ -172,7 +172,15 @@ This creates `eg123a.key`. See **[Scheduling](scheduling.md)** for details on th
 |----------|-------------|
 | `--gui` | Open graphical plots in the browser. |
 | `--no-tui` | Suppress the terminal (TUI) output. |
+| `-o`, `--output FILENAME` | Write the observation report. Accepted extensions are `.pdf`, `.txt`, `.md`, and `.json` (case-insensitive). |
 | `--debug` | Show debug messages and execution time. |
+
+The filename extension selects the report format. PDF uses the same summary generator as the web GUI, with one page per source. Text and Markdown provide human-readable summaries. JSON contains reusable observation inputs plus calculated outputs such as sensitivity, synthesized beam, observability, smearing, elevations, and UV values.
+
+```bash
+planobs observe -b 6cm -t 'M87' --network EVN --output m87.json
+planobs observe -b 6cm -t 'M87' --network EVN --output m87.pdf
+```
 
 ---
 

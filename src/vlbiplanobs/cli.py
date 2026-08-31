@@ -680,6 +680,9 @@ def add_observation_arguments(parser):
                         "show the quick plots through terminal.")
     parser.add_argument('--no-tui', action="store_false", default=True,
                         help="If set, then it will not show all the output in the terminal as default.")
+    parser.add_argument('-o', '--output', type=str, default=None, metavar='FILENAME',
+                        help="Write all observation inputs and results to .pdf, .txt, .md, or .json.\n"
+                             "The filename extension selects the format (case-insensitive).")
     parser.add_argument('--debug', action="store_true", default=False,
                         help="If set, shows some debuging messages.")
 
@@ -817,13 +820,22 @@ def handle_observation_command(args):
                " the observation.[/bold red]")
         sys.exit(1)
 
-    if (not args.gui) and (not args.no_tui):
+    if (not args.gui) and (not args.no_tui) and getattr(args, 'output', None) is None:
         rprint("[bold yellow]Note that you supressed both GUI and TUI. "
                "No output will be provided.[/bold yellow]")
 
     if getattr(args, 'setup', None) is not None and args.sched is None:
         rprint("[bold yellow]--setup is only used when producing a schedule file (--sched). "
                "Ignoring it.[/bold yellow]")
+
+    output_filename = getattr(args, 'output', None)
+    if output_filename is not None:
+        from vlbiplanobs.report import validate_report_filename
+        try:
+            validate_report_filename(output_filename)
+        except ValueError as error:
+            rprint(f"[bold red]Error: {error}[/bold red]")
+            sys.exit(1)
 
     # Resolve phasecal / check-source arguments (None = not requested, [] = auto-select)
     phasecal_arg = getattr(args, 'phasecal', None)
@@ -849,6 +861,15 @@ def handle_observation_command(args):
     o.summary(args.gui, args.no_tui)
     if args.targets is not None or args.source_catalog is not None:
         o.plot_visibility(args.gui, args.no_tui)
+
+    if output_filename is not None:
+        from vlbiplanobs.report import write_observation_report
+        try:
+            output_path = write_observation_report(o, output_filename)
+        except Exception as error:
+            rprint(f"[bold red]Could not write observation report: {error}[/bold red]")
+            sys.exit(1)
+        rprint(f"[green]Observation report written to: {output_path}[/green]")
 
     if args.sched is not None:
         key_filename = args.sched if args.sched.endswith('.key') else f"{args.sched}.key"

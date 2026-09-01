@@ -19,6 +19,9 @@ from typing import Optional
 from importlib import resources
 from datetime import datetime
 import logging
+import os
+import re
+from pathlib import Path
 import numpy as np
 from astropy import units as u
 from astropy.time import Time
@@ -59,20 +62,23 @@ def _fmt_dur(q: u.Quantity) -> str:
     return f"{total_sec // 60}:{total_sec % 60:02d}"
 
 
-def format_setup_line(setup_file: Optional[str]) -> str:
-    """Build the frequency-setup line of a SCHED key file.
+def format_setup_line(setup_file: str | None) -> str:
+    """Build the value for the frequency-setup line of a SCHED key file.
+
+    The returned string is meant to be inserted into a template line such as
+    ``setup = {SETUP}``.
 
     Parameters
     ----------
     setup_file : str or None
         Frequency setup given by the user (e.g. 'evn6cm-2Gbps-32MHz.set' or 'EFF_BAND_32').
-        Surrounding quotes and whitespace are ignored. If None or empty, no setup is written
-        and a placeholder is left in the key file instead.
+        Surrounding quotes and whitespace are ignored. If None or empty, a
+        'nosetup' placeholder is returned instead.
 
     Returns
     -------
     str
-        Either "setup = '<setup_file>'" or the 'nosetup' placeholder line.
+        Either "'<setup_file>'" or "nosetup   ! TODO: Add frequency setup".
     """
     if setup_file is None:
         return "nosetup   ! TODO: Add frequency setup"
@@ -81,7 +87,184 @@ def format_setup_line(setup_file: Optional[str]) -> str:
     if not cleaned:
         return "nosetup   ! TODO: Add frequency setup"
 
-    return f"setup = '{cleaned}'"
+    return f"'{cleaned}'"
+
+
+def _pysched_setup_dir() -> Path:
+    """Return the pySCHED setups directory, creating the path if absent."""
+    return Path.home() / '.pysched' / 'setups'
+
+
+def _canonical_band(band: str) -> str:
+    """Return a canonical band string used to match setup file names.
+
+    Strips trailing whitespace and lowercases the input, preserving digits
+    and the 'cm'/'mm' suffix (e.g. '18cm' -> '18cm', '5cm' -> '5cm').
+    """
+    return band.strip().lower()
+
+
+def _parse_setup_filename(filename: str) -> dict[str, object]:
+    """Parse a pySCHED setup filename into searchable features.
+
+    Recognises patterns such as ``evn18cm-2Gbps-32MHz.set``,
+    ``lba5cm-2p-2IF.set`` and VLBA-style ``v18cm-512-16-2.set``.
+
+    Parameters
+    ----------
+    filename : str
+        Name of the setup file (with or without path).
+
+    Returns
+    -------
+    dict
+        Dictionary with ``band``, ``rate_mbps``, ``pols``, ``ifs``,
+        ``chan_bw_mhz`` and ``prefix`` keys.  Unmatched fields are None.
+    """
+    name = os.path.basename(filename).lower()
+    base, _ = os.path.splitext(name)
+    result: dict[str, object] = {
+        'filename': filename, 'base': base, 'band': None, 'rate_mbps': None,
+        'pols': None, 'ifs': None, 'chan_bw_mhz': None, 'prefix': None,
+    }
+
+    # Band: digits optionally with a decimal point, followed by cm or mm.
+    band_match = re.search(r'(\d+(?:\.\d+)?)(cm|mm)', base)
+    if band_match:
+        result['band'] = band_match.group(1) + band_match.group(2)
+        result['prefix'] = base[:band_match.start()].lower()
+
+    # Data rate: 2Gbps, 512Mbps, 1G, etc.
+    rate_match = re.search(r'(\d+(?:\.\d+)?)\s*(gbps|g|mbps|m)', base)
+    if rate_match:
+        value = float(rate_match.group(1))
+        unit = rate_match.group(2).lower()
+        result['rate_mbps'] = value * 1e3 if unit.startswith('g') else value
+
+    # LBA-style polarizations and IFs.
+    pol_match = re.search(r'(\d+)p', base)
+    if pol_match:
+        result['pols'] = int(pol_match.group(1))
+    if_match = re.search(r'(\d+)if', base)
+    if if_match:
+        result['ifs'] = int(if_match.group(1))
+
+    # EVN-style channel bandwidth: e.g. 32MHz, 16MHz.
+    cbw_match = re.search(r'(\d+(?:\.\d+)?)\s*mhz', base)
+    if cbw_match:
+        result['chan_bw_mhz'] = float(cbw_match.group(1))
+
+    return result
+
+
+def _network_prefix(observation: Observation) -> str:
+    """Infer the preferred setup-file prefix from the station composition.
+
+    Uses ``Observation.guess_network`` to rank networks by antenna overlap and
+    returns a conventional setup-file prefix ('evn', 'lba', 'v' for VLBA, or
+    lowercased network name for others).
+    """
+    networks = Observation.guess_network(observation.band, list(observation.stations))
+    if not networks:
+        return ''
+    primary = networks[0].lower()
+    mapping = {'evn': 'evn', 'lba': 'lba', 'vlba': 'v'}
+    return mapping.get(primary, primary)
+
+
+def _is_global(observation: Observation) -> bool:
+    """Return True if non-EVN VLBA stations dominate the array."""
+    networks = Observation.guess_network(observation.band, list(observation.stations))
+    if not networks:
+        return False
+    return networks[0].upper() != 'EVN'
+
+
+def _setup_file_score(parsed: dict[str, object], observation: Observation,
+                      preferred_prefix: str) -> float:
+    """Score a candidate setup file against the observation parameters.
+
+    Higher scores indicate better matches.  A negative score means the file is
+    unsuitable (wrong band or array prefix).
+    """
+    if parsed['band'] != _canonical_band(observation.band):
+        return -1.0
+
+    prefix = parsed.get('prefix') or ''
+    prefix_lower = prefix.lower()
+
+    # Prefix must match the array family.
+    if preferred_prefix == 'evn' and not prefix_lower.startswith('evn'):
+        return -1.0
+    if preferred_prefix == 'lba' and not prefix_lower.startswith('lba'):
+        return -1.0
+    if preferred_prefix == 'v' and not (prefix_lower.startswith('v') or prefix_lower.startswith('vlba')):
+        return -1.0
+    if preferred_prefix and not prefix_lower.startswith(preferred_prefix):
+        return -1.0
+
+    score = 0.0
+
+    # Data rate is the strongest discriminator.
+    datarate_mbps = observation.datarate.to(u.Mbit / u.s).value if observation.datarate is not None else None
+    if datarate_mbps is not None and parsed['rate_mbps'] is not None:
+        score += 100.0 - abs(datarate_mbps - parsed['rate_mbps']) / max(datarate_mbps, 1.0)
+
+    # Prefer global EVN setup files when VLBA stations are present.
+    if preferred_prefix == 'evn' and _is_global(observation) and '+global' in prefix_lower:
+        score += 20.0
+    if preferred_prefix == 'evn' and not _is_global(observation) and '+global' not in prefix_lower:
+        score += 5.0
+
+    # Polarization/IF match for LBA-style files.
+    if parsed['pols'] is not None and observation.polarizations is not None:
+        if parsed['pols'] == observation.polarizations:
+            score += 10.0
+    if parsed['ifs'] is not None and observation.subbands is not None:
+        if parsed['ifs'] == observation.subbands:
+            score += 10.0
+
+    return score
+
+
+def guess_setup_file(observation: Observation) -> Optional[str]:
+    """Guess a pySCHED setup file for the observation.
+
+    Looks in ``~/.pysched/setups`` for files whose names match the observing
+    band, array and data rate, and returns the best candidate.  Returns None
+    if no pySCHED setup directory exists or no suitable file is found.
+
+    Parameters
+    ----------
+    observation : Observation
+        The observation whose parameters drive the search.
+
+    Returns
+    -------
+    str or None
+        Name of the best matching setup file, or None.
+    """
+    setup_dir = _pysched_setup_dir()
+    if not setup_dir.is_dir():
+        return None
+
+    candidates = list(setup_dir.glob('*.set'))
+    if not candidates:
+        return None
+
+    preferred_prefix = _network_prefix(observation)
+    scored: list[tuple[float, Path]] = []
+    for path in candidates:
+        parsed = _parse_setup_filename(path.name)
+        score = _setup_file_score(parsed, observation, preferred_prefix)
+        if score >= 0.0:
+            scored.append((score, path))
+
+    if not scored:
+        return None
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return scored[0][1].name
 
 
 def _intent_str(stype: SourceType) -> str:
@@ -1764,9 +1947,9 @@ class ObservationScheduler:
         Returns
         -------
         str
-        Formatted stations line.
+        Formatted stations line using SCHED catalog names.
         """
-        names = [s.name for s in self.obs.stations
+        names = [s.sched_name for s in self.obs.stations
                  if exclude is None or s.codename.upper() not in exclude]
         return f"{indent}stations = {', '.join(names)}"
 
@@ -1930,7 +2113,8 @@ class ObservationScheduler:
 
     def generate_key_file(self, experiment_code: str = 'EXCODE', pi_name: str = 'PI Name',
                           pi_email: str = 'pi@example.com', pi_institute: str = 'Institute',
-                          setup_file: Optional[str] = None, comments: str = '') -> str:
+                          setup_file: Optional[str] = None, comments: str = '',
+                          template_path: Optional[str] = None) -> str:
         """Generate a SCHED .key file from the current schedule.
 
         Uses ``group N rep R`` for repeated science cycles and excludes Jb1
@@ -1939,25 +2123,44 @@ class ObservationScheduler:
         Parameters
         ----------
         experiment_code : str
-        Experiment code for the observation.
+            Experiment code for the observation.
         pi_name : str
-        Principal investigator name.
+            Principal investigator name.
         pi_email : str
-        Principal investigator email.
+            Principal investigator email.
         pi_institute : str
-        Principal investigator institute.
+            Principal investigator institute.
         setup_file : str or None, optional
-        Frequency setup file name. Default is None.
+            Frequency setup file name. If None, a setup file is guessed from the
+            array, band and data rate by searching ``~/.pysched/setups``.
         comments : str, optional
-        Additional comments for the key file. Default is ''.
+            Additional comments for the key file. Default is ''.
+        template_path : str or None, optional
+            Path to a custom SCHED .key template. If None, the bundled template
+            is used.
 
         Returns
         -------
         str
-        Complete .key file content.
+            Complete .key file content.
+
+        Raises
+        ------
+        ValueError
+            If the template is missing the mandatory ``{SCANS}``, ``{SOURCES}``,
+            or start-of-observation placeholders, or if their generated values
+            are empty.
         """
-        with open(resources.files('vlbiplanobs.data').joinpath('key_file.key.template'), 'r') as f:  # type: ignore
-            template = f.read()
+        if template_path is None:
+            template_file = resources.files('vlbiplanobs.data').joinpath('key_file.key.template')
+        else:
+            template_file = Path(template_path)
+        template = Path(template_file).read_text(encoding='utf-8')
+
+        mandatory_placeholders = ('{SCANS}', '{SOURCES}', '{YEAR}', '{MONTH}', '{DAY}', '{START_TIME}')
+        missing = [p for p in mandatory_placeholders if p not in template]
+        if missing:
+            raise ValueError(f"Template is missing mandatory placeholder(s): {', '.join(missing)}")
 
         # ---- Source catalog ----
         all_sources: dict[str, Source] = {}
@@ -1970,6 +2173,9 @@ class ObservationScheduler:
             ra = src.coord.ra.to_string(unit=u.hourangle, sep=':', precision=4, pad=True)
             dec = src.coord.dec.to_string(unit=u.degree, sep=':', precision=3, pad=True, alwayssign=True)
             src_lines.append(f"  source='{src.name}' ra={ra} dec={dec} equinox='J2000' /")
+
+        if not src_lines:
+            raise ValueError("No sources were scheduled; {SOURCES} cannot be empty.")
 
         # ---- Scan section ----
         all_stations = self._stations_line()
@@ -1987,29 +2193,39 @@ class ObservationScheduler:
                 scan_lines.extend(self._build_science_scans(sb))
             scan_lines.append('')  # blank line between blocks
 
-        # ---- Template substitution ----
+        if not self._scheduled:
+            raise ValueError("No scans were scheduled; {SCANS} cannot be empty.")
+
+        # ---- Setup ----
+        if setup_file is None:
+            setup_file = guess_setup_file(self.obs)
         setup_str = format_setup_line(setup_file)
+
         obs_mode = (f"{self.obs.band} {int(self.obs.datarate.to(u.Mbit / u.s).value)} Mbps"
                     if self.obs.band and self.obs.datarate is not None else "VLBI")
+        start_time = self.obs.times[0]
         replacements = {
-            '{GENERATION_DATE}': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            '{EXPERIMENT_CODE}': experiment_code.upper(),
-            '{PI_NAME}': pi_name, '{PI_EMAIL}': pi_email, '{PI_INSTITUTE}': pi_institute,
-            '{OBS_MODE}': obs_mode, '{COMMENTS}': comments,
-            '{CORAVG}': str(int(self.obs.inttime.to(u.s).value)),
-            '{CORCHAN}': str(self.obs.channels) if self.obs.channels else '32',
-            '{CORNANT}': str(len(self.obs.stations)),
-            '{STATIONS_CATALOG}': 'none',
-            '{SOURCES}': '\n'.join(src_lines),
-            '{SETUP}': setup_str,
-            '{YEAR}': str(self.obs.times[0].datetime.year),
-            '{MONTH}': str(self.obs.times[0].datetime.month),
-            '{DAY}': str(self.obs.times[0].datetime.day),
-            '{START_TIME}': self.obs.times[0].datetime.strftime('%H:%M:%S'),
-            '{STATIONS}': ', '.join(s.codename.upper() for s in self.obs.stations),
-            '{SCANS}': '\n'.join(scan_lines),
+            'GENERATION_DATE': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'EXPERIMENT_CODE': experiment_code.upper(),
+            'PI_NAME': pi_name, 'PI_EMAIL': pi_email, 'PI_INSTITUTE': pi_institute,
+            'OBS_MODE': obs_mode, 'COMMENTS': comments,
+            'CORAVG': str(int(self.obs.inttime.to(u.s).value)),
+            'CORCHAN': str(self.obs.channels) if self.obs.channels else '32',
+            'CORNANT': str(len(self.obs.stations)),
+            'STATIONS_CATALOG': 'none',
+            'SOURCES': '\n'.join(src_lines),
+            'SETUP': setup_str,
+            'YEAR': str(start_time.datetime.year),
+            'MONTH': str(start_time.datetime.month),
+            'DAY': str(start_time.datetime.day),
+            'START_TIME': start_time.datetime.strftime('%H:%M:%S'),
+            'STATIONS': ', '.join(s.sched_name for s in self.obs.stations),
+            'SCANS': '\n'.join(scan_lines),
         }
-        result = template
-        for placeholder, value in replacements.items():
-            result = result.replace(placeholder, value)
+
+        def _replace_placeholder(match: re.Match) -> str:
+            key = match.group(1)
+            return str(replacements.get(key, match.group(0)))
+
+        result = re.sub(r'\{([A-Za-z_][A-Za-z0-9_]*)\}', _replace_placeholder, template)
         return result

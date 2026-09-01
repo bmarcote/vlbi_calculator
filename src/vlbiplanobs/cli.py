@@ -54,6 +54,36 @@ def _load_heavy() -> None:
     _HEAVY_LOADED = True
 
 
+def copy_key_template(destination: str) -> None:
+    """Copy the bundled SCHED .key template to a user-specified path.
+
+    Parameters
+    ----------
+    destination : str
+        Path where the template should be written.
+    """
+    from importlib import resources
+    from pathlib import Path
+    template_path = resources.files('vlbiplanobs.data').joinpath('key_file.key.template')
+    Path(destination).write_text(Path(template_path).read_text(), encoding='utf-8')
+    rprint(f"[green]Template written to: {destination}[/green]")
+
+
+def _maybe_handle_get_key_template() -> bool:
+    """Handle ``--get-key-template`` before full argument parsing.
+
+    Returns True if the option was present and the template was copied, in which
+    case the program should exit.
+    """
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument('--get-key-template', type=str, dest='get_key_template')
+    pre_args, _ = pre_parser.parse_known_args()
+    if pre_args.get_key_template:
+        copy_key_template(pre_args.get_key_template)
+        return True
+    return False
+
+
 def __getattr__(name: str):
     """Module-level lazy attribute access (PEP 562).
 
@@ -501,9 +531,12 @@ def _maybe_setup_logging(logging_arg):
 
 def cli():
     """Main CLI entry point with subcommands."""
-    # Handle version argument early
+    # Handle --get-key-template and --version before full parsing.
     if len(sys.argv) > 1 and sys.argv[1] in ('-V', '--version'):
         print(f"planobs {version('vlbiplanobs')}")
+        sys.exit(0)
+
+    if _maybe_handle_get_key_template():
         sys.exit(0)
 
     # Check if this is legacy mode (no subcommand provided)
@@ -516,6 +549,8 @@ def cli():
                        "  planobs phasecals [options] SOURCE_NAME    - Find phase calibrator sources\n"
                        "  planobs source [options] SOURCE_NAME       - Get information about a specific source\n"
                        "  planobs server [options]                   - Start the web server\n\n"
+                       "Global options:\n"
+                       "  --get-key-template FILENAME                - Copy the bundled SCHED key template\n\n"
                        "Use 'planobs <command> --help' for detailed help on each mode.",
             prog="planobs", formatter_class=RawTextRichHelpFormatter)
         parser.add_argument('-V', '--version', action='version', version=f"%(prog)s {version('vlbiplanobs')}")
@@ -535,6 +570,8 @@ def cli():
                        "  planobs phasecals [options]     - Find phase calibrator sources\n"
                        "  planobs source [options]        - Get information about a specific source\n"
                        "  planobs server [options]        - Start the web server\n\n"
+                       "Global options:\n"
+                       "  --get-key-template FILENAME     - Copy the bundled SCHED key template\n\n"
                        "Use 'planobs <command> --help' for detailed help on each mode.", prog="planobs", formatter_class=RawTextRichHelpFormatter)
         parser.add_argument('-V', '--version', action='version', version=f"%(prog)s {version('vlbiplanobs')}")
         add_observation_arguments(parser)
@@ -553,6 +590,8 @@ def cli():
                    "  planobs phasecals [options]     - Find phase calibrator sources\n"
                    "  planobs source [options]        - Get information about a specific source\n"
                    "  planobs server [options]        - Start the web server\n\n"
+                   "Global options:\n"
+                   "  --get-key-template FILENAME     - Copy the bundled SCHED key template\n\n"
                    "Use 'planobs <command> --help' for detailed help on each mode.",
         prog="planobs", formatter_class=RawTextRichHelpFormatter)
     parser.add_argument('-V', '--version', action='version', version=f"%(prog)s {version('vlbiplanobs')}")
@@ -651,6 +690,9 @@ def add_observation_arguments(parser):
                         help="Frequency setup to write in the 'setup = ...' line of the .key\n"
                         "file produced by --sched. If not given, PlanObs guesses it from the\n"
                         "observation setup.")
+    parser.add_argument('--template', default=None, type=str,
+                        help="SCHED .key template file. If not given, the default template\n"
+                        "distributed with PlanObs is used.")
     parser.add_argument('--fringefinders', default='2', type=str, nargs='+',
                         help="Defines the fringe finder source(s) to be scheduled "
                         "in the observation.\nIt can be either a list of source names "
@@ -873,13 +915,19 @@ def handle_observation_command(args):
 
     if args.sched is not None:
         key_filename = args.sched if args.sched.endswith('.key') else f"{args.sched}.key"
+        experiment_code = os.path.basename(args.sched).replace('.key', '').upper()
         from vlbiplanobs.scheduler import ObservationScheduler
         scheduler = ObservationScheduler(
             o, fringefinder_spec=fringefinder_arg, polcal=polcal_arg)
         scheduler.schedule()
-        key_content = scheduler.generate_key_file(
-            experiment_code=args.sched.replace('.key', '').upper(),
-            setup_file=getattr(args, 'setup', None))
+        try:
+            key_content = scheduler.generate_key_file(
+                experiment_code=experiment_code,
+                setup_file=getattr(args, 'setup', None),
+                template_path=getattr(args, 'template', None))
+        except ValueError as error:
+            rprint(f"[bold red]Could not generate schedule file: {error}[/bold red]")
+            sys.exit(1)
         with open(key_filename, 'w') as f:
             f.write(key_content)
         rprint(f"[green]Schedule file written to: {key_filename}[/green]")

@@ -8,6 +8,7 @@ from importlib.metadata import version
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from rich import print as rprint
 from rich import box
+from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 from rich.live import Live
@@ -28,6 +29,47 @@ if TYPE_CHECKING:
 _HEAVY_LOADED = False
 _HEAVY_NAMES = ('np', 'u', 'Time', 'SkyCoord', 'stations', 'obs', 'sources',
                 'calibrators', 'freqsetups', 'VLBIObs', 'optimal_units')
+
+
+class PagerHelpAction(argparse.Action):
+    """Show help in a terminal pager if output is a TTY.
+
+    Falls back to printing directly when the terminal has no pager or is not
+    interactive (e.g. piped to a file).
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        help_text = Text.from_ansi(parser.format_help())
+        console = Console()
+        if console.is_terminal:
+            lines = help_text.split('\n')
+            page_height = max(console.height - 2, 1)
+            for page_start in range(0, len(lines), page_height):
+                page = Text('\n').join(lines[page_start:page_start + page_height])
+                console.print(page)
+                if page_start + page_height < len(lines):
+                    try:
+                        response = console.input('[dim]-- More -- (Enter to continue, q to quit) [/dim]')
+                    except (EOFError, KeyboardInterrupt):
+                        break
+                    if response.strip().lower() == 'q':
+                        break
+        else:
+            console.print(help_text, end='')
+        parser.exit()
+
+
+def _add_pager_help(parser: argparse.ArgumentParser) -> None:
+    """Add a paged ``-h/--help`` action to a parser."""
+    parser.add_argument('-h', '--help', action=PagerHelpAction, nargs=0,
+                        help='Show this help message and exit')
+
+
+def _parser_with_pager(*args, **kwargs) -> argparse.ArgumentParser:
+    """Create an ArgumentParser whose ``-h/--help`` is shown in a pager."""
+    parser = argparse.ArgumentParser(*args, add_help=False, **kwargs)
+    _add_pager_help(parser)
+    return parser
 
 
 def _load_heavy() -> None:
@@ -563,7 +605,7 @@ def cli():
         sys.exit(0)
     elif len(sys.argv) > 1 and sys.argv[1] not in ('observe', 'fringefinders', 'phasecals', 'source', 'server', 'antenna', 'ant'):
         # Legacy mode: treat as observation planning
-        parser = argparse.ArgumentParser(description="EVN Observation Planner\n\n"
+        parser = _parser_with_pager(description="EVN Observation Planner\n\n"
                        "Available modes:\n"
                        "  planobs [options]              - Plan VLBI observations (default mode)\n"
                        "  planobs fringefinders [options] - Find fringe finder sources\n"
@@ -575,14 +617,13 @@ def cli():
                        "Use 'planobs <command> --help' for detailed help on each mode.", prog="planobs", formatter_class=RawTextRichHelpFormatter)
         parser.add_argument('-V', '--version', action='version', version=f"%(prog)s {version('vlbiplanobs')}")
         add_observation_arguments(parser)
-        add_logging_argument(parser)
         args = parser.parse_args()
         args.command = 'observe'
         _maybe_setup_logging(getattr(args, 'logging', False))
         handle_observation_command(args)
         return
 
-    parser = argparse.ArgumentParser(
+    parser = _parser_with_pager(
         description="EVN Observation Planner\n\n"
                    "Available modes:\n"
                    "  planobs [options]              - Plan VLBI observations (default mode)\n"
@@ -598,32 +639,43 @@ def cli():
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
 
-    obs_parser = subparsers.add_parser('observe', help='Plan VLBI observations (default mode)',
+    obs_parser = subparsers.add_parser('observe', add_help=False,
+                                       help='Plan VLBI observations (default mode)',
                                        formatter_class=RawTextRichHelpFormatter)
+    _add_pager_help(obs_parser)
     add_observation_arguments(obs_parser)
 
-    fringe_parser = subparsers.add_parser('fringefinders', help='Find fringe finder sources',
+    fringe_parser = subparsers.add_parser('fringefinders', add_help=False,
+                                          help='Find fringe finder sources',
                                           formatter_class=RawTextRichHelpFormatter)
+    _add_pager_help(fringe_parser)
     add_fringe_finder_arguments(fringe_parser)
 
-    phase_parser = subparsers.add_parser('phasecals', help='Find phase calibrator sources near a target',
+    phase_parser = subparsers.add_parser('phasecals', add_help=False,
+                                         help='Find phase calibrator sources near a target',
                                          formatter_class=RawTextRichHelpFormatter)
+    _add_pager_help(phase_parser)
     add_phase_cal_arguments(phase_parser)
 
-    source_parser = subparsers.add_parser('source', help='Get information about a specific source',
+    source_parser = subparsers.add_parser('source', add_help=False,
+                                          help='Get information about a specific source',
                                           formatter_class=RawTextRichHelpFormatter)
+    _add_pager_help(source_parser)
     add_source_arguments(source_parser)
 
-    server_parser = subparsers.add_parser('server', help='Start the PlanObs web server',
+    server_parser = subparsers.add_parser('server', add_help=False,
+                                          help='Start the PlanObs web server',
                                           formatter_class=RawTextRichHelpFormatter)
+    _add_pager_help(server_parser)
     add_server_arguments(server_parser)
 
-    antenna_parser = subparsers.add_parser('antenna', aliases=['ant'],
+    antenna_parser = subparsers.add_parser('antenna', aliases=['ant'], add_help=False,
                                            help='Get information about a specific antenna or list antennas by band',
                                            formatter_class=RawTextRichHelpFormatter)
+    _add_pager_help(antenna_parser)
     add_antenna_arguments(antenna_parser)
 
-    for subparser in (obs_parser, fringe_parser, phase_parser, source_parser,
+    for subparser in (fringe_parser, phase_parser, source_parser,
                       server_parser, antenna_parser):
         add_logging_argument(subparser)
 
@@ -645,88 +697,93 @@ def cli():
 
 
 def add_observation_arguments(parser):
-    """Add arguments for observation planning."""
-    parser.add_argument('-t', '--targets', type=str, default=None, nargs='+',
-                        help="Source(s) to be observed. Each entry can be:\n"
-                        "  a) A source name (looked up in SIMBAD/NED/VizieR/RFC).\n"
-                        "  b) Coordinates: 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'.\n"
-                        "  c) 'name/coordinates' to provide both (coordinates override lookup).\n"
-                        "Or if '--source-catalog' is defined, selects the block(s) in that file.\n"
-                        "Multiple sources can be provided.")
-    parser.add_argument('-sc', '--source-catalog', '--sc', type=str, default=None,
-                        help="Input file containing the personal source catalog.\n"
-                        "If provided, then '--targets' will select the block(s) "
-                        "defined in\nthis file, ignoring the rest.")
-    parser.add_argument('--station-catalog', type=str, default=None,
-                        help="Input file containing the personal station catalog.\n"
-                        "If provided, then the default catalog will not be read.")
-    parser.add_argument('-t1', '--starttime', type=str, default=None,
-                        help="Start of the observation, with the format 'YYYY-MM-DD HH:MM' "
-                        "in UTC.")
-    parser.add_argument('-d', '--duration', type=str, default=None,
-                        help="Total duration of the observation, in hours.")
-    parser.add_argument('-n', '--network', type=str, nargs='+',
-                        help="The VLBI network(s) that will participate in\nthe observation. "
-                        "It will take the default stations in each network.\nIf 'stations' "
-                        "is provided, then it will take both the default stations\nplus "
-                        "the ones given in stations. [green]See '--list-networks' to get a list.[/green]")
-    parser.add_argument('-s', '--stations', type=str, nargs='+', help="List "
-                        "of the antennas that will participate in the\nobservation. "
-                        "You can use either antenna codenames or the standard name,\n"
-                        "as given in the catalogs. [green]See '--list-antennas' to get a list.[/green]")
-    parser.add_argument('-b', '--band', type=str, help="Observing band, as defined "
-                        "in the catalogs as 'XXcm', with 'XX' being\nthe wavelegnth in cm. "
-                        "[green]See '--list-bands' to get a list.[/green]")
-    parser.add_argument('--list-antennas', action="store_true", default=False,
-                        help="Prints the list of all antennas defined in PlanObs.")
-    parser.add_argument('--list-networks', action="store_true", default=False,
-                        help="Prints the list of all VLBI networks defined in PlanObs.")
-    parser.add_argument('--list-bands', action="store_true", default=False,
-                        help="Writes the list of all observing bands defined in PlanObs.")
-    parser.add_argument('--sched', default=None, type=str,
-                        help="Produces a (SCHED) .key schedule file for "
-                        "the observation with the\ngiven name.")
-    parser.add_argument('--setup', default=None, type=str,
-                        help="Frequency setup to write in the 'setup = ...' line of the .key\n"
-                        "file produced by --sched. If not given, PlanObs guesses it from the\n"
-                        "observation setup.")
-    parser.add_argument('--template', default=None, type=str,
-                        help="SCHED .key template file. If not given, the default template\n"
-                        "distributed with PlanObs is used.")
-    parser.add_argument('--fringefinders', default='2', type=str, nargs='+',
-                        help="Defines the fringe finder source(s) to be scheduled "
-                        "in the observation.\nIt can be either a list of source names "
-                        "(as long as they\nappear in AstroGeo), "
-                        "'name/coordinates' to provide both,\n"
-                        "or a single number, meaning how many scans should go on\nfringe "
-                        "finders, and it will automatically select the most suitable sources.")
-    parser.add_argument('--polcal', action="store_true", default=False,
-                        help="Requires polarization calibration for the observation.")
-    parser.add_argument('--phasecal', default=None, type=str, nargs='*',
-                        help="Phase calibrator source(s) for the target. If no names are given\n"
-                        "(just --phasecal), the best candidate is picked automatically.\n"
-                        "One or more source names or 'name/coordinates' can be provided.")
-    parser.add_argument('--check-source', default=None, type=str, nargs='*',
-                        help="Check source(s) for the target. If no names are given\n"
-                        "(just --check-source), the best candidate is picked automatically.\n"
-                        "One or more source names or 'name/coordinates' can be provided.")
-    parser.add_argument('--pulsar', default=None, type=str,
-                        help="Sets to schedule at least a scan on a pulsar source. "
-                        "If a number,\nit will select a pulsar from the personal "
-                        "input source file (must be\nprovided!). If a name, 'name/coordinates', "
-                        "or coordinates, it will\nresolve accordingly.")
-    parser.add_argument('--data-rate', type=float, default=None,
-                        help="Maximum data rate of the observation, in Mb/s.")
-    parser.add_argument('--gui', action="store_true", default=False,
-                        help="If set, then it will not open graphical plots, but it will only\n"
-                        "show the quick plots through terminal.")
-    parser.add_argument('--no-tui', action="store_false", default=True,
-                        help="If set, then it will not show all the output in the terminal as default.")
-    parser.add_argument('-o', '--output', type=str, default=None, metavar='FILENAME',
-                        help="Write all observation inputs and results to .pdf, .txt, .md, or .json.\n"
-                             "The filename extension selects the format (case-insensitive).")
-    parser.add_argument('--debug', action="store_true", default=False,
-                        help="If set, shows some debuging messages.")
+    """Add grouped arguments for observation planning."""
+    main_group = parser.add_argument_group('Main parameters')
+    main_group.add_argument('-b', '--band', type=str, help="Observing band, as defined "
+                            "in the catalogs as 'XXcm', with 'XX' being\nthe wavelegnth in cm. "
+                            "[green]See '--list-bands' to get a list.[/green]")
+    main_group.add_argument('-n', '--network', type=str, nargs='+',
+                            help="The VLBI network(s) that will participate in\nthe observation. "
+                            "It will take the default stations in each network.\nIf 'stations' "
+                            "is provided, then it will take both the default stations\nplus "
+                            "the ones given in stations. [green]See '--list-networks' to get a list.[/green]")
+    main_group.add_argument('-s', '--stations', type=str, nargs='+', help="List "
+                            "of the antennas that will participate in the\nobservation. "
+                            "You can use either antenna codenames or the standard name,\n"
+                            "as given in the catalogs. [green]See '--list-antennas' to get a list.[/green]")
+    main_group.add_argument('-t1', '--starttime', type=str, default=None,
+                            help="Start of the observation, with the format 'YYYY-MM-DD HH:MM' "
+                            "in UTC.")
+    main_group.add_argument('-d', '--duration', type=str, default=None,
+                            help="Total duration of the observation, in hours.")
+
+    source_group = parser.add_argument_group('Source-related options')
+    source_group.add_argument('-t', '--targets', type=str, default=None, nargs='+',
+                              help="Source(s) to be observed. Each entry can be:\n"
+                              "  a) A source name (looked up in SIMBAD/NED/VizieR/RFC).\n"
+                              "  b) Coordinates: 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'.\n"
+                              "  c) 'name/coordinates' to provide both (coordinates override lookup).\n"
+                              "Or if '--source-catalog' is defined, selects the block(s) in that file.\n"
+                              "Multiple sources can be provided.")
+    source_group.add_argument('-sc', '--source-catalog', '--sc', type=str, default=None,
+                              help="Input file containing the personal source catalog.\n"
+                              "If provided, then '--targets' will select the block(s) "
+                              "defined in\nthis file, ignoring the rest.")
+    source_group.add_argument('--fringefinders', default='2', type=str, nargs='+',
+                                help="Defines the fringe finder source(s) to be scheduled "
+                                "in the observation.\nIt can be either a list of source names "
+                                "(as long as they\nappear in AstroGeo), "
+                                "'name/coordinates' to provide both,\n"
+                                "or a single number, meaning how many scans should go on\nfringe "
+                                "finders, and it will automatically select the most suitable sources.")
+    source_group.add_argument('--polcal', action="store_true", default=False,
+                              help="Requires polarization calibration for the observation.")
+    source_group.add_argument('--phasecal', default=None, type=str, nargs='*',
+                              help="Phase calibrator source(s) for the target. If no names are given\n"
+                              "(just --phasecal), the best candidate is picked automatically.\n"
+                              "One or more source names or 'name/coordinates' can be provided.")
+    source_group.add_argument('--check-source', default=None, type=str, nargs='*',
+                              help="Check source(s) for the target. If no names are given\n"
+                              "(just --check-source), the best candidate is picked automatically.\n"
+                              "One or more source names or 'name/coordinates' can be provided.")
+    source_group.add_argument('--pulsar', default=None, type=str,
+                              help="Sets to schedule at least a scan on a pulsar source. "
+                              "If a number,\nit will select a pulsar from the personal "
+                              "input source file (must be\nprovided!). If a name, 'name/coordinates', "
+                              "or coordinates, it will\nresolve accordingly.")
+
+    antenna_group = parser.add_argument_group('Antenna-related options')
+    antenna_group.add_argument('--station-catalog', type=str, default=None,
+                               help="Input file containing the personal station catalog.\n"
+                               "If provided, then the default catalog will not be read.")
+    antenna_group.add_argument('--list-antennas', action="store_true", default=False,
+                               help="Prints the list of all antennas defined in PlanObs.")
+    antenna_group.add_argument('--list-networks', action="store_true", default=False,
+                               help="Prints the list of all VLBI networks defined in PlanObs.")
+
+    obs_group = parser.add_argument_group('Observation configuration')
+    obs_group.add_argument('--list-bands', action="store_true", default=False,
+                           help="Writes the list of all observing bands defined in PlanObs.")
+    obs_group.add_argument('--data-rate', type=float, default=None,
+                           help="Maximum data rate of the observation, in Mb/s.")
+    obs_group.add_argument('--debug', action="store_true", default=False,
+                           help="If set, shows some debuging messages.")
+
+    output_group = parser.add_argument_group('Output options')
+    output_group.add_argument('--sched', default=None, type=str,
+                              help="Produces a (SCHED) .key schedule file for "
+                              "the observation with the\ngiven name.")
+    output_group.add_argument('--setup', default=None, type=str,
+                              help="Frequency setup to write in the 'setup = ...' line of the .key\n"
+                              "file produced by --sched. If not given, PlanObs guesses it from the\n"
+                              "observation setup.")
+    output_group.add_argument('--template', default=None, type=str,
+                              help="SCHED .key template file. If not given, the default template\n"
+                              "distributed with PlanObs is used.")
+    output_group.add_argument('-o', '--output', type=str, default=None, metavar='FILENAME',
+                              help="Write all observation inputs and results to .pdf, .txt, .md, or .json.\n"
+                                   "The filename extension selects the format (case-insensitive).")
+    add_logging_argument(output_group)
 
 
 def add_fringe_finder_arguments(parser):
@@ -798,17 +855,22 @@ def add_server_arguments(parser):
     parser.add_argument('--debug', action='store_true', default=False, help="Enable debug mode")
 
 
-def add_logging_argument(parser):
+def add_logging_argument(parser_or_group):
     """Add the optional ``--logging`` flag that enables writing a log file.
 
     No log file is created by default. When the flag is given without a value,
     a default path is used ('/var/log/planobs.log' if writable, otherwise
     '~/log-planobs.log'). An explicit path may also be provided.
+
+    Parameters
+    ----------
+    parser_or_group : argparse.ArgumentParser or argparse._ArgumentGroup
+        Parser or argument group to which the flag should be added.
     """
-    parser.add_argument('--logging', nargs='?', const=True, default=False, metavar='LOGFILE',
-                        help="Enable logging to a file. Optionally provide a path;\n"
-                        "otherwise '/var/log/planobs.log' (if writable) or\n"
-                        "'~/log-planobs.log' is used. Disabled by default.")
+    parser_or_group.add_argument('--logging', nargs='?', const=True, default=False, metavar='LOGFILE',
+                                 help="Enable logging to a file. Optionally provide a path;\n"
+                                 "otherwise '/var/log/planobs.log' (if writable) or\n"
+                                 "'~/log-planobs.log' is used. Disabled by default.")
 
 
 def handle_observation_command(args):
@@ -862,9 +924,7 @@ def handle_observation_command(args):
                " the observation.[/bold red]")
         sys.exit(1)
 
-    if (not args.gui) and (not args.no_tui) and getattr(args, 'output', None) is None:
-        rprint("[bold yellow]Note that you supressed both GUI and TUI. "
-               "No output will be provided.[/bold yellow]")
+
 
     if getattr(args, 'setup', None) is not None and args.sched is None:
         rprint("[bold yellow]--setup is only used when producing a schedule file (--sched). "
@@ -900,9 +960,9 @@ def handle_observation_command(args):
         rprint(f"[bold red]Error: {e}[/bold red]")
         sys.exit(1)
 
-    o.summary(args.gui, args.no_tui)
+    o.summary(gui=False, tui=True)
     if args.targets is not None or args.source_catalog is not None:
-        o.plot_visibility(args.gui, args.no_tui)
+        o.plot_visibility(gui=False, tui=True)
 
     if output_filename is not None:
         from vlbiplanobs.report import write_observation_report

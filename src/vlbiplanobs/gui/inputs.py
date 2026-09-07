@@ -558,6 +558,11 @@ def _grouped_chip_component(app, group_name: str, group_stations: list[stations.
 def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
     """Return the antenna selection section with grouped and ungrouped stations.
 
+    Grouped stations are rendered once per group and interleaved with ungrouped
+    stations in a single, case-insensitive alphabetical ordering by the chip
+    label. For a group, the sort key is the initial displayed label (the name
+    of the first station in the group).
+
     Parameters
     ----------
     app : Dash app
@@ -573,36 +578,36 @@ def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
     groups = station_groups()
     grouped_codenames = {s.codename for slist in groups.values() for s in slist}
 
-    grouped_components = [
-        _grouped_chip_component(app, gname, gstations, show_wavelengths)
-        for gname, gstations in groups.items()
-    ]
+    entries: list[tuple[str, html.Div]] = []
+
+    for s in observation._STATIONS:
+        if s.codename in grouped_codenames:
+            continue
+        chip = antenna_card_hover(
+            app,
+            dmc.Chip(s.name, value=s.codename,
+                     id={'type': 'antenna-chip', 'index': s.codename},
+                     color='#004990', persistence=True,
+                     styles={'display': 'grid',
+                             'grid-template-columns': 'repeat(auto-fit, minmax(10rem, 1fr))'}),
+            s, show_wavelengths)
+        entries.append((s.name.casefold(), chip))
+
+    for gname, gstations in groups.items():
+        group_component = _grouped_chip_component(app, gname, gstations, show_wavelengths)
+        entries.append((gstations[0].name.casefold(), group_component))
+
+    entries.sort(key=lambda item: item[0])
 
     return html.Div([html.H4("Manual Selection of Antennas   ",
                              className='text-dark font-weight-bold mb-2 pl-2 ml-4'),
-                     dmc.Group(
-                         [
-                             dmc.ChipGroup(value=[], id='switches-antennas', persistence=True,
-                                           multiple=True, deselectable=True,
-                                           children=[
-                                               antenna_card_hover(app,
-                                                                  dmc.Chip(s.name, value=s.codename,
-                                                                           id={'type': 'antenna-chip',
-                                                                               'index': s.codename},
-                                                                           color='#004990',
-                                                                           persistence=True,
-                                                                           styles={'display': 'grid',
-                                                                                   'grid-template-columns':
-                                                                                   'repeat(auto-fit, '
-                                                                                   'minmax(10rem, 1fr))'}),
-                                                                  s, show_wavelengths)
-                                               for s in observation._STATIONS
-                                               if s.codename not in grouped_codenames
-                                           ]),
-                         ] + grouped_components,
-                         className='mb-2 flex',
-                         style={'display': 'inline-flex', 'gap': '5px', 'justify-content': 'center',
-                                'flex-wrap': 'wrap'})])
+                     dmc.ChipGroup(value=[], id='switches-antennas', persistence=True,
+                                   multiple=True, deselectable=True,
+                                   children=dmc.Group(
+                                       [component for _, component in entries],
+                                       className='mb-2 flex',
+                                       style={'display': 'inline-flex', 'gap': '5px',
+                                              'justify-content': 'center', 'flex-wrap': 'wrap'}))])
 
 
 def duration() -> html.Div:

@@ -200,14 +200,12 @@ def print_table_bands_sefds(ant: stations.Station, show_wavelengths: bool = Fals
     bands_str = [fs.bands[band].split('or')[0].replace('cm', ' cm').strip() if show_wavelengths else
                  fs.bands[band].split('or')[1].replace('GHz', ' GHz') for band in ant.bands]
 
-    return html.Div([html.Div(className='col-6 px-0 m-0',
-                              children=[
-                                html.Label(children=b_str,
-                                           className='text-xs text-primary'),
-                                html.Label(f"({ant.sefds[band].value:g} "
-                                           f"{ant.sefds[band].unit.to_string('unicode')})",
-                                           className='text-xs text-secondary')]
-                              ) for b_str, band in zip(bands_str, ant.bands)], className='row')
+    return html.Div([
+        html.Div([html.Span(b_str, className='antenna-band-value'),
+                  html.Span(f"{ant.sefds[band].value:g} {ant.sefds[band].unit.to_string('unicode')}",
+                            className='antenna-sefd-value')], className='antenna-band-row')
+        for b_str, band in zip(bands_str, ant.bands)
+    ], className='antenna-band-table')
 
 
 def antenna_card(app, ant: stations.Station, show_wavelengths: bool = True) -> html.Div:
@@ -244,13 +242,11 @@ def antenna_card(app, ant: stations.Station, show_wavelengths: bool = True) -> h
                                      size='sm') if ant.networks else None,
                             dmc.Text("No longer operational.", mb='1rem', c='#a01d26', size='sm')
                             if ant.decommissioned else None,
-                            dmc.Text("Can observe at the following bands (System Equivalent Flux "
-                                     "Density, SEFD, values in brackets):", size='sm'),
-                            html.Div(className='container col-12 row mx-0 px-0 text-xs',
-                                     id={'type': 'badge-band-ant', 'index': ant.codename},
+                            dmc.Text("Available bands and System Equivalent Flux Density (SEFD):", size='sm'),
+                            html.Div(id={'type': 'badge-band-ant', 'index': ant.codename},
                                      children=print_table_bands_sefds(ant, show_wavelengths))
-                        ], className='col-12 px-1 pb-2 m-0')
-                    ], withBorder=False), className='col-12 p-0 m-0 text-sm', style={'width': '200px'})
+                        ], className='col-12 px-3 pb-3 m-0')
+                    ], withBorder=False), className='antenna-summary-card text-sm')
 
 
 def compute_button() -> html.Div:
@@ -514,12 +510,12 @@ def _grouped_chip_component(app, group_name: str, group_stations: list[stations.
     ]
 
     menu_items = []
-    for i, s in enumerate(group_stations):
+    for s in group_stations:
         item_content = dmc.MenuItem(
             s.name,
             id={'type': 'group-menu-item', 'index': f"{group_name}__{s.codename}"},
             style={'font-size': '0.85rem'},
-            className='group-menu-item group-menu-item-active' if i == 0 else 'group-menu-item',
+            className='group-menu-item',
         )
         menu_items.append(
             dmc.HoverCard(shadow="lg", radius="lg", openDelay=700, position='right',
@@ -527,22 +523,6 @@ def _grouped_chip_component(app, group_name: str, group_stations: list[stations.
                                     dmc.HoverCardDropdown(antenna_card(app, s, show_wavelengths),
                                                           className='m-0 p-0')])
         )
-
-    dropdown_trigger = dmc.Menu(
-        id={'type': 'group-menu', 'index': group_name},
-        position='bottom-start',
-        children=[
-            dmc.MenuTarget(
-                html.Button(
-                    '▼',
-                    id={'type': 'group-dropdown-btn', 'index': group_name},
-                    className='btn-group-config-arrow',
-                    title='Switch configuration',
-                )
-            ),
-            dmc.MenuDropdown(menu_items),
-        ]
-    )
 
     # The toggle button (on/off) shows the active configuration name (e.g. 'VLA 1').
     # Clicking it toggles selection; the label is kept in sync by a callback.
@@ -552,14 +532,23 @@ def _grouped_chip_component(app, group_name: str, group_stations: list[stations.
         className='btn-group-chip-toggle btn-group-chip-off',
         title=f"Toggle {group_name.upper()} antenna",
     )
+    dropdown_btn = html.Button(
+        '▼',
+        id={'type': 'group-dropdown-btn', 'index': group_name},
+        className='btn-group-config-arrow',
+        title='Switch configuration',
+    )
+    dropdown_trigger = dmc.Menu(
+        id={'type': 'group-menu', 'index': group_name},
+        position='bottom-start', trigger='click-hover', openDelay=500, closeDelay=250,
+        children=[
+            dmc.MenuTarget(html.Div([toggle_btn, dropdown_btn], className='group-chip-inner')),
+            dmc.MenuDropdown(menu_items),
+        ]
+    )
 
     wrapper = html.Div(
-        stores + [
-            html.Div(
-                [toggle_btn, dropdown_trigger],
-                className='group-chip-inner',
-            )
-        ],
+        stores + [dropdown_trigger],
         id={'type': 'group-chip-wrapper', 'index': group_name},
         style={'display': 'inline-flex', 'align-items': 'center', 'align-self': 'center'}
     )
@@ -624,8 +613,10 @@ def duration() -> html.Div:
     html.Div
         Duration selection component.
     """
-    return html.Div([html.H4("Duration of the Observation", className='text-dark font-weight-bold mb-1'),
-                     html.Div(className='col-12', children=[
+    return html.Div(className='schedule-block', children=[
+                     html.Div([html.I(className='fa-regular fa-clock'), html.Span("Time allocation")],
+                              className='schedule-subheading'),
+                     html.Div(className='col-12 px-0', children=[
                         html.Div(className='row d-flex align-items-bottom', children=[
                             html.Div(className='col-5', children=[
                                 html.Div(className='row form-group', children=[
@@ -649,12 +640,14 @@ def source_and_epoch_selection() -> html.Div:
     html.Div
         Source and epoch selection component.
     """
-    return html.Div([html.H4("Source  &  Epoch", className='text-dark font-weight-bold mb-1'),
-                     html.Div(className='col-12', children=[
+    return html.Div(className='schedule-block', children=[
+                     html.Div([html.I(className='fa-regular fa-calendar'), html.Span("Targets and start")],
+                              className='schedule-subheading'),
+                     html.Div(className='col-12 px-0', children=[
                         html.Div(className='row d-flex align-items-bottom', children=[
                             html.Div(className='col-6', children=[
                                 html.Div(className='row form-group', children=[
-                                    dbc.Switch(label='Specify an epoch', value=False,
+                                    dbc.Switch(label='Use a fixed observation start', value=False,
                                                 id='switch-specify-epoch', persistence=True),
                                     html.Div(id='epoch-selection-div', className='', children=[
                                         html.Div(className='row', children=[
@@ -693,6 +686,19 @@ def source_and_epoch_selection() -> html.Div:
                                              children=html.Small("No target sources added yet.",
                                                                  className='text-muted'))])])])]),
                     ])
+
+
+def observation_schedule() -> html.Div:
+    """Return the unified target, start, duration, and on-source scheduling section."""
+    return html.Div([
+        html.Div([html.Span("03", className='section-kicker'),
+                  html.Div([html.H4("Observation schedule", className='section-title'),
+                            html.P("Define targets and time allocation; optionally anchor the observation to UTC.",
+                                   className='section-description')])], className='section-heading'),
+        source_and_epoch_selection(),
+        html.Hr(className='schedule-divider'),
+        duration(),
+    ], className='dashboard-section')
 
 
 def target_sources_modal() -> html.Div:

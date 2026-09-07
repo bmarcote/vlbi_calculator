@@ -245,13 +245,13 @@ input[type=time] {
 }
 
 .group-menu-item-active {
-    background-color: rgba(0, 73, 144, 0.12) !important;
-    color: #004990 !important;
-    font-weight: 600 !important;
+    background: transparent !important;
+    color: inherit !important;
+    font-weight: inherit !important;
 }
 
 /* Make the grouped-antenna dropdown items (and their HoverCard wrappers) span the
-   full width of the menu, so the active-item highlight reaches both edges. */
+   full width of the menu. */
 .group-menu-item {
     display: block;
     width: 100%;
@@ -408,4 +408,192 @@ input[type=time]:focus {
 ::-webkit-scrollbar-thumb:hover {
     background-color: var(--text-muted);
     background-clip: content-box;
+}
+
+.planner-page {
+    width: 100%;
+    min-height: 100vh;
+    padding: 1.25rem clamp(0.75rem, 2vw, 2rem) 4rem;
+}
+
+.dashboard-header {
+    max-width: 1600px;
+    margin: 0 auto 1rem;
+    border: 1px solid var(--card-border);
+    border-radius: 1rem;
+    background: linear-gradient(135deg, var(--bg-card) 65%, rgba(0, 73, 144, 0.08));
+    box-shadow: var(--shadow-sm);
+}
+
+.dashboard-header .card-body {
+    padding: 1rem 1.5rem;
+}
+
+.planner-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: 1rem;
+    max-width: 1600px;
+    margin: 0 auto;
+    align-items: start;
+}
+
+.planner-controls,
+.planner-results {
+    min-width: 0;
+}
+
+.planner-results {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    padding: 0.5rem;
+}
+
+.planner-inputs > .m-0 {
+    padding: 0.5rem !important;
+}
+
+.dashboard-card {
+    overflow: visible;
+    box-shadow: var(--shadow-sm) !important;
+}
+
+.dashboard-card > .card-body {
+    padding: 1.25rem;
+}
+
+.dashboard-card:hover {
+    box-shadow: var(--shadow-md) !important;
+}
+
+.dashboard-section,
+.schedule-block {
+    min-width: 0;
+}
+
+.section-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+}
+
+.section-kicker {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    flex: 0 0 2rem;
+    border-radius: 0.55rem;
+    color: #fff;
+    background: #004990;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.section-title {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+.section-description {
+    margin: 0.15rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
+.schedule-subheading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.schedule-subheading i {
+    width: 1rem;
+    color: var(--link-color);
+    text-align: center;
+}
+
+.schedule-divider {
+    margin: 1rem 0;
+}
+
+.antenna-summary-card {
+    width: min(22rem, calc(100vw - 2rem));
+    padding: 0;
+    margin: 0;
+}
+
+.antenna-band-table {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem 1rem;
+    margin-top: 0.6rem;
+}
+
+.antenna-band-row {
+    display: grid;
+    grid-template-columns: minmax(4.75rem, 1fr) auto;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 0.75rem;
+}
+
+.antenna-band-value {
+    color: var(--link-color);
+    font-weight: 650;
+}
+
+.antenna-sefd-value {
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+@media (max-width: 991.98px) {
+    .planner-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .planner-results {
+        position: static;
+        max-height: none;
+        overflow: visible;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .planner-page {
+        padding-inline: 0.35rem;
+    }
+
+    .dashboard-header h2 {
+        font-size: 1.15rem;
+    }
+
+    .dashboard-header img {
+        max-width: 5rem;
+        height: auto !important;
+    }
+
+    .schedule-card .col-5,
+    .schedule-card .col-6,
+    .schedule-card .col-7 {
+        width: 100%;
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
+
+    .antenna-band-table {
+        grid-template-columns: 1fr;
+    }
 }

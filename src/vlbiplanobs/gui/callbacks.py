@@ -332,42 +332,16 @@ def switch_group_config(menu_clicks, active_codenames, is_selected_list, current
      Input('switches-antennas', 'value')],
 )
 def highlight_active_menu_item(active_codenames, is_selected_list, _switches):
-    """Set className on each menu item to mark the active configuration.
+    """Keep every grouped-antenna menu item visually neutral.
 
-    A menu item is highlighted only when its group is currently selected AND the item is
-    that group's active configuration, so the dropdown follows the user's choice (and shows
-    no highlight when the group is not selected). Uses a CSS class rather than Mantine style
-    props so the highlight survives Dash re-renders triggered by unrelated callbacks.
-    Re-triggered by switches-antennas changes to re-apply after any full update.
-
-    Parameters
-    ----------
-    active_codenames : list
-        Active codenames for all groups.
-    is_selected_list : list
-        Selection states for all groups.
-    _switches : list
-        Current antenna selection (unused but triggers re-apply).
+    Parameters are callback triggers retained for compatibility with grouped antenna state.
 
     Returns
     -------
     list[str]
-        CSS class names for all menu items.
+        The neutral CSS class for every menu item.
     """
-    # Map each group name to its active codename and selected state (both are ALL patterns
-    # over the same set of group indices, so build dicts keyed by group name to stay robust).
-    group_active = {it['id']['index']: it.get('value') for it in ctx.inputs_list[0]}
-    group_selected = {it['id']['index']: it.get('value') for it in ctx.inputs_list[1]}
-
-    classes = []
-    # Single (non-list) Output declaration: ctx.outputs_list is already the flat
-    # list of item specs for the ALL pattern, not wrapped in an outer list.
-    for item in ctx.outputs_list:
-        index = item['id']['index']  # format: 'groupname__codename'
-        group_name, _, codename = index.partition('__')
-        is_active = bool(group_selected.get(group_name)) and group_active.get(group_name) == codename
-        classes.append('group-menu-item group-menu-item-active' if is_active else 'group-menu-item')
-    return classes
+    return ['group-menu-item' for _item in ctx.outputs_list]
 
 
 @callback(

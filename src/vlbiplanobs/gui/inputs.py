@@ -477,6 +477,56 @@ def station_groups() -> dict[str, list[stations.Station]]:
     return groups
 
 
+def _station_sort_key(s: stations.Station) -> str:
+    """Return the case-insensitive sort key for a station's displayed name."""
+    return s.name.casefold()
+
+
+def _ungrouped_stations_sorted() -> list[stations.Station]:
+    """Return the ungrouped stations sorted by their displayed chip label.
+
+    Returns
+    -------
+    list[Station]
+        Ungrouped stations ordered by station name (case-insensitive).
+    """
+    groups = station_groups()
+    grouped_codenames = {s.codename for slist in groups.values() for s in slist}
+    return sorted((s for s in observation._STATIONS if s.codename not in grouped_codenames),
+                  key=_station_sort_key)
+
+
+def _station_card_order() -> list[stations.Station]:
+    """Return stations in the order their hover cards appear in antenna_list.
+
+    Ungrouped stations and grouped antenna chips are sorted together by their
+    displayed chip label (case-insensitive). A group is represented by the first
+    station's name and expands to all stations in that group in catalog order.
+
+    Returns
+    -------
+    list[Station]
+        Stations in layout order for hover-card content callbacks.
+    """
+    groups = station_groups()
+    grouped_codenames = {s.codename for slist in groups.values() for s in slist}
+
+    entries: list[tuple[str, list[stations.Station]]] = []
+    for s in observation._STATIONS:
+        if s.codename not in grouped_codenames:
+            entries.append((_station_sort_key(s), [s]))
+
+    for gname, gstations in groups.items():
+        entries.append((gstations[0].name.casefold(), list(gstations)))
+
+    entries.sort(key=lambda item: item[0])
+
+    ordered: list[stations.Station] = []
+    for _, station_list in entries:
+        ordered.extend(station_list)
+    return ordered
+
+
 def _grouped_chip_component(app, group_name: str, group_stations: list[stations.Station],
                              show_wavelengths: bool = False) -> html.Div:
     """Render a grouped-antenna chip with toggle button and config dropdown.
@@ -576,13 +626,10 @@ def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
         Antenna selection section component.
     """
     groups = station_groups()
-    grouped_codenames = {s.codename for slist in groups.values() for s in slist}
 
     entries: list[tuple[str, html.Div]] = []
 
-    for s in observation._STATIONS:
-        if s.codename in grouped_codenames:
-            continue
+    for s in _ungrouped_stations_sorted():
         chip = antenna_card_hover(
             app,
             dmc.Chip(s.name, value=s.codename,
@@ -593,7 +640,9 @@ def antenna_list(app, show_wavelengths: bool = False) -> html.Div:
             s, show_wavelengths)
         entries.append((s.name.casefold(), chip))
 
-    for gname, gstations in groups.items():
+    sorted_groups = sorted(groups.items(),
+                           key=lambda item: item[1][0].name.casefold())
+    for gname, gstations in sorted_groups:
         group_component = _grouped_chip_component(app, gname, gstations, show_wavelengths)
         entries.append((gstations[0].name.casefold(), group_component))
 

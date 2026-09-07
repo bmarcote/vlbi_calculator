@@ -22,12 +22,16 @@ from vlbiplanobs.gui import inputs, plots
            Output({'type': 'badge-band-ant', 'index': ALL}, 'children')],
           Input('switch-band-label', 'value'))
 def change_band_labels(show_wavelengths: bool):
-    """Update band labels to show wavelength or frequency format."""
+    """Update band labels to show wavelength or frequency format.
+
+    Band/SEFD tables follow the same ordering as the antenna hover cards in the
+    rendered layout so each table updates the matching component.
+    """
     return {i: label for i, label in enumerate(inputs.pick_band_labels(show_wavelengths))}, \
            [inputs.network_band_labels(network, show_wavelengths)
             for network in observation._NETWORKS], \
            [inputs.print_table_bands_sefds(ant, show_wavelengths)
-            for ant in observation._STATIONS]
+            for ant in inputs._station_card_order()]
 
 
 @callback([Output({'type': 'network-switch', 'index': ALL}, 'disabled'),
@@ -190,10 +194,10 @@ def enable_antennas_with_band(band_index: int, do_e_evn: bool):
     Returns
     -------
     list[bool]
-        Disabled states for ungrouped antenna chips.
+        Disabled states for ungrouped antenna chips, in the same order as the
+        chips appear in the rendered antenna list.
     """
-    grouped_codenames = {s.codename for slist in inputs.station_groups().values() for s in slist}
-    ungrouped = [ant for ant in observation._STATIONS if ant.codename not in grouped_codenames]
+    ungrouped = inputs._ungrouped_stations_sorted()
     if band_index == 0:
         return [False for _ in ungrouped]
 

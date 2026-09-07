@@ -40,8 +40,7 @@ def top_banner(app) -> html.Div:
                                                  alt='Joint Institute for VLBI ERIC (JIVE)',
                                                  className='logo-dark')])],
                                        style={'display': 'flex', 'align-items': 'center',
-                                              'justify-content': 'space-between'})],
-                       className='dashboard-header')
+                                              'justify-content': 'space-between'})])
 
 
 def inputs_column(app) -> html.Div:
@@ -57,12 +56,13 @@ def inputs_column(app) -> html.Div:
     html.Div
         Inputs column component.
     """
-    return html.Div(className='planner-inputs', children=[
-            inputs.card(inputs.pick_band(fs.bands), className='dashboard-card band-card'),
-            inputs.card(inputs.observation_schedule(), className='dashboard-card schedule-card'),
-            inputs.card(inputs.networks(app), className='dashboard-card'),
-            inputs.card(inputs.antenna_list(app), className='dashboard-card'),
-            inputs.card(inputs.correlations(), className='dashboard-card')])
+    return html.Div(children=[
+            inputs.card(inputs.pick_band(fs.bands)),
+            inputs.card(inputs.duration()),
+            inputs.card(inputs.source_and_epoch_selection()),
+            inputs.card(inputs.networks(app)),
+            inputs.card(inputs.antenna_list(app)),
+            inputs.card(inputs.correlations())])
 
 
 def export_button_div() -> html.Div:

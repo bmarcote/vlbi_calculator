@@ -441,7 +441,7 @@ server = app.server
 app.index_string = app.index_string.replace('<body>', '<body class="g-sidenav-show bg-gray-100">')
 
 # Layout without the compute button prominently featured
-app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='planner-page bg-gray-100 m-0', children=[
+app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-100 row m-0 p-4', children=[
                    dcc.Store(id='store-prev-datarate', data=2048),
                    dcc.Store(id='store-prev-channels', data=64),
                    dcc.Store(id='store-prev-subbands', data=8),
@@ -452,10 +452,10 @@ app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='planner-pa
                    # Hidden compute button (needed for callback compatibility but not shown)
                    html.Div(html.Button(id='compute-observation', style={'display': 'none'})),
                    layout.top_banner(app),
-                   html.Div(id='main-window', className='planner-grid',
-                            children=[html.Div(id='right-column', className='planner-controls',
+                   html.Div(id='main-window', className='container-fluid d-flex row p-0 m-0',
+                            children=[html.Div(id='right-column', className='col-12 col-sm-6 m-0 p-0',
                                                children=layout.inputs_column(app)),
-                                      html.Div(id='left-column', className='planner-results',
+                                      html.Div(id='left-column', className='col-12 col-sm-6 m-0 p-0',
                                                children=[layout.compute_buttons_realtime(app),
                                                          layout.export_button_div(),
                                                          layout.outputs_column(app)])]),

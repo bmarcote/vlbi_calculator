@@ -613,10 +613,8 @@ def duration() -> html.Div:
     html.Div
         Duration selection component.
     """
-    return html.Div(className='schedule-block', children=[
-                     html.Div([html.I(className='fa-regular fa-clock'), html.Span("Time allocation")],
-                              className='schedule-subheading'),
-                     html.Div(className='col-12 px-0', children=[
+    return html.Div([html.H4("Duration of the Observation", className='text-dark font-weight-bold mb-1'),
+                     html.Div(className='col-12', children=[
                         html.Div(className='row d-flex align-items-bottom', children=[
                             html.Div(className='col-5', children=[
                                 html.Div(className='row form-group', children=[
@@ -640,14 +638,12 @@ def source_and_epoch_selection() -> html.Div:
     html.Div
         Source and epoch selection component.
     """
-    return html.Div(className='schedule-block', children=[
-                     html.Div([html.I(className='fa-regular fa-calendar'), html.Span("Targets and start")],
-                              className='schedule-subheading'),
-                     html.Div(className='col-12 px-0', children=[
+    return html.Div([html.H4("Source  &  Epoch", className='text-dark font-weight-bold mb-1'),
+                     html.Div(className='col-12', children=[
                         html.Div(className='row d-flex align-items-bottom', children=[
                             html.Div(className='col-6', children=[
                                 html.Div(className='row form-group', children=[
-                                    dbc.Switch(label='Use a fixed observation start', value=False,
+                                    dbc.Switch(label='Specify an epoch', value=False,
                                                 id='switch-specify-epoch', persistence=True),
                                     html.Div(id='epoch-selection-div', className='', children=[
                                         html.Div(className='row', children=[
@@ -686,19 +682,6 @@ def source_and_epoch_selection() -> html.Div:
                                              children=html.Small("No target sources added yet.",
                                                                  className='text-muted'))])])])]),
                     ])
-
-
-def observation_schedule() -> html.Div:
-    """Return the unified target, start, duration, and on-source scheduling section."""
-    return html.Div([
-        html.Div([html.Span("03", className='section-kicker'),
-                  html.Div([html.H4("Observation schedule", className='section-title'),
-                            html.P("Define targets and time allocation; optionally anchor the observation to UTC.",
-                                   className='section-description')])], className='section-heading'),
-        source_and_epoch_selection(),
-        html.Hr(className='schedule-divider'),
-        duration(),
-    ], className='dashboard-section')
 
 
 def target_sources_modal() -> html.Div:

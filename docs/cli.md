@@ -8,7 +8,7 @@ The `planobs` command-line interface is organised into **modes** (subcommands). 
 |---------|---------|---------------|
 | `planobs [observe]` | Plan a VLBI observation | `-b BAND`, `-t TARGET`, `-n NETWORK` |
 | `planobs fringefinders` | Find fringe finder sources | `-s STATIONS`, `-t STARTTIME`, `-d DURATION` |
-| `planobs phasecals` | Find phase calibrator sources | `-t TARGET` |
+| `planobs phasecals` | Find phase calibrator sources | `TARGET` |
 | `planobs source` | Look up source information | `<source_name>`, `--gst` |
 | `planobs server` | Launch the web GUI | `--host`, `--port` |
 
@@ -34,7 +34,7 @@ planobs fringefinders -s Ef Hh Mc Tr -t '2025-03-15 08:00' -d 8 -b 6cm
 ### Find phase calibrators
 
 ```bash
-planobs phasecals -t 'M87' -b 6cm
+planobs phasecals 'M87' -b 6cm
 ```
 
 ### Look up a source
@@ -97,7 +97,7 @@ The fringefinders and phasecals modes separately support `--json` for machine-re
 
 ```bash
 planobs fringefinders -s Ef Hh Mc Tr -t '2025-03-15 08:00' -d 8 -b 6cm --json
-planobs phasecals -t 'M87' -b 6cm --json
+planobs phasecals 'M87' -b 6cm --json
 ```
 
 ### Generate a schedule file

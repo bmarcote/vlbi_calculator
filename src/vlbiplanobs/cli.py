@@ -768,6 +768,14 @@ def add_observation_arguments(parser):
                            help="Maximum data rate of the observation, in Mb/s.")
     obs_group.add_argument('--debug', action="store_true", default=False,
                            help="If set, shows some debuging messages.")
+    obs_group.add_argument('--nme', action="store_true", default=False,
+                           help="Network Monitoring Experiment mode (no targets needed; requires\n"
+                           "'-t1' and '-d'). The full time is covered with ~15-min fringe-finder\n"
+                           "scans visible by all antennas, with ftp fringe-test grabs every 30 min\n"
+                           "(every 15 min if the duration is <= 2.5 h). Without '--sched' it lists\n"
+                           "the visible fringe finders and the proposed scans; with '--sched' it\n"
+                           "writes the NME .key file. Explicit '--fringefinders' names are used\n"
+                           "as the only candidates.")
 
     output_group = parser.add_argument_group('Output options')
     output_group.add_argument('--sched', default=None, type=str,
@@ -817,9 +825,11 @@ def add_fringe_finder_arguments(parser):
 
 def add_phase_cal_arguments(parser):
     """Add arguments for phase calibrator search."""
-    parser.add_argument('-t', '--target', type=str, required=True,
+    parser.add_argument('target', type=str, nargs='?', default=None,
                         help="Target source name (J2000 or IVS name from RFC catalog;\n"
                         "or a block/source name from '--source-catalog' if provided).")
+    parser.add_argument('-t', '--target', type=str, default=None, dest='target_option',
+                        help="Deprecated alias of the positional TARGET argument.")
     parser.add_argument('-sc', '--source-catalog', '--sc', type=str, default=None,
                         help="Input file containing the personal source catalog.\n"
                         "If provided, then '--target' will first be looked up in\nthis file "
@@ -926,6 +936,10 @@ def handle_observation_command(args):
 
 
 
+    if getattr(args, 'nme', False):
+        handle_nme_command(args)
+        return
+
     if getattr(args, 'setup', None) is not None and args.sched is None:
         rprint("[bold yellow]--setup is only used when producing a schedule file (--sched). "
                "Ignoring it.[/bold yellow]")
@@ -996,6 +1010,124 @@ def handle_observation_command(args):
         print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
 
 
+def _print_nme_candidates(scans, sources, counts, times, n_stations: int, band: str, max_lines: int = 20) -> None:
+    """Print the fringe finders visible by all antennas at some point of the NME, best coverage first.
+
+    Parameters
+    ----------
+    scans : list[nme.NMEScan]
+        Planned scans (used to mark the sources selected for the schedule).
+    sources : list[Source]
+        Candidate sources, columns of ``counts``.
+    counts : np.ndarray
+        Number of stations observing each source at each time, shape (n_times, n_sources).
+    times : Time
+        Sampling times of ``counts``.
+    n_stations : int
+        Number of participating stations.
+    band : str
+        Observing band, used for the flux column.
+    max_lines : int
+        Maximum number of candidates to print.
+    """
+    from vlbiplanobs import nme
+    full = counts >= n_stations
+    coverage = full.mean(axis=0)
+    order = [i for i in np.argsort(-coverage, kind='stable') if coverage[i] > 0]
+    selected = {s.source.name for s in scans}
+    rprint(f"\n[bold green]{len(order)} fringe finder candidates are visible by all {n_stations} "
+           f"antennas at some point of the observation:[/bold green]")
+    table = Table(show_header=True, header_style="bold", box=box.SIMPLE)
+    for col, justify in (("Name", "left"), ("IVS Name", "left"), ("Unresolved (Jy)", "right"),
+                         ("All-antenna time", "right"), ("UTC windows (all antennas)", "left"), ("In plan", "center")):
+        table.add_column(col, justify=justify)
+    for i in order[:max_lines]:
+        src = sources[i]
+        windows = ', '.join(f"{a.datetime.strftime('%H:%M')}-{b.datetime.strftime('%H:%M')}"
+                            for a, b in nme.visible_windows(full[:, i], times))
+        flux = nme.source_flux(src, band)
+        table.add_row(src.name, getattr(src, 'ivsname', ''), f"{flux:.2f}" if flux > 0 else "N/A",
+                      f"{100 * coverage[i]:.0f}%", windows, "*" if src.name in selected else "")
+    rprint(table)
+    if len(order) > max_lines:
+        rprint(f"[dim]... and {len(order) - max_lines} more sources.[/dim]")
+
+
+def _print_nme_plan(scans, start: Time, n_stations: int) -> None:
+    """Print the proposed NME scan list (UTC times, source, visible antennas, grab time)."""
+    rprint("\n[bold green]Proposed NME scans:[/bold green]")
+    table = Table(show_header=True, header_style="bold", box=box.SIMPLE)
+    for col in ("Scan", "Start (UTC)", "Stop (UTC)", "Source", "Antennas", "ftp grab (UTC)"):
+        table.add_column(col)
+    for k, scan in enumerate(scans, start=1):
+        grab = (start + scan.grab_s*u.s).datetime.strftime('%H:%M:%S') if scan.grab_s is not None else ""
+        ants = f"{scan.n_visible}/{n_stations}"
+        table.add_row(str(k), (start + scan.rec_start_s*u.s).datetime.strftime('%H:%M:%S'),
+                      (start + scan.stop_s*u.s).datetime.strftime('%H:%M:%S'), scan.source.name,
+                      ants if scan.n_visible == n_stations else f"[bold red]{ants}[/bold red]", grab)
+    rprint(table)
+
+
+def handle_nme_command(args):
+    """Handle the Network Monitoring Experiment (--nme) mode of the observe command.
+
+    Plans fringe-finder scans covering the full observation with periodic ftp grabs.
+    Without ``--sched``, prints the visible fringe finders and the proposed scans.
+    With ``--sched``, also writes the NME SCHED .key file.
+    """
+    from vlbiplanobs import nme
+    from vlbiplanobs.scheduler import format_setup_line, guess_setup_file
+    if args.starttime is None or args.duration is None:
+        rprint("[bold red]The NME mode requires both the start time (-t1) and the duration (-d).[/bold red]")
+        sys.exit(1)
+    if args.targets is not None or args.source_catalog is not None:
+        rprint("[bold yellow]Targets/source catalogs are ignored in NME mode.[/bold yellow]")
+
+    ff_arg = getattr(args, 'fringefinders', ['2'])
+    ff_names = None if (len(ff_arg) == 1 and ff_arg[0].isdigit()) else ff_arg
+    try:
+        o = main(band=args.band, networks=args.network, stations=args.stations,
+                 station_catalog=args.station_catalog, start_time=Time(args.starttime, scale='utc'),
+                 duration=float(args.duration)*u.hour,
+                 datarate=args.data_rate*u.Mbit/u.s if args.data_rate else None)
+        fringefinders = nme.resolve_fringe_finders(ff_names) if ff_names else None
+        start = Time(args.starttime, scale='utc')
+        scans, sources_ff, counts, times = nme.plan_nme(o.stations, start, float(args.duration)*u.hour,
+                                                        args.band, fringefinders=fringefinders)
+    except ValueError as e:
+        rprint(f"[bold red]Error: {e}[/bold red]")
+        sys.exit(1)
+
+    n_stations = len(o.stations)
+    rprint(f"[bold]NME at {args.band} with {n_stations} antennas: "
+           f"{', '.join(s.codename for s in o.stations)}[/bold]")
+    if o._excluded_stations:
+        rprint(f"[yellow]Antennas dropped (cannot observe at {args.band}): "
+               f"{', '.join(o._excluded_stations)}[/yellow]")
+    _print_nme_candidates(scans, sources_ff, counts, times, n_stations, args.band)
+    _print_nme_plan(scans, start, n_stations)
+    if any(s.n_visible < n_stations for s in scans):
+        rprint("[bold yellow]Some scans cannot be observed by all antennas (see the table above).[/bold yellow]")
+
+    if args.sched is None:
+        return
+
+    key_filename = args.sched if args.sched.endswith('.key') else f"{args.sched}.key"
+    experiment_code = os.path.basename(args.sched).replace('.key', '').upper()
+    setup_file = getattr(args, 'setup', None) or guess_setup_file(o)
+    datarate = int(o.datarate.to(u.Mbit/u.s).value) if o.datarate is not None else None
+    try:
+        key_content = nme.generate_nme_key_file(scans, o.stations, start, args.band, experiment_code,
+                                                format_setup_line(setup_file), datarate_mbps=datarate,
+                                                template_path=getattr(args, 'template', None))
+    except (ValueError, OSError) as error:
+        rprint(f"[bold red]Could not generate the NME schedule file: {error}[/bold red]")
+        sys.exit(1)
+    with open(key_filename, 'w') as f:
+        f.write(key_content)
+    rprint(f"[green]NME schedule file written to: {key_filename}[/green]")
+
+
 def handle_fringe_finder_command(args):
     """Handle the fringe finder command."""
     _load_heavy()
@@ -1033,9 +1165,17 @@ def handle_fringe_finder_command(args):
 
 def handle_phase_cal_command(args):
     """Handle the phase calibrator command."""
+    target = args.target if args.target is not None else args.target_option
+    if target is None:
+        rprint("[bold red]A target source is required: 'planobs phasecals TARGET \\[options]'.[/bold red]")
+        sys.exit(1)
+    if args.target is not None and args.target_option is not None and args.target != args.target_option:
+        rprint("[bold red]Two different targets were given (positional and '-t'); provide only one.[/bold red]")
+        sys.exit(1)
+
     _load_heavy()
     original_argv = sys.argv.copy()
-    sys.argv = ['planobs_phasecal', '-t', args.target]
+    sys.argv = ['planobs_phasecal', '-t', target]
     if args.source_catalog is not None:
         sys.argv.extend(['-sc', args.source_catalog])
     if args.max_separation != 5.0:

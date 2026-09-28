@@ -32,3 +32,14 @@ def test_vlbiobs_invalid_init():
     # Should raise if required arguments are missing
     with pytest.raises(TypeError):
         VLBIObs()
+
+
+def test_phasecals_accepts_positional_target():
+    import argparse
+    from vlbiplanobs.cli import add_phase_cal_arguments
+    parser = argparse.ArgumentParser()
+    add_phase_cal_arguments(parser)
+    args = parser.parse_args(['M87', '-b', '6cm'])
+    assert args.target == 'M87' and args.target_option is None
+    args = parser.parse_args(['-t', 'M87'])
+    assert args.target is None and args.target_option == 'M87'

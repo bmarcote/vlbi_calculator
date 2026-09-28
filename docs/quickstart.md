@@ -58,7 +58,7 @@ Returns a ranked table of candidates with flux densities, elevations, and AstroG
 Search for phase calibrator candidates close to your target:
 
 ```bash
-planobs phasecals -t 'M87' -b 6cm
+planobs phasecals 'M87' -b 6cm
 ```
 
 Returns calibrators within the default 5° separation, sorted by distance.

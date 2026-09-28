@@ -59,7 +59,7 @@ This searches the RFC catalog and returns a ranked table of candidates with flux
 Phase calibrators are compact sources near the target used for phase referencing:
 
 ```bash
-planobs phasecals -t 'M87' -b 6cm --max-separation 5 --min-flux 0.1
+planobs phasecals 'M87' -b 6cm --max-separation 5 --min-flux 0.1
 ```
 
 Returns calibrators within 5° of M87 with ≥ 0.1 Jy unresolved flux.

@@ -5,22 +5,22 @@ The **phasecals** mode searches the RFC catalog for compact calibrator sources n
 ## Usage
 
 ```bash
-planobs phasecals -t TARGET [OPTIONS]
+planobs phasecals TARGET [OPTIONS]
 ```
 
 ### Quick Example
 
 ```bash
-planobs phasecals -t 'M87' -b 6cm
+planobs phasecals 'M87' -b 6cm
 ```
 
 ---
 
-## Required Options
+## Required Arguments
 
 | Argument | Description |
 |----------|-------------|
-| `-t`, `--target` | Target source name. Accepts J2000 names, IVS names from the RFC catalog, or any name resolvable by SIMBAD/NED/VizieR. |
+| `TARGET` (positional) | Target source name. Accepts J2000 names, IVS names from the RFC catalog, or any name resolvable by SIMBAD/NED/VizieR. The former `-t`/`--target` option is still accepted. |
 
 ---
 
@@ -58,7 +58,7 @@ When `--json` is used, the same data is printed as a JSON array.
 ### Basic search at 6 cm
 
 ```bash
-planobs phasecals -t 'M87' -b 6cm
+planobs phasecals 'M87' -b 6cm
 ```
 
 Finds all calibrator candidates within 5° of M87 at 6 cm.
@@ -66,7 +66,7 @@ Finds all calibrator candidates within 5° of M87 at 6 cm.
 ### Tight separation constraint
 
 ```bash
-planobs phasecals -t 'M87' -b 6cm --max-separation 2 --min-flux 0.2
+planobs phasecals 'M87' -b 6cm --max-separation 2 --min-flux 0.2
 ```
 
 Calibrators within 2° with ≥ 0.2 Jy unresolved flux.
@@ -74,7 +74,7 @@ Calibrators within 2° with ≥ 0.2 Jy unresolved flux.
 ### All-band search, top 10
 
 ```bash
-planobs phasecals -t '3C273' --max-separation 10 -n 10
+planobs phasecals '3C273' --max-separation 10 -n 10
 ```
 
 Searches all bands for calibrators within 10° of 3C273, returns the 10 closest.
@@ -82,7 +82,7 @@ Searches all bands for calibrators within 10° of 3C273, returns the 10 closest.
 ### High-frequency observation
 
 ```bash
-planobs phasecals -t 'NGC 4258' -b 1.3cm --max-separation 3 --min-flux 0.5
+planobs phasecals 'NGC 4258' -b 1.3cm --max-separation 3 --min-flux 0.5
 ```
 
 Stricter flux requirements for a 1.3 cm observation.
@@ -90,7 +90,7 @@ Stricter flux requirements for a 1.3 cm observation.
 ### JSON output for scripting
 
 ```bash
-planobs phasecals -t 'M87' -b 6cm --json
+planobs phasecals 'M87' -b 6cm --json
 ```
 
 ---

@@ -164,6 +164,26 @@ planobs -b 6cm -t 'M87' --network EVN \
 
 This creates `eg123a.key`. See **[Scheduling](scheduling.md)** for details on the `.key` file format and the auto-selection features for calibrators.
 
+### Network Monitoring Experiments (`--nme`)
+
+`--nme` plans a Network Monitoring Experiment: no targets are needed, only the band, the antennas, `-t1` and `-d`.
+The full observation is covered by ~15-min fringe-finder scans that all antennas can observe (minimum elevation 15°,
+RFC sources with unresolved flux ≥ 1 Jy at the band, or the sources given with `--fringefinders NAME ...`).
+
+Some scans include an ftp fringe test (`grabto='FILE' grabtime=2,118`: 2 s of data, sent at the end of the scan).
+The grab times are:
+
+- Duration > 2.5 h: first at +10 min, then every 30 min.
+- Duration ≤ 2.5 h: first at +5 min, then every 15 min, plus one right before the end.
+
+Without `--sched`, PlanObs lists the fringe finders visible by all antennas (with their UTC windows) and the proposed
+scans. With `--sched`, it also writes the NME `.key` file (bundled template `nme_key_file.key.template`, override
+with `--template`):
+
+```bash
+planobs -b 18cm -s Jb1 Wb Ef Nt O8 T6 Ur Tr Hh Ir -t1 '2025-02-20 12:00' -d 3 --nme --sched n25l1
+```
+
 ---
 
 ## Output Options

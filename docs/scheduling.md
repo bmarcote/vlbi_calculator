@@ -144,6 +144,12 @@ schedule = scheduler.schedule()
 scheduler.print_schedule()
 ```
 
+## Network Monitoring Experiments
+
+`planobs ... --nme [--sched CODE]` produces NME schedules (all-antenna fringe-finder scans with periodic ftp
+fringe-test grabs). See **[Observation Planning](mode-observe.md#network-monitoring-experiments-nme)** for the rules,
+and `vlbiplanobs.nme` for the Python API (`plan_nme`, `generate_nme_key_file`).
+
 ## References
 
 - [EVN Schedule Preparation](https://www.evlbi.org/observing-schedule-preparation)

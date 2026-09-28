@@ -39,7 +39,7 @@ The `planobs` command is organised into five modes:
 |------|---------|-------------|
 | **Observe** | `planobs -b 6cm -t 'M87' --network EVN` | Plan a VLBI observation |
 | **Fringe Finders** | `planobs fringefinders -s Ef Hh Mc -t '2025-03-15 08:00' -d 8` | Find bright calibrators for fringe detection |
-| **Phase Calibrators** | `planobs phasecals -t 'M87' -b 6cm` | Find compact calibrators near a target |
+| **Phase Calibrators** | `planobs phasecals 'M87' -b 6cm` | Find compact calibrators near a target |
 | **Source** | `planobs source '3C273'` | Look up source information |
 | **Server** | `planobs server` | Launch the web GUI |
 

@@ -1155,6 +1155,46 @@ def download_button() -> html.Div:
                           style={'gap': '5px'})
 
 
+# NOTE: borb 3.x cannot be installed on case-insensitive filesystems (macOS), where borb 2.x is used instead.
+# The two helpers below hide the API differences between both major versions.
+def _append_pdf_element(layout, element) -> None:
+    """Append a layout element to a borb page layout, supporting both borb 2.x and 3.x.
+
+    Parameters
+    ----------
+    layout : borb PageLayout
+        The page layout to append to.
+    element : borb LayoutElement
+        The element (Paragraph, Image, ...) to append.
+    """
+    if hasattr(layout, 'append_layout_element'):
+        layout.append_layout_element(element)
+    else:
+        layout.add(element)
+
+
+def _pdf_image(path: Path, width: int, height: int):
+    """Create a borb Image element of the given size, supporting both borb 2.x and 3.x.
+
+    Parameters
+    ----------
+    path : Path
+        Path to the image file.
+    width, height : int
+        Size of the image in the PDF, in points.
+
+    Returns
+    -------
+    borb Image
+        The image layout element.
+    """
+    try:
+        return pdf.Image(path, size=(width, height))
+    except TypeError:
+        from decimal import Decimal
+        return pdf.Image(path, width=Decimal(width), height=Decimal(height))
+
+
 def summary_pdf(o: cli.VLBIObs, show_figure: bool = True, document=None):
     """Create a PDF summary page and optionally write it to a file.
 
@@ -1189,26 +1229,26 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True, document=None):
     else:
         doc.add_page(page)
     layout: pdf.PageLayout = pdf.SingleColumnLayout(page)
-    layout.append_layout_element(pdf.Paragraph("EVN Observation Planner - Summary Report", font_size=20,
+    _append_pdf_element(layout, pdf.Paragraph("EVN Observation Planner - Summary Report", font_size=20,
                              font='Helvetica-bold'))
                              # font='Helvetica-bold', horizontal_alignment=pdf.Alignment.CENTERED))
     text = f"Observation to be conducted at {o.band.replace('cm', ' cm')}"
     if o.fixed_time:
         if o.times[0].datetime.date() == o.times[-1].datetime.date():
-            layout.append_layout_element(pdf.Paragraph(f"{text} from {o.times[0].strftime('%d %b %Y %H:%M')}-"
+            _append_pdf_element(layout, pdf.Paragraph(f"{text} from {o.times[0].strftime('%d %b %Y %H:%M')}-"
                                      f"{o.times[-1].strftime('%H:%M')} UTC."))
         elif (o.times[-1] - o.times[0]) < 24*u.h:
-            layout.append_layout_element(pdf.Paragraph(f"{text} from {o.times[0].strftime('%d %b %Y %H:%M')}-"
+            _append_pdf_element(layout, pdf.Paragraph(f"{text} from {o.times[0].strftime('%d %b %Y %H:%M')}-"
                                      f"{o.times[-1].strftime('%H:%M')} (+1d) UTC."))
         else:
-            layout.append_layout_element(pdf.Paragraph(f"{text} from {o.times[0].strftime('%d %b %Y %H:%M')} to "
+            _append_pdf_element(layout, pdf.Paragraph(f"{text} from {o.times[0].strftime('%d %b %Y %H:%M')} to "
                                      f"{o.times[-1].strftime('%d %b %H:%M')} UTC."))
     else:
         min_stat = 3 if len(o.stations) > 3 else min(2, len(o.stations))
         if len(o.stations) > 2:
             srcup = o.is_observable()
             if not srcup.items():
-                layout.append_layout_element(pdf.Paragraph(f"{text}, but no epoch specified."))
+                _append_pdf_element(layout, pdf.Paragraph(f"{text}, but no epoch specified."))
 
             for ablockname, antbool in srcup.items():
                 gst_range = (', '.join([t1.to_string(sep=':', fields=2, pad=True) + '--' +
@@ -1217,7 +1257,7 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True, document=None):
                                         ' GST.' for t1, t2
                                         in o.when_is_observable(min_stations=min_stat,
                                                                 return_gst=not o.fixed_time)[ablockname]]))
-                layout.append_layout_element(pdf.Paragraph(f"{text}. Optimal visibility window (> {min_stat} antennas simultaneously) at "
+                _append_pdf_element(layout, pdf.Paragraph(f"{text}. Optimal visibility window (> {min_stat} antennas simultaneously) at "
                                          f"{gst_range}{' for '+ablockname if len(srcup) > 1 else ''}"))
 
     sun_const = o.sun_constraint()
@@ -1237,43 +1277,43 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True, document=None):
                     text += f" from {t0.strftime('%d %b %Y')} to {t1.strftime('%d %b %Y')}"
                 text += f" (minimum separation of {sun_const[ablockname]:.02f})"
                 text += f" for {ablockname}." if len(o.sun_limiting_epochs()) > 1 else "."
-                layout.append_layout_element(pdf.Paragraph(text, font_color=pdf.HexColor("#FF0000")))
+                _append_pdf_element(layout, pdf.Paragraph(text, font_color=pdf.HexColor("#FF0000")))
         else:
             if (sun_const[ablockname] is not None): # and not (not sun_const[ablockname]):
                 text = "Note the the Sun is too close to the source"
                 text += f" {ablockname}" if len(o.sun_limiting_epochs()) > 1 else " "
                 text += f"({sun_const[ablockname]:.02f} away)."
-                layout.append_layout_element(pdf.Paragraph(text, font_color=pdf.HexColor("#FF0000")))
+                _append_pdf_element(layout, pdf.Paragraph(text, font_color=pdf.HexColor("#FF0000")))
 
     if o.duration is not None:
-        layout.append_layout_element(pdf.Paragraph("With a total duration of "
+        _append_pdf_element(layout, pdf.Paragraph("With a total duration of "
                                  f"{cli.optimal_units(o.duration, [u.h, u.min, u.s]):.3g} "
                                  f"({cli.optimal_units(o.ontarget_time[list(o.ontarget_time.keys())[0]],
                                                        [u.h, u.min, u.s]):.01f} on target). "
                                  f"Total output FITS file size: {o.datasize():.2f}."))
 
-    layout.append_layout_element(pdf.Paragraph(f"Participating stations ({len(o.stations)}): "
+    _append_pdf_element(layout, pdf.Paragraph(f"Participating stations ({len(o.stations)}): "
                              f"{', '.join(o.stations.station_codenames)}."))
     if not o.scans:
-        layout.append_layout_element(pdf.Paragraph("No sources defined."))
+        _append_pdf_element(layout, pdf.Paragraph("No sources defined."))
     else:
         for ablock in o.scans.values():
             temp = '\n'.join([f"{s.name} ({s.coord.to_string('hmsdms')})." for s in ablock.sources()])
-            layout.append_layout_element(pdf.Paragraph(f"Target source: {temp}"))
+            _append_pdf_element(layout, pdf.Paragraph(f"Target source: {temp}"))
 
     # NOTE: for my future self: I do not like how units are displayed now, but using the unicode output
     # Makes the PDF writting to break because apparetly Helvetiva (and the other default fonts) do not
     # support symbols like "^-".  I tried!
     if None not in (o.datarate, o.bandwidth, o.subbands):
         val = cli.optimal_units(o.datarate, [u.Gbit/u.s, u.Mbit/u.s])
-        layout.append_layout_element(pdf.Paragraph(f"\nData rate of {val:.0f}, "
+        _append_pdf_element(layout, pdf.Paragraph(f"\nData rate of {val:.0f}, "
                                  "producing a total bandwidth of "
                                  f"{cli.optimal_units(o.bandwidth, [u.MHz, u.GHz])}, "
                                  f" divided in {o.subbands} x {int(o.bandwidth.value/o.subbands)}-"
                                  f"{o.bandwidth.unit} subbands, with {o.channels} channels each, "
                                  f"{o.polarizations} polarization, and {o.inttime:.01f} integration time."))
     else:
-        layout.append_layout_element(pdf.Paragraph("No setup (data rate, bandwidth, number of subbands) specified."))
+        _append_pdf_element(layout, pdf.Paragraph("No setup (data rate, bandwidth, number of subbands) specified."))
 
     if not o.scans.values():
         rms = cli.optimal_units(o.thermal_noise(),
@@ -1285,7 +1325,7 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True, document=None):
         rms_chan = cli.optimal_units(rms*np.sqrt(o.subbands*o.channels),
                                     [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
                                      u.mJy/u.beam, u.uJy/u.beam])
-        layout.append_layout_element(pdf.Paragraph(f"Thermal rms noise: "
+        _append_pdf_element(layout, pdf.Paragraph(f"Thermal rms noise: "
                                  f"{rms:.3g}\n"
                                  f" ({rms_chan:.3g} per spectral "
                                  f"channel and {rms_min:.3g}"
@@ -1297,7 +1337,7 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True, document=None):
 
         bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
         bmin = synth_beam['bmin'].to(bmaj.unit)
-        layout.append_layout_element(pdf.Paragraph(f"Synthesized beam (approx for a random source): "
+        _append_pdf_element(layout, pdf.Paragraph(f"Synthesized beam (approx for a random source): "
                                  f"{bmaj.value:2.1f} x {bmin:2.1f}"
                                  f", {synth_beam['pa'].value:2.0f}º."))
 
@@ -1305,10 +1345,10 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True, document=None):
         for ablock in o.scans.values():
             for src in o.sources():
                 if len(o.scans) > 1:
-                    layout.append_layout_element(pdf.Paragraph(f"For the source {src.name}", font='Helvetica-bold'))
+                    _append_pdf_element(layout, pdf.Paragraph(f"For the source {src.name}", font='Helvetica-bold'))
 
                 if not o.is_observable_by_network(min_stations=1)[src.name]:
-                    layout.append_layout_element(pdf.Paragraph(f"The source {src.name} is not visible from the array."))
+                    _append_pdf_element(layout, pdf.Paragraph(f"The source {src.name} is not visible from the array."))
                     continue
 
                 rms = cli.optimal_units(o.thermal_noise()[src.name],  # type: ignore
@@ -1320,7 +1360,7 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True, document=None):
                 rms_chan = cli.optimal_units(rms*np.sqrt(o.subbands*o.channels),
                                             [u.MJy/u.beam, u.kJy/u.beam, u.Jy/u.beam,
                                             u.mJy/u.beam, u.uJy/u.beam])
-                layout.append_layout_element(pdf.Paragraph(f"Thermal rms noise: "
+                _append_pdf_element(layout, pdf.Paragraph(f"Thermal rms noise: "
                                             f"{rms:.3g}\n"
                                             f" ({rms_chan:.3g} per spectral "
                                             f"channel and {rms_min:.3g}"
@@ -1330,14 +1370,14 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True, document=None):
                 bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
                 bmin = synth_beam['bmin'].to(bmaj.unit)
                 temp = f" for {src.name}" if len(o.scans.values()) > 1 else ""
-                layout.append_layout_element(pdf.Paragraph(f"Synthesized beam{temp}: "
+                _append_pdf_element(layout, pdf.Paragraph(f"Synthesized beam{temp}: "
                                          f"{bmaj.value:2.1f} x {bmin:2.1f}"
                                          f", {synth_beam['pa'].value:2.0f}º."))
 
     if o.sources() and o.is_observable_by_network(min_stations=1).get(o.sources()[0].name, False):
         bw_smearing = cli.optimal_units(o.bandwidth_smearing(), [u.deg, u.arcmin, u.arcsec])
         tm_smearing = cli.optimal_units(o.time_smearing(), [u.deg, u.arcmin, u.arcsec])
-        layout.append_layout_element(pdf.Paragraph(f"Field of view limited to {bw_smearing:.2g} (from frequency smearing) "
+        _append_pdf_element(layout, pdf.Paragraph(f"Field of view limited to {bw_smearing:.2g} (from frequency smearing) "
                                 f"and {tm_smearing:.2g} (from time smearing), considering 10% loss."))
 
     figpath: Optional[Path] = None
@@ -1355,9 +1395,9 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True, document=None):
                     )
                     fig.write_image(tempfig.name, scale=2, width=800, height=400)
 
-                layout.append_layout_element(pdf.Image(figpath, size=(414, 265)))
+                _append_pdf_element(layout, _pdf_image(figpath, 414, 265))
             except Exception as e:
-                layout.append_layout_element(pdf.Paragraph(
+                _append_pdf_element(layout, pdf.Paragraph(
                     f"[Figure could not be generated: {type(e).__name__}]",
                     font_color=pdf.HexColor("#999999")))
 

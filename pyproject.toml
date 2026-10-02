@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vlbiplanobs"
-version = "5.0.4"
+version = "5.0.5"
 description = "Observaiton Planner for VLBI observations"
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -57,7 +57,8 @@ dependencies = [
   "dash-mantine-components",
   "kaleido==0.2.1",
   "loguru",
-  "borb", #==2.1.25",  # only for macOS (case-insensitive). Newer versions would work with GNU/Linux
+  "borb==2.1.25; sys_platform == 'darwin'",  # borb 3.x wheel has case-conflicting files: fails on macOS
+  "borb>=3.0; sys_platform != 'darwin'",
   "furl",
   "packaging",
 ]

@@ -8,6 +8,7 @@ import dash_mantine_components as dmc
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs import stations
 from vlbiplanobs import observation
+from vlbiplanobs.gui import validation
 
 
 def modal_welcome() -> html.Div:
@@ -675,7 +676,7 @@ def duration() -> html.Div:
                                     html.Label('In hours', htmlFor='duration'),
                                     dbc.Input(id='duration', value=24.0, type='number', className='form-control',
                                             placeholder="In hours", min=0,
-                                            persistence=True, debounce=True, inputMode='numeric', max=50.0, step='any'),
+                                            persistence=True, debounce=True, inputMode='numeric', max=validation.MAX_DURATION_H, step='any'),
                                     html.Small(id='error_duration', className='form-text text-muted')])]),
                             html.Div(className='col-7', children=[
                                 html.Div(className='row form-group', children=[
@@ -782,7 +783,8 @@ def target_sources_modal() -> html.Div:
                            style={'border': '2px dashed #004990',
                                   'border-radius': '8px',
                                   'background-color': 'rgba(0, 73, 144, 0.05)'},
-                           multiple=False, accept='.txt,.csv,.cat,.lis,.list'),
+                           multiple=False, accept='.txt,.csv,.cat,.lis,.list',
+                           max_size=validation.MAX_UPLOAD_BYTES),
                 html.Small(id='upload-sources-feedback',
                            className='form-text text-muted')]),
             html.Hr(),

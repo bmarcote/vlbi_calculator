@@ -4,11 +4,12 @@ This module holds the parts of the CLI that require the heavy dependencies
 (numpy, astropy, the vlbiplanobs computation modules). It is imported lazily
 from `vlbiplanobs.cli` so that `planobs -h`/`-V`/no-arguments respond immediately.
 """
-import sys
+import copy
 import numpy as np
 from astropy import units as u
 from astropy.time import Time
 from rich import print as rprint
+from rich.markup import escape
 from vlbiplanobs import observation as obs
 from vlbiplanobs import sources
 
@@ -154,9 +155,10 @@ class VLBIObs(obs.Observation):
             rprint(f"With a total duration of {optimal_units(self.duration, [u.h, u.min, u.s]):.01f}.")
 
         rprint("\n[bold green]Setup[/bold green]")
-        if None not in (self.datarate, self.bandwidth, self.subbands):
+        # Short-circuit on datarate: `bandwidth` cannot be derived (TypeError) without it.
+        if self.datarate is not None and self.subbands is not None and self.bandwidth is not None:
             val = optimal_units(self.datarate, [u.Gbit/u.s, u.Mbit/u.s])
-            rprint(f"\nData rate of {val.value:.0f} {val.unit.to_string('unicode')}, "
+            rprint(f"\nData rate of {val.value:.3g} {val.unit.to_string('unicode')}, "
                    f"producing a total bandwidth of {optimal_units(self.bandwidth, [u.MHz, u.GHz])}, "
                    f"divided in {self.subbands} x {int(self.bandwidth.value/self.subbands)}-"
                    f"{self.bandwidth.unit} subbands, with {self.channels} channels each, "  # type: ignore
@@ -166,13 +168,19 @@ class VLBIObs(obs.Observation):
 
         rprint(f"\n[bold green]Stations ({len(self.stations)})[/bold green]: "
                f"{', '.join(self.stations.station_codenames)}")
-        if any([s.datarate < self.datarate for s in self.stations]):
-            rprint("Note that the following stations have a reduced bandwidth:")
+        # Per-station effective rates come from the observation (Station objects are shared globals);
+        # either rate may be undefined (None) and is then not compared.
+        reduced: list[tuple[str, u.Quantity]] = []
+        if self.datarate is not None:
             for s in self.stations:
-                if s.datarate < self.datarate:
-                    rprint(f"    [dim]{s.codename:3}: {s.datarate.value:4.0f} "
-                           f"{s.datarate.unit.to_string('unicode')} "
-                           f"({int(self.subbands*s.datarate/self.datarate)} subbands)[/dim]")
+                rate = self.station_datarate(s.codename)
+                if rate is not None and rate < self.datarate:
+                    reduced.append((s.codename, rate))
+        if reduced:
+            rprint("Note that the following stations have a reduced bandwidth:")
+            for codename, rate in reduced:
+                rprint(f"    [dim]{escape(codename):3}: {rate.value:4.0f} {rate.unit.to_string('unicode')} "
+                       f"({int(self.subbands*rate/self.datarate)} subbands)[/dim]")
 
         # Report stations that were requested but excluded
         excluded_msgs = [f"{code} ({reason})" for code, reason in self._excluded_stations.items()]
@@ -185,14 +193,14 @@ class VLBIObs(obs.Observation):
             for ant in sorted(all_blocks_invisible):
                 excluded_msgs.append(f"{ant} (source not visible)")
         if excluded_msgs:
-            rprint(f"    [yellow]Not observing: {', '.join(excluded_msgs)}[/yellow]")
+            rprint(f"    [yellow]Not observing: {escape(', '.join(excluded_msgs))}[/yellow]")
 
         rprint("\n[bold green]Sources[/bold green]:")
         if self.scans:
             for ablockname, ablock in self.scans.items():
-                rprint(f"    - [dim]ScanBlock[/dim] '{ablockname}'")
+                rprint(f"    - [dim]ScanBlock[/dim] '{escape(ablockname)}'")
                 rprint('      ' +
-                       '\n      '.join([s.name + ' [dim](' + s.coord.to_string('hmsdms') + ')[/dim]'
+                       '\n      '.join([escape(s.name) + ' [dim](' + s.coord.to_string('hmsdms') + ')[/dim]'
                                         for s in ablock.sources()]))
                 if not ablock.sources(sources.SourceType.PHASECAL) and self.frequency > 80*u.GHz:
                     rprint("[red]Phase-referencing is not feasible anymore at this band.\n"
@@ -229,29 +237,33 @@ class VLBIObs(obs.Observation):
         each source's observability independently.  The 'when everyone can observe'
         and 'optimal visibility range' messages refer to the TARGET source only.
         Sun proximity warnings identify the specific source that is too close.
+        Without fixed times, a one-day grid is evaluated on a copy, leaving this object unchanged.
         """
         if not self.fixed_time:
             rprint("[bold green]Searching for suitable GST range "
                    "(no pre-defined observing time)[/bold green]\n")
-            self.times = Time('2025-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01)*u.day
+            # Work on a shallow copy so the fake one-day grid never touches (nor resets) this
+            # observation's times and cached results; the copy rebinds its own caches.
+            view = copy.copy(self)
+            view.times = Time('2025-09-21', scale='utc') + np.arange(0.0, 1.005, 0.01)*u.day
             doing_gst = True
         else:
+            view = self
             doing_gst = False
 
-        per_src = self.per_source_observable()
-        per_src_elev = self.per_source_elevations()
-        rms_noise = self.thermal_noise()
-        ontarget_time = self.ontarget_time
-        sun_per_src = self.sun_constraint_per_source(times=self._REF_YEAR if doing_gst else None)
-        sun_limit = self.sun_limiting_epochs()
+        per_src = view.per_source_observable()
+        per_src_elev = view.per_source_elevations()
+        rms_noise = view.thermal_noise()
+        ontarget_time = view.ontarget_time
+        sun_per_src = view.sun_constraint_per_source(times=view._REF_YEAR if doing_gst else None)
+        sun_limit = view.sun_limiting_epochs()
         if doing_gst:
-            gstimes = self.gstimes
-            localtimes = self.times[:]
-            self.times = None
+            gstimes = view.gstimes
+            localtimes = view.times
 
         rprint("[bold]The blocks are observable for:[/bold]")
-        for ablockname, ablock in self.scans.items():
-            rprint(f"    - '{ablockname}':")
+        for ablockname, ablock in view.scans.items():
+            rprint(f"    - '{escape(ablockname)}':")
             # Show only science targets (TARGET or PULSAR) in the CLI plot; fall back to all if none exist.
             block_sources = (ablock.sources(sources.SourceType.TARGET) or
                              ablock.sources(sources.SourceType.PULSAR) or
@@ -264,11 +276,11 @@ class VLBIObs(obs.Observation):
                 # Check if source is always observable by all stations
                 always_all = all(np.all(v) for v in src_vis.values())
                 always_some = [ant for ant, v in src_vis.items() if np.all(v)]
-                rprint(f"      [dim]{src.name}[/dim]", end='')
+                rprint(f"      [dim]{escape(src.name)}[/dim]", end='')
                 if always_all:
                     rprint(" [dim](always observable)[/dim]")
                 elif always_some:
-                    cant = [ant for ant in self.stations.station_codenames if ant not in always_some]
+                    cant = [ant for ant in view.stations.station_codenames if ant not in always_some]
                     rprint(f" [dim](always observable by everyone but {','.join(cant)})[/dim]")
                 else:
                     rprint(' [dim](nobody can observe it all the time)[/dim]')
@@ -282,13 +294,13 @@ class VLBIObs(obs.Observation):
                                    for gst in gstimes]
                     time_labels[-1] = (gstimes[-1] + t_wrap).to_string(sep=':', fields=2, pad=True)
                 else:
-                    time_labels = [f"{t.strftime('%H:%M')} UTC" for t in self.times.datetime]
+                    time_labels = [f"{t.strftime('%H:%M')} UTC" for t in view.times.datetime]
 
                 self._plot_source_elevation_terminal(src.name, src_vis, src_elev, time_labels)
 
             # "When everyone can observe" and "optimal visibility" — use block-level
             if doing_gst:
-                when_everyone = self.when_is_observable(mandatory_stations='all',
+                when_everyone = view.when_is_observable(mandatory_stations='all',
                                                         return_gst=True)[ablockname]
                 if when_everyone:
                     rprint("\n[bold]All antennas can observe the block simultaneously at: [/bold]", end='')
@@ -298,7 +310,7 @@ class VLBIObs(obs.Observation):
                 else:
                     rprint("\nThe block cannot be observed by all stations at the same time.")
             else:
-                when_everyone = self.when_is_observable(mandatory_stations='all')[ablockname]
+                when_everyone = view.when_is_observable(mandatory_stations='all')[ablockname]
                 if when_everyone:
                     rprint("\n[bold]All antennas can observe the block simultaneously at: [/bold]", end='')
                     rprint(', '.join([t1.strftime('%d %b %Y %H:%M')+'-'+t2.strftime('%H:%M') +
@@ -306,27 +318,27 @@ class VLBIObs(obs.Observation):
                 else:
                     rprint("\nThe block cannot be observed by all stations at the same time.")
 
-            min_stat = 3 if len(self.stations) > 3 else min(2, len(self.stations))
-            if len(self.stations) > 2:
+            min_stat = 3 if len(view.stations) > 3 else min(2, len(view.stations))
+            if len(view.stations) > 2:
                 rprint(f"[bold]Optimal visibility window (> {min_stat} antennas simultaneously):[/bold] ", end='')
                 if doing_gst:
                     rprint(', '.join([t1.to_string(sep=':', fields=2, pad=True) + '--' +
                                       (t2 + (24*u.hourangle if np.abs(t1 - t2) < 0.1*u.hourangle
                                              else 0.0*u.hourangle)).to_string(sep=':', fields=2, pad=True) +
                                       ' GST' for t1, t2
-                                      in self.when_is_observable(min_stations=min_stat,
+                                      in view.when_is_observable(min_stations=min_stat,
                                                                  return_gst=True)[ablockname]]))
                 else:
                     rprint(', '.join([t1.strftime('%d %b %Y %H:%M')+'--'+t2.strftime('%H:%M') +
                                       ' UTC' for t1, t2
-                                      in self.when_is_observable(min_stations=min_stat)[ablockname]]))
+                                      in view.when_is_observable(min_stations=min_stat)[ablockname]]))
 
             # Sun constraint — per source, so the user knows which source is the problem
             if doing_gst:
                 if sun_limit[ablockname]:
                     offending = [(s.name, sun_per_src[s.name])
                                  for s in block_sources if sun_per_src.get(s.name) is not None]
-                    src_label = ', '.join(s for s, _ in offending) if offending else 'a source in this block'
+                    src_label = escape(', '.join(s for s, _ in offending)) if offending else 'a source in this block'
                     min_sep = min((sep for _, sep in offending), default=None) if offending else None
                     sep_str = f" (min separation {min_sep:.1f})" if min_sep is not None else ''
                     rprint(f"[bold red]Note that the Sun is too close to {src_label}{sep_str}[/bold red]",
@@ -346,7 +358,7 @@ class VLBIObs(obs.Observation):
                 offending = [(s.name, sun_per_src[s.name])
                              for s in block_sources if sun_per_src.get(s.name) is not None]
                 for src_name, sep in offending:
-                    rprint(f"[bold red]Note that the Sun is too close to {src_name} during "
+                    rprint(f"[bold red]Note that the Sun is too close to {escape(src_name)} during "
                            f"this observation (separation of {sep:.1f}).[/bold red]")
 
             rprint("[bold]Expected rms thermal noise for the target source: [/bold]", end='')
@@ -355,35 +367,34 @@ class VLBIObs(obs.Observation):
             else:
                 for src, rms in rms_noise.items():
                     if rms is None:
-                        if src in self.sourcenames_in_block(ablockname):
-                            rprint(f"[yellow]{src}: cannot be computed "
+                        if src in view.sourcenames_in_block(ablockname):
+                            rprint(f"[yellow]{escape(src)}: cannot be computed "
                                    "(not enough simultaneous antenna coverage).[/yellow]")
                         continue
-                    if any([s.type is sources.SourceType.TARGET for s in self.sources()]):
-                        if src in self.sourcenames_in_block(ablockname, sources.SourceType.TARGET):
+                    if any([s.type is sources.SourceType.TARGET for s in view.sources()]):
+                        if src in view.sourcenames_in_block(ablockname, sources.SourceType.TARGET):
                             val = optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
-                            rprint(f"{src}: {val.value:.02f} {val.unit.to_string('unicode')}")
+                            rprint(f"{escape(src)}: {val.value:.02f} {val.unit.to_string('unicode')}")
                             val = optimal_units(ontarget_time[src], [u.h, u.min, u.s, u.ms])
                             rprint("[dim]for a total on-source time of ~ "
                                    f"{val.value:.2f} {val.unit.to_string('unicode')} "
                                    f"(assuming the total observing time).[/dim]")
                     else:
-                        if src in self.sourcenames_in_block(ablockname):
+                        if src in view.sourcenames_in_block(ablockname):
                             val = optimal_units(rms, [u.Jy/u.beam, u.mJy/u.beam, u.uJy/u.beam])
-                            rprint(f"{src}: {val.value:.2f} {val.unit.to_string('unicode')}.")
+                            rprint(f"{escape(src)}: {val.value:.2f} {val.unit.to_string('unicode')}.")
 
             print('\n')
 
     def _plot_visibility_gui(self):
         """Show plots with the different sources and when they are visible within the
-        observation
+        observation. Does nothing when no scans are defined.
         """
         # Lazy import: plots pulls in plotly/matplotlib, only needed for GUI output.
         from vlbiplanobs.gui import plots
 
         if self.scans is None:
-            # rprint("No scans have been defined.")
-            sys.exit(0)
+            return
 
         figs = plots.elevation_plot(self)
         figs.show()
@@ -400,11 +411,12 @@ class VLBIObs(obs.Observation):
         for i in range(len(self.stations)):
             rprint(f"{self.stations[i].codename:3} | {' '*i*6}", end='')
             for j in range(i, len(self.stations)):
+                # Autocorrelations (i == j) are not stored (KeyError); None means it cannot be computed.
                 try:
                     temp = self.baseline_sensitivity(self.stations[i].codename,
                                                      self.stations[j].codename).to(u.mJy/u.beam).value
                     rprint(f"{temp:6.3}", end='')
-                except TypeError:
+                except (KeyError, AttributeError, TypeError):
                     rprint("     ", end='')
 
             rprint('')

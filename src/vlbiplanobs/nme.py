@@ -360,6 +360,34 @@ def visible_windows(mask: np.ndarray, times: Time) -> list[tuple[Time, Time]]:
     return [(times[a], times[b]) for a, b in zip(starts, ends)]
 
 
+def _sched_text(value: str, field: str) -> str:
+    """Validate a string written into a SCHED key-file field (often single-quoted).
+
+    Parameters
+    ----------
+    value : str
+        Text to write (e.g. a source name).
+    field : str
+        Field description used in the error message.
+
+    Returns
+    -------
+    str
+        The value stripped of surrounding whitespace.
+
+    Raises
+    ------
+    ValueError
+        If the value contains a single quote, a newline/carriage return, or is empty, since that
+        would break or inject content into the SCHED file.
+    """
+    text = str(value).strip()
+    if not text or any(c in text for c in ("'", '\n', '\r')):
+        raise ValueError(f"Invalid {field} {value!r} for a SCHED file: it must be non-empty and "
+                         "contain no single quotes or line breaks.")
+    return text
+
+
 def _fmt_ms(seconds: int) -> str:
     """Format seconds as SCHED 'M:SS'."""
     return f"{seconds // 60}:{seconds % 60:02d}"
@@ -369,8 +397,9 @@ def _source_catalog_line(src: Source) -> str:
     """Build a SCHED srccat line for a source (J2000 name plus IVS alias when known)."""
     ra = src.coord.ra.to_string(unit=u.hourangle, sep=':', precision=6, pad=True)
     dec = src.coord.dec.to_string(unit=u.degree, sep=':', precision=5, pad=True, alwayssign=True)
+    name = _sched_text(src.name, 'source name')
     ivs = getattr(src, 'ivsname', None)
-    names = f"'{src.name}', '{ivs}'" if ivs and ivs != src.name else f"'{src.name}'"
+    names = f"'{name}', '{_sched_text(ivs, 'source alias')}'" if ivs and ivs != src.name else f"'{name}'"
     return f"source={names} ra={ra} dec={dec} equinox='J2000' /"
 
 
@@ -389,7 +418,8 @@ def scan_lines(scans: list[NMEScan], start: Time, n_stations: int) -> list[str]:
         elif grab_active:
             lines.append("grabto='NONE'")
             grab_active = False
-        lines.append(f"source='{scan.source.name}' gap={_fmt_ms(scan.gap_s)} dur={_fmt_ms(scan.dur_s)} /")
+        name = _sched_text(scan.source.name, 'source name')
+        lines.append(f"source='{name}' gap={_fmt_ms(scan.gap_s)} dur={_fmt_ms(scan.dur_s)} /")
         lines.append('')
     return lines
 
@@ -397,7 +427,8 @@ def scan_lines(scans: list[NMEScan], start: Time, n_stations: int) -> list[str]:
 def grab_summary(scans: list[NMEScan], start: Time) -> str:
     """Cover-letter lines listing each ftp fringe test: 'HH:MM:SS (scan  N, 2 sec, SOURCE)'."""
     rows = [f"{(start + s.grab_s * u.s).datetime.strftime('%H:%M:%S')} (scan {k:2d}, {GRAB_DATA_S} sec, "
-            f"{s.source.name})" for k, s in enumerate(scans, start=1) if s.grab_s is not None]
+            f"{_sched_text(s.source.name, 'source name')})" for k, s in enumerate(scans, start=1)
+            if s.grab_s is not None]
     return '\n'.join(rows)
 
 
@@ -437,7 +468,8 @@ def generate_nme_key_file(scans: list[NMEScan], stations: Stations, start: Time,
     Raises
     ------
     ValueError
-        If the template lacks a mandatory placeholder or no scans are given.
+        If the template lacks a mandatory placeholder, no scans are given, or a source name,
+        the experiment code or a cover field contains single quotes or line breaks.
     """
     if not scans or any(s.source is None for s in scans):
         raise ValueError("All NME scans must have a source assigned before writing the key file.")
@@ -456,9 +488,11 @@ def generate_nme_key_file(scans: list[NMEScan], stations: Stations, start: Time,
     n_stations = len(stations)
     start_dt = start.datetime
     replacements = {
-        'EXPERIMENT_CODE': experiment_code.upper(), 'BAND_LABEL': band,
+        'EXPERIMENT_CODE': _sched_text(experiment_code, 'experiment code').upper(), 'BAND_LABEL': band,
         'DATARATE_MBPS': str(datarate_mbps) if datarate_mbps is not None else 'N/A',
-        'PI_NAME': pi_name, 'PI_EMAIL': pi_email, 'PI_INSTITUTE': pi_institute, 'PHONE': phone,
+        'PI_NAME': _sched_text(pi_name, 'PI name'), 'PI_EMAIL': _sched_text(pi_email, 'PI email'),
+        'PI_INSTITUTE': _sched_text(pi_institute, 'PI institute'),
+        'PHONE': _sched_text(phone, 'phone') if phone else '',
         'DATE_LONG': f"{start_dt.day} {start_dt.strftime('%B %Y')}",
         'N_STATIONS': str(n_stations), 'CORNANT': str(n_stations),
         'STATION_CODES': ', '.join(s.codename for s in stations),

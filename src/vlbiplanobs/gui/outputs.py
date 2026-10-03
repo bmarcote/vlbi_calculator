@@ -602,8 +602,8 @@ def resolution(o: Optional[cli.VLBIObs] = None) -> html.Div:
             synth_beam = o.synthesized_beam()[list(o.synthesized_beam().keys())[0]]
         else:
             synth_beam = o.synthesized_beam()[o.sourcenames[0]]
-    except ValueError:
-        # Likely not enough baselines to form a beam
+    except (ValueError, KeyError, IndexError):
+        # Not enough baselines to form a beam (sources without uv points are omitted from synthesized_beam())
         return card_result(["N/A"], 'Angular Resolution', id='res')
 
     bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
@@ -962,33 +962,6 @@ def _rms_card_for_target(o: cli.VLBIObs, target_spec: str) -> html.Div:
                                                   'box-shadow': 'none'}))])])
 
 
-def _target_pdf_button(target_spec: str) -> html.Div:
-    """Return a per-target 'Export Summary as PDF' button + its dcc.Download sink.
-
-    Parameters
-    ----------
-    target_spec : str
-        Target specification for pattern matching.
-
-    Returns
-    -------
-    html.Div
-        PDF download button component.
-    """
-    return html.Div(className='d-flex align-items-center justify-content-center my-3',
-                    style={'gap': '5px'}, children=[
-                        dbc.Spinner(id={'type': 'pdf-spinner', 'index': target_spec},
-                                    color='#004990',
-                                    children=html.Div(id={'type': 'pdf-spinner-div',
-                                                          'index': target_spec})),
-                        dbc.Button('Export Summary as PDF',
-                                   id={'type': 'btn-pdf', 'index': target_spec},
-                                   color='secondary', outline=True, n_clicks=0,
-                                   className='btn btn-lg btn-outline-secondary text-bolder '
-                                             'mx-auto w-75 m-4 p-2'),
-                        dcc.Download(id={'type': 'download-pdf', 'index': target_spec})])
-
-
 def build_target_tab_content(o: cli.VLBIObs, target_spec: str,
                              error: Optional[str] = None) -> html.Div:
     """Assemble the full output panel for one target source.
@@ -1330,16 +1303,14 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True, document=None):
                                  f" ({rms_chan:.3g} per spectral "
                                  f"channel and {rms_min:.3g}"
                                  " per one-minute time integration."))
-        if not o.sourcenames:
-            synth_beam = o.synthesized_beam()[list(o.synthesized_beam().keys())[0]]
-        else:
-            synth_beam = o.synthesized_beam()[o.sourcenames[0]]
-
-        bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
-        bmin = synth_beam['bmin'].to(bmaj.unit)
-        _append_pdf_element(layout, pdf.Paragraph(f"Synthesized beam (approx for a random source): "
-                                 f"{bmaj.value:2.1f} x {bmin:2.1f}"
-                                 f", {synth_beam['pa'].value:2.0f}º."))
+        beams = o.synthesized_beam()
+        synth_beam = beams.get(o.sourcenames[0]) if o.sourcenames else next(iter(beams.values()), None)
+        if synth_beam is not None:
+            bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
+            bmin = synth_beam['bmin'].to(bmaj.unit)
+            _append_pdf_element(layout, pdf.Paragraph(f"Synthesized beam (approx for a random source): "
+                                     f"{bmaj.value:2.1f} x {bmin:2.1f}"
+                                     f", {synth_beam['pa'].value:2.0f}º."))
 
     else:
         for ablock in o.scans.values():
@@ -1366,7 +1337,9 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True, document=None):
                                             f"channel and {rms_min:.3g}"
                                             " per one-minute time integration."))
 
-                synth_beam = o.synthesized_beam()[src.name]
+                synth_beam = o.synthesized_beam().get(src.name)
+                if synth_beam is None:
+                    continue
                 bmaj = cli.optimal_units(synth_beam['bmaj'], [u.deg, u.arcmin, u.arcsec, u.mas, u.uas])
                 bmin = synth_beam['bmin'].to(bmaj.unit)
                 temp = f" for {src.name}" if len(o.scans.values()) > 1 else ""
@@ -1406,13 +1379,40 @@ def summary_pdf(o: cli.VLBIObs, show_figure: bool = True, document=None):
     if document is not None:
         return doc
 
+    return _write_pdf_to_tempfile(doc)
+
+
+def _write_pdf_to_tempfile(document) -> str:
+    """Write a borb Document to a new temporary .pdf file and return its path.
+
+    The temporary file is removed if writing fails, so no partial PDF is leaked on disk.
+
+    Parameters
+    ----------
+    document : borb Document
+        The PDF document to serialize.
+
+    Returns
+    -------
+    str
+        Path to the written temporary PDF file (the caller must delete it).
+
+    Raises
+    ------
+    Exception
+        Any error raised by borb while writing (re-raised after removing the temporary file).
+    """
     tmp = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
     tmp.close()
-    if hasattr(pdf.PDF, 'write'):
-        pdf.PDF.write(where_to=tmp.name, what=doc)
-    else:
-        with open(tmp.name, 'wb') as pdf_file:
-            pdf.PDF.dumps(pdf_file, doc)
+    try:
+        if hasattr(pdf.PDF, 'write'):
+            pdf.PDF.write(where_to=tmp.name, what=document)
+        else:
+            with open(tmp.name, 'wb') as pdf_file:
+                pdf.PDF.dumps(pdf_file, document)
+    except Exception:
+        Path(tmp.name).unlink(missing_ok=True)
+        raise
     return tmp.name
 
 
@@ -1443,14 +1443,7 @@ def summary_pdf_for_sources(observations: list[cli.VLBIObs], show_figure: bool =
     for observation in observations:
         summary_pdf(observation, show_figure=show_figure, document=document)
 
-    merged_file = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
-    merged_file.close()
-    if hasattr(pdf.PDF, 'write'):
-        pdf.PDF.write(where_to=merged_file.name, what=document)
-    else:
-        with open(merged_file.name, 'wb') as pdf_file:
-            pdf.PDF.dumps(pdf_file, document)
-    return merged_file.name
+    return _write_pdf_to_tempfile(document)
 
     # def get_fig_dirty_map(self):
     #     raise NotImplementedError

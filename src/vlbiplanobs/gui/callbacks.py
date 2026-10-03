@@ -1,3 +1,4 @@
+import functools
 from typing import Optional, NamedTuple
 import base64
 import json
@@ -10,11 +11,12 @@ from dash.exceptions import PreventUpdate
 from astropy import coordinates as coord
 from astropy import units as u
 from furl import furl
+from loguru import logger
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs import sources
 from vlbiplanobs import observation
 from vlbiplanobs import cli
-from vlbiplanobs.gui import inputs, plots
+from vlbiplanobs.gui import inputs, plots, validation
 
 
 @callback([Output('band-slider', 'marks'),
@@ -32,6 +34,51 @@ def change_band_labels(show_wavelengths: bool):
             for network in observation._NETWORKS], \
            [inputs.print_table_bands_sefds(ant, show_wavelengths)
             for ant in inputs._station_card_order()]
+
+
+@functools.lru_cache(maxsize=128)
+def _networks_observing_source(the_band: Optional[str], target_spec: str) -> tuple[tuple[str, bool], ...]:
+    """Return, per network, whether target_spec is observable by >= 3 of its stations.
+
+    Memoized (bounded LRU) because it builds one Observation per network and is triggered on
+    every band/target change. The result is an immutable tuple so cached values cannot be mutated.
+    Networks that do not support the_band are reported as observable (they are gated by band
+    elsewhere). If the source cannot be parsed/resolved, every network is reported as observable
+    and the exception is NOT cached (lru_cache does not cache raised exceptions).
+
+    Parameters
+    ----------
+    the_band : str or None
+        Selected band name, or None when no band is selected (each network's first band is used).
+    target_spec : str
+        Target source specification (already cleaned by validation.clean_target_specs).
+
+    Returns
+    -------
+    tuple[tuple[str, bool], ...]
+        (network_key, observable) pairs in observation._NETWORKS order.
+    """
+    try:
+        src = sources.Source.source_from_str(target_spec)
+    except Exception as e:
+        logger.debug(f"_networks_observing_source: could not parse {target_spec!r}: {e}")
+        return tuple((k, True) for k in observation._NETWORKS)
+
+    result = []
+    for net_key, network in observation._NETWORKS.items():
+        if the_band and the_band not in network.observing_bands:
+            result.append((net_key, True))
+            continue
+        check_band = the_band if the_band else list(network.observing_bands)[0]
+        try:
+            obs_obj = observation.Observation(band=check_band, stations=network, times=None, duration=1 * u.hour,
+                                              datarate=network.max_datarate(check_band),
+                                              scans={src.name: sources.ScanBlock([sources.Scan(src, duration=5 * u.min)])})
+            observable = obs_obj.when_is_observable(min_stations=3)
+            result.append((net_key, bool(observable[src.name])))
+        except Exception:
+            result.append((net_key, False))
+    return tuple(result)
 
 
 @callback([Output({'type': 'network-switch', 'index': ALL}, 'disabled'),
@@ -61,35 +108,20 @@ def enable_networks_with_band(band_index: int, target_specs: Optional[list[str]]
     tuple
         (disabled_states, new_card_styles).
     """
-    the_band = inputs.band_from_index(band_index) if band_index != 0 else None
+    try:
+        the_band = validation.band_name_from_index(band_index)
+    except validation.InvalidObsParams as e:
+        logger.warning(f"enable_networks_with_band: {e}")
+        raise PreventUpdate
     band_ok = {k: (the_band in net.observing_bands if the_band else True)
                for k, net in observation._NETWORKS.items()}
 
+    # Use the first target spec only as a quick gating heuristic: full validation
+    # happens on each target individually inside the compute callback.
+    target_specs = validation.clean_target_specs(target_specs)
     source_ok = {k: True for k in observation._NETWORKS}
-    target_specs = target_specs or []
     if target_specs:
-        # Use the first target spec only as a quick gating heuristic: full validation
-        # happens on each target individually inside the compute callback.
-        first_spec = next((s for s in target_specs if s and s.strip()), None)
-        if first_spec:
-            try:
-                src = sources.Source.source_from_str(first_spec)
-                for net_key, network in observation._NETWORKS.items():
-                    if not band_ok[net_key]:
-                        continue
-                    check_band = the_band if the_band else list(network.observing_bands)[0]
-                    try:
-                        obs_obj = observation.Observation(
-                            band=check_band, stations=network, times=None, duration=1 * u.hour,
-                            datarate=network.max_datarate(check_band),
-                            scans={src.name: sources.ScanBlock([sources.Scan(src, duration=5 * u.min)])}
-                        )
-                        observable = obs_obj.when_is_observable(min_stations=3)
-                        source_ok[net_key] = bool(observable[src.name])
-                    except Exception:
-                        source_ok[net_key] = False
-            except Exception:
-                pass
+        source_ok = dict(_networks_observing_source(the_band, target_specs[0]))
 
     enabled = {k: band_ok[k] and source_ok[k] for k in observation._NETWORKS}
     new_card_styles = tuple({k: v if k != 'opacity' else (1.0 if enabled[nk] else 0.2)
@@ -303,9 +335,11 @@ def switch_group_config(menu_clicks, active_codenames, is_selected_list, current
     if not ctx.triggered_id:
         raise PreventUpdate
     triggered_index = ctx.triggered_id.get('index', '')
-    if '__' not in triggered_index:
+    if not isinstance(triggered_index, str) or '__' not in triggered_index:
         raise PreventUpdate
     group_name_triggered, new_codename = triggered_index.split('__', 1)
+    if new_codename not in observation._STATIONS:
+        raise PreventUpdate
 
     # Build ordered list of group names matching the ALL store order
     group_names = [item['id']['index'] for item in ctx.states_list[0]]
@@ -378,15 +412,19 @@ def update_group_chip_appearance(active_codename, is_selected, band_index, do_e_
     tuple
         (label, css_class, wrapper_style).
     """
+    if not isinstance(active_codename, str) or active_codename not in observation._STATIONS:
+        logger.warning(f"update_group_chip_appearance: unknown station codename {active_codename!r}.")
+        raise PreventUpdate
     ant = observation._STATIONS[active_codename]
     # Label follows the active configuration chosen by the user (e.g. 'VLA 1' vs 'VLA 27'),
     # instead of the generic group name, so the chip reflects the current selection.
     label = ant.name
 
-    disabled = False
-    if band_index and band_index != 0:
-        band = inputs.band_from_index(band_index)
-        disabled = not ant.has_band(band) or (do_e_evn and not ant.real_time)
+    try:
+        band = validation.band_name_from_index(band_index)
+    except validation.InvalidObsParams:
+        raise PreventUpdate
+    disabled = band is not None and (not ant.has_band(band) or (do_e_evn and not ant.real_time))
 
     css_class = 'btn-group-chip-toggle '
     if disabled:
@@ -562,7 +600,8 @@ def manage_target_sources(add_clicks, submit_n, upload_contents, clear_clicks,
     tuple
         (targets, modal_input, feedback_text, feedback_class, upload_text, upload_class).
     """
-    targets: list[str] = list(store_data or [])
+    # store-targets lives in the browser's localStorage: clean it before use.
+    targets: list[str] = validation.clean_target_specs(store_data)
     triggered = ctx.triggered_id
     feedback_text, feedback_class = no_update, no_update
     upload_text, upload_class = no_update, no_update
@@ -580,7 +619,10 @@ def manage_target_sources(add_clicks, submit_n, upload_contents, clear_clicks,
         feedback_text, feedback_class = "All sources cleared.", 'form-text text-warning'
 
     elif triggered in ('button-add-source', 'modal-source-input'):
-        ok, msg = _validate_source_spec(modal_input or '')
+        if not isinstance(modal_input, str):
+            modal_input = ''
+        ok, msg = _validate_source_spec(modal_input) if len(targets) < validation.MAX_TARGETS else \
+            (False, f"At most {validation.MAX_TARGETS} target sources can be added.")
         if not ok:
             feedback_text, feedback_class = msg, 'form-text text-danger'
         elif (modal_input or '').strip() in targets:
@@ -593,8 +635,15 @@ def manage_target_sources(add_clicks, submit_n, upload_contents, clear_clicks,
             feedback_class = 'form-text text-success'
 
     elif triggered == 'upload-sources':
-        if upload_contents is None:
+        if not isinstance(upload_contents, str):
             raise PreventUpdate
+        # dcc.Upload max_size is only enforced by the browser: re-check the size here.
+        # Base64 inflates the payload by 4/3; allow a small margin for the data-URL header.
+        if len(upload_contents) > validation.MAX_UPLOAD_BYTES * 4 // 3 + 256:
+            logger.warning(f"Rejected source-list upload of {len(upload_contents)} base64 characters.")
+            upload_text = f"File too large (maximum {validation.MAX_UPLOAD_BYTES // 1000} kB)."
+            upload_class = 'form-text text-danger'
+            return targets, new_modal_input, feedback_text, feedback_class, upload_text, upload_class
         try:
             _, content_string = upload_contents.split(',', 1)
             decoded = base64.b64decode(content_string).decode('utf-8', errors='replace')
@@ -602,11 +651,14 @@ def manage_target_sources(add_clicks, submit_n, upload_contents, clear_clicks,
             upload_text = f"Could not read file: {exc}"
             upload_class = 'form-text text-danger'
         else:
-            added, skipped, invalid = 0, 0, []
+            added, skipped, invalid, truncated = 0, 0, [], False
             for raw in decoded.splitlines():
                 line = raw.strip()
                 if not line or line.startswith('#'):
                     continue
+                if len(targets) >= validation.MAX_TARGETS:
+                    truncated = True
+                    break
                 ok, msg = _validate_source_spec(line)
                 if not ok:
                     invalid.append(f"{line!r}: {msg}")
@@ -615,19 +667,22 @@ def manage_target_sources(add_clicks, submit_n, upload_contents, clear_clicks,
                     added += 1
                 else:
                     skipped += 1
-            label = upload_filename or 'file'
+            label = str(upload_filename or 'file')[:80]
             parts = [f"Loaded {added} source(s) from {label}."]
             if skipped:
                 parts.append(f"{skipped} already present.")
             if invalid:
                 parts.append(f"{len(invalid)} invalid line(s) ignored.")
+            if truncated:
+                parts.append(f"Stopped at the limit of {validation.MAX_TARGETS} target sources.")
             upload_text = ' '.join(parts)
             upload_class = 'form-text text-success' if added else 'form-text text-warning'
 
     elif isinstance(triggered, dict) and triggered.get('type') == 'modal-remove-target':
         idx = triggered.get('index')
         # n_clicks may fire on initial render; ignore None entries.
-        if 0 <= idx < len(targets) and any(remove_clicks or []):
+        if isinstance(idx, int) and not isinstance(idx, bool) and 0 <= idx < len(targets) \
+                and any(remove_clicks or []):
             removed = targets.pop(idx)
             feedback_text = f"Removed '{removed}'."
             feedback_class = 'form-text text-muted'
@@ -657,7 +712,7 @@ def render_target_sources(targets: Optional[list[str]]):
     tuple
         (chips_display, modal_list) HTML components.
     """
-    targets = targets or []
+    targets = validation.clean_target_specs(targets)
 
     if not targets:
         chips = html.Small("No target sources added yet.", className='text-muted')
@@ -770,7 +825,7 @@ def update_uv_figure(highlight_antennas: list[str], uv_data: dict):
 def check_initial_obstime(duration: Optional[int | float]):
     """Verify the observation duration for correct values.
 
-    Ensures the duration is positive and less than 4 days.
+    Ensures the duration is positive and at most validation.MAX_DURATION_H hours.
 
     Parameters
     ----------
@@ -791,8 +846,9 @@ def check_initial_obstime(duration: Optional[int | float]):
     if duration <= 0:
         return 'Duration must be a positive number of hours.', \
                'form-text text-danger', 'form-control is-invalid'
-    elif duration > 4*24:
-        return 'Must be shorter than 4 days',  'form-text text-danger', 'form-control is-invalid'
+    elif duration > validation.MAX_DURATION_H:
+        return f'Must be at most {validation.MAX_DURATION_H:g} hours', 'form-text text-danger', \
+               'form-control is-invalid'
 
     return "", no_update, 'form-control'
 
@@ -938,21 +994,29 @@ def url_open(href, *current_network_switches):
     # need to inform the callback that updates the antennas based on network switches changes
     # (if any) to suppress it from overriding the antenna selection that are set here
     suppress = False
+    rejected = []
     for component in export_component_id_properties:
-        try:
-            index = id_list.index(component.id)
-            new_val = value_list[index]
-            if component.id in network_switch_ids:
-                ns_idx = network_switch_ids.index(component.id)
-                if new_val != current_network_switches[ns_idx]:
-                    suppress = True
-                    update_list.append(new_val)
-                else:
-                    update_list.append(no_update)
-            else:
-                update_list.append(new_val)
-        except ValueError:
+        if component.id not in id_list:
             update_list.append(no_update)
+            continue
+        raw_val = value_list[id_list.index(component.id)]
+        # Shared links are attacker-controlled: only accept values the UI itself could produce.
+        ok, new_val = validation.validate_url_component(component.id, component.property, raw_val)
+        if not ok:
+            rejected.append(component.id)
+            update_list.append(no_update)
+            continue
+        if component.id in network_switch_ids:
+            ns_idx = network_switch_ids.index(component.id)
+            if new_val != current_network_switches[ns_idx]:
+                suppress = True
+                update_list.append(new_val)
+            else:
+                update_list.append(no_update)
+        else:
+            update_list.append(new_val)
+    if rejected:
+        logger.warning(f"url_open: ignored {len(rejected)} invalid config value(s) for: {rejected}")
     if target_version is not None:
         del parsed_href.args['targetversion']
     if config is not None:

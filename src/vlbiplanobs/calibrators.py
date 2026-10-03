@@ -3,7 +3,9 @@
 import sys
 import argparse
 import json
-from typing import Optional, Self
+import logging
+import functools
+from typing import NamedTuple, Optional, Self
 from importlib import resources
 import numpy as np
 import erfa
@@ -18,6 +20,8 @@ from urllib import parse
 from .sources import Source, SourceType, SourceCatalog
 from .stations import Stations, MountType
 from . import observation as obs
+
+_log = logging.getLogger(__name__)
 
 _RFC_BANDS: dict[str, str] = {'l': 's', 's': 's', 'c': 'c', 'm': 'c', 'x': 'x', 'u': 'u', 'k': 'k', 'q': 'k'}
 _DEFAULT_MIN_ELEVATION: u.Quantity = 20 * u.deg
@@ -63,12 +67,40 @@ class CalibratorSource(Source):
     is_calibrator : bool
         Whether the source is a calibrator.
     """
-    __slots__ = ('ivsname', 'n_observations', 'flux_resolved', 'flux_unresolved', 'is_calibrator')
+    __slots__ = ('ivsname', 'n_observations', 'flux_resolved', 'flux_unresolved', 'is_calibrator',
+                 '_ra_deg', '_dec_deg', '_coord')
 
     def __init__(self, name: str, ivsname: str, ra_deg: float, dec_deg: float, n_observations: int,
                  flux_resolved: np.ndarray, flux_unresolved: np.ndarray, is_calibrator: bool):
-        super().__init__(name=name, coordinates=coord.SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg),
-                     source_type=SourceType.PHASECAL)
+        """Initializes a calibrator source from already-parsed RFC catalog values.
+
+        The astropy SkyCoord (`coord`) is built lazily on first access, because building ~13k SkyCoord
+        objects eagerly dominated the RFCCatalog load time. Source.__init__ is intentionally not called;
+        the attributes it would set are assigned explicitly here.
+
+        Parameters
+        ----------
+        name : str
+            J2000 name of the source.
+        ivsname : str
+            IVS name of the source.
+        ra_deg, dec_deg : float
+            ICRS right ascension and declination in degrees.
+        n_observations : int
+            Number of observations in the RFC catalog.
+        flux_resolved, flux_unresolved : np.ndarray
+            Flux values (Jy) per RFC band (s, c, x, u, k).
+        is_calibrator : bool
+            Whether the RFC flags the source as calibrator ('C').
+        """
+        self.name = name
+        self._type = SourceType.PHASECAL
+        self._flux = None
+        self._notes = None
+        self._other_names = []
+        self._ra_deg: float = float(ra_deg)
+        self._dec_deg: float = float(dec_deg)
+        self._coord: Optional[coord.SkyCoord] = None
         self.ivsname: str = ivsname
         self.n_observations: int = n_observations
         self.flux_resolved: np.ndarray = flux_resolved
@@ -76,12 +108,28 @@ class CalibratorSource(Source):
         self.is_calibrator: bool = is_calibrator
 
     @property
+    def coord(self) -> "coord.SkyCoord":
+        """ICRS coordinates of the source (built lazily from ra_deg/dec_deg)."""
+        if self._coord is None:
+            self._coord = coord.SkyCoord(ra=self._ra_deg * u.deg, dec=self._dec_deg * u.deg)
+        return self._coord
+
+    @coord.setter
+    def coord(self, value: "coord.SkyCoord"):
+        """Overrides the coordinates of the source (keeps ra_deg/dec_deg consistent)."""
+        self._coord = value
+        self._ra_deg = float(value.ra.deg)
+        self._dec_deg = float(value.dec.deg)
+
+    @property
     def ra_deg(self) -> float:
-        return float(self.coord.ra.deg)
+        """Right ascension in degrees."""
+        return self._ra_deg
 
     @property
     def dec_deg(self) -> float:
-        return float(self.coord.dec.deg)
+        """Declination in degrees."""
+        return self._dec_deg
 
     def unresolved_flux(self, band: str) -> float:
         """Get unresolved flux for a specific band.
@@ -222,7 +270,7 @@ class CalibratorSource(Source):
 
         return res_interp, unres_interp
 
-    def get_skycoord(self) -> coord.SkyCoord:
+    def get_skycoord(self) -> "coord.SkyCoord":
         """Get the SkyCoord object for this source.
 
         Returns
@@ -240,18 +288,13 @@ class CalibratorSource(Source):
         str
             URL to astrogeo calibrator search.
         """
-        # Handle negative declinations properly - only degrees should be negative
+        # signed_dms keeps the sign separate, so -1 deg < Dec < 0 deg is not lost as '-0' degrees.
         ra_h, ra_m, ra_s = self.coord.ra.hms
-        dec_d, dec_m, dec_s = self.coord.dec.dms
-
-        # For negative declinations, make minutes and seconds positive
-        if dec_d < 0:
-            dec_m = abs(dec_m)
-            dec_s = abs(dec_s)
-
-        fmt = "ra={:02.0f}:{:02.0f}:{:06.3f}&dec={:+03.0f}:{:02.0f}:{:06.3f}&num_sou=1&format=html"
-        source_coord_str = parse.quote(fmt.format(ra_h, ra_m, ra_s, dec_d, dec_m, dec_s), safe='=&')
-        return f"http://astrogeo.org/cgi-bin/calib_search_form.csh?{source_coord_str}"
+        dec_sign, dec_d, dec_m, dec_s = self.coord.dec.signed_dms
+        sign_char = '-' if dec_sign < 0 else '+'
+        fmt = "ra={:02.0f}:{:02.0f}:{:06.3f}&dec={}{:02.0f}:{:02.0f}:{:06.3f}&num_sou=1&format=html"
+        source_coord_str = parse.quote(fmt.format(ra_h, ra_m, ra_s, sign_char, dec_d, dec_m, dec_s), safe='=&')
+        return f"https://astrogeo.org/cgi-bin/calib_search_form.csh?{source_coord_str}"
 
     def get_observed_bands(self) -> str:
         """Get comma-separated list of bands with observed flux.
@@ -266,8 +309,105 @@ class CalibratorSource(Source):
                         if self.flux_unresolved[idx] > 0 or self.flux_resolved[idx] > 0)
 
 
+class _RFCRows(NamedTuple):
+    """Immutable, parsed content of an RFC catalog file (one entry per valid source row).
+
+    All numpy arrays are marked read-only, so they can be safely shared between RFCCatalog instances.
+    """
+    names: tuple[str, ...]
+    ivsnames: tuple[str, ...]
+    ra_deg: np.ndarray
+    dec_deg: np.ndarray
+    n_obs: np.ndarray
+    flux: np.ndarray  # shape (n_sources, 5 bands, 2) with [:, :, 0]=resolved, [:, :, 1]=unresolved (float32, Jy)
+    is_calibrator: np.ndarray
+
+
+def _parse_rfc_line(line: str) -> Optional[tuple]:
+    """Parses one RFC catalog row.
+
+    Parameters
+    ----------
+    line : str
+        Raw text line from the RFC catalog file.
+
+    Returns
+    -------
+    tuple or None
+        (name, ivsname, ra_deg, dec_deg, n_obs, flux_values(10 floats), is_calibrator),
+        or None if the line is a comment/unreliable entry or cannot be parsed.
+    """
+    if not line or line[0] in '#U' or len(line) < 100:
+        return None
+
+    cols = line.split()
+    if len(cols) < 25:
+        return None
+
+    try:
+        flux_values = []
+        for f_res, f_unres in zip(cols[13:23:2], cols[14:24:2]):
+            flux_values.append(0.0 if f_res[0] == '<' else float(f_res))
+            flux_values.append(0.0 if f_unres[0] == '<' else float(f_unres))
+
+        ra_deg = (float(cols[3]) + float(cols[4]) / 60.0 + float(cols[5]) / 3600.0) * 15.0
+        dec_deg = (1.0 if cols[6][0] != '-' else -1.0) * \
+            (abs(float(cols[6])) + float(cols[7]) / 60.0 + float(cols[8]) / 3600.0)
+    except (ValueError, IndexError):
+        return None
+
+    n_obs = int(cols[12]) if cols[12].lstrip('-').isdigit() else 0
+    return cols[2], cols[1], ra_deg, dec_deg, n_obs, flux_values, cols[0] == 'C'
+
+
+@functools.lru_cache(maxsize=8)
+def _parse_rfc_file(catalog_path: str) -> _RFCRows:
+    """Parses an RFC catalog file once and caches the immutable result (keyed by path).
+
+    Parameters
+    ----------
+    catalog_path : str
+        Path to the RFC catalog text file.
+
+    Returns
+    -------
+    _RFCRows
+        Parsed rows with read-only numpy arrays.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the file does not exist.
+    RuntimeError
+        If the file cannot be read/parsed.
+    """
+    try:
+        with open(catalog_path, 'rt') as fin:
+            parsed = [row for row in (_parse_rfc_line(line) for line in fin) if row is not None]
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f'RFC catalog file not found: {catalog_path}') from e
+    except (OSError, UnicodeDecodeError) as e:
+        raise RuntimeError(f'Error reading RFC catalog file {catalog_path}: {e}') from e
+
+    n_rows = len(parsed)
+    rows = _RFCRows(names=tuple(r[0] for r in parsed), ivsnames=tuple(r[1] for r in parsed),
+                    ra_deg=np.array([r[2] for r in parsed], dtype=np.float64),
+                    dec_deg=np.array([r[3] for r in parsed], dtype=np.float64),
+                    n_obs=np.array([r[4] for r in parsed], dtype=np.int64),
+                    flux=np.array([r[5] for r in parsed], dtype=np.float32).reshape(n_rows, 5, 2),
+                    is_calibrator=np.array([r[6] for r in parsed], dtype=bool))
+    for arr in (rows.ra_deg, rows.dec_deg, rows.n_obs, rows.flux, rows.is_calibrator):
+        arr.flags.writeable = False
+
+    _log.info("Parsed RFC catalog %s: %d sources", catalog_path, n_rows)
+    return rows
+
+
 class RFCCatalog:
     """RFC (Radio Fundamental Catalog) of VLBI calibrator sources.
+
+    The catalog file is parsed only once per path (module-level cache); each instance applies its own
+    min_flux/band/include_missing filter and owns its own list of CalibratorSource objects.
 
     Attributes
     ----------
@@ -280,9 +420,9 @@ class RFCCatalog:
     _catalog_filename : str or None
         Path to catalog file, or None for default.
     _name_index : dict[str, CalibratorSource]
-        Index mapping source names to CalibratorSource objects.
+        Index mapping upper-case source (J2000) names to CalibratorSource objects.
     _ivsname_index : dict[str, CalibratorSource]
-        Index mapping IVS names to CalibratorSource objects.
+        Index mapping upper-case IVS names to CalibratorSource objects.
     _ra_arr : np.ndarray
         Array of source right ascensions in degrees.
     _dec_arr : np.ndarray
@@ -295,15 +435,35 @@ class RFCCatalog:
 
     def __init__(self, catalog_filename: Optional[str] = None, min_flux: u.Quantity = _DEFAULT_MIN_FLUX,
                  band: str = 'c', include_missing: bool = False):
-        self._sources: list[CalibratorSource] = []
+        """Loads the RFC catalog, keeping only the sources passing the flux filter.
+
+        Parameters
+        ----------
+        catalog_filename : str, optional
+            Path to the RFC catalog file. If None, the newest packaged RFC catalog is used.
+        min_flux : astropy.units.Quantity or float, optional
+            Minimum unresolved flux at `band` (Jy if a float). Default 1 Jy.
+        band : str, optional
+            RFC band code (s/c/x/u/k) used for the flux filter. Default 'c'.
+        include_missing : bool, optional
+            If True, keep sources without a measurement at `band` (phase-cal mode). Default False.
+
+        Raises
+        ------
+        ValueError
+            If `band` is not a valid RFC band code.
+        FileNotFoundError
+            If the catalog file is not found.
+        RuntimeError
+            If the catalog file cannot be read.
+        """
+        if band not in _BAND_INDEX:
+            raise ValueError(f"Unknown RFC band '{band}'. Valid bands: {list(_BAND_INDEX)}.")
+
         self._min_flux = min_flux.to(u.Jy).value if hasattr(min_flux, 'to') else min_flux
         self._band = band
         self._include_missing = include_missing
         self._catalog_filename = catalog_filename
-        self._name_index: dict[str, CalibratorSource] = {}
-        self._ivsname_index: dict[str, CalibratorSource] = {}
-        self._ra_arr: np.ndarray = np.array([], dtype=np.float64)
-        self._dec_arr: np.ndarray = np.array([], dtype=np.float64)
         self._load_catalog()
 
     def _get_catalog_path(self) -> str:
@@ -315,7 +475,7 @@ class RFCCatalog:
             Path to the catalog file.
         """
         if self._catalog_filename is not None:
-            return self._catalog_filename
+            return str(self._catalog_filename)
         rfc_files = tuple(r.name for r in resources.files('vlbiplanobs.data').iterdir()
                        if r.is_file() and 'rfc' in r.name and r.name.endswith('.txt'))
         if not rfc_files:
@@ -324,79 +484,79 @@ class RFCCatalog:
             return str(rfcfile)
 
     def _load_catalog(self) -> None:
-        """Load the RFC catalog from file.
+        """Fills the instance from the (cached) parsed RFC rows, applying the flux filter.
+
+        include_missing=True (phase cal mode): keep sources with no band measurement (negative flux),
+        filter only those with a measured flux below threshold.
+        include_missing=False (fringe finder mode): exclude both missing and low-flux sources.
 
         Raises
         ------
         FileNotFoundError
             If catalog file not found.
         RuntimeError
-            If error parsing catalog file.
+            If error reading the catalog file.
         """
-        catalog_path = self._get_catalog_path()
-        try:
-            band_idx = _BAND_INDEX[self._band]
-            with open(catalog_path, 'rt') as fin:
-                lines = fin.readlines()
+        rows = _parse_rfc_file(self._get_catalog_path())
+        unresolved = rows.flux[:, _BAND_INDEX[self._band], 1]
+        if self._include_missing:
+            keep = ~((unresolved >= 0) & (unresolved < self._min_flux))
+        else:
+            keep = ~((unresolved < 0) | (unresolved < self._min_flux))
 
-            valid_lines = [line for line in lines
-                          if line and line[0] not in '#U' and len(line) >= 100]
+        indices = np.flatnonzero(keep)
+        # Flux row views are read-only (they view the shared cached array), so they cannot be mutated.
+        sources = [CalibratorSource(rows.names[i], rows.ivsnames[i], rows.ra_deg[i], rows.dec_deg[i],
+                                    int(rows.n_obs[i]), rows.flux[i, :, 0], rows.flux[i, :, 1],
+                                    bool(rows.is_calibrator[i])) for i in indices]
+        self._set_sources(sources, ra_arr=rows.ra_deg[indices], dec_arr=rows.dec_deg[indices])
 
-            parsed_data = []
-            for line in valid_lines:
-                cols = line.split()
-                if len(cols) < 25:
-                    continue
+    def _set_sources(self, sources: list[CalibratorSource], ra_arr: Optional[np.ndarray] = None,
+                     dec_arr: Optional[np.ndarray] = None) -> None:
+        """Sets the source list and rebuilds the name indices and coordinate arrays.
 
-                try:
-                    flux_values = []
-                    for f_res, f_unres in zip(cols[13:23:2], cols[14:24:2]):
-                        flux_res = 0.0 if f_res[0] == '<' else float(f_res)
-                        flux_unres = 0.0 if f_unres[0] == '<' else float(f_unres)
-                        flux_values.extend([flux_res, flux_unres])
+        Parameters
+        ----------
+        sources : list[CalibratorSource]
+            Sources owned by this instance.
+        ra_arr, dec_arr : np.ndarray, optional
+            Pre-computed RA/Dec arrays (degrees) aligned with `sources`. Built from the sources if None.
+        """
+        self._sources = sources
+        self._name_index = {}
+        self._ivsname_index = {}
+        # Keep the first occurrence for duplicated names (same behaviour as a linear search).
+        for s in sources:
+            self._name_index.setdefault(s.name.upper(), s)
+            self._ivsname_index.setdefault(s.ivsname.upper(), s)
 
-                    flux_array = np.array(flux_values, dtype=np.float32).reshape(5, 2)
-                    # Skip sources with flux below threshold.
-                    # include_missing=True (phase cal mode): keep sources with no band measurement,
-                    # filter only those with a measured flux below threshold.
-                    # include_missing=False (fringe finder mode): exclude both missing and low-flux sources.
-                    if self._include_missing:
-                        if flux_array[band_idx, 1] >= 0 and flux_array[band_idx, 1] < self._min_flux:
-                            continue
-                    else:
-                        if flux_array[band_idx, 1] < 0 or flux_array[band_idx, 1] < self._min_flux:
-                            continue
-                except (ValueError, IndexError):
-                    continue
+        if ra_arr is None or dec_arr is None:
+            ra_arr = np.array([s.ra_deg for s in sources], dtype=np.float64)
+            dec_arr = np.array([s.dec_deg for s in sources], dtype=np.float64)
 
-                try:
-                    ra_deg = (float(cols[3]) + float(cols[4]) / 60.0 + float(cols[5]) / 3600.0) * 15.0
-                    dec_deg = (1.0 if cols[6][0] != '-' else -1.0) * \
-                        (abs(float(cols[6])) + float(cols[7]) / 60.0 + float(cols[8]) / 3600.0)
-                except (ValueError, IndexError):
-                    continue
+        self._ra_arr = np.array(ra_arr, dtype=np.float64)
+        self._dec_arr = np.array(dec_arr, dtype=np.float64)
 
-                n_obs = int(cols[12]) if cols[12].lstrip('-').isdigit() else 0
-                parsed_data.append((cols[2], cols[1], ra_deg, dec_deg, n_obs,
-                                    flux_array[:, 0], flux_array[:, 1], cols[0] == 'C'))
+    def _new_with_sources(self, sources: list[CalibratorSource]) -> Self:
+        """Returns a new catalog with the same settings as this one but the given sources.
 
-            self._sources = [CalibratorSource(name, ivs, ra, dec, nobs, flux_r, flux_u, is_cal)
-                             for name, ivs, ra, dec, nobs, flux_r, flux_u, is_cal in parsed_data]
+        Parameters
+        ----------
+        sources : list[CalibratorSource]
+            Sources for the new catalog.
 
-            self._name_index = {s.name: s for s in self._sources}
-            self._ivsname_index = {s.ivsname: s for s in self._sources}
-
-            if self._sources:
-                coords = np.array([(s.ra_deg, s.dec_deg) for s in self._sources], dtype=np.float64)
-                self._ra_arr = coords[:, 0].copy()
-                self._dec_arr = coords[:, 1].copy()
-            else:
-                self._ra_arr = np.array([], dtype=np.float64)
-                self._dec_arr = np.array([], dtype=np.float64)
-        except FileNotFoundError:
-            raise FileNotFoundError(f'RFC catalog file not found: {catalog_path}')
-        except Exception as e:
-            raise RuntimeError(f'Error parsing RFC catalog file: {e}')
+        Returns
+        -------
+        RFCCatalog
+            New catalog instance (the file is not re-read).
+        """
+        new_catalog = object.__new__(self.__class__)
+        new_catalog._min_flux = self._min_flux
+        new_catalog._band = self._band
+        new_catalog._include_missing = self._include_missing
+        new_catalog._catalog_filename = self._catalog_filename
+        new_catalog._set_sources(sources)
+        return new_catalog
 
     @property
     def sources(self) -> list[CalibratorSource]:
@@ -421,12 +581,10 @@ class RFCCatalog:
         return len(self._sources)
 
     def get_source(self, name: str) -> Optional[CalibratorSource]:
-        """Get a source by name, IVS name, or other names.
+        """Get a source by exact (case-insensitive) J2000 name or IVS name.
 
-        Searches in multiple fields:
-        - Primary name (case-insensitive)
-        - IVS name (case-insensitive)
-        - Other names/aliases (case-insensitive)
+        Only sources passing this catalog's flux filter are searched. No partial/substring matching is
+        done, so a non-matching name never returns a different source.
 
         Parameters
         ----------
@@ -438,34 +596,11 @@ class RFCCatalog:
         CalibratorSource or None
             The matching source, or None if not found.
         """
-        name_upper = name.upper()
+        name_upper = name.strip().upper()
+        if name_upper in self._name_index:
+            return self._name_index[name_upper]
 
-        # First try exact matches (case-insensitive)
-        for source_name, source in self._name_index.items():
-            if source_name.upper() == name_upper:
-                return source
-
-        for ivs_name, source in self._ivsname_index.items():
-            if ivs_name.upper() == name_upper:
-                return source
-
-        # Then search in other names
-        for source in self._sources:
-            if source.other_names:
-                for other_name in source.other_names:
-                    if other_name.upper() == name_upper:
-                        return source
-
-        # Finally, try partial matches (e.g., if name is contained in a longer name)
-        for source_name, source in self._name_index.items():
-            if name_upper in source_name.upper() or source_name.upper() in name_upper:
-                return source
-
-        for ivs_name, source in self._ivsname_index.items():
-            if name_upper in ivs_name.upper() or ivs_name.upper() in name_upper:
-                return source
-
-        return None
+        return self._ivsname_index.get(name_upper)
 
     def calibrators_only(self) -> Self:
         """Return a new catalog containing only calibrator sources.
@@ -475,20 +610,7 @@ class RFCCatalog:
         RFCCatalog
             New catalog with only calibrator sources.
         """
-        new_catalog = object.__new__(self.__class__)
-        new_catalog._sources = [s for s in self._sources if s.is_calibrator]
-        new_catalog._min_flux = self._min_flux
-        new_catalog._band = self._band
-        new_catalog._catalog_filename = self._catalog_filename
-        new_catalog._name_index = {s.name: s for s in new_catalog._sources}
-        new_catalog._ivsname_index = {s.ivsname: s for s in new_catalog._sources}
-        if new_catalog._sources:
-            new_catalog._ra_arr = np.array([s.ra_deg for s in new_catalog._sources], dtype=np.float64)
-            new_catalog._dec_arr = np.array([s.dec_deg for s in new_catalog._sources], dtype=np.float64)
-        else:
-            new_catalog._ra_arr = np.array([])
-            new_catalog._dec_arr = np.array([])
-        return new_catalog
+        return self._new_with_sources([s for s in self._sources if s.is_calibrator])
 
     def brighter_than(self, flux: float, band: Optional[str] = None) -> Self:
         """Return a new catalog with sources brighter than a threshold.
@@ -506,20 +628,7 @@ class RFCCatalog:
             New catalog with brighter sources.
         """
         check_band = band if band is not None else self._band
-        new_catalog = object.__new__(self.__class__)
-        new_catalog._sources = [s for s in self._sources if s.unresolved_flux(check_band) >= flux]
-        new_catalog._min_flux = self._min_flux
-        new_catalog._band = self._band
-        new_catalog._catalog_filename = self._catalog_filename
-        new_catalog._name_index = {s.name: s for s in new_catalog._sources}
-        new_catalog._ivsname_index = {s.ivsname: s for s in new_catalog._sources}
-        if new_catalog._sources:
-            new_catalog._ra_arr = np.array([s.ra_deg for s in new_catalog._sources], dtype=np.float64)
-            new_catalog._dec_arr = np.array([s.dec_deg for s in new_catalog._sources], dtype=np.float64)
-        else:
-            new_catalog._ra_arr = np.array([])
-            new_catalog._dec_arr = np.array([])
-        return new_catalog
+        return self._new_with_sources([s for s in self._sources if s.unresolved_flux(check_band) >= flux])
 
     def _get_coord_arrays(self) -> tuple[np.ndarray, np.ndarray]:
         """Get coordinate arrays for all sources.
@@ -567,7 +676,7 @@ def _batch_altaz_erfa(ra_rad: np.ndarray, dec_rad: np.ndarray, times: Time,
     """Compute elevation, azimuth, and hour angle for all sources at all times using ERFA.
 
     Bypasses astroplan/astropy per-source overhead by computing ERFA astrometry params
-    once per time step, then transforming all sources vectorized.
+    for all time steps at once, then transforming all sources vectorized (times x sources broadcast).
 
     Parameters
     ----------
@@ -590,18 +699,14 @@ def _batch_altaz_erfa(ra_rad: np.ndarray, dec_rad: np.ndarray, times: Time,
     height_m = loc.height.to(u.m).value
     utc1, utc2 = times.utc.jd1, times.utc.jd2
     dut1 = times.delta_ut1_utc
-    n_times = len(times)
-    n_src = len(ra_rad)
-    elev_out = np.empty((n_times, n_src))
-    az_out = np.empty((n_times, n_src))
-    ha_out = np.empty((n_times, n_src))
-    for t in range(n_times):
-        astrom, eo = erfa.apco13(utc1[t], utc2[t], dut1[t], lon_rad, lat_rad, height_m, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-        ri, di = erfa.atciq(ra_rad, dec_rad, 0.0, 0.0, 0.0, 0.0, astrom)
-        az, zen, ha, _dec, _ra = erfa.atioq(ri, di, astrom)
-        elev_out[t] = np.degrees(np.pi / 2.0 - zen)
-        az_out[t] = np.degrees(az)
-        ha_out[t] = (np.degrees(ha) / 15.0) % 24.0
+    # apco13/atciq/atioq are ufuncs: astrom has shape (n_times,), broadcast against (n_src,) -> (n_times, n_src).
+    astrom, _eo = erfa.apco13(utc1, utc2, dut1, lon_rad, lat_rad, height_m, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    astrom = np.atleast_1d(astrom)[:, np.newaxis]
+    ri, di = erfa.atciq(ra_rad[np.newaxis, :], dec_rad[np.newaxis, :], 0.0, 0.0, 0.0, 0.0, astrom)
+    az, zen, ha, _dec, _ra = erfa.atioq(ri, di, astrom)
+    elev_out = np.degrees(np.pi / 2.0 - zen)
+    az_out = np.degrees(az)
+    ha_out = (np.degrees(ha) / 15.0) % 24.0
     return elev_out, az_out, ha_out
 
 

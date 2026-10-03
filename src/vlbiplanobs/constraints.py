@@ -5,6 +5,9 @@ from astropy.time import Time
 from astroplan import Observer, FixedTarget
 from astroplan import Constraint, AltitudeConstraint, SunSeparationConstraint, \
                       MoonSeparationConstraint, min_best_rescale
+# Private astroplan helper (present in astroplan 0.10): caches the AltAz transform on the observer, keyed by
+# (times, targets), so that all constraints evaluated on the same grid share a single transformation.
+from astroplan.constraints import _get_altaz
 
 __all__: list[str] = ['ElevationConstraint', 'SunSeparationConstraint', 'MoonSeparationConstraint',
                       'AzimuthConstraint', 'HourAngleConstraint', 'DeclinationConstraint',
@@ -67,7 +70,8 @@ class HorizonConstraint(Constraint):
         self.boolean_constraint: bool = boolean_constraint
 
     def compute_constraint(self, times: Time, observer: Observer, targets: FixedTarget):
-        altaz = observer.altaz(times, targets)
+        """Returns whether (or how much) the targets are above the local horizon at the given times."""
+        altaz = _get_altaz(times, observer, targets)['altaz']
         elevations = altaz.alt.to(u.deg).value
         azimuths = altaz.az.to(u.deg).value
         min_el = horizon_min_elevation(azimuths, self.horizon_az_deg, self.horizon_el_deg)
@@ -110,7 +114,8 @@ class AzimuthConstraint(Constraint):
         self.boolean_constraint: bool = boolean_constraint
 
     def compute_constraint(self, times: Time, observer: Observer, targets: FixedTarget):
-        azimuths = observer.altaz(times, targets).az
+        """Returns whether (or how much) the target azimuths are within the [min, max] limits."""
+        azimuths = _get_altaz(times, observer, targets)['altaz'].az
         if self.boolean_constraint:
             return ((self.min < azimuths) & (azimuths < self.max))
         else:

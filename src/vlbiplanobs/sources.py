@@ -1,5 +1,9 @@
 from typing import Optional, Union, Self, Sequence
 from importlib import resources
+import re
+import logging
+import threading
+import functools
 import numpy as np
 import tomllib
 import operator
@@ -15,8 +19,14 @@ from astroplan import FixedTarget
 
 __all__ = ['SourceNotVisible', 'Source', 'SourceType', 'Scan', 'ScanBlock']
 
-# Module-level RFC catalog cache
+_log = logging.getLogger(__name__)
+
+# Module-level RFC catalog cache. Only ever assigned a fully-built dict, under _RFC_CATALOG_LOCK.
 _RFC_CATALOG_CACHE: Optional[dict[str, tuple[str, str, str]]] = None
+_RFC_CATALOG_LOCK = threading.Lock()
+
+# Conservative whitelist of characters allowed in a source name sent to online resolvers (Sesame).
+_VALID_SOURCE_NAME = re.compile(r"^[\w\s+\-.*:()/']{1,80}$")
 
 """Defines an observation, which basically consist of a given network of stations,
 observing a target source for a given time range and at an observing band.
@@ -241,7 +251,12 @@ class Source(FixedTarget):
         if coordinates is None:
             coordinates = self.get_coordinates_from_name(name)
 
-        super().__init__(coord.SkyCoord(coordinates), name)
+        if isinstance(coordinates, coord.SkyCoord) and not kwargs:
+            sky_coord = coordinates
+        else:
+            sky_coord = coord.SkyCoord(coordinates, **kwargs)
+
+        super().__init__(sky_coord, name)
         self._type = source_type
         self._flux = flux
         self._notes = notes
@@ -296,12 +311,13 @@ class Source(FixedTarget):
         NameResolveError
             If there is no connection or unable to find ICRS sources.
         ValueError
-            If the coordinates have an unrecognized format.
+            If the coordinates have an unrecognized format, or the name contains characters
+            not allowed for online resolution.
         """
         try:
             return Source.get_rfc_coordinates(src_name)
         except ValueError:
-            return coord.get_icrs_coordinates(src_name)
+            return resolve_name_online(src_name)
 
     @classmethod
     def source_from_name(cls, src_name: str, source_type: SourceType = SourceType.TARGET) -> Self:
@@ -519,27 +535,95 @@ def _load_rfc_catalog() -> dict[str, tuple[str, str, str]]:
     if _RFC_CATALOG_CACHE is not None:
         return _RFC_CATALOG_CACHE
 
-    rfc_files = tuple(r.name for r in resources.files("vlbiplanobs.data").iterdir()
-                     if r.is_file() and 'rfc' in r.name)
+    with _RFC_CATALOG_LOCK:
+        # Re-check: another thread may have finished loading while we waited for the lock.
+        if _RFC_CATALOG_CACHE is not None:
+            return _RFC_CATALOG_CACHE
 
-    if not rfc_files:
-        raise RuntimeError("No RFC files found under the 'data' folder.")
+        rfc_files = tuple(r.name for r in resources.files("vlbiplanobs.data").iterdir()
+                          if r.is_file() and 'rfc' in r.name)
+        if not rfc_files:
+            raise RuntimeError("No RFC files found under the 'data' folder.")
 
-    _RFC_CATALOG_CACHE = {}
+        # Build locally; publish only once complete so no partial cache is ever visible.
+        catalog: dict[str, tuple[str, str, str]] = {}
+        with resources.as_file(resources.files("vlbiplanobs.data").joinpath(sorted(rfc_files)[-1])) as rfcfile:
+            with open(rfcfile, 'r') as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 9:  # IVS name J2000name h m s d m s
+                        ivs_name = parts[0]
+                        j2000_name = parts[2]
+                        coord_str = f"{parts[3]}h{parts[4]}m{parts[5]}s {parts[6]}d{parts[7]}m{parts[8]}s"
+                        catalog[j2000_name.upper()] = (ivs_name, j2000_name, coord_str)
+                        catalog[ivs_name.upper()] = (ivs_name, j2000_name, coord_str)
 
-    with resources.as_file(resources.files("vlbiplanobs.data").joinpath(sorted(rfc_files)[-1])) as rfcfile:
-        with open(rfcfile, 'r') as f:
-            for line in f:
-                parts = line.split()
-                if len(parts) >= 9:  # IVS name J2000name h m s d m s
-                    ivs_name = parts[0]
-                    j2000_name = parts[2]
-                    coord_str = f"{parts[3]}h{parts[4]}m{parts[5]}s {parts[6]}d{parts[7]}m{parts[8]}s"
-                    # Store with multiple keys for fast lookup
-                    _RFC_CATALOG_CACHE[j2000_name.upper()] = (ivs_name, j2000_name, coord_str)
-                    _RFC_CATALOG_CACHE[ivs_name.upper()] = (ivs_name, j2000_name, coord_str)
+        _RFC_CATALOG_CACHE = catalog
+        _log.info("Loaded RFC name catalog (%d keys)", len(catalog))
 
     return _RFC_CATALOG_CACHE
+
+
+def validate_source_name(src_name: str) -> str:
+    """Checks that a source name is safe to send to an online name resolver.
+
+    Parameters
+    ----------
+    src_name : str
+        Source name to validate.
+
+    Returns
+    -------
+    str
+        The stripped source name.
+
+    Raises
+    ------
+    ValueError
+        If the name is not a str, is empty, longer than 80 characters, or contains characters
+        other than letters, digits, whitespace and + - . * : ( ) / '.
+    """
+    if not isinstance(src_name, str):
+        raise ValueError(f"Source name must be a str, got {type(src_name).__name__}.")
+
+    name = src_name.strip()
+    if not _VALID_SOURCE_NAME.match(name):
+        raise ValueError(f"Invalid source name {src_name!r}: it must be 1-80 characters long and contain only "
+                         "letters, digits, spaces and + - . * : ( ) / '.")
+
+    return name
+
+
+@functools.lru_cache(maxsize=1024)
+def _cached_icrs_coordinates(name: str) -> coord.SkyCoord:
+    """Online (Sesame) name resolution, cached per name. Failures raise and are therefore not cached."""
+    _log.info("Resolving source name '%s' via online services", name)
+    return coord.get_icrs_coordinates(name)
+
+
+def resolve_name_online(src_name: str) -> coord.SkyCoord:
+    """Resolves a source name into coordinates using online services (Sesame: SIMBAD/NED/VizieR).
+
+    Names are validated before any network request, and successful results are cached (up to 1024 names).
+
+    Parameters
+    ----------
+    src_name : str
+        Source name to resolve.
+
+    Returns
+    -------
+    astropy.coordinates.SkyCoord
+        ICRS coordinates of the source.
+
+    Raises
+    ------
+    ValueError
+        If the name fails validation (see `validate_source_name`).
+    astropy.coordinates.name_resolve.NameResolveError
+        If the name cannot be resolved (or no connection is available).
+    """
+    return _cached_icrs_coordinates(validate_source_name(src_name))
 
 
 def _format_dec_coordinate(dec_str: str) -> str:
@@ -582,7 +666,6 @@ def _resolve_coord_str(entry: dict, name: str) -> Optional[str]:
     str or None
         SkyCoord-parseable coordinate string, or None if resolution fails.
     """
-    import logging as _log
     if 'coordinates' in entry:
         c = entry['coordinates']
         ra = c['RA'].replace(':', 'h', 1).replace(':', 'm') + 's'
@@ -592,18 +675,88 @@ def _resolve_coord_str(entry: dict, name: str) -> Optional[str]:
     try:
         sky = Source.get_rfc_coordinates(name)
         return sky.to_string('hmsdms')
-    except (ValueError, Exception):
+    except (ValueError, RuntimeError):
         pass
     # Try online resolution
     try:
-        sky = coord.get_icrs_coordinates(name)
+        sky = resolve_name_online(name)
         return sky.to_string('hmsdms')
-    except Exception:
-        pass
-    _log.getLogger(__name__).warning(
+    except (ValueError, OSError, coord.name_resolve.NameResolveError) as e:
+        _log.warning("Online resolution failed for '%s': %s", name, e)
+    _log.warning(
         "Could not resolve coordinates for '%s': not in catalog, RFC, or online resolvers. "
         "Skipping this source.", name)
     return None
+
+
+def _scan_from_toml(entry: dict, source: 'Source', default_every: int) -> 'Scan':
+    """Creates a Scan from a TOML catalog entry.
+
+    If the entry has no 'duration', the Scan default duration is used (the kwarg is omitted, never None).
+
+    Parameters
+    ----------
+    entry : dict
+        Parsed TOML sub-dict (target, phasecal or checksource) with optional 'duration' (min) and 'every'.
+    source : Source
+        The source observed by the scan.
+    default_every : int
+        Value of 'every' to use when the entry does not define it.
+
+    Returns
+    -------
+    Scan
+    """
+    kwargs = {'every': int(entry['every']) if 'every' in entry else default_every}
+    if 'duration' in entry:
+        kwargs['duration'] = float(entry['duration'])*u.min
+
+    return Scan(source=source, **kwargs)
+
+
+def _scans_from_toml_entry(src: dict, name: str, main_type: 'SourceType') -> list['Scan']:
+    """Builds the scans (phasecal, checksource, main source) for one [[target]]/[[pulsar]] TOML entry.
+
+    Parameters
+    ----------
+    src : dict
+        Parsed TOML entry for the main source, with optional 'phasecal' and 'checksource' sub-tables.
+    name : str
+        Name of the main source.
+    main_type : SourceType
+        Type of the main source (TARGET or PULSAR).
+
+    Returns
+    -------
+    list[Scan]
+        Scans in order: phasecal (if resolvable), checksource (if resolvable), main source.
+
+    Raises
+    ------
+    ValueError
+        If the coordinates of the main source cannot be resolved.
+    """
+    scans = []
+    for sub_key, sub_type, default_every in (('phasecal', SourceType.PHASECAL, -1),
+                                             ('checksource', SourceType.CHECKSOURCE, 4)):
+        sub = src.get(sub_key)
+        if not sub or not sub.get('name'):
+            continue
+
+        sub_coord_str = _resolve_coord_str(sub, sub['name'])
+        if sub_coord_str is not None:
+            sub_source = Source(name=sub['name'], coordinates=sub_coord_str, source_type=sub_type)
+            scans.append(_scan_from_toml(sub, sub_source, default_every))
+
+    # Main source (coordinates required for the primary target)
+    src_coord_str = _resolve_coord_str(src, name)
+    if src_coord_str is None:
+        raise ValueError(f"Could not resolve coordinates for {main_type.name.lower()} '{name}'. "
+                         "Add 'coordinates' to its catalog entry.")
+
+    main_source = Source(name=name, coordinates=src_coord_str, source_type=main_type)
+    scans.append(_scan_from_toml(src, main_source, -1))
+    return scans
 
 
 class SourceCatalog:
@@ -638,7 +791,7 @@ class SourceCatalog:
     @property
     def targets(self):
         """Target blocks in the catalog."""
-        return self._blocks['targets']
+        return self._blocks.get('targets', {})
 
     @property
     def pulsars(self):
@@ -679,7 +832,7 @@ class SourceCatalog:
                     [s.name for b in self._blocks.values() for bs in b.values() for s in bs.sources()]
             else:
                 self._cache_source_names[include_calibrators] = \
-                    [s.name for b in self._blocks['targets'].values() for s in b.sources()]
+                    [s.name for b in self._blocks.get('targets', {}).values() for s in b.sources()]
 
         return self._cache_source_names[include_calibrators]
 
@@ -702,7 +855,7 @@ class SourceCatalog:
                     {s.name: s for b in self._blocks.values() for bs in b.values() for s in bs.sources()}
             else:
                 self._cache_sources[include_calibrators] = \
-                    {s.name: s for b in self._blocks['targets'].values() for s in b.sources()}
+                    {s.name: s for b in self._blocks.get('targets', {}).values() for s in b.sources()}
 
         return self._cache_sources[include_calibrators]
 
@@ -740,89 +893,17 @@ class SourceCatalog:
         with open(path, 'rb') as sources_toml:
             catalog = tomllib.load(sources_toml)
 
-            # Handle [[pulsar]] arrays
-            if 'pulsar' in catalog:
-                if 'pulsars' not in self._blocks:
-                    self._blocks['pulsars'] = dict()
+            for toml_key, block_key, main_type in (('pulsar', 'pulsars', SourceType.PULSAR),
+                                                   ('target', 'targets', SourceType.TARGET)):
+                if toml_key not in catalog:
+                    continue
 
-                for src in catalog['pulsar']:
+                if block_key not in self._blocks:
+                    self._blocks[block_key] = dict()
+
+                for src in catalog[toml_key]:
                     name = src.get('name', 'unknown')
-                    scans = []
-
-                    # Handle phasecal if present
-                    if 'phasecal' in src and src['phasecal'].get('name'):
-                        pc = src['phasecal']
-                        pc_coord_str = _resolve_coord_str(pc, pc['name'])
-                        if pc_coord_str is not None:
-                            scans.append(Scan(
-                                source=Source(name=pc['name'], coordinates=pc_coord_str, source_type=SourceType.PHASECAL),
-                                duration=float(pc['duration'])*u.min if 'duration' in pc else None,
-                                every=int(pc['every']) if 'every' in pc else -1))
-
-                    # Handle checksource if present
-                    if 'checksource' in src and src['checksource'].get('name'):
-                        cs = src['checksource']
-                        cs_coord_str = _resolve_coord_str(cs, cs['name'])
-                        if cs_coord_str is not None:
-                            scans.append(Scan(
-                                source=Source(name=cs['name'], coordinates=cs_coord_str,
-                                              source_type=SourceType.CHECKSOURCE),
-                                duration=float(cs['duration'])*u.min if 'duration' in cs else None,
-                                every=int(cs['every']) if 'every' in cs else 4))
-
-                    # Main source (coordinates required for the primary target)
-                    src_coord_str = _resolve_coord_str(src, name)
-                    if src_coord_str is None:
-                        raise ValueError(f"Could not resolve coordinates for pulsar '{name}'. "
-                                         "Add 'coordinates' to its catalog entry.")
-                    scans.append(Scan(
-                        source=Source(name=name, coordinates=src_coord_str, source_type=SourceType.PULSAR),
-                        duration=float(src['duration'])*u.min if 'duration' in src else None,
-                        every=int(src['every']) if 'every' in src else -1))
-
-                    self._blocks['pulsars'][name] = ScanBlock(scans)
-
-            # Handle [[target]] arrays
-            if 'target' in catalog:
-                if 'targets' not in self._blocks:
-                    self._blocks['targets'] = dict()
-
-                for src in catalog['target']:
-                    name = src.get('name', 'unknown')
-                    scans = []
-
-                    # Handle phasecal if present
-                    if 'phasecal' in src and src['phasecal'].get('name'):
-                        pc = src['phasecal']
-                        pc_coord_str = _resolve_coord_str(pc, pc['name'])
-                        if pc_coord_str is not None:
-                            scans.append(Scan(
-                                source=Source(name=pc['name'], coordinates=pc_coord_str, source_type=SourceType.PHASECAL),
-                                duration=float(pc['duration'])*u.min if 'duration' in pc else None,
-                                every=int(pc['every']) if 'every' in pc else -1))
-
-                    # Handle checksource if present
-                    if 'checksource' in src and src['checksource'].get('name'):
-                        cs = src['checksource']
-                        cs_coord_str = _resolve_coord_str(cs, cs['name'])
-                        if cs_coord_str is not None:
-                            scans.append(Scan(
-                                source=Source(name=cs['name'], coordinates=cs_coord_str,
-                                              source_type=SourceType.CHECKSOURCE),
-                                duration=float(cs['duration'])*u.min if 'duration' in cs else None,
-                                every=int(cs['every']) if 'every' in cs else 4))
-
-                    # Main source (coordinates required for the primary target)
-                    src_coord_str = _resolve_coord_str(src, name)
-                    if src_coord_str is None:
-                        raise ValueError(f"Could not resolve coordinates for target '{name}'. "
-                                         "Add 'coordinates' to its catalog entry.")
-                    scans.append(Scan(
-                        source=Source(name=name, coordinates=src_coord_str, source_type=SourceType.TARGET),
-                        duration=float(src['duration'])*u.min if 'duration' in src else None,
-                        every=int(src['every']) if 'every' in src else -1))
-
-                    self._blocks['targets'][name] = ScanBlock(scans)
+                    self._blocks[block_key][name] = ScanBlock(_scans_from_toml_entry(src, name, main_type))
 
     def read_rfc_catalog(self, path: Optional[Union[str, Path]] = None):
         """Reads the RFC catalog file.
@@ -899,10 +980,21 @@ class Scan:
         Duration of the scan. Default is 10 minutes.
     every : int
         If positive, repeat this scan every N cycles. If -1, observe on every cycle. Default is -1.
+
+    Raises
+    ------
+    ValueError
+        If 'every' is 0 or lower than -1.
     """
     source: Source
     duration: u.Quantity = 10*u.min
     every: int = -1
+
+    def __post_init__(self):
+        """Validates the scan parameters."""
+        if self.every == 0 or self.every < -1:
+            raise ValueError(f"Scan of '{self.source.name}': 'every' must be -1 (every cycle) or a positive "
+                             f"integer (every N cycles), got {self.every}.")
 
 
 class ScanBlock:
@@ -938,7 +1030,6 @@ class ScanBlock:
             raise ValueError("All elements in the list of scans must be of Scan type.")
 
         self._scans = scans
-        self._frac_time: dict[str, float] = {}
 
     @property
     def scans(self) -> list[Scan]:
@@ -1046,14 +1137,13 @@ class ScanBlock:
             are the source names, and the values are the fraction of time, from the total scan block
             time, spent on the source.
         """
-        if self._frac_time:
-            return self._frac_time
-
+        # Computed on every call (cheap) so that changes to the scans are always reflected.
+        frac_time: dict[str, float] = {}
         # Get scans with valid durations
         valid_scans = [s for s in self.scans if s.duration is not None]
 
         if not valid_scans:
-            return {}
+            return frac_time
 
         total_duration = sum([s.duration for s in valid_scans if s.every <= 0])
 
@@ -1069,10 +1159,29 @@ class ScanBlock:
 
         for ascan in valid_scans:
             if ascan.duration is not None:
-                self._frac_time[ascan.source.name] = ascan.duration*mcm_every / \
-                                                     (ascan.every if ascan.every > 0 else 1) / total_duration
+                frac_time[ascan.source.name] = ascan.duration*mcm_every / \
+                                               (ascan.every if ascan.every > 0 else 1) / total_duration
 
-        return self._frac_time
+        return frac_time
+
+    def _scans_in_cycle(self, n_loop: int) -> list[Scan]:
+        """Returns the non-phasecal scans to observe in the given (1-based) cycle.
+
+        Scans with 'every = N > 0' are observed on cycles multiple of N, replacing the target scans of that
+        cycle. On any other cycle, the target scans are observed.
+
+        Parameters
+        ----------
+        n_loop : int
+            Cycle number, starting at 1.
+
+        Returns
+        -------
+        list[Scan]
+            Scans to observe in this cycle (excluding the bracketing phasecal scans).
+        """
+        periodic = [s for s in self.scans if s.every > 0 and n_loop % s.every == 0]
+        return periodic if periodic else self.scans_with_sources(SourceType.TARGET)
 
     def fill(self, max_duration: u.Quantity) -> list[Scan]:
         """Given the list of scans, returns the final arrangement of scans that fills the available time.
@@ -1099,8 +1208,9 @@ class ScanBlock:
         Raises
         ------
         ValueError
-            If the max_duration is shorter than the time of all single scans, or if phase calibrator
-            scans are provided without target scans.
+            If the max_duration is shorter than the time of all single scans, if phase calibrator
+            scans are provided without target scans, if there are no target scans, or if the
+            phasecal + target cycle has zero duration.
 
         Notes
         -----
@@ -1112,59 +1222,51 @@ class ScanBlock:
             raise ValueError("The max_duration of the block cannot be shorter than the time of "
                              "all single scans.")
 
+        phasecals = self.scans_with_sources(SourceType.PHASECAL)
+        targets = self.scans_with_sources(SourceType.TARGET)
+        if phasecals and not targets:
+            raise ValueError("If phase calibrator scans provided, then target scans must also be provided.")
+
+        if not targets:
+            raise ValueError("The scan block needs at least one target scan to be filled.")
+
+        loop_duration = sum([s.duration.to(u.min) for s in phasecals + targets], 0*u.min)
+        if loop_duration <= 0*u.min:
+            raise ValueError("The phasecal + target scans of the block have zero total duration; "
+                             "cannot fill the block.")
+
+        # The phase-referencing loop needs to be closed at the end with the phasecal scans.
+        last_duration = sum([s.duration.to(u.min) for s in phasecals], 0*u.min)
         main_loop: list[Scan] = []
+        has_periodic = any([s.every > 0 for s in self.scans
+                            if s.source.type not in (SourceType.TARGET, SourceType.PHASECAL)])
+        if has_periodic:
+            # As there can be multiple sources to be observed every certain scans, do it incrementally.
+            # Cycles repeat with period lcm(every); a zero-duration period would loop forever.
+            period = int(np.lcm.reduce([s.every for s in self.scans if s.every > 0]))
+            period_duration = sum([a.duration.to(u.min) for n in range(1, period + 1)
+                                   for a in phasecals + self._scans_in_cycle(n)], 0*u.min)
+            if period_duration <= 0*u.min:
+                raise ValueError("The scans of the block have zero total duration over a full cycle; "
+                                 "cannot fill the block.")
 
-        # First it arranges the (phasecal)/target scans if exist
-        if self.has(SourceType.PHASECAL):
-            if not self.has(SourceType.TARGET):
-                raise ValueError("If phase calibrator scans provided, then target scans must also "
-                                 "be provided.")
+            booked_time, n_loop = 0*u.min, 1
+            while True:
+                to_append = phasecals + self._scans_in_cycle(n_loop)
+                cycle_duration = sum([a.duration.to(u.min) for a in to_append], 0*u.min)
+                n_loop += 1
+                if cycle_duration + booked_time > max_duration - last_duration:
+                    break
 
-            loop_duration = reduce(operator.add,
-                                   [s.duration for s in self.scans_with_sources(SourceType.TARGET) +
-                                    self.scans_with_sources(SourceType.PHASECAL)])
-            last_duration = reduce(operator.add,
-                                   [s.duration for s in self.scans_with_sources(SourceType.PHASECAL)])
-            # the second sum above is because the phase-referencing loop needs to be closed at the end.
-
-            if any([s.every > -1 for s in self.scans
-                    if s.source.type not in (SourceType.TARGET, SourceType.PHASECAL)]):
-                # As there can be multiple sources to be observed every certain scans,
-                # better to do it incremental...
-                # full_n_reps = (max_duration - last_duration)/(loop_duration*)
-                booked_time, n_loop = 0*u.min, 1
-                while True:
-                    target_in_this_scan: list[Scan] = []
-                    for a_scan in [s for s in self.scans if s.every > -1]:
-                        if n_loop % a_scan.every == 0:
-                            target_in_this_scan += [a_scan,]
-
-                    if not target_in_this_scan:
-                        target_in_this_scan = self.scans_with_sources(SourceType.TARGET)
-
-                    to_append = self.scans_with_sources(SourceType.PHASECAL) + target_in_this_scan
-                    n_loop += 1
-                    if reduce(operator.add, [a.duration for a in to_append]) + \
-                       booked_time > max_duration - last_duration:
-                        break
-
-                    main_loop += to_append
-                    booked_time += reduce(operator.add, [a.duration for a in to_append])
-            else:
-                # Correct formula: n = floor((max_duration - last_duration) / loop_duration)
-                # This ensures n * loop_duration + last_duration <= max_duration
-                n_reps = int((max_duration - last_duration).to(u.min).value //
-                             loop_duration.to(u.min).value)
-                main_loop += (self.scans_with_sources(SourceType.PHASECAL) +
-                              self.scans_with_sources(SourceType.TARGET)) * n_reps
-
-            main_loop += self.scans_with_sources(SourceType.PHASECAL)
+                main_loop += to_append
+                booked_time += cycle_duration
         else:
-            target_duration = reduce(operator.add,
-                                     [s.duration for s in self.scans_with_sources(SourceType.TARGET)])
-            main_loop += self.scans_with_sources(SourceType.TARGET) * \
-                int(max_duration.to(u.min).value // target_duration.to(u.min).value)
+            # n = floor((max_duration - last_duration) / loop_duration)
+            # ensures n * loop_duration + last_duration <= max_duration
+            n_reps = int((max_duration - last_duration).to(u.min).value // loop_duration.to(u.min).value)
+            main_loop += (phasecals + targets) * n_reps
 
+        main_loop += phasecals
         return main_loop
 
     def __iter__(self):

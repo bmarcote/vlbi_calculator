@@ -4,9 +4,11 @@ from __future__ import annotations
 from collections import abc
 from typing import Optional, Union, Iterable, Sequence, Generator
 import configparser
+import functools
 from importlib import resources
 import numpy as np
 from rich import print as rprint
+from rich.markup import escape
 from astropy import units as u
 from astropy import coordinates as coord
 from astropy.time import Time
@@ -21,6 +23,41 @@ or a network composed of antennas.
 """
 
 __all__: list[str] = ["Station", "Stations", "Mount", "MountType"]
+
+
+@functools.lru_cache(maxsize=1)
+def _default_network_full_names() -> dict[str, str]:
+    """Returns {network nickname: full name} parsed once from the default data/network_catalog.inp.
+
+    Cached: the default catalog is a package resource that does not change at runtime.
+    Callers must not mutate the returned dict.
+
+    Returns
+    -------
+    dict[str, str]
+        Network nickname to full network name.
+    """
+    config = configparser.ConfigParser()
+    with resources.as_file(resources.files("vlbiplanobs.data").joinpath("network_catalog.inp")) as catalog_path:
+        with open(catalog_path, "r") as networks_file:
+            config.read_file(networks_file)
+
+    return {section: config[section]["name"] for section in config.sections()}
+
+
+@functools.lru_cache(maxsize=1)
+def _default_networks() -> dict[str, "Stations"]:
+    """Returns the networks parsed once from the default network and station catalogs.
+
+    Cached because parsing re-reads the whole station catalog. Used internally only to read
+    network membership/bands (never mutated); `Stations.__add__` returns new objects.
+
+    Returns
+    -------
+    dict[str, Stations]
+        Network nickname to Stations object with its default antennas.
+    """
+    return Stations.get_networks_from_configfile()
 
 
 class MountType(Enum):
@@ -713,7 +750,7 @@ class Stations(object):
 
     def __delitem__(self, key):
         if isinstance(key, int):
-            self._stations.__delitem__(self.keys[key])
+            self._stations.__delitem__(self.station_codenames[key])
         else:
             self._stations.__delitem__(key)
 
@@ -739,7 +776,8 @@ class Stations(object):
             else:
                 max_dt.append(min(self.max_datarate(b), stations.max_datarate(b)))  # type: ignore
 
-        return Stations(stations=set(self.stations + stations.stations),
+        # dict.fromkeys de-duplicates while keeping a deterministic order (self first, then the new ones)
+        return Stations(stations=list(dict.fromkeys(self.stations + stations.stations)),
                         observing_bands=obs_bands, max_datarates=max_dt)
 
     def __iadd__(self, stations: Stations):
@@ -782,7 +820,7 @@ class Stations(object):
             networks = [n.strip() for n in networks.split(',')]
 
         if only_defaults:
-            all_networks = self.get_networks_from_configfile()
+            all_networks = _default_networks()
             if networks:
                 the_network = all_networks[networks[0]]
                 for a_network in networks[1:]:
@@ -848,11 +886,11 @@ class Stations(object):
         if not all([codename in self.station_codenames for codename in codenames]):
             unexpected_ant = set(codenames).difference(set(self.station_codenames))
             if len(unexpected_ant) == 1:
-                rprint(f"[yellow bold]WARNING: The antenna with codename {unexpected_ant.pop()}"
+                rprint(f"[yellow bold]WARNING: The antenna with codename {escape(unexpected_ant.pop())}"
                        " is not present in the current network.[/yellow bold]")
             else:
                 rprint("[yellow bold]WARNING: The antennas with codenames "
-                       f"{', '.join(list(unexpected_ant))} are not present in the current "
+                       f"{escape(', '.join(sorted(unexpected_ant)))} are not present in the current "
                        "network.[/yellow bold]")
         codename_indices = {codename: i for i, codename in enumerate(codenames)}
         # list() so it is a Sequence: dict_values would be treated as a scalar max_datarate
@@ -896,9 +934,9 @@ class Stations(object):
                                                                                 as networks_catalog_path:
                 config.read(networks_catalog_path)
         else:
-            # With this approach it raises a FileNotFound exception.
-            # Otherwise config will run smoothly and provide an empty list.
-            config.read(open(filename, "r"))
+            # read_file (not read) so a missing file raises FileNotFoundError instead of silently giving no networks.
+            with open(filename, "r") as networks_file:
+                config.read_file(networks_file)
 
         all_ants: Stations = Stations(stations_filename)
         networks: dict[str, Stations] = dict()
@@ -922,14 +960,14 @@ class Stations(object):
                    ") not present in freqsetups.py!"
 
             if isinstance(max_dt, Sequence):
-                temp = ', '.join([d for d in max_dt if int(d.value) not in freqsetups.data_rates.keys()])
+                temp = ', '.join([str(d) for d in max_dt if int(d.value) not in freqsetups.data_rates.keys()])
                 assert all([int(dr.value) in freqsetups.data_rates.keys() for dr in max_dt]), \
                        f"Data rate ({temp}) not present in freqsetups.py!"
             else:
                 assert int(max_dt.value) in freqsetups.data_rates.keys(), \
                        f"Data rate ({max_dt}) not present in freqsetups.py!"
 
-            antennas = [all_ants[[a.codename for a in all_ants].index(ant)] for ant in default_ant]
+            antennas = [all_ants[ant] for ant in default_ant]
             assert len(antennas) > 0, f"No antennas found for the network {networkname}."
 
             networks[networkname] = Stations(stations=antennas,
@@ -952,12 +990,7 @@ class Stations(object):
         str
             Full name of the network.
         """
-        config = configparser.ConfigParser()
-        with resources.as_file(resources.files("vlbiplanobs.data").joinpath("network_catalog.inp")) \
-                as networks_catalog_path:
-            config.read(networks_catalog_path)
-
-        return config[network]["name"]
+        return _default_network_full_names()[network]
 
     @staticmethod
     def _parse_station_from_configfile(stationname: str, station: dict) -> Station:
@@ -1135,7 +1168,9 @@ class Stations(object):
                                                                              as stations_catalog_path:
             config.read(stations_catalog_path)
         if filename is not None:
-            config.read(filename)
+            # read_file (not read) so a missing custom catalog raises FileNotFoundError instead of being ignored.
+            with open(filename, "r") as stations_file:
+                config.read_file(stations_file)
 
         for stationname in config.sections():
             if (codenames is None) or (config[stationname]["code"] in codenames):

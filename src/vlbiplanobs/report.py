@@ -1,9 +1,10 @@
 """Observation report serialization and file export."""
 import json
+import logging
 import shutil
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable, Optional
 
 import numpy as np
 from astropy import units as u
@@ -11,6 +12,13 @@ from astropy.time import Time
 
 
 SUPPORTED_REPORT_EXTENSIONS = {'.pdf', '.txt', '.md', '.json'}
+
+# Outputs shown in the plain-text/Markdown summary (a subset of `observation_report` outputs).
+SUMMARY_OUTPUTS = ('frequency', 'wavelength', 'bandwidth', 'on_target_time', 'data_size', 'thermal_noise',
+                   'synthesized_beam', 'longest_baseline', 'shortest_baseline', 'bandwidth_smearing',
+                   'time_smearing', 'observable_ranges', 'sun_separation')
+
+log = logging.getLogger(__name__)
 
 
 def validate_report_filename(filename: str) -> Path:
@@ -77,18 +85,26 @@ def _calculated_value(calculation: Callable[[], Any], errors: dict[str, str], na
         return None
 
 
-def observation_report(observation) -> dict[str, Any]:
+def observation_report(observation, output_names: Optional[Iterable[str]] = None) -> dict[str, Any]:
     """Return reusable observation inputs and calculated outputs as JSON-compatible data.
 
     Parameters
     ----------
     observation : VLBIObs
         Computed observation to serialize.
+    output_names : iterable of str or None
+        Names of the outputs to calculate (e.g. ``SUMMARY_OUTPUTS``). None calculates all of them,
+        including the expensive uv values and per-baseline sensitivities.
 
     Returns
     -------
     dict
         Report with ``inputs``, ``outputs``, and per-calculation ``errors`` sections.
+
+    Raises
+    ------
+    ValueError
+        If ``output_names`` contains an unknown output name.
     """
     scans = {
         block_name: [{
@@ -138,14 +154,17 @@ def observation_report(observation) -> dict[str, Any]:
         'uv_values': lambda: observation.get_uv_values(),
         'baseline_sensitivity': lambda: observation.baseline_sensitivity(),
     }
-    outputs = {name: _calculated_value(calculation, errors, name)
-               for name, calculation in calculations.items()}
+    selected = list(calculations) if output_names is None else list(output_names)
+    unknown = [name for name in selected if name not in calculations]
+    if unknown:
+        raise ValueError(f"Unknown report output(s): {', '.join(unknown)}")
+    outputs = {name: _calculated_value(calculations[name], errors, name) for name in selected}
     return {'inputs': _json_value(inputs), 'outputs': outputs, 'errors': errors}
 
 
 def render_observation_summary(observation, markdown: bool = False) -> str:
     """Render a human-readable plain-text or Markdown observation summary."""
-    report = observation_report(observation)
+    report = observation_report(observation, output_names=SUMMARY_OUTPUTS)
     inputs = report['inputs']
     outputs = report['outputs']
     heading = '# PlanObs Observation Summary' if markdown else 'PlanObs Observation Summary'
@@ -172,10 +191,7 @@ def render_observation_summary(observation, markdown: bool = False) -> str:
     else:
         lines.append(f"{bullet}No sources defined")
     lines.extend(['', f"{section + ' ' if section else ''}Calculated results"])
-    summary_outputs = ('frequency', 'wavelength', 'bandwidth', 'on_target_time', 'data_size', 'thermal_noise',
-                       'synthesized_beam', 'longest_baseline', 'shortest_baseline', 'bandwidth_smearing',
-                       'time_smearing', 'observable_ranges', 'sun_separation')
-    for name in summary_outputs:
+    for name in SUMMARY_OUTPUTS:
         lines.append(f"{bullet}{name.replace('_', ' ').title()}: {_display_value(outputs[name])}")
     if report['errors']:
         lines.extend(['', f"{section + ' ' if section else ''}Unavailable calculations"])
@@ -212,8 +228,30 @@ def _pdf_observations(observation) -> list:
 
 
 def write_observation_report(observation, filename: str) -> Path:
-    """Write an observation report in the format selected by the filename suffix."""
+    """Write an observation report in the format selected by the filename suffix.
+
+    Parameters
+    ----------
+    observation : VLBIObs
+        Computed observation to export.
+    filename : str
+        Destination; its suffix (.pdf, .txt, .md, .json) selects the format. Existing files are overwritten.
+
+    Returns
+    -------
+    Path
+        The written file path.
+
+    Raises
+    ------
+    ValueError
+        If the extension is unsupported.
+    FileNotFoundError
+        If the destination directory does not exist (checked before any slow rendering).
+    """
     path = validate_report_filename(filename)
+    if not path.parent.is_dir():
+        raise FileNotFoundError(f"Output directory '{path.parent}' does not exist.")
     suffix = path.suffix.lower()
     if suffix == '.json':
         content = json.dumps(observation_report(observation), indent=2, ensure_ascii=False) + '\n'
@@ -225,7 +263,13 @@ def write_observation_report(observation, filename: str) -> Path:
         pages = _pdf_observations(observation)
         try:
             temporary_path = outputs.summary_pdf_for_sources(pages, show_figure=True)
-        except Exception:
+        except Exception as error:
+            log.warning("PDF report with figures failed (%s: %s); retrying without figures",
+                        type(error).__name__, error)
             temporary_path = outputs.summary_pdf_for_sources(pages, show_figure=False)
-        shutil.move(temporary_path, path)
+        try:
+            shutil.move(temporary_path, path)
+        except Exception:
+            Path(temporary_path).unlink(missing_ok=True)
+            raise
     return path

@@ -1,3 +1,4 @@
+import re
 import threading
 import inspect
 import types
@@ -128,6 +129,48 @@ def enforce_types(func):
     return wrapper
 
 
+def _station_max_datarate(station: Station, network: Optional[str]) -> Optional[u.Quantity]:
+    """Returns the maximum data rate of a station for the given network.
+
+    Parameters
+    ----------
+    station : Station
+        The station whose cap is resolved.
+    network : str, optional
+        Network driving the observation. Used only if the station cap is a per-network dict.
+
+    Returns
+    -------
+    astropy.units.Quantity or None
+        The station cap (if not a dict), the cap for `network` (if a dict containing it),
+        or None if no cap applies.
+    """
+    cap = station.max_datarate
+    if isinstance(cap, dict):
+        return cap.get(network) if network is not None else None
+
+    return cap
+
+
+def _sched_safe(text: str) -> str:
+    """Returns `text` made safe to insert into a SCHED key file (quoted fields, cover letter, source names).
+
+    Newlines/carriage returns become spaces and single quotes are removed, so a user-supplied value can
+    neither close a quoted SCHED field nor inject new SCHED lines.
+
+    Parameters
+    ----------
+    text : str
+        User-supplied string.
+
+    Returns
+    -------
+    str
+        The sanitized string.
+    """
+    return str(text).replace('\r', ' ').replace('\n', ' ').replace("'", '')
+
+
 class Polarization(Enum):
     """Number of polarizations to be recorded.
 
@@ -246,6 +289,7 @@ class Observation(object):
         """
         self._mutex: threading.RLock = threading.RLock()
         self._mutex_uv: threading.RLock = threading.RLock()
+        self._station_datarates: dict[str, u.Quantity] = {}
         if isinstance(scans, dict) and all(isinstance(a_value, ScanBlock) for a_value in scans.values()):
             self.scans = scans
         else:
@@ -437,6 +481,7 @@ class Observation(object):
 
         with self._mutex:
             self._band = new_band
+            self._refresh_station_datarates()
             self._rms = None
             self._baseline_sensitivity = None
             self._uv_baseline = None
@@ -475,43 +520,69 @@ class Observation(object):
         ValueError
             If the data rate is not positive.
         """
-        if new_datarate is None:
-            self._datarate = None
-            return
+        if new_datarate is not None:
+            if not new_datarate.unit.is_equivalent(u.bit/u.s):
+                raise TypeError("The new data rate must be a quantity with bit /s equivalent units.")
 
-        if not new_datarate.unit.is_equivalent(u.bit/u.s):
-            raise TypeError("The new data rate must be a quantity with bit /s equivalent units.")
+            if new_datarate <= 0:
+                raise ValueError(f"datarate must be a positive number (currently {new_datarate})")
 
-        if new_datarate <= 0:
-            raise ValueError(f"datarate must be a positive number (currently {new_datarate})")
-
-        the_networks = self._guess_network()
         with self._mutex:
-            self._datarate = new_datarate.to(u.Mbit/u.s)
-            if 'EVN' in the_networks:
-                for s in self.stations:
-                    if isinstance(s.max_datarate, dict) and 'EVN' in s.max_datarate:
-                        s.datarate = min([d for d in (self._datarate, s.max_datarate['EVN'],
-                                         _NETWORKS['EVN'].max_datarate(self.band)) if d is not None])
-                    else:
-                        s.datarate = min([d for d in (self._datarate, s.max_datarate,
-                                         _NETWORKS['EVN'].max_datarate(self.band)) if d is not None])
-            else:
-                for s in self.stations:
-                    s.datarate = min(self._datarate, s.max_datarate) if s.max_datarate is not None \
-                                 else self._datarate
-
-            if self._datarate is None:
-                self._datarate = max([s.datarate for s in self.stations])
-
-            if self.subbands is None:
-                if 'EVN' in the_networks:  # 32-MHz subbands by default
-                    self.subbands = int(self._datarate.to(u.Mbit/u.s).value/32/8)
-                else:  # 64-MHz subbannds by default
-                    self.subbands = int(self._datarate.to(u.Mbit/u.s).value/64/8)
-
+            self._datarate = new_datarate.to(u.Mbit/u.s) if new_datarate is not None else None
+            self._refresh_station_datarates()
             self._rms = None
             self._baseline_sensitivity = None
+
+    def _refresh_station_datarates(self) -> None:
+        """Recomputes the per-observation, per-station data rates in `self._station_datarates`.
+
+        Station objects are shared module-level globals, so the effective per-station data rate is
+        kept in this Observation (keyed by station codename) and never written onto the Station.
+        Each station runs at min(observation datarate, station cap for the driving network,
+        network cap for the band if the network is EVN). Sets an empty dict if the datarate,
+        stations or band are not yet defined (e.g. during __init__).
+        """
+        with self._mutex:
+            datarate = getattr(self, '_datarate', None)
+            stations = getattr(self, '_stations', None)
+            band = getattr(self, '_band', None)
+            if datarate is None or stations is None or band is None:
+                self._station_datarates: dict[str, u.Quantity] = {}
+                return
+
+            the_networks = self._guess_network() if len(stations) > 0 else []
+            if 'EVN' in the_networks:
+                network: Optional[str] = 'EVN'
+                network_cap = _NETWORKS['EVN'].max_datarate(band)
+            else:
+                network = the_networks[0] if the_networks else None
+                network_cap = None
+
+            self._station_datarates = {}
+            for s in stations:
+                caps = [d for d in (datarate, _station_max_datarate(s, network), network_cap) if d is not None]
+                self._station_datarates[s.codename] = min(caps).to(u.Mbit/u.s)
+
+    def station_datarate(self, codename: str) -> Optional[u.Quantity]:
+        """Returns the effective data rate of the given station in this observation.
+
+        Parameters
+        ----------
+        codename : str
+            Codename of the station.
+
+        Returns
+        -------
+        astropy.units.Quantity or None
+            Effective data rate (Mbit/s) for that station, falling back to the observation data rate
+            (None if no data rate has been set).
+        """
+        return self._station_datarates.get(codename, self.datarate)
+
+    @property
+    def station_datarates(self) -> dict[str, u.Quantity]:
+        """Returns a copy of the effective data rate per station codename for this observation."""
+        return dict(self._station_datarates)
 
     def _guess_network(self) -> list[str]:
         """Returns the VLBI network that is driving the observations, making a guess given the antennas that are participating and the observing band."""
@@ -722,7 +793,10 @@ class Observation(object):
         if not new_bitsampling.unit.is_equivalent(u.bit):
             raise ValueError(f"Unexpected unit for new_bitsampling. Bits spected but {new_bitsampling} received.")
 
-        self._bitsampling = new_bitsampling
+        with self._mutex:
+            self._bitsampling = new_bitsampling
+            self._rms = None
+            self._baseline_sensitivity = None
 
     @property
     def stations(self) -> Stations:
@@ -742,6 +816,7 @@ class Observation(object):
         assert isinstance(new_stations, Stations)
         with self._mutex:
             self._stations = new_stations
+            self._refresh_station_datarates()
             self._elevations = None
             self._altaz = None
             self._is_visible = None
@@ -791,18 +866,24 @@ class Observation(object):
     def elevations(self) -> dict[str, dict[str, coord.angles.Latitude]]:
         """Returns the elevation of the target source for each antenna at each time.
 
+        Computed with the vectorized ERFA path (`_batch_altaz_erfa`; no refraction), which agrees with
+        the astropy AltAz frame used by `altaz()` to well below 0.01 deg.
+
         Returns
         -------
         dict[str, dict[str, coord.angles.Latitude]]
-            Dictionary mapping source names to station names to elevation values.
+            Dictionary mapping source names to station codenames to elevation values (one per time).
         """
         if not self.sources():
             return {}
 
         with self._mutex:
             if self._elevations is None:
-                self._elevations = {src: {ant: altaz.alt for ant, altaz in srcd.items()}
-                                    for src, srcd in self.altaz().items()}
+                all_sources = self.sources()
+                positions = Observation._batch_altaz_erfa(list(self.stations), all_sources, self.times)
+                self._elevations = {src.name: {codename: coord.Latitude(pos[0][:, s_idx]*u.deg)
+                                               for codename, pos in positions.items()}
+                                    for s_idx, src in enumerate(all_sources)}
 
         return self._elevations
 
@@ -875,8 +956,56 @@ class Observation(object):
                                                                                     ant_src_t[1])
 
     @staticmethod
+    def _batch_altaz_erfa(stations: list[Station], sources_list: list[Source],
+                          times: Time) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        """Computes topocentric elevation, azimuth and hour angle for all station-source pairs with ERFA.
+
+        The geocentric CIRS place of every source is computed once for all times (erfa.apci13 + erfa.atciq,
+        vectorized). Then, per station, the local hour angle is ha = ERA + lon - RA_CIRS and the horizontal
+        coordinates come from erfa.hd2ae. Assumptions (same as the previous erfa.apco13-based code):
+        no atmospheric refraction, no polar motion. Diurnal aberration and parallax are neglected
+        (differences < 1 arcsec).
+
+        Parameters
+        ----------
+        stations : list[Station]
+            List of stations.
+        sources_list : list[Source]
+            List of sources.
+        times : Time
+            Times at which the positions are computed.
+
+        Returns
+        -------
+        dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]
+            Station codename -> (elevation_deg, azimuth_deg, hour_angle_hours), each with shape
+            (n_times, n_sources). Hour angle is wrapped to [0, 24) h. Empty dict if there are no sources.
+        """
+        if len(sources_list) == 0:
+            return {}
+
+        ra_rad = np.array([s.coord.ra.rad for s in sources_list], dtype=np.float64)
+        dec_rad = np.array([s.coord.dec.rad for s in sources_list], dtype=np.float64)
+        tt = times.tt
+        astrom, _eo = erfa.apci13(np.atleast_1d(tt.jd1), np.atleast_1d(tt.jd2))
+        ri, di = erfa.atciq(ra_rad[np.newaxis, :], dec_rad[np.newaxis, :], 0.0, 0.0, 0.0, 0.0,
+                            astrom[:, np.newaxis])  # shape (n_times, n_sources)
+        ut1 = times.ut1
+        era = erfa.era00(np.atleast_1d(ut1.jd1), np.atleast_1d(ut1.jd2))[:, np.newaxis]
+
+        result: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+        for station in stations:
+            loc = station.location
+            ha_rad = era + loc.lon.rad - ri
+            az_rad, el_rad = erfa.hd2ae(ha_rad, di, loc.lat.rad)
+            ha_hours = (np.degrees(ha_rad) / 15.0) % 24.0
+            result[station.codename] = (np.degrees(el_rad), np.degrees(az_rad), ha_hours)
+
+        return result
+
+    @staticmethod
     def _batch_visibility_erfa(stations: list[Station], sources_list: list[Source],
-                             times: Time) -> dict[str, dict[str, np.ndarray]]:
+                               times: Time) -> dict[str, dict[str, np.ndarray]]:
         """Computes visibility using ERFA for all station-source pairs.
 
         Parameters
@@ -893,38 +1022,14 @@ class Observation(object):
         dict[str, dict[str, np.ndarray]]
             Dictionary mapping source names to station names to boolean visibility arrays.
         """
-        n_sources = len(sources_list)
-        if n_sources == 0:
+        if len(sources_list) == 0:
             return {}
 
-        ra_rad = np.array([s.coord.ra.rad for s in sources_list], dtype=np.float64)
-        dec_rad = np.array([s.coord.dec.rad for s in sources_list], dtype=np.float64)
-        dec_deg = np.degrees(dec_rad)
-
-        utc1, utc2 = times.utc.jd1, times.utc.jd2
-        dut1 = times.delta_ut1_utc
-        n_times = len(times)
-
+        dec_deg = np.array([s.coord.dec.deg for s in sources_list], dtype=np.float64)
+        positions = Observation._batch_altaz_erfa(stations, sources_list, times)
         result: dict[str, dict[str, np.ndarray]] = {src.name: {} for src in sources_list}
-
         for station in stations:
-            loc = station.location
-            lon_rad, lat_rad = loc.lon.rad, loc.lat.rad
-            height_m = loc.height.to(u.m).value
-
-            # Compute ERFA astrometry params once per timestep, transform all sources vectorized
-            elev = np.empty((n_times, n_sources))
-            az = np.empty((n_times, n_sources))
-            ha_hours = np.empty((n_times, n_sources))
-            for t in range(n_times):
-                astrom, eo = erfa.apco13(utc1[t], utc2[t], dut1[t], lon_rad, lat_rad, height_m,
-                                         0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-                ri, di = erfa.atciq(ra_rad, dec_rad, 0.0, 0.0, 0.0, 0.0, astrom)
-                az_t, zen_t, ha_t, _dec, _ra = erfa.atioq(ri, di, astrom)
-                elev[t] = np.degrees(np.pi / 2.0 - zen_t)
-                az[t] = np.degrees(az_t)
-                ha_hours[t] = (np.degrees(ha_t) / 15.0) % 24.0
-
+            elev, az, ha_hours = positions[station.codename]
             # Apply mount constraints
             mount = station.mount
             if mount.mount_type == MountType.ALTAZ:
@@ -953,52 +1058,60 @@ class Observation(object):
 
         return result
 
+    def _compute_visibility(self, times: Time) -> tuple[dict[str, dict[str, np.ndarray]],
+                                                        dict[str, dict[str, np.ndarray]]]:
+        """Computes per-scanblock and per-source visibility for the given times (no caching).
+
+        Parameters
+        ----------
+        times : Time
+            Times at which visibility is evaluated.
+
+        Returns
+        -------
+        tuple
+            (is_visible, per_source_visible): scanblock name -> station codename -> bool array of len(times),
+            and source name -> station codename -> bool array of len(times).
+        """
+        n_times = times.size
+        is_visible = {ablockname: {ant.codename: np.full(n_times, True, dtype=bool) for ant in self.stations}
+                      for ablockname in self.scans}
+        per_source_visible: dict[str, dict[str, np.ndarray]] = {}
+        batch_vis = Observation._batch_visibility_erfa(list(self.stations), self.sources(), times)
+        for source_name, station_vis in batch_vis.items():
+            per_source_visible[source_name] = station_vis
+            for station_codename, visible in station_vis.items():
+                for ablockname, ablock in self.scans.items():
+                    if source_name in ablock.sourcenames():
+                        is_visible[ablockname][station_codename] &= visible
+
+        return is_visible, per_source_visible
+
     @enforce_types
     def is_observable(self, times: Optional[Time] = None) -> dict[str, dict[str, list[bool]]]:
-        """Returns if each source is observable by each station at each time.
+        """Returns whenever each ScanBlock can be observed by each station at each time.
 
         Parameters
         ----------
         times : Time, optional
-            Times to check. If None, uses observation times.
+            Times to check. If None, uses the observation times and the result is cached.
+            If given, the result is computed for those times and NOT cached.
 
         Returns
         -------
-        dict[str, dict[str, list[bool]]]
-            Dictionary mapping source names to station names to boolean visibility lists.
-        """
-        """Returns whenever the given ScanBlock can be observed by each station for each time
-        of the observation. If times are not provided, then it will use the observation times.
-
-        Returns
-            is_visible : dict
-                Dictionary where they keys are the station code names, and the values will be
-                a dictionary with the sources names as keys, and a tuple containing
-                a numpy array with the indexes in the `Observation.times`
-                array with the times where the target source can be observed by the station.
-
-                In this sense, you can e.g. call obs.times[obs.is_visible[a_station_codename]]
-                to get such times.
+        dict[str, dict[str, np.ndarray]]
+            Scanblock name -> station codename -> boolean array (one value per time).
+            E.g. obs.times[obs.is_observable()[blockname][codename]] gives the observable times.
         """
         if not self.sources():
             return {}
 
+        if times is not None:
+            return self._compute_visibility(times)[0]
+
         with self._mutex:
             if self._is_visible is None:
-                self._is_visible = {ablockname: {ant.codename: np.full(len(self.times), True, dtype=bool)
-                                    for ant in self.stations} for ablockname in self.scans}
-                self._per_source_visible = {}
-
-                check_times = times if times is not None else self.times
-                batch_vis = Observation._batch_visibility_erfa(
-                    list(self.stations), self.sources(), check_times)
-
-                for source_name, station_vis in batch_vis.items():
-                    self._per_source_visible[source_name] = station_vis
-                    for station_codename, visible in station_vis.items():
-                        for ablockname, ablock in self.scans.items():
-                            if source_name in ablock.sourcenames():
-                                self._is_visible[ablockname][station_codename] &= visible
+                self._is_visible, self._per_source_visible = self._compute_visibility(self.times)
 
             return self._is_visible
 
@@ -1134,9 +1247,11 @@ class Observation(object):
         dict[str, list[Time]]
             Dictionary mapping source names to lists of observable time ranges.
         """
-        if self.sources is None:
+        if not self.sources():
             raise ValueError("The sources have not been initialized")
 
+        # Only the default 24-h reference day (no fixed times, no explicit range) wraps around midnight.
+        can_wrap = within_time_range is None and not self.fixed_time
         if within_time_range is None:
             within_time_range = self.times
         else:
@@ -1164,9 +1279,10 @@ class Observation(object):
             starts = np.where(transitions == 1)[0]
             ends = np.where(transitions == -1)[0]
             result[blockname] = list(zip(within_time_range[starts], within_time_range[ends - 1]))
-            # It may happen that the first and last times are contiguous
-            if len(result[blockname]) > 1 and \
-               np.abs(result[blockname][0][0].mjd - result[blockname][-1][1].mjd) % 1 < 0.01:
+            # On the reference day, a window touching the start and one touching the end are the same
+            # window crossing midnight: merge them into (last start, first end + 1 day).
+            n_times = len(visible_times)
+            if can_wrap and len(starts) > 1 and starts[0] == 0 and ends[-1] == n_times:
                 result[blockname][-1] = (result[blockname][-1][0], result[blockname][0][1] + 1*u.day)
                 result[blockname] = result[blockname][1:]
 
@@ -1352,8 +1468,8 @@ class Observation(object):
             # Single antenna case: use single-dish sensitivity formula
             if len(valid_stations) == 1:
                 sefd = valid_stations[0].sefd(self.band).to(u.Jy).value
-                bandwidth = (valid_stations[0].datarate.to(u.bit/u.s).value if valid_stations[0].datarate is not None
-                             else self.datarate.to(u.bit/u.s).value) / (2 * self.bitsampling.to(u.bit).value)
+                bandwidth = self.station_datarate(valid_stations[0].codename).to(u.bit/u.s).value / \
+                    (2 * self.bitsampling.to(u.bit).value)
                 if not self.fixed_time:
                     dt = self.duration.to(u.s).value * self.ontarget_fraction
                 else:
@@ -1362,8 +1478,8 @@ class Observation(object):
                 return self._rms
 
             sefds = np.array([stat.sefd(self.band).to(u.Jy).value for stat in valid_stations])
-            bandwidths = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
-                                  else self.datarate.to(u.bit/u.s).value for s in valid_stations]) / \
+            bandwidths = np.array([self.station_datarate(s.codename).to(u.bit/u.s).value
+                                   for s in valid_stations]) / \
                 (2 * self.bitsampling.to(u.bit).value)  # In Hz
             bandwidth_min = np.minimum.outer(bandwidths, bandwidths)
             pol = min(self.polarizations.value, 2)
@@ -1478,8 +1594,10 @@ class Observation(object):
             return None
 
         sefds = np.array([stat.sefd(self.band).to(u.Jy).value for stat in valid_stations])
-        datarates = np.array([s.datarate.to(u.bit/u.s).value if s.datarate is not None
-                              else self.datarate.to(u.bit/u.s).value for s in valid_stations])
+        if self.datarate is None:
+            return None
+
+        datarates = np.array([self.station_datarate(s.codename).to(u.bit/u.s).value for s in valid_stations])
         datarates_min = np.minimum.outer(datarates, datarates)
         sens = (1/0.7)*np.sqrt(np.outer(sefds, sefds)) / \
                                 np.sqrt(datarates_min/(min(self.polarizations.value, 2) * \
@@ -1613,9 +1731,12 @@ class Observation(object):
         Returns
         -------
         dict[str, dict[str, u.Quantity]]
-            Dictionary mapping source names to beam parameters (bmaj, bmin, bpa).
-        """
-        """Estimates the resulting synthesized beam of the observations based on
+            Dictionary mapping source names to beam parameters ('bmaj', 'bmin', 'pa').
+            Sources with no (u,v) coverage (never visible by any baseline) are omitted.
+
+        Notes
+        -----
+        Estimates the resulting synthesized beam of the observations based on
         the expected (u,v) coverage per source.
 
         This is just an estimation made by a ellipse fitting to the (u, v) coverage,
@@ -1627,9 +1748,6 @@ class Observation(object):
         different synthesized beams. The provided value here does not assumed any weighting
         in the data. A natural weighting would thus likely provide a slightly larger beam,
         while an uniform weighting would provide a slightly smaller beam.
-
-        Returns a dict with the following keys: 'bmaj', 'bmin', 'pa' (major axis, minor axis,
-        and position angle).
         The three values are astropy.units.Quantity objects with units of angles.
         """
         with self._mutex_uv:
@@ -1655,6 +1773,10 @@ class Observation(object):
 
             uvvis = self.get_uv_values()
             for src, uv in uvvis.items():
+                # Sources with no (u,v) coverage (never visible by any baseline) have no beam: skip them.
+                if uv.shape[0] == 0:
+                    continue
+
                 radii = np.linalg.norm(uv, axis=1)
                 theta = np.arctan2(uv[:, 1], uv[:, 0])
                 max_idx = np.argmax(radii)
@@ -1809,7 +1931,7 @@ class Observation(object):
         for src in all_sources:
             ra_str = src.coord.ra.to_string(unit=u.hourangle, sep=':', precision=4, pad=True)
             dec_str = src.coord.dec.to_string(unit=u.degree, sep=':', precision=3, pad=True, alwayssign=True)
-            sources_lines.append(f"  source='{src.name}' ra={ra_str} dec={dec_str} equinox='J2000' /")
+            sources_lines.append(f"  source='{_sched_safe(src.name)}' ra={ra_str} dec={dec_str} equinox='J2000' /")
 
         sources_str = '\n'.join(sources_lines)
 
@@ -1826,13 +1948,15 @@ class Observation(object):
                 for scan in sched_block.scans:
                     dur_min = int(scan.duration.to(u.min).value)
                     dur_sec = int((scan.duration.to(u.s).value) % 60)
-                    scans_lines.append(f"source='{scan.source.name}' gap=0:00 dur={dur_min}:{dur_sec:02d} /")
+                    scans_lines.append(f"source='{_sched_safe(scan.source.name)}' gap=0:00 "
+                                       f"dur={dur_min}:{dur_sec:02d} /")
         else:
             for block_name, block in self.scans.items():
                 for scan in block.scans:
                     dur_min = int(scan.duration.to(u.min).value)
                     dur_sec = int((scan.duration.to(u.s).value) % 60)
-                    scans_lines.append(f"source='{scan.source.name}' gap=0:00 dur={dur_min}:{dur_sec:02d} /")
+                    scans_lines.append(f"source='{_sched_safe(scan.source.name)}' gap=0:00 "
+                                       f"dur={dur_min}:{dur_sec:02d} /")
 
         scans_str = '\n'.join(scans_lines)
 
@@ -1843,29 +1967,30 @@ class Observation(object):
             if self.band and (self.datarate is not None) else "VLBI"
 
         replacements = {
-            '{GENERATION_DATE}': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
-            '{EXPERIMENT_CODE}': experiment_code.upper(),
-            '{PI_NAME}': pi_name,
-            '{PI_EMAIL}': email,
-            '{PI_INSTITUTE}': pi_institute,
-            '{OBS_MODE}': obs_mode,
-            '{COMMENTS}': comments,
-            '{CORAVG}': str(int(self.inttime.to(u.s).value)),
-            '{CORCHAN}': str(self.channels) if self.channels else '32',
-            '{CORNANT}': str(len(self.stations)),
-            '{STATIONS_CATALOG}': 'none',
-            '{SOURCES}': sources_str,
-            '{SETUP}': setup_str,
-            '{YEAR}': str(self.times[0].datetime.year),
-            '{MONTH}': str(self.times[0].datetime.month),
-            '{DAY}': str(self.times[0].datetime.day),
-            '{START_TIME}': self.times[0].datetime.strftime('%H:%M:%S'),
-            '{STATIONS}': stations_list,
-            '{SCANS}': scans_str,
+            'GENERATION_DATE': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'EXPERIMENT_CODE': _sched_safe(experiment_code.upper()),
+            'PI_NAME': _sched_safe(pi_name),
+            'PI_EMAIL': _sched_safe(email),
+            'PI_INSTITUTE': _sched_safe(pi_institute),
+            'OBS_MODE': obs_mode,
+            'COMMENTS': _sched_safe(comments),
+            'CORAVG': str(int(self.inttime.to(u.s).value)),
+            'CORCHAN': str(self.channels) if self.channels else '32',
+            'CORNANT': str(len(self.stations)),
+            'STATIONS_CATALOG': 'none',
+            'SOURCES': sources_str,
+            'SETUP': setup_str,
+            'YEAR': str(self.times[0].datetime.year),
+            'MONTH': str(self.times[0].datetime.month),
+            'DAY': str(self.times[0].datetime.day),
+            'START_TIME': self.times[0].datetime.strftime('%H:%M:%S'),
+            'STATIONS': stations_list,
+            'SCANS': scans_str,
         }
 
-        key_content = template
-        for placeholder, value in replacements.items():
-            key_content = key_content.replace(placeholder, value)
+        # Single pass: values inserted are never re-scanned, so a user value like '{SCANS}' stays literal.
+        def _replace_placeholder(match: re.Match) -> str:
+            """Returns the replacement for a '{KEY}' placeholder, or the placeholder itself if unknown."""
+            return str(replacements.get(match.group(1), match.group(0)))
 
-        return key_content
+        return re.sub(r'\{([A-Za-z_][A-Za-z0-9_]*)\}', _replace_placeholder, template)

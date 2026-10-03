@@ -1,7 +1,9 @@
 from __future__ import annotations
 import os
+import re
 import sys
 import argparse
+from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 from datetime import datetime as dt
 from importlib.metadata import version
@@ -12,6 +14,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 from rich.live import Live
+from rich.markup import escape
 from rich_argparse import RawTextRichHelpFormatter
 
 if TYPE_CHECKING:
@@ -29,6 +32,25 @@ if TYPE_CHECKING:
 _HEAVY_LOADED = False
 _HEAVY_NAMES = ('np', 'u', 'Time', 'SkyCoord', 'stations', 'obs', 'sources',
                 'calibrators', 'freqsetups', 'VLBIObs', 'optimal_units')
+
+# Server-safety bounds for the observation duration accepted by `main` (also used by the web GUI).
+MAX_DURATION_HOURS = 96.0
+
+# Valid SCHED experiment codes (derived from the --sched filename).
+_EXPERIMENT_CODE_PATTERN = r'[A-Za-z0-9_]+'
+
+# Help text shared by every top-level `planobs` parser (rich markup: literal brackets are escaped).
+_MODES_HELP = ("EVN Observation Planner\n\n"
+               "Available modes:\n"
+               "  planobs \\[options]                    - Plan VLBI observations (default mode)\n"
+               "  planobs fringefinders \\[options]      - Find fringe finder sources\n"
+               "  planobs phasecals \\[options] TARGET   - Find phase calibrator sources\n"
+               "  planobs source \\[options] SOURCE      - Get information about a specific source\n"
+               "  planobs antenna \\[options] \\[ANTENNA]  - Antenna information (alias: ant)\n"
+               "  planobs server \\[options]             - Start the web server\n\n"
+               "Global options:\n"
+               "  --get-key-template FILENAME          - Copy the bundled SCHED key template\n\n"
+               "Use 'planobs <command> --help' for detailed help on each mode.")
 
 
 class PagerHelpAction(argparse.Action):
@@ -108,7 +130,7 @@ def copy_key_template(destination: str) -> None:
     from pathlib import Path
     template_path = resources.files('vlbiplanobs.data').joinpath('key_file.key.template')
     Path(destination).write_text(Path(template_path).read_text(), encoding='utf-8')
-    rprint(f"[green]Template written to: {destination}[/green]")
+    rprint(f"[green]Template written to: {escape(destination)}[/green]")
 
 
 def _maybe_handle_get_key_template() -> bool:
@@ -192,48 +214,45 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
         except KeyError:
             unknown_networks: list = [n for n in list_networks if n not in obs._NETWORKS]
             n_networks: int = len(unknown_networks)
-            rprint(f"[bold red]The network{'s' if n_networks > 1 else ''} {', '.join(unknown_networks)}"
+            rprint(f"[bold red]The network{'s' if n_networks > 1 else ''} {escape(', '.join(unknown_networks))}"
                    f" {'are' if n_networks > 1 else 'is'} not known.[/bold red]")
             raise ValueError(f"Network ({unknown_networks}) not known")
 
     if list_stations:
-        try:
-            for s in list_stations:
+        for s in list_stations:
+            try:
+                # Try case-sensitive lookup first
+                a_station = obs._STATIONS[s.strip()].codename
+            except KeyError:
                 try:
-                    # Try case-sensitive lookup first
-                    a_station = obs._STATIONS[s.strip()].codename
-                except KeyError:
-                    try:
-                        # Try case-insensitive lookup by searching through all stations
-                        s_upper = s.strip().upper()
-                        found_station = None
-                        for codename in obs._STATIONS.station_codenames:
-                            if codename.upper() == s_upper:
-                                found_station = obs._STATIONS[codename].codename
+                    # Try case-insensitive lookup by searching through all stations
+                    s_upper = s.strip().upper()
+                    found_station = None
+                    for codename in obs._STATIONS.station_codenames:
+                        if codename.upper() == s_upper:
+                            found_station = obs._STATIONS[codename].codename
+                            break
+
+                    if found_station is None:
+                        # Also try full station names (case insensitive)
+                        for name in obs._STATIONS.station_names:
+                            if name.upper() == s_upper:
+                                found_station = obs._STATIONS[name].codename
                                 break
 
-                        if found_station is None:
-                            # Also try full station names (case insensitive)
-                            for name in obs._STATIONS.station_names:
-                                if name.upper() == s_upper:
-                                    found_station = obs._STATIONS[name].codename
-                                    break
+                    if found_station is None:
+                        raise KeyError(f"Station {s} not found")
 
-                        if found_station is None:
-                            raise KeyError(f"Station {s} not found")
+                    a_station = found_station
+                except KeyError:
+                    rprint(f"[bold red]The station {escape(s)} is not known.[/bold red]")
+                    raise ValueError(f"Station ({s}) not known.")
 
-                        a_station = found_station
-                    except KeyError:
-                        rprint(f"[bold red]The station {s} is not known.[/bold red]")
-                        raise ValueError(f"Station ({s}) not known.")
-
-                if a_station not in selected:
-                    if band in obs._STATIONS[a_station].bands:
-                        selected.append(a_station)
-                    elif a_station not in no_band:
-                        no_band[a_station] = 'no band'
-        except ValueError:
-            raise
+            if a_station not in selected:
+                if band in obs._STATIONS[a_station].bands:
+                    selected.append(a_station)
+                elif a_station not in no_band:
+                    no_band[a_station] = 'no band'
 
     final_stations = obs._STATIONS.filter_antennas(selected)
     if not final_stations:
@@ -243,10 +262,28 @@ def get_stations(band: str, list_networks: Optional[list[str]] = None,
     return final_stations, no_band
 
 
+def _rfc_catalog_for_band(band: str) -> calibrators.RFCCatalog:
+    """Build the full RFC calibrator catalog (no flux cut) for the RFC band matching an observing band.
+
+    Parameters
+    ----------
+    band : str
+        Observing band (e.g. '6cm').
+
+    Returns
+    -------
+    RFCCatalog
+        Catalog to be reused across `_resolve_calibrators` calls for the same band.
+    """
+    _load_heavy()
+    return calibrators.RFCCatalog(min_flux=0.0 * u.Jy, band=calibrators._wavelength_to_rfc_band(band))
+
+
 def _resolve_calibrators(names: list[str], target: sources.Source, band: str,
                          source_type: sources.SourceType,
                          auto_func: str = 'phasecal',
-                         phase_cal_ref: Optional[sources.Source] = None) -> list[sources.Source]:
+                         phase_cal_ref: Optional[sources.Source] = None,
+                         catalog: Optional[calibrators.RFCCatalog] = None) -> list[sources.Source]:
     """Resolve calibrator source names or auto-select them from the RFC catalog.
 
     Parameters
@@ -263,16 +300,20 @@ def _resolve_calibrators(names: list[str], target: sources.Source, band: str,
         'phasecal' or 'check' — selects which auto-selection algorithm to use.
     phase_cal_ref : Source or None
         Required when auto_func='check'; the already-selected phase calibrator.
+    catalog : RFCCatalog or None
+        Pre-built catalog from `_rfc_catalog_for_band(band)`. If None, it is built here.
 
     Returns
     -------
     list[Source]
-        Resolved Source objects with the given source_type assigned.
+        Resolved Source objects with the given source_type assigned. Names that cannot be
+        resolved (RFC catalog nor online services) are reported and skipped.
     """
     _load_heavy()
+    from astropy.coordinates.name_resolve import NameResolveError
     resolved: list[sources.Source] = []
     rfc_band = calibrators._wavelength_to_rfc_band(band)
-    cat = calibrators.RFCCatalog(min_flux=0.0 * u.Jy, band=rfc_band)
+    cat = catalog if catalog is not None else _rfc_catalog_for_band(band)
 
     if not names:
         # Auto-select
@@ -288,14 +329,14 @@ def _resolve_calibrators(names: list[str], target: sources.Source, band: str,
             src: calibrators.CalibratorSource | None = calibrators.select_check_source(target, phase_cal_ref, band, catalog=cat)
 
         if src is not None:
-            rprint(f"[green]  → Selected {src.name} (sep "
+            rprint(f"[green]  → Selected {escape(src.name)} (sep "
                    f"{target.coord.separation(src.coord).deg:.2f}°, "
                    f"unresolved {src.unresolved_flux(rfc_band):.2f} Jy)[/green]")
             resolved.append(sources.Source(name=src.name, coordinates=src.coord,
                                            source_type=source_type, other_names=[src.ivsname]))
         else:
             rprint(f"[bold red]Could not auto-select a {source_type.name.lower()} "
-                   f"near {target.name}.[/bold red]")
+                   f"near {escape(target.name)}.[/bold red]")
     else:
         for sname in names:
             parsed_name, parsed_coord = sources.Source.parse_source_spec(sname)
@@ -315,9 +356,9 @@ def _resolve_calibrators(names: list[str], target: sources.Source, band: str,
                 else:
                     try:
                         resolved.append(sources.Source.source_from_str(sname, source_type=source_type))
-                    except ValueError:
-                        rprint(f"[bold red]Source '{sname}' not found in RFC catalog or external "
-                               f"services — skipping.[/bold red]")
+                    except (ValueError, NameResolveError) as err:
+                        rprint(f"[bold red]Source '{escape(sname)}' not found in RFC catalog or external "
+                               f"services — skipping ({escape(str(err))}).[/bold red]")
 
     return resolved
 
@@ -368,6 +409,7 @@ def main(band: str, networks: Optional[list[str]] = None,
         Start of the observation, of Time class and in UTC.
     duration : astropy.units.Quantity, optional
         Total duration of the observation, as a Quantity (e.g. 1.5*u.hour).
+        Must be > 0 and <= MAX_DURATION_HOURS (96 h).
     datarate : astropy.units.Quantity, optional
         Maximum data rate of the observation (e.g. 4*Gbit/s).
     ontarget : float, optional
@@ -397,6 +439,12 @@ def main(band: str, networks: Optional[list[str]] = None,
     -------
     VLBIObs
         A VLBI Observation object with all defined parameters.
+
+    Raises
+    ------
+    ValueError
+        If no network/stations are given, the start time is not UTC, the duration is out of
+        bounds, a target cannot be resolved, or no valid station is selected.
     """
     _load_heavy()
     if inttime is None:
@@ -425,67 +473,67 @@ def main(band: str, networks: Optional[list[str]] = None,
     else:
         source_catalog = None
 
+    if duration is not None:
+        assert isinstance(duration, u.Quantity)
+        duration_hours = duration.to(u.h).value
+        if not 0 < duration_hours <= MAX_DURATION_HOURS:
+            raise ValueError(f"The observation duration must be > 0 and <= {MAX_DURATION_HOURS:g} hours "
+                             f"(got {duration_hours:g} h).")
+
     src2observe: dict[str, sources.ScanBlock] = {}
+    rfc_catalog: Optional[calibrators.RFCCatalog] = None
     if targets is not None:
+        from astropy.coordinates.name_resolve import NameResolveError
         for target in targets:
             if (source_catalog is not None) and (target in source_catalog.blocknames):
                 src2observe[target] = source_catalog[target]
-            else:
-                try:
-                    a_source = sources.Source.source_from_str(target)
-                    scans_for_block: list[sources.Scan] = []
+                continue
 
-                    # Resolve phase calibrator(s)
-                    if phasecal_names is not None:
-                        pc_sources = _resolve_calibrators(
-                            phasecal_names, a_source, band,
-                            sources.SourceType.PHASECAL, auto_func='phasecal')
-                        pc_dur = 1.5 * u.min
-                        for pc in pc_sources:
-                            scans_for_block.append(sources.Scan(pc, duration=pc_dur))
+            try:
+                a_source = sources.Source.source_from_str(target)
+            except (ValueError, NameResolveError) as err:
+                raise ValueError(
+                    f"Source '{target}' not found: not in the provided catalog, not in the "
+                    "RFC calibrator catalog, and could not be resolved online "
+                    "(SIMBAD/NED/VizieR). Check the source name or add it to your catalog.") from err
 
-                    # Resolve check source(s)
-                    if check_source_names is not None:
-                        # Need a phase cal reference for geometry; use first resolved pc or target
-                        pc_ref = (scans_for_block[0].source
-                                  if scans_for_block else a_source)
-                        cs_sources = _resolve_calibrators(
-                            check_source_names, a_source, band,
-                            sources.SourceType.CHECKSOURCE, auto_func='check',
-                            phase_cal_ref=pc_ref)
-                        cs_dur = 1.5 * u.min
-                        for cs in cs_sources:
-                            scans_for_block.append(
-                                sources.Scan(cs, duration=cs_dur, every=4))
+            scans_for_block: list[sources.Scan] = []
+            if (phasecal_names is not None or check_source_names is not None) and rfc_catalog is None:
+                rfc_catalog = _rfc_catalog_for_band(band)
 
-                    # Target scan
-                    target_dur = freqsetups.phaseref_cycle(band)
-                    if target_dur is not None and scans_for_block:
-                        # Subtract phase-cal time from cycle to get target time
-                        pc_time = sum((s.duration for s in scans_for_block
-                                       if s.source.type == sources.SourceType.PHASECAL),
-                                      start=0.0 * u.min)
-                        target_dur = max(target_dur - pc_time, 1.0 * u.min)
-                    elif target_dur is None:
-                        target_dur = 5.0 * u.min
-                    scans_for_block.append(
-                        sources.Scan(a_source, duration=target_dur))
+            # Resolve phase calibrator(s)
+            if phasecal_names is not None:
+                pc_sources = _resolve_calibrators(phasecal_names, a_source, band, sources.SourceType.PHASECAL,
+                                                  auto_func='phasecal', catalog=rfc_catalog)
+                for pc in pc_sources:
+                    scans_for_block.append(sources.Scan(pc, duration=1.5 * u.min))
 
-                    src2observe[a_source.name] = sources.ScanBlock(scans_for_block)
-                except Exception:
-                    raise ValueError(
-                        f"Source '{target}' not found: not in the provided catalog, not in the "
-                        "RFC calibrator catalog, and could not be resolved online "
-                        "(SIMBAD/NED/VizieR). Check the source name or add it to your catalog.")
-    elif source_catalog is None:
-        # rprint("[bold red]Either a source catalog file or a list of targets must be "
-        #        "provided (or both).[/bold red]")
-        # TODO: no necesarily. It can provide the thermal noises for an unknown source
-        # sys.exit(1)
-        pass
-    else:
+            # Resolve check source(s)
+            if check_source_names is not None:
+                # Need a phase cal reference for geometry; use first resolved pc or target
+                pc_ref = scans_for_block[0].source if scans_for_block else a_source
+                cs_sources = _resolve_calibrators(check_source_names, a_source, band, sources.SourceType.CHECKSOURCE,
+                                                  auto_func='check', phase_cal_ref=pc_ref, catalog=rfc_catalog)
+                for cs in cs_sources:
+                    scans_for_block.append(sources.Scan(cs, duration=1.5 * u.min, every=4))
+
+            # Target scan
+            target_dur = freqsetups.phaseref_cycle(band)
+            if target_dur is not None and scans_for_block:
+                # Subtract phase-cal time from cycle to get target time
+                pc_time = sum((s.duration for s in scans_for_block if s.source.type == sources.SourceType.PHASECAL),
+                              start=0.0 * u.min)
+                target_dur = max(target_dur - pc_time, 1.0 * u.min)
+            elif target_dur is None:
+                target_dur = 5.0 * u.min
+            scans_for_block.append(sources.Scan(a_source, duration=target_dur))
+            src2observe[a_source.name] = sources.ScanBlock(scans_for_block)
+    elif source_catalog is not None:
         src2observe = source_catalog.blocks
+    # No targets and no catalog: valid (e.g. thermal noise for an unspecified source).
 
+    cycle = freqsetups.phaseref_cycle(band)
+    default_target_duration = cycle - 1.5*u.min if cycle is not None else 5.0*u.min
     for target in src2observe:
         for ascan in src2observe[target]:
             if ascan.duration is None:
@@ -501,16 +549,11 @@ def main(band: str, networks: Optional[list[str]] = None,
                     case sources.SourceType.PULSAR:
                         ascan.duration = 5.0*u.min
                     case _:
-                        ascan.duration = freqsetups.phaseref_cycle(band) - 1.5*u.min \
-                            if freqsetups.phaseref_cycle(band) is not None else 5.0*u.min
+                        ascan.duration = default_target_duration
 
-    # I see a difference between different versions of Python (maybe astropy)?!!
-    if duration is None:
-        duration_val = None
-    else:
-        assert isinstance(duration, u.Quantity)
-        duration_val = duration.to(u.min).value
-
+    duration_val = duration.to(u.min).value if duration is not None else None
+    # Validate networks/stations first: unknown names raise a clean ValueError here.
+    selected_stations, excluded_stations = get_stations(band, networks, stations)
     if datarate is None:
         if networks is not None:
             network_station_codes = []
@@ -519,29 +562,25 @@ def main(band: str, networks: Optional[list[str]] = None,
                     for s in obs._NETWORKS[n].station_codenames:
                         if s not in network_station_codes:
                             network_station_codes.append(s)
-            filtered_stations = obs._STATIONS.filter_antennas(
-                network_station_codes + (stations or [])
-            )
+            filtered_stations = obs._STATIONS.filter_antennas(network_station_codes + (stations or []))
         else:
             filtered_stations = obs._STATIONS.filter_antennas(stations or [])
         if not filtered_stations:
             raise ValueError(f"No valid stations provided. Check station codes: {stations}")
+        # User-given networks keep their order; guessed ones are sorted by best match first.
         obs_networks = networks or obs.Observation.guess_network(band, filtered_stations)
-        for a_network in obs._NETWORKS:
-            if a_network in obs_networks:
-                datarate = obs._NETWORKS[a_network].max_datarate(band)
-                break
+        known_networks = [n for n in obs_networks if n in obs._NETWORKS]
+        if known_networks:
+            datarate = obs._NETWORKS[known_networks[0]].max_datarate(band)
     elif isinstance(datarate, int):
         datarate = datarate*u.Mbit/u.s
         rprint("[yellow]Data rate as an int, assumed Mbit/s, but it should have had units[/yellow]")
     elif isinstance(datarate, str):
         raise ValueError("Data rate is a str! ", datarate)
 
-    selected_stations, excluded_stations = get_stations(band, networks, stations)
     if start_time is not None and duration_val is not None:
-        times_array = np.arange(0, duration_val + 5, 10)*u.min
-        times_array = np.append(times_array, duration_val*u.min)
-        times = start_time + times_array
+        # 10-min sampling plus the exact end time, strictly increasing and without duplicates.
+        times = start_time + np.unique(np.append(np.arange(0, duration_val, 10), duration_val))*u.min
     else:
         times = None
     o = VLBIObs(band, selected_stations, scans=src2observe,
@@ -584,37 +623,21 @@ def cli():
     # Check if this is legacy mode (no subcommand provided)
     if len(sys.argv) == 1:
         # No arguments - show subcommand help
-        parser = argparse.ArgumentParser(description="EVN Observation Planner\n\n"
-                       "Available modes:\n"
-                       "  planobs [options]                          - Plan VLBI observations (default mode)\n"
-                       "  planobs fringefinders [options]            - Find fringe finder sources\n"
-                       "  planobs phasecals [options] SOURCE_NAME    - Find phase calibrator sources\n"
-                       "  planobs source [options] SOURCE_NAME       - Get information about a specific source\n"
-                       "  planobs server [options]                   - Start the web server\n\n"
-                       "Global options:\n"
-                       "  --get-key-template FILENAME                - Copy the bundled SCHED key template\n\n"
-                       "Use 'planobs <command> --help' for detailed help on each mode.",
-            prog="planobs", formatter_class=RawTextRichHelpFormatter)
+        parser = argparse.ArgumentParser(description=_MODES_HELP, prog="planobs",
+                                         formatter_class=RawTextRichHelpFormatter)
         parser.add_argument('-V', '--version', action='version', version=f"%(prog)s {version('vlbiplanobs')}")
         subparsers = parser.add_subparsers(dest='command', help='Available commands')
         subparsers.add_parser('observe', help='Plan VLBI observations (default mode)')
         subparsers.add_parser('fringefinders', help='Find fringe finder sources')
         subparsers.add_parser('phasecals', help='Find phase calibrator sources')
+        subparsers.add_parser('source', help='Get information about a specific source')
+        subparsers.add_parser('antenna', aliases=['ant'], help='Get information about antennas')
         subparsers.add_parser('server', help='Start the web server')
         parser.print_help()
         sys.exit(0)
     elif len(sys.argv) > 1 and sys.argv[1] not in ('observe', 'fringefinders', 'phasecals', 'source', 'server', 'antenna', 'ant'):
         # Legacy mode: treat as observation planning
-        parser = _parser_with_pager(description="EVN Observation Planner\n\n"
-                       "Available modes:\n"
-                       "  planobs [options]              - Plan VLBI observations (default mode)\n"
-                       "  planobs fringefinders [options] - Find fringe finder sources\n"
-                       "  planobs phasecals [options]     - Find phase calibrator sources\n"
-                       "  planobs source [options]        - Get information about a specific source\n"
-                       "  planobs server [options]        - Start the web server\n\n"
-                       "Global options:\n"
-                       "  --get-key-template FILENAME     - Copy the bundled SCHED key template\n\n"
-                       "Use 'planobs <command> --help' for detailed help on each mode.", prog="planobs", formatter_class=RawTextRichHelpFormatter)
+        parser = _parser_with_pager(description=_MODES_HELP, prog="planobs", formatter_class=RawTextRichHelpFormatter)
         parser.add_argument('-V', '--version', action='version', version=f"%(prog)s {version('vlbiplanobs')}")
         add_observation_arguments(parser)
         args = parser.parse_args()
@@ -623,18 +646,7 @@ def cli():
         handle_observation_command(args)
         return
 
-    parser = _parser_with_pager(
-        description="EVN Observation Planner\n\n"
-                   "Available modes:\n"
-                   "  planobs [options]              - Plan VLBI observations (default mode)\n"
-                   "  planobs fringefinders [options] - Find fringe finder sources\n"
-                   "  planobs phasecals [options]     - Find phase calibrator sources\n"
-                   "  planobs source [options]        - Get information about a specific source\n"
-                   "  planobs server [options]        - Start the web server\n\n"
-                   "Global options:\n"
-                   "  --get-key-template FILENAME     - Copy the bundled SCHED key template\n\n"
-                   "Use 'planobs <command> --help' for detailed help on each mode.",
-        prog="planobs", formatter_class=RawTextRichHelpFormatter)
+    parser = _parser_with_pager(description=_MODES_HELP, prog="planobs", formatter_class=RawTextRichHelpFormatter)
     parser.add_argument('-V', '--version', action='version', version=f"%(prog)s {version('vlbiplanobs')}")
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
@@ -729,7 +741,7 @@ def add_observation_arguments(parser):
                               help="Input file containing the personal source catalog.\n"
                               "If provided, then '--targets' will select the block(s) "
                               "defined in\nthis file, ignoring the rest.")
-    source_group.add_argument('--fringefinders', default='2', type=str, nargs='+',
+    source_group.add_argument('--fringefinders', default=['2'], type=str, nargs='+',
                                 help="Defines the fringe finder source(s) to be scheduled "
                                 "in the observation.\nIt can be either a list of source names "
                                 "(as long as they\nappear in AstroGeo), "
@@ -883,22 +895,72 @@ def add_logging_argument(parser_or_group):
                                  "'~/log-planobs.log' is used. Disabled by default.")
 
 
+def _sched_paths(sched: str) -> tuple[str, str]:
+    """Derive the .key output filename and the SCHED experiment code from the --sched argument.
+
+    Parameters
+    ----------
+    sched : str
+        Value given to --sched (with or without the '.key' extension, may include directories).
+
+    Returns
+    -------
+    tuple[str, str]
+        (key_filename, experiment_code). The code is the file stem, uppercased.
+
+    Raises
+    ------
+    ValueError
+        If the file stem is not a valid experiment code (only letters, digits and '_').
+    """
+    key_filename = sched if sched.endswith('.key') else f"{sched}.key"
+    experiment_code = Path(key_filename).stem.upper()
+    if not re.fullmatch(_EXPERIMENT_CODE_PATTERN, experiment_code):
+        raise ValueError(f"Invalid experiment code '{experiment_code}' derived from --sched '{sched}': "
+                         "the file name may only contain letters, digits and '_' (e.g. 'EM179A.key').")
+    return key_filename, experiment_code
+
+
+def _write_key_file(key_filename: str, key_content: str, label: str = 'Schedule') -> None:
+    """Write a SCHED .key file and report it to the user.
+
+    Parameters
+    ----------
+    key_filename : str
+        Destination path (overwritten if it exists).
+    key_content : str
+        Full .key file content.
+    label : str
+        Human-readable label used in the confirmation message (e.g. 'Schedule', 'NME schedule').
+    """
+    with open(key_filename, 'w') as f:
+        f.write(key_content)
+    rprint(f"[green]{label} file written to: {escape(key_filename)}[/green]")
+
+
 def handle_observation_command(args):
-    """Handle the observation planning command."""
+    """Handle the observation planning command (also dispatches the --nme mode).
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed arguments from `add_observation_arguments`. Exits the process with status 1 on
+        invalid input or failures.
+    """
     _load_heavy()
     t0 = dt.now() if args.debug else None
 
     if args.list_networks:
         rprint("[bold]Available VLBI networks:[/bold]")
         for network_name, network in obs._NETWORKS.items():
-            rprint(f"[bold]{network_name}:[/bold] {network.name}")
-            rprint(f"  [dim]Default antennas: {', '.join(network.station_codenames)}[/dim]")
+            rprint(f"[bold]{escape(network_name)}:[/bold] {escape(network.name)}")
+            rprint(f"  [dim]Default antennas: {escape(', '.join(network.station_codenames))}[/dim]")
             rprint(f"  [dim]Observes at: {', '.join(network.observing_bands)}[/dim]")
 
     if args.list_antennas:
         rprint("\n[bold]All available antennas:[/bold]")
         for ant in obs._STATIONS:
-            rprint(f"     {ant.name} ({ant.codename}):  {ant.diameter} in {ant.country}")
+            rprint(f"     {escape(ant.name)} ({escape(ant.codename)}):  {ant.diameter} in {escape(ant.country)}")
             rprint(f"      [dim]Observes at {', '.join(ant.bands)}[/dim]")
 
     if args.list_bands:
@@ -907,7 +969,7 @@ def handle_observation_command(args):
             rprint(f"[bold]{aband}[/bold] [dim]({obs.freqsetups.bands[aband]})[/dim]")
             rprint("[dim]  Observable with [/dim]", end='')
             rprint("[dim]" +
-                   ', '.join([nn for nn, n in obs._NETWORKS.items() if aband in n.observing_bands]) +
+                   escape(', '.join([nn for nn, n in obs._NETWORKS.items() if aband in n.observing_bands])) +
                    "[/dim]")
 
     if args.list_antennas or args.list_bands or args.list_networks:
@@ -916,10 +978,10 @@ def handle_observation_command(args):
     if args.band is None:
         rprint("\n\n[bold red]The observing band (-b/--band) and either '--network' and/or "
                "'--stations' are mandatory.[/bold red]")
-        exit(1)
+        sys.exit(1)
 
     if args.band not in obs.freqsetups.bands:
-        rprint(f"[bold red]The provided band ({args.band}) is not available"
+        rprint(f"[bold red]The provided band ({escape(args.band)}) is not available"
                "[/bold red]\n[dim]These are the available bands: "
                f"{', '.join(obs.freqsetups.bands)}.[/dim]")
         sys.exit(1)
@@ -934,7 +996,16 @@ def handle_observation_command(args):
                " the observation.[/bold red]")
         sys.exit(1)
 
+    if args.data_rate is not None and args.data_rate <= 0:
+        rprint(f"[bold red]The data rate must be a positive number in Mb/s (got {args.data_rate:g}).[/bold red]")
+        sys.exit(1)
 
+    if args.sched is not None:
+        try:
+            _sched_paths(args.sched)
+        except ValueError as error:
+            rprint(f"[bold red]Error: {escape(str(error))}[/bold red]")
+            sys.exit(1)
 
     if getattr(args, 'nme', False):
         handle_nme_command(args)
@@ -950,7 +1021,7 @@ def handle_observation_command(args):
         try:
             validate_report_filename(output_filename)
         except ValueError as error:
-            rprint(f"[bold red]Error: {error}[/bold red]")
+            rprint(f"[bold red]Error: {escape(str(error))}[/bold red]")
             sys.exit(1)
 
     # Resolve phasecal / check-source arguments (None = not requested, [] = auto-select)
@@ -961,17 +1032,14 @@ def handle_observation_command(args):
 
     try:
         o = main(band=args.band, networks=args.network, stations=args.stations,
-            src_catalog=args.source_catalog, station_catalog=args.station_catalog,
-            targets=args.targets, start_time=Time(args.starttime, scale='utc')
-            if args.starttime else None,
-            duration=float(args.duration)*u.hour if args.duration is not None else None,
-            datarate=args.data_rate*u.Mbit/u.s if args.data_rate else None,
-            phasecal_names=phasecal_arg,
-            check_source_names=check_source_arg,
-            fringefinder_spec=fringefinder_arg,
-            polcal=polcal_arg)
+                 src_catalog=args.source_catalog, station_catalog=args.station_catalog,
+                 targets=args.targets, start_time=Time(args.starttime, scale='utc') if args.starttime else None,
+                 duration=float(args.duration)*u.hour if args.duration is not None else None,
+                 datarate=args.data_rate*u.Mbit/u.s if args.data_rate is not None else None,
+                 phasecal_names=phasecal_arg, check_source_names=check_source_arg,
+                 fringefinder_spec=fringefinder_arg, polcal=polcal_arg)
     except ValueError as e:
-        rprint(f"[bold red]Error: {e}[/bold red]")
+        rprint(f"[bold red]Error: {escape(str(e))}[/bold red]")
         sys.exit(1)
 
     o.summary(gui=False, tui=True)
@@ -983,28 +1051,23 @@ def handle_observation_command(args):
         try:
             output_path = write_observation_report(o, output_filename)
         except Exception as error:
-            rprint(f"[bold red]Could not write observation report: {error}[/bold red]")
+            rprint(f"[bold red]Could not write observation report: {escape(str(error))}[/bold red]")
             sys.exit(1)
-        rprint(f"[green]Observation report written to: {output_path}[/green]")
+        rprint(f"[green]Observation report written to: {escape(str(output_path))}[/green]")
 
     if args.sched is not None:
-        key_filename = args.sched if args.sched.endswith('.key') else f"{args.sched}.key"
-        experiment_code = os.path.basename(args.sched).replace('.key', '').upper()
+        key_filename, experiment_code = _sched_paths(args.sched)
         from vlbiplanobs.scheduler import ObservationScheduler
-        scheduler = ObservationScheduler(
-            o, fringefinder_spec=fringefinder_arg, polcal=polcal_arg)
+        scheduler = ObservationScheduler(o, fringefinder_spec=fringefinder_arg, polcal=polcal_arg)
         scheduler.schedule()
         try:
-            key_content = scheduler.generate_key_file(
-                experiment_code=experiment_code,
-                setup_file=getattr(args, 'setup', None),
-                template_path=getattr(args, 'template', None))
+            key_content = scheduler.generate_key_file(experiment_code=experiment_code,
+                                                      setup_file=getattr(args, 'setup', None),
+                                                      template_path=getattr(args, 'template', None))
         except ValueError as error:
-            rprint(f"[bold red]Could not generate schedule file: {error}[/bold red]")
+            rprint(f"[bold red]Could not generate schedule file: {escape(str(error))}[/bold red]")
             sys.exit(1)
-        with open(key_filename, 'w') as f:
-            f.write(key_content)
-        rprint(f"[green]Schedule file written to: {key_filename}[/green]")
+        _write_key_file(key_filename, key_content, label='Schedule')
 
     if args.debug:
         print(f"Execution time: {(dt.now() - t0).total_seconds()} s")
@@ -1046,7 +1109,7 @@ def _print_nme_candidates(scans, sources, counts, times, n_stations: int, band: 
         windows = ', '.join(f"{a.datetime.strftime('%H:%M')}-{b.datetime.strftime('%H:%M')}"
                             for a, b in nme.visible_windows(full[:, i], times))
         flux = nme.source_flux(src, band)
-        table.add_row(src.name, getattr(src, 'ivsname', ''), f"{flux:.2f}" if flux > 0 else "N/A",
+        table.add_row(escape(src.name), escape(getattr(src, 'ivsname', '') or ''), f"{flux:.2f}" if flux > 0 else "N/A",
                       f"{100 * coverage[i]:.0f}%", windows, "*" if src.name in selected else "")
     rprint(table)
     if len(order) > max_lines:
@@ -1063,7 +1126,7 @@ def _print_nme_plan(scans, start: Time, n_stations: int) -> None:
         grab = (start + scan.grab_s*u.s).datetime.strftime('%H:%M:%S') if scan.grab_s is not None else ""
         ants = f"{scan.n_visible}/{n_stations}"
         table.add_row(str(k), (start + scan.rec_start_s*u.s).datetime.strftime('%H:%M:%S'),
-                      (start + scan.stop_s*u.s).datetime.strftime('%H:%M:%S'), scan.source.name,
+                      (start + scan.stop_s*u.s).datetime.strftime('%H:%M:%S'), escape(scan.source.name),
                       ants if scan.n_visible == n_stations else f"[bold red]{ants}[/bold red]", grab)
     rprint(table)
 
@@ -1089,13 +1152,13 @@ def handle_nme_command(args):
         o = main(band=args.band, networks=args.network, stations=args.stations,
                  station_catalog=args.station_catalog, start_time=Time(args.starttime, scale='utc'),
                  duration=float(args.duration)*u.hour,
-                 datarate=args.data_rate*u.Mbit/u.s if args.data_rate else None)
+                 datarate=args.data_rate*u.Mbit/u.s if args.data_rate is not None else None)
         fringefinders = nme.resolve_fringe_finders(ff_names) if ff_names else None
         start = Time(args.starttime, scale='utc')
         scans, sources_ff, counts, times = nme.plan_nme(o.stations, start, float(args.duration)*u.hour,
                                                         args.band, fringefinders=fringefinders)
     except ValueError as e:
-        rprint(f"[bold red]Error: {e}[/bold red]")
+        rprint(f"[bold red]Error: {escape(str(e))}[/bold red]")
         sys.exit(1)
 
     n_stations = len(o.stations)
@@ -1112,8 +1175,7 @@ def handle_nme_command(args):
     if args.sched is None:
         return
 
-    key_filename = args.sched if args.sched.endswith('.key') else f"{args.sched}.key"
-    experiment_code = os.path.basename(args.sched).replace('.key', '').upper()
+    key_filename, experiment_code = _sched_paths(args.sched)
     setup_file = getattr(args, 'setup', None) or guess_setup_file(o)
     datarate = int(o.datarate.to(u.Mbit/u.s).value) if o.datarate is not None else None
     try:
@@ -1121,11 +1183,9 @@ def handle_nme_command(args):
                                                 format_setup_line(setup_file), datarate_mbps=datarate,
                                                 template_path=getattr(args, 'template', None))
     except (ValueError, OSError) as error:
-        rprint(f"[bold red]Could not generate the NME schedule file: {error}[/bold red]")
+        rprint(f"[bold red]Could not generate the NME schedule file: {escape(str(error))}[/bold red]")
         sys.exit(1)
-    with open(key_filename, 'w') as f:
-        f.write(key_content)
-    rprint(f"[green]NME schedule file written to: {key_filename}[/green]")
+    _write_key_file(key_filename, key_content, label='NME schedule')
 
 
 def handle_fringe_finder_command(args):
@@ -1245,13 +1305,12 @@ def _check_obs_worker(args):
             datarate=network.max_datarate(band),
             scans={src.name: sources.ScanBlock([sources.Scan(src, duration=5 * u.min)])}
         )
-        observable_times = observation.when_is_observable(min_stations=3)
-        is_obs = bool(observable_times[src.name])
-        if return_gst and is_obs:
-            gst_times = observation.when_is_observable(min_stations=3, return_gst=True)
-            gst_str = _format_gst_ranges(gst_times.get(src.name, []))
-            return net_key, band, True, gst_str
-        return net_key, band, is_obs, "" if return_gst else None
+        # GST ranges are the same intervals as the UTC ones, so a single call answers both.
+        observable_ranges = observation.when_is_observable(min_stations=3, return_gst=return_gst).get(src.name, [])
+        is_obs = bool(observable_ranges)
+        if return_gst:
+            return net_key, band, is_obs, _format_gst_ranges(observable_ranges) if is_obs else ""
+        return net_key, band, is_obs, None
     except Exception:
         return net_key, band, False, "" if return_gst else None
 
@@ -1376,7 +1435,7 @@ def handle_source_command(args):
         source_obj = None
         calibrator = calibrators.RFCCatalog(min_flux=0.0).get_source(args.source_name)
         if calibrator:
-            rprint(f"[bold]{calibrator.name}[/bold] (also known as {calibrator.ivsname})")
+            rprint(f"[bold]{escape(calibrator.name)}[/bold] (also known as {escape(str(calibrator.ivsname))})")
             rprint(f"[bold]Coordinates:[/bold] {calibrator.coord.to_string('hmsdms')}")
             rprint("\n[bold green]AstroGeo Information[/bold green]")
             rprint(f"[bold]Number of Observations:[/bold] {calibrator.n_observations}")
@@ -1403,11 +1462,11 @@ def handle_source_command(args):
             try:
                 source_obj = sources.Source.source_from_str(args.source_name)
                 rprint("\n[bold green]Source Information[/bold green]")
-                rprint(f"[bold]Name:[/bold] {source_obj.name}")
+                rprint(f"[bold]Name:[/bold] {escape(source_obj.name)}")
                 rprint(f"[bold]Coordinates:[/bold] {source_obj.coord.to_string('hmsdms')}")
             except Exception as e:
-                rprint(f"[bold red]Source '{args.source_name}' not recognized[/bold red]")
-                rprint(f"[red]Error: Not found in the RFC Catalog and {e} [/red]")
+                rprint(f"[bold red]Source '{escape(args.source_name)}' not recognized[/bold red]")
+                rprint(f"[red]Error: Not found in the RFC Catalog and {escape(str(e))} [/red]")
                 sys.exit(1)
 
         # Show observability table for all sources
@@ -1415,7 +1474,7 @@ def handle_source_command(args):
             rprint("\n[bold green]Observable by (bands in cm)[/bold green]")
             _show_observability_table(source_obj, show_gst=args.gst)
     except Exception as e:
-        rprint(f"[bold red]Error:[/bold red] {e}")
+        rprint(f"[bold red]Error:[/bold red] {escape(str(e))}")
         sys.exit(1)
 
 
@@ -1551,7 +1610,7 @@ def handle_antenna_command(args):
     _load_heavy()
     band = _normalize_band(args.band) if args.band else None
     if band is not None and band not in obs.freqsetups.bands:
-        rprint(f"[bold red]Band '{band}' is not recognized.[/bold red] "
+        rprint(f"[bold red]Band '{escape(band)}' is not recognized.[/bold red] "
                f"Available bands: {', '.join(obs.freqsetups.bands)}")
         sys.exit(1)
 
@@ -1560,8 +1619,8 @@ def handle_antenna_command(args):
             # Same as --list-antennas
             rprint("\n[bold]All available antennas:[/bold]")
             for ant in obs._STATIONS:
-                rprint(f"     [bold]{ant.name}[/bold] ([cyan]{ant.codename}[/cyan]):  "
-                       f"{ant.diameter} in {ant.country}")
+                rprint(f"     [bold]{escape(ant.name)}[/bold] ([cyan]{escape(ant.codename)}[/cyan]):  "
+                       f"{escape(str(ant.diameter))} in {escape(str(ant.country))}")
                 rprint(f"      [dim]Observes at {', '.join(ant.bands)}[/dim]")
         else:
             matching = [ant for ant in obs._STATIONS if ant.has_band(band)]
@@ -1584,19 +1643,19 @@ def handle_antenna_command(args):
 
     ant = _find_antenna(args.antenna_name)
     if ant is None:
-        rprint(f"[bold red]Antenna '{args.antenna_name}' not found.[/bold red] "
+        rprint(f"[bold red]Antenna '{escape(args.antenna_name)}' not found.[/bold red] "
                "Run [bold]planobs --list-antennas[/bold] to see the available antennas.")
         sys.exit(1)
 
-    rprint(f"\n[bold underline]{ant.fullname}[/bold underline]")
-    rprint(f"  [bold]Short name:[/bold]  {ant.name}")
-    rprint(f"  [bold]Codename:[/bold]    [cyan]{ant.codename}[/cyan]")
-    rprint(f"  [bold]Diameter:[/bold]    {ant.diameter}")
-    rprint(f"  [bold]Country:[/bold]     {ant.country}")
+    rprint(f"\n[bold underline]{escape(ant.fullname)}[/bold underline]")
+    rprint(f"  [bold]Short name:[/bold]  {escape(ant.name)}")
+    rprint(f"  [bold]Codename:[/bold]    [cyan]{escape(ant.codename)}[/cyan]")
+    rprint(f"  [bold]Diameter:[/bold]    {escape(str(ant.diameter))}")
+    rprint(f"  [bold]Country:[/bold]     {escape(str(ant.country))}")
 
     if band is not None:
         if not ant.has_band(band):
-            rprint(f"\n[bold red]{ant.name} does not observe at {band}.[/bold red] "
+            rprint(f"\n[bold red]{escape(ant.name)} does not observe at {band}.[/bold red] "
                    f"It observes at: {', '.join(ant.bands)}")
             sys.exit(1)
         bands_to_show = [band]
@@ -1609,4 +1668,4 @@ def handle_antenna_command(args):
 
 
 if __name__ == '__main__':
-    o = cli()
+    cli()

@@ -401,6 +401,28 @@ def serialize_uv_data(o) -> Optional[dict]:
     return serialized
 
 
+def baseline_has_antenna(baseline: str, antenna: str) -> bool:
+    """Return True if antenna is one of the two stations of a baseline key.
+
+    Baseline keys are built in observation.py as f"{codename1}-{codename2}" (station codenames
+    never contain '-'). An exact match on the split parts is required so that e.g. 'Me' does not
+    match 'Me1-Ef' and 'Wb' does not match 'Wb14-Ef'.
+
+    Parameters
+    ----------
+    baseline : str
+        Baseline key, e.g. 'Ef-Wb'.
+    antenna : str
+        Station codename to look for.
+
+    Returns
+    -------
+    bool
+        True if antenna is either end of the baseline.
+    """
+    return antenna in baseline.split('-')
+
+
 def uvplot_from_data(uv_data: dict, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure]:
     """Create UV coverage plot from serialized UV data.
 
@@ -435,7 +457,7 @@ def uvplot_from_data(uv_data: dict, filter_antennas: Optional[list[str]] = None)
     def get_color(baseline: str) -> str:
         if filter_antennas:
             for i, ant in enumerate(filter_antennas):
-                if ant in baseline:
+                if baseline_has_antenna(baseline, ant):
                     return highlight_colors[i % len(highlight_colors)]
         return 'black'
 
@@ -515,7 +537,7 @@ def uvplot(o, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure
     def get_color(baseline: str) -> str:
         if filter_antennas:
             for i, ant in enumerate(filter_antennas):
-                if ant in baseline:
+                if baseline_has_antenna(baseline, ant):
                     return highlight_colors[i % len(highlight_colors)]
         return 'black'
 

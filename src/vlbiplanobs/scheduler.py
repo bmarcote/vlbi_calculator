@@ -62,6 +62,25 @@ def _fmt_dur(q: u.Quantity) -> str:
     return f"{total_sec // 60}:{total_sec % 60:02d}"
 
 
+def _sched_safe(text: object) -> str:
+    """Make a user-provided string safe to insert into a SCHED single-quoted field or cover letter.
+
+    SCHED values are single-quoted and the key file is line-oriented, so a newline or a single quote in
+    user input could terminate the field and inject arbitrary SCHED commands.
+
+    Parameters
+    ----------
+    text : object
+        Value to sanitise (converted with ``str``).
+
+    Returns
+    -------
+    str
+        The text with CR/LF replaced by spaces and single quotes removed.
+    """
+    return str(text).replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ').replace("'", '')
+
+
 def format_setup_line(setup_file: str | None) -> str:
     """Build the value for the frequency-setup line of a SCHED key file.
 
@@ -380,6 +399,11 @@ class ObservationScheduler:
             self._ff_n_scans = int(self._ff_spec[0])
         self._polcal = polcal
         self._scheduled: list[ScheduledScanBlock] = []
+        # Working copy of the scan blocks: calibrator blocks added while scheduling live only here, so the
+        # user's Observation (and its cached source list / visibility / rms) is never mutated.
+        self._scans: dict[str, ScanBlock] = dict(observation.scans or {})
+        self._rfc_ff_catalog: Optional[calibrators.RFCCatalog] = None
+        self._rfc_all_catalog: Optional[calibrators.RFCCatalog] = None
         self._precompute()
 
     # ------------------------------------------------------------------
@@ -392,7 +416,7 @@ class ObservationScheduler:
         Precomputes visibility counts and mean elevations for all scan blocks
         at all observation time steps for efficient scheduling.
         """
-        self._blocks = list(self.obs.scans.keys())
+        self._blocks = list(self._scans.keys())
         self._n_times = len(self.obs.times)
         self._n_ant = len(self.obs.stations)
         self._dt = (self.obs.times[1] - self.obs.times[0]).to(u.min).value
@@ -402,7 +426,7 @@ class ObservationScheduler:
         self._elev: dict[str, np.ndarray] = {}
         self._is_ff: dict[str, bool] = {}
         for name in self._blocks:
-            block = self.obs.scans[name]
+            block = self._scans[name]
             self._is_ff[name] = block.has(SourceType.FRINGEFINDER)
             self._vis[name] = (np.sum(np.array(list(is_obs[name].values())), axis=0)
                                if name in is_obs else np.zeros(self._n_times, dtype=int))
@@ -569,16 +593,17 @@ class ObservationScheduler:
             return None
         vis, elev = self._vis[name], self._elev[name]
         min_req = self._n_ant if self.require_all else self.min_ant
-        best_score, best_i = -1.0, -1
-        for i in range(i0, i1 - steps + 1):
-            n = int(np.min(vis[i:i + steps]))
-            e = float(np.mean(elev[i:i + steps]))
-            if n >= min_req and not np.isnan(e):
-                score = n * 100.0 + e
-                if score > best_score:
-                    best_score, best_i = score, i
-        if best_i < 0:
+        # Window k starts at index i0 + k; same min/mean per window as a per-slice loop.
+        vis_win = np.lib.stride_tricks.sliding_window_view(vis[i0:i1], steps)
+        elev_win = np.lib.stride_tricks.sliding_window_view(elev[i0:i1], steps)
+        n_min = vis_win.min(axis=1)
+        e_mean = elev_win.mean(axis=1)
+        score = n_min * 100.0 + e_mean
+        # Invariant: a valid window must also beat the legacy initial best score of -1.0.
+        valid = (n_min >= min_req) & ~np.isnan(e_mean) & (score > -1.0)
+        if not np.any(valid):
             return None
+        best_i = i0 + int(np.argmax(np.where(valid, score, -np.inf)))
         return (self._i2t(best_i), self._i2t(best_i + steps),
                 int(np.min(vis[best_i:best_i + steps])),
                 float(np.mean(elev[best_i:best_i + steps])))
@@ -614,20 +639,64 @@ class ObservationScheduler:
         return slots
 
     def _register_block(self, name: str):
-        """Register a dynamically-added block in pre-computed arrays.
+        """Register a dynamically-added block (FF/polcal/eMERLIN) in the pre-computed arrays.
+
+        Visibility uses the same ERFA batch helper as ``Observation.is_observable`` (a station sees the
+        block only when it sees all of its sources); the elevation is the mean over stations of the
+        main source elevation, like the targets in ``_precompute``.
 
         Parameters
         ----------
         name : str
-        Block name to register.
+            Block name in ``self._scans`` to register. No-op if already registered.
         """
         if name in self._vis:
             return
         self._blocks.append(name)
-        block = self.obs.scans[name]
+        block = self._scans[name]
         self._is_ff[name] = block.has(SourceType.FRINGEFINDER)
-        self._vis[name] = np.full(self._n_times, self._n_ant, dtype=int)
-        self._elev[name] = np.full(self._n_times, 45.0)
+        stations = list(self.obs.stations)
+        block_sources = block.sources()
+        batch_vis = Observation._batch_visibility_erfa(stations, block_sources, self.obs.times)
+        n_visible = np.zeros(self._n_times, dtype=int)
+        for station in stations:
+            station_ok = np.ones(self._n_times, dtype=bool)
+            for src in block_sources:
+                station_ok &= np.asarray(batch_vis[src.name][station.codename], dtype=bool)
+            n_visible += station_ok
+        self._vis[name] = n_visible
+        main = block.sources(SourceType.TARGET) or block.sources(SourceType.FRINGEFINDER) or block_sources
+        if main and stations:
+            self._elev[name] = np.nanmean([st.altaz(self.obs.times, main[0]).alt.deg for st in stations], axis=0)
+        else:
+            self._elev[name] = np.zeros(self._n_times)
+        log.debug("Registered block %s: max antennas %d, elevation range %.1f-%.1f deg", name,
+                  int(n_visible.max()) if n_visible.size else 0, float(np.nanmin(self._elev[name])),
+                  float(np.nanmax(self._elev[name])))
+
+    def _rfc_ff(self) -> calibrators.RFCCatalog:
+        """Return the RFC catalog used for automatic fringe-finder selection (>= 0.5 Jy), loaded once.
+
+        Returns
+        -------
+        calibrators.RFCCatalog
+            Catalog with the same filters as the default of ``calibrators.get_fringe_finder_sources``.
+        """
+        if self._rfc_ff_catalog is None:
+            self._rfc_ff_catalog = calibrators.RFCCatalog(min_flux=0.5 * u.Jy, band='c')
+        return self._rfc_ff_catalog
+
+    def _rfc_all(self) -> calibrators.RFCCatalog:
+        """Return the unfiltered RFC catalog (min flux 0 Jy) used for name lookups, loaded once.
+
+        Returns
+        -------
+        calibrators.RFCCatalog
+            Catalog used to resolve named fringe finders and polcal sources.
+        """
+        if self._rfc_all_catalog is None:
+            self._rfc_all_catalog = calibrators.RFCCatalog(min_flux=0.0 * u.Jy, band='c')
+        return self._rfc_all_catalog
 
     # ------------------------------------------------------------------
     # Fringe-finder selection  (NEW)
@@ -647,7 +716,7 @@ class ObservationScheduler:
         Returns
         -------
         list[str]
-            Block names registered in ``self.obs.scans``.
+            Block names registered in ``self._scans``.
         """
         existing = self._ff_blocks()
         if existing:
@@ -659,8 +728,8 @@ class ObservationScheduler:
 
         # Try all-antenna, all-time visibility first
         cands, _, _ = calibrators.get_fringe_finder_sources(
-            self.obs.stations, self.obs.times,
-            min_elevation=20 * u.deg, min_flux=0.5 * u.Jy, require_all_stations=True)
+            self.obs.stations, self.obs.times, min_elevation=20 * u.deg, min_flux=0.5 * u.Jy,
+            catalog=self._rfc_ff(), require_all_stations=True)
 
         if cands:
             best = self._pick_closest_ff(cands)
@@ -668,8 +737,8 @@ class ObservationScheduler:
 
         # Relax to partial visibility
         cands, _, _ = calibrators.get_fringe_finder_sources(
-            self.obs.stations, self.obs.times,
-            min_elevation=20 * u.deg, min_flux=0.5 * u.Jy, require_all_stations=False)
+            self.obs.stations, self.obs.times, min_elevation=20 * u.deg, min_flux=0.5 * u.Jy,
+            catalog=self._rfc_ff(), require_all_stations=False)
 
         if cands:
             best = self._pick_closest_ff(cands)
@@ -714,7 +783,7 @@ class ObservationScheduler:
         """
         ras, decs = [], []
         for name in self._sci_blocks():
-            for src in self.obs.scans[name].sources(SourceType.TARGET):
+            for src in self._scans[name].sources(SourceType.TARGET):
                 ras.append(src.coord.ra.deg)
                 decs.append(src.coord.dec.deg)
         if not ras:
@@ -732,7 +801,7 @@ class ObservationScheduler:
         Returns
         -------
         list[str]
-        Block names registered in obs.scans.
+        Block names registered in the scheduler working blocks (``self._scans``).
         """
         seen: set[str] = set()
         names: list[str] = []
@@ -741,8 +810,8 @@ class ObservationScheduler:
                 continue
             seen.add(src.name)
             block_name = f"FF_{src.name}"
-            if block_name not in self.obs.scans:
-                self.obs.scans[block_name] = ScanBlock([Scan(src, duration=self.FF_DUR)])
+            if block_name not in self._scans:
+                self._scans[block_name] = ScanBlock([Scan(src, duration=self.FF_DUR)])
                 self._register_block(block_name)
             names.append(block_name)
         return names
@@ -763,7 +832,7 @@ class ObservationScheduler:
         list[Source]
         List of Source objects with FRINGEFINDER type.
         """
-        cat = calibrators.RFCCatalog(min_flux=0.0 * u.Jy, band='c')
+        cat = self._rfc_all()
         result: list[Source] = []
         for spec in names:
             parsed_name, parsed_coord = Source.parse_source_spec(spec)
@@ -795,9 +864,9 @@ class ObservationScheduler:
         Returns
         -------
         list[str]
-            Block names registered in obs.scans.
+            Block names registered in the scheduler working blocks (``self._scans``).
         """
-        cat = calibrators.RFCCatalog(min_flux=0.0 * u.Jy, band='c')
+        cat = self._rfc_all()
         added: list[str] = []
         for polcal_name in _POLCAL_NAMES:
             rfc_src = cat.get_source(polcal_name)
@@ -806,7 +875,7 @@ class ObservationScheduler:
             src = Source(name=rfc_src.name, coordinates=rfc_src.coord,
                          source_type=SourceType.POLCAL, other_names=[rfc_src.ivsname])
             block_name = f"POLCAL_{rfc_src.ivsname}"
-            self.obs.scans[block_name] = ScanBlock([Scan(src, duration=self.POLCAL_DUR)])
+            self._scans[block_name] = ScanBlock([Scan(src, duration=self.POLCAL_DUR)])
             self._register_block(block_name)
             added.append(block_name)
         return added
@@ -841,7 +910,7 @@ class ObservationScheduler:
         """
         src = Source(name='3C286', coordinates=_3C286_COORD, source_type=SourceType.AMPLITUDECAL)
         block_name = 'eMERLIN_3C286'
-        self.obs.scans[block_name] = ScanBlock([Scan(src, duration=self.EMERLIN_3C286_DUR)])
+        self._scans[block_name] = ScanBlock([Scan(src, duration=self.EMERLIN_3C286_DUR)])
         self._register_block(block_name)
         return block_name
 
@@ -944,7 +1013,7 @@ class ObservationScheduler:
             if n_vis < self.min_ant:
                 log.info("Skipping FF slot at %s — only %d antennas can observe.", ts.iso, n_vis)
                 continue
-            block = self.obs.scans[block_name]
+            block = self._scans[block_name]
             result.append(ScheduledScanBlock(
                 name=f"FF_{len(result) + 1}", block=block, start_time=ts, end_time=te,
                 scans=list(block.scans), n_antennas=n_vis,
@@ -980,7 +1049,7 @@ class ObservationScheduler:
             return []
         placed: list[ScheduledScanBlock] = []
         for frac, pc_name in zip([0.1, 0.5, 0.9][:n_polcal], polcal_names):
-            block = self.obs.scans[pc_name]
+            block = self._scans[pc_name]
             elapsed = 0.0 * u.min
             target_time = frac * total
             for s0, s1 in slots:
@@ -1016,7 +1085,7 @@ class ObservationScheduler:
         ScheduledScanBlock or None
         Scheduled block or None if no valid slot found.
         """
-        block = self.obs.scans[block_name]
+        block = self._scans[block_name]
         dur = sum(s.duration.to(u.min).value for s in block.scans) * u.min
         best = None
         for s0, s1 in slots:
@@ -1061,7 +1130,7 @@ class ObservationScheduler:
             best_name: Optional[str] = None
             best_score = -1.0
             for name in names:
-                block = self.obs.scans[name]
+                block = self._scans[name]
                 min_dur = sum(s.duration.to(u.min).value for s in block.scans) * u.min
                 if slot_dur < min_dur:
                     continue
@@ -1070,7 +1139,7 @@ class ObservationScheduler:
                     best_score, best_name = score, name
             if best_name is None:
                 continue
-            block = self.obs.scans[best_name]
+            block = self._scans[best_name]
             try:
                 scans = block.fill(slot_dur)
             except ValueError:
@@ -1092,14 +1161,14 @@ class ObservationScheduler:
         Parameters
         ----------
         name : str
-            Block name in obs.scans.
+            Block name in ``self._scans``.
 
         Returns
         -------
         SkyCoord or None
             Coordinate of the primary target, or None if no target found.
         """
-        block = self.obs.scans.get(name)
+        block = self._scans.get(name)
         if block is None:
             return None
         targets = block.sources(SourceType.TARGET) or block.sources(SourceType.PULSAR) or block.sources()
@@ -1238,7 +1307,7 @@ class ObservationScheduler:
         sci_names : list[str]
             Science block names (already filtered, no FF/polcal/eMERLIN blocks).
         ff_names : list[str]
-            FF block names registered in obs.scans.
+            FF block names registered in ``self._scans``.
         t0 : Time
             Observation start time.
         t1 : Time
@@ -1283,7 +1352,7 @@ class ObservationScheduler:
             if not ff_names:
                 return t
             fn = ff_names[count % len(ff_names)]
-            ff_block = self.obs.scans[fn]
+            ff_block = self._scans[fn]
             n_vis = self._vis_at(fn, t)
             all_blocks.append(ScheduledScanBlock(
                 name=f"FF_{count + 1}", block=ff_block,
@@ -1305,7 +1374,7 @@ class ObservationScheduler:
             available_to_end = (t1 - current_t) - remaining_ff_time
             this_dur = max(available_to_end / remaining_sci_blocks, 1.0 * u.min)
 
-            block = self.obs.scans[name]
+            block = self._scans[name]
             sci_dur = min(this_dur, (t1 - current_t)).to(u.min)
             try:
                 scans = block.fill(sci_dur)
@@ -1346,7 +1415,7 @@ class ObservationScheduler:
         SkyCoord or None
         Coordinate of the first source, or None if block not found.
         """
-        block = self.obs.scans.get(name)
+        block = self._scans.get(name)
         if block is None:
             return None
         srcs = block.sources()
@@ -1365,7 +1434,7 @@ class ObservationScheduler:
         Quantity
         Minimum duration in minutes.
         """
-        block = self.obs.scans[name]
+        block = self._scans[name]
         return sum(s.duration.to(u.min).value for s in block.scans) * u.min
 
     def _layout_science(self, sci_names: list[str], eff_t0: Time, eff_t1: Time) -> list[ScheduledScanBlock]:
@@ -1395,7 +1464,7 @@ class ObservationScheduler:
             return []
         if len(sci_names) == 1:
             name = sci_names[0]
-            block = self.obs.scans[name]
+            block = self._scans[name]
             span = (eff_t1 - eff_t0)
             try:
                 scans = block.fill(span.to(u.min))
@@ -1417,7 +1486,7 @@ class ObservationScheduler:
         for i, name in enumerate(ordered):
             remaining = n - i
             this_dur = (eff_t1 - cur) / remaining
-            block = self.obs.scans[name]
+            block = self._scans[name]
             sci_dur = min(this_dur, (eff_t1 - cur)).to(u.min)
             try:
                 scans = block.fill(sci_dur)
@@ -1473,7 +1542,7 @@ class ObservationScheduler:
         Parameters
         ----------
         ff_names : list[str]
-            Candidate FF block names (registered in obs.scans).
+            Candidate FF block names (registered in ``self._scans``).
         layout : list[ScheduledScanBlock]
             The science-only layout (provides the interrupted-target coords).
         eff_t0 : Time
@@ -1503,6 +1572,7 @@ class ObservationScheduler:
         # Candidate (cell, ff-source) placements with separation + elevation cost.
         cand: dict[tuple[int, int], tuple[float, float]] = {}
         cand_by_cell: dict[int, list[int]] = {}
+        sep_cache: dict[tuple[str, str], float] = {}
         for c in range(K):
             occ_s = self._occupant_at(layout, cell_t[c])
             occ_e = self._occupant_at(layout, cell_t[c] + dur - 1 * u.s)
@@ -1514,7 +1584,11 @@ class ObservationScheduler:
                     continue
                 sep = 0.0
                 if occ_coord is not None and ff_coord[fn] is not None:
-                    sep = float(ff_coord[fn].separation(occ_coord).deg)
+                    # The occupant coordinate depends only on its block name, so cache per (FF, occupant).
+                    sep_key = (fn, occ_s[0])
+                    if sep_key not in sep_cache:
+                        sep_cache[sep_key] = float(ff_coord[fn].separation(occ_coord).deg)
+                    sep = sep_cache[sep_key]
                 cand[(c, fi)] = (sep, self._elev_at(fn, cell_t[c]))
                 cand_by_cell.setdefault(c, []).append(fi)
         if not cand:
@@ -1578,7 +1652,10 @@ class ObservationScheduler:
         return placements
 
     def _polcal_target_times(self, eff_t0: Time, eff_t1: Time) -> list[tuple[Time, str]]:
-        """Create polcal blocks and return their target (time, name) at 10/50/90% of the window.
+        """Create polcal blocks and return their (time, name) placements near 10/50/90% of the window.
+
+        Each polcal is placed at the grid time closest to its target fraction where the polcal source
+        is visible by the required number of antennas; polcals never visible in the window are skipped.
 
         Parameters
         ----------
@@ -1590,11 +1667,28 @@ class ObservationScheduler:
         Returns
         -------
         list[tuple[Time, str]]
-        List of (target_time, block_name) tuples.
+        List of (start_time, block_name) tuples.
         """
         names = self._create_polcal_blocks()
         total = (eff_t1 - eff_t0)
-        return [(eff_t0 + total * frac, pc) for frac, pc in zip([0.1, 0.5, 0.9], names)]
+        min_req = self._n_ant if self.require_all else self.min_ant
+        i0, i_last = self._t2i(eff_t0), self._t2i(eff_t1 - self.POLCAL_DUR)
+        result: list[tuple[Time, str]] = []
+        for frac, pc in zip([0.1, 0.5, 0.9], names):
+            target = eff_t0 + total * frac
+            if self._vis_at(pc, target) >= min_req:
+                result.append((target, pc))
+                continue
+            ok_idx = np.nonzero(self._vis[pc][i0:i_last + 1] >= min_req)[0] + i0
+            if ok_idx.size == 0:
+                log.warning("Polcal block %s is not visible by %d antennas in the window; skipped.", pc, min_req)
+                continue
+            i_target = self._t2i(target)
+            best = int(ok_idx[np.argmin(np.abs(ok_idx - i_target))])
+            log.info("Polcal block %s moved from %s to %s (source not visible at target time).",
+                     pc, target.iso, self._i2t(best).iso)
+            result.append((self._i2t(best), pc))
+        return result
 
     def _make_aux_block(self, name: str, a: Time, b: Time, label: str) -> ScheduledScanBlock:
         """Build a single-scan calibrator ScheduledScanBlock (FF/polcal/eMERLIN).
@@ -1602,7 +1696,7 @@ class ObservationScheduler:
         Parameters
         ----------
         name : str
-        Block name in obs.scans.
+        Block name in ``self._scans``.
         a : Time
         Start time.
         b : Time
@@ -1615,7 +1709,7 @@ class ObservationScheduler:
         ScheduledScanBlock
         The scheduled calibrator block.
         """
-        block = self.obs.scans[name]
+        block = self._scans[name]
         return ScheduledScanBlock(
             name=label, block=block, start_time=a, end_time=b, scans=list(block.scans),
             n_antennas=self._vis_at(name, a), mean_elevation=self._elev_at(name, a))
@@ -1640,7 +1734,7 @@ class ObservationScheduler:
         span = (b - a)
         if span.to(u.min).value <= 0 or span < self._min_block_duration(name):
             return None
-        block = self.obs.scans[name]
+        block = self._scans[name]
         try:
             scans = block.fill(span.to(u.min))
         except Exception:
@@ -1879,16 +1973,19 @@ class ObservationScheduler:
         left-over scans after the last full repetition.
         """
         n = len(scans)
+        # Precomputed per-scan keys: integer source code and duration in seconds (same values as _scans_match).
+        name_codes: dict[str, int] = {}
+        codes = np.array([name_codes.setdefault(s.source.name, len(name_codes)) for s in scans], dtype=np.int64)
+        durs = np.array([s.duration.to(u.s).value for s in scans], dtype=np.float64)
         best_clen, best_reps, best_covered = 0, 1, 0
         for clen in range(2, n // 2 + 1):
-            pattern = scans[:clen]
-            reps, i = 0, 0
-            while i + clen <= n:
-                if ObservationScheduler._scans_match(pattern, scans[i:i + clen]):
-                    reps += 1
-                    i += clen
-                else:
-                    break
+            n_chunks = n // clen
+            m = n_chunks * clen
+            ref = np.arange(m) % clen
+            # Scan j matches the pattern when it equals scan (j mod clen), as in _scans_match.
+            ok = (codes[:m] == codes[ref]) & (np.abs(durs[:m] - durs[ref]) < 1.0)
+            chunk_ok = ok.reshape(n_chunks, clen).all(axis=1)
+            reps = n_chunks if chunk_ok.all() else int(np.argmin(chunk_ok))
             covered = reps * clen
             if reps >= 2 and covered > best_covered:
                 best_clen, best_reps, best_covered = clen, reps, covered
@@ -1932,7 +2029,7 @@ class ObservationScheduler:
         intent = _intent_str(scan.source.type)
         intent_part = f" intent='{intent}'" if intent else ''
         dur = dur_override if dur_override is not None else scan.duration
-        return f"{indent}source='{scan.source.name}' gap={gap} dur={_fmt_dur(dur)}{intent_part} /"
+        return f"{indent}source='{_sched_safe(scan.source.name)}' gap={gap} dur={_fmt_dur(dur)}{intent_part} /"
 
     def _stations_line(self, exclude: Optional[set[str]] = None, indent: str = '') -> str:
         """Build a ``stations = ...`` line, optionally excluding codenames.
@@ -2118,7 +2215,9 @@ class ObservationScheduler:
         """Generate a SCHED .key file from the current schedule.
 
         Uses ``group N rep R`` for repeated science cycles and excludes Jb1
-        from every other phase-cal scan when Jb1 is present.
+        from every other phase-cal scan when Jb1 is present. User-provided strings
+        (experiment code, PI fields, comments, source names) have newlines and single
+        quotes stripped before insertion so they cannot break out of SCHED fields.
 
         Parameters
         ----------
@@ -2172,7 +2271,7 @@ class ObservationScheduler:
         for src in all_sources.values():
             ra = src.coord.ra.to_string(unit=u.hourangle, sep=':', precision=4, pad=True)
             dec = src.coord.dec.to_string(unit=u.degree, sep=':', precision=3, pad=True, alwayssign=True)
-            src_lines.append(f"  source='{src.name}' ra={ra} dec={dec} equinox='J2000' /")
+            src_lines.append(f"  source='{_sched_safe(src.name)}' ra={ra} dec={dec} equinox='J2000' /")
 
         if not src_lines:
             raise ValueError("No sources were scheduled; {SOURCES} cannot be empty.")
@@ -2206,9 +2305,9 @@ class ObservationScheduler:
         start_time = self.obs.times[0]
         replacements = {
             'GENERATION_DATE': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'EXPERIMENT_CODE': experiment_code.upper(),
-            'PI_NAME': pi_name, 'PI_EMAIL': pi_email, 'PI_INSTITUTE': pi_institute,
-            'OBS_MODE': obs_mode, 'COMMENTS': comments,
+            'EXPERIMENT_CODE': _sched_safe(experiment_code).upper(),
+            'PI_NAME': _sched_safe(pi_name), 'PI_EMAIL': _sched_safe(pi_email),
+            'PI_INSTITUTE': _sched_safe(pi_institute), 'OBS_MODE': obs_mode, 'COMMENTS': _sched_safe(comments),
             'CORAVG': str(int(self.obs.inttime.to(u.s).value)),
             'CORCHAN': str(self.obs.channels) if self.obs.channels else '32',
             'CORNANT': str(len(self.obs.stations)),

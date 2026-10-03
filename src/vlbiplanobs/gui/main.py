@@ -12,11 +12,10 @@ import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from astropy.utils.iers import conf as iers_conf
 from astropy import units as u
-from astropy.time import Time
 from vlbiplanobs import sources
 from vlbiplanobs import observation
 from vlbiplanobs import cli
-from vlbiplanobs.gui import inputs, outputs
+from vlbiplanobs.gui import inputs, outputs, validation
 from vlbiplanobs.gui.callbacks import *  # noqa: F401,F403
 from vlbiplanobs.gui import layout
 
@@ -93,7 +92,7 @@ app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_
 # Per-target PDF download (one button per output tab + one for the no-target panel).
 # --------------------------------------------------------------------------------------
 def _params_to_obs(obs_params: dict, target_spec: Optional[str] = None) -> Optional[cli.VLBIObs]:
-    """Rebuild a VLBIObs from serialised observation parameters.
+    """Rebuild a VLBIObs from validated observation parameters.
 
     The compute callback stores all the inputs it used in store-obs-params so the PDF
     download callback can reconstruct the same observation without reading the GUI state
@@ -103,25 +102,25 @@ def _params_to_obs(obs_params: dict, target_spec: Optional[str] = None) -> Optio
     Parameters
     ----------
     obs_params : dict
-        Serialized observation parameters from store-obs-params.
+        Observation parameters already normalized by validation.normalize_obs_params
+        (store-obs-params is client-controlled and must never be used unvalidated).
     target_spec : str or None, optional
         Target specification to include. If None, all targets are included.
 
     Returns
     -------
     VLBIObs or None
-        Reconstructed observation object, or None if params is invalid.
+        Reconstructed observation object, or None if params is None.
     """
     if obs_params is None:
         return None
     targets = [target_spec] if target_spec is not None else obs_params.get('targets')
-    return cli.main(band=obs_params['band'], stations=obs_params['stations'], targets=targets,
-                    duration=float(obs_params['duration']) * u.h if obs_params['duration'] is not None else None,
-                    ontarget=obs_params['ontarget'], start_time=Time(dt.strptime(f"{obs_params['startdate']} {obs_params['starttime']}",
-                                                                                     '%Y-%m-%d %H:%M'),
-                                                                     format='datetime', scale='utc') if obs_params.get('startdate') else None,
+    duration = obs_params['duration'] * u.h if obs_params['duration'] is not None else None
+    return cli.main(band=obs_params['band'], stations=obs_params['stations'], targets=targets, duration=duration,
+                    ontarget=obs_params['ontarget'], start_time=obs_params['start_time'],
                     datarate=obs_params['datarate'] * u.Mbit / u.s, subbands=obs_params['subbands'],
-                    channels=obs_params['channels'], polarizations=obs_params['polarizations'], inttime=obs_params['inttime'] * u.s)
+                    channels=obs_params['channels'], polarizations=obs_params['polarizations'],
+                    inttime=obs_params['inttime'] * u.s)
 
 
 @app.callback(Output('download-data', 'data'),
@@ -149,6 +148,12 @@ def download_pdf(n_clicks: int, obs_params: dict):
         If no clicks or invalid observation parameters are available.
     """
     if not n_clicks or obs_params is None:
+        raise PreventUpdate
+
+    try:
+        obs_params = validation.normalize_obs_params(obs_params)
+    except validation.InvalidObsParams as e:
+        logger.warning(f"PDF download rejected: invalid store-obs-params ({e}).")
         raise PreventUpdate
 
     try:
@@ -244,6 +249,24 @@ def _compute_one_target(target_spec: Optional[str], shared_kwargs: dict) -> tupl
         return None, f"{type(e).__name__}: {e}"
 
 
+def _invalid_outputs(hidden_outputs: tuple, message: str) -> tuple:
+    """Return the compute-callback outputs used when a user input fails server-side validation.
+
+    Parameters
+    ----------
+    hidden_outputs : tuple
+        The default "nothing to show" outputs of compute_observation_realtime.
+    message : str
+        Human-readable reason shown to the user in the user-message area.
+
+    Returns
+    -------
+    tuple
+        hidden_outputs with the user message replaced by an error card.
+    """
+    return (outputs.error_card("Invalid observation parameters", message),) + tuple(hidden_outputs[1:])
+
+
 @app.callback([Output('user-message', 'children'),
                Output('loading-div', 'children'),
                Output('outputs-container', 'children'),
@@ -327,19 +350,34 @@ def compute_observation_realtime(band: int, target_specs: Optional[list[str]], o
     hidden_outputs = (empty_message, html.Div(), html.Div(),
                       no_update, no_update, no_update, None)
 
-    if band == 0 or band is None or not selected_antennas:
+    try:
+        band_name = validation.band_name_from_index(band)
+    except validation.InvalidObsParams as e:
+        logger.warning(f"Real-time update rejected: {e}")
+        return _invalid_outputs(hidden_outputs, str(e))
+    if band_name is None or not selected_antennas:
         return hidden_outputs
 
-    selected_antennas = [ant for ant in selected_antennas
-                         if ant in observation._STATIONS
-                         and observation._STATIONS[ant].has_band(inputs.band_from_index(band))
+    selected_antennas = [ant for ant in validation.clean_station_codenames(selected_antennas)
+                         if observation._STATIONS[ant].has_band(band_name)
                          and (not e_evn or observation._STATIONS[ant].real_time)]
     if not selected_antennas:
         return hidden_outputs
 
-    target_specs = [t for t in (target_specs or []) if t and t.strip()]
+    target_specs = validation.clean_target_specs(target_specs)
     has_targets = bool(target_specs)
-    has_duration = duration is not None and duration > 0
+    try:
+        duration = validation.validate_duration(duration)
+        ontarget = validation.ontarget_from_percent(onsourcetime)
+        datarate = validation.validate_datarate(datarate)
+        subbands = validation.validate_subbands(subbands)
+        channels = validation.validate_channels(channels)
+        pols = validation.validate_polarizations(pols)
+        inttime = validation.validate_inttime(inttime)
+    except validation.InvalidObsParams as e:
+        logger.warning(f"Real-time update rejected: {e}")
+        return _invalid_outputs(hidden_outputs, str(e))
+    has_duration = duration is not None
 
     if defined_epoch:
         epoch_complete = startdate is not None and starttime is not None and has_duration
@@ -351,24 +389,23 @@ def compute_observation_realtime(band: int, target_specs: Optional[list[str]], o
     if not has_targets and not has_duration:
         return hidden_outputs
 
+    start_time = None
+    if defined_epoch and startdate and starttime:
+        try:
+            start_time = validation.parse_start_time(startdate, starttime)
+        except validation.InvalidObsParams as e:
+            logger.warning(f"Real-time update rejected: {e}")
+            return _invalid_outputs(hidden_outputs, str(e))
+
     t0 = dt.now()
-    shared_kwargs = dict(
-        band=inputs.band_from_index(band),
-        stations=sorted(selected_antennas),
-        duration=duration * u.h if has_duration else None,
-        ontarget=onsourcetime / 100 if onsourcetime else 0.7,
-        start_time=Time(dt.strptime(f"{startdate[:10]} {starttime}", '%Y-%m-%d %H:%M'),
-                        format='datetime', scale='utc')
-        if defined_epoch and startdate and starttime else None,
-        datarate=(datarate if not isinstance(datarate, str) else int(datarate or 2048)) * u.Mbit / u.s,
-        subbands=subbands or 8,
-        channels=channels or 64,
-        polarizations=pols or 2,
-        inttime=(inttime or 2) * u.s)
+    shared_kwargs = dict(band=band_name, stations=sorted(selected_antennas),
+                         duration=duration * u.h if has_duration else None, ontarget=ontarget, start_time=start_time,
+                         datarate=datarate * u.Mbit / u.s, subbands=subbands, channels=channels,
+                         polarizations=pols, inttime=inttime * u.s)
 
     selected_networks = [name for name, on in zip(observation._NETWORKS,
                                                    network_switches or []) if on]
-    logger.info(f"Real-time update: band={inputs.band_from_index(band)}, "
+    logger.info(f"Real-time update: band={band_name}, "
                 f"antennas={','.join(sorted(selected_antennas))}, "
                 f"networks={','.join(selected_networks) if selected_networks else 'none'}, "
                 f"targets={target_specs if has_targets else 'none'}, duration={duration}")
@@ -411,28 +448,20 @@ def compute_observation_realtime(band: int, target_specs: Optional[list[str]], o
     elapsed = (dt.now() - t0).total_seconds()
     logger.info(f"Real-time update completed in {elapsed:.2f}s")
 
-    obs_params = {
-        'band': inputs.band_from_index(band),
-        'stations': sorted(selected_antennas),
-        'targets': target_specs if has_targets else None,
-        'duration': duration,
-        'ontarget': onsourcetime / 100 if onsourcetime else 0.7,
-        'startdate': startdate if defined_epoch else None,
-        'starttime': starttime if defined_epoch else None,
-        'datarate': datarate if not isinstance(datarate, str) else int(datarate or 2048),
-        'subbands': subbands or 8,
-        'channels': channels or 64,
-        'polarizations': pols or 2,
-        'inttime': inttime or 2,
-    }
+    obs_params = {'band': band_name, 'stations': sorted(selected_antennas), 'targets': target_specs or None,
+                  'duration': duration, 'ontarget': ontarget,
+                  'startdate': startdate if start_time is not None else None,
+                  'starttime': starttime if start_time is not None else None,
+                  'datarate': datarate, 'subbands': subbands, 'channels': channels, 'polarizations': pols,
+                  'inttime': inttime}
 
     return (
         html.Div(),                # user-message (empty: details are inside the tabs/panel)
         html.Div(),                # loading-div
         container_children,        # outputs-container
-        datarate or 2048,          # store-prev-datarate
-        channels or 64,            # store-prev-channels
-        subbands or 8,             # store-prev-subbands
+        datarate,                  # store-prev-datarate
+        channels,                  # store-prev-channels
+        subbands,                  # store-prev-subbands
         obs_params,                # store-obs-params
     )
 

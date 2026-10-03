@@ -5,3 +5,4 @@ include src/vlbiplanobs/data/rfc_2021c_cat.txt
 recursive-include src/vlbiplanobs/gui/assets *
 include README.md
 include CHANGES.txt
+global-exclude .DS_Store

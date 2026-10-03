@@ -3,14 +3,14 @@ pythonpath = "src"
 
 
 [build-system]
-requires = ["setuptools>=42", "wheel", "Cython"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 
 [project]
 name = "vlbiplanobs"
-version = "5.0.5"
-description = "Observaiton Planner for VLBI observations"
+version = "5.1.0"
+description = "Observation Planner for VLBI observations"
 license = "GPL-3.0-or-later"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -32,36 +32,35 @@ classifiers = [
   "Intended Audience :: Science/Research",
   "Topic :: Scientific/Engineering :: Astronomy",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.7",
-  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3 :: Only",
 ]
 
 dependencies = [
-  "six",
   "numpy",
-  "astropy>=4.0.2",
-  "astroplan>=0.7",
-  "types-PyYAML",
+  "astropy",
+  "astroplan",
+  "pyerfa",
   "rich",
   "rich_argparse",
   "plotext",
-  "matplotlib",
-  # "polars>=0.20.0",
-  # "jax>=0.4.0",
-  # "jaxlib>=0.4.0",
   "ortools>=9.0",
   "plotly",
   "dash>=3.0",
   "dash-bootstrap-components>=2.0",
   "dash-mantine-components",
-  "kaleido==0.2.1",
+  "kaleido<1",  # kaleido>=1 needs a Chrome binary to export figures (PDF reports break without it)
   "loguru",
   "borb==2.1.25; sys_platform == 'darwin'",  # borb 3.x wheel has case-conflicting files: fails on macOS
   "borb>=3.0; sys_platform != 'darwin'",
   "furl",
   "packaging",
 ]
+
+
+[project.optional-dependencies]
+test = ["pytest"]
 
 
 [project.urls]
@@ -71,16 +70,10 @@ dependencies = [
 
 [tool.setuptools]
 include-package-data = true
-# ext-modules = [
-#   {name = "observation", sources = ["src/vlbiplanobs/observation.py"]}
-# ]
 
 
 [tool.setuptools.package-data]
-"vlbiplanobs.data" = ["data/*"]
-"stations" = ["data/stations_catalog.inp"]
-"networks" = ["data/network_catalog.inp"]
-"rfc" = ["data/rfc_2021c_cat.txt"]
+"vlbiplanobs.data" = ["*"]
 "vlbiplanobs.gui" = ["assets/**/*"]
 
 

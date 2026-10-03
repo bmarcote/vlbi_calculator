@@ -33,25 +33,27 @@ The **EVN Observation Planner** determines source visibility, estimates sensitiv
 
 ## CLI Modes
 
-The `planobs` command is organised into five modes:
+The `planobs` command is organised into six modes:
 
 | Mode | Command | Description |
 |------|---------|-------------|
 | **Observe** | `planobs -b 6cm -t 'M87' --network EVN` | Plan a VLBI observation |
-| **Fringe Finders** | `planobs fringefinders -s Ef Hh Mc -t '2025-03-15 08:00' -d 8` | Find bright calibrators for fringe detection |
+| **Fringe Finders** | `planobs fringefinders -s Ef Hh Mc -e '2025-03-15 08:00' -d 8` | Find bright calibrators for fringe detection |
 | **Phase Calibrators** | `planobs phasecals 'M87' -b 6cm` | Find compact calibrators near a target |
 | **Source** | `planobs source '3C273'` | Look up source information |
+| **Antenna** | `planobs antenna Ef` | Look up antenna information |
 | **Server** | `planobs server` | Launch the web GUI |
 
 === "Python API"
 
     ```python
-    from vlbiplanobs import Observation
-    
-    obs = Observation()
-    obs.band = '6cm'
-    obs.stations = obs.stations.filter_by_network('EVN')
-    obs.add_target('M87')
+    from astropy.time import Time
+    from astropy import units as u
+    from vlbiplanobs import cli
+
+    obs = cli.main(band='6cm', networks=['EVN'], targets=['J1230+1223'],
+                   start_time=Time('2025-03-15 20:00', scale='utc'), duration=8*u.h)
+    print(obs.thermal_noise())
     ```
     Full programmatic control for custom workflows.
 
@@ -62,7 +64,7 @@ The `planobs` command is organised into five modes:
 <div class="grid cards" markdown>
 
 - :material-download: **[Installation](installation.md)** – Get PlanObs running locally
-- :material-rocket-launch: **[Quick Start](quickstart.md)** – All five modes in 5 minutes
+- :material-rocket-launch: **[Quick Start](quickstart.md)** – All modes in 5 minutes
 - :material-telescope: **[Observation Planning](mode-observe.md)** – Full observe mode reference
 - :material-satellite-antenna: **[Fringe Finders](fringefinder.md)** – Find bright calibrator sources
 - :material-target-account: **[Phase Calibrators](phasecal.md)** – Find nearby phase calibrators

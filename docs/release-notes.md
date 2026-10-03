@@ -1,6 +1,188 @@
 # Release Notes
 
-## Version 4.7.0 (Current)
+## Version 5.1.0 (Current)
+
+*Released 2026-10-03.* Security, correctness, and performance release. It also unifies the CLI option names across
+all subcommands (old spellings keep working with a warning, see the migration table below).
+
+### New Features
+
+- **Unified CLI option names** – The same concept now uses the same flag in every subcommand: `-e/--epoch`
+  (start time), `-t/--target`, `-n/--network`, `-s/--stations`, `-b/--band`, `-d/--duration`, `-l/--max-lines`,
+  `-sc/--source-catalog`, `--station-catalog`, `--json`. See the [CLI overview](cli.md#option-names).
+- `planobs phasecals` accepts `-sc/--source-catalog`: the target is first looked up in your personal source catalog.
+- `planobs observe -d/--duration` accepts decimal hours (e.g. `-d 1.5`).
+- **Polaris export allowlist** – The new `PLANOBS_POLARIS_ORIGINS` environment variable restricts which web origins
+  can receive the setup via **Export to Polaris** (see [Web Server](mode-server.md#environment-variables)).
+
+### Breaking or Deprecated CLI Changes
+
+| Subcommand | Old | New | Status of the old spelling |
+|------------|-----|-----|----------------------------|
+| observe | `-t1`, `--starttime` | `-e`, `--epoch` | Deprecated (works, prints a warning) |
+| observe | `--targets` | `-t`, `--target` | Deprecated (works, prints a warning) |
+| fringefinders | `--starttime` | `-e`, `--epoch` | Deprecated (works, prints a warning) |
+| fringefinders | `-t` | `-e`, `--epoch` | **Removed** (error: `-t` means `--target` elsewhere) |
+| phasecals | `--n-sources` | `-l`, `--max-lines` | Deprecated (works, prints a warning) |
+| phasecals | `-n` | `-l`, `--max-lines` | **Removed** (error: `-n` means `--network` elsewhere) |
+| phasecals | `--catalog-file` | `--rfc-catalog` | Deprecated (works, prints a warning) |
+
+Deprecated spellings are hidden from `-h` and will be removed in a future version. Update your scripts, e.g.:
+
+```bash
+# Before
+planobs -b 6cm --targets M87 -n EVN -t1 '2025-03-15 08:00' -d 8
+planobs fringefinders -s Ef Hh Mc Tr -t '2025-03-15 08:00' -d 8
+planobs phasecals M87 -n 10 --catalog-file my_rfc.txt
+# Now
+planobs -b 6cm -t M87 -n EVN -e '2025-03-15 08:00' -d 8
+planobs fringefinders -s Ef Hh Mc Tr -e '2025-03-15 08:00' -d 8
+planobs phasecals M87 -l 10 --rfc-catalog my_rfc.txt
+```
+
+The `planobs fringefinders` and `planobs phasecals` entry points in `vlbiplanobs.calibrators` now reuse the same
+parsers as `planobs`, so they accept exactly the same options.
+
+### Security
+
+- **Server-side validation of all GUI inputs** – Values from the GUI, shared `?config=` links, the browser's local
+  storage, and uploaded files are validated on the server: duration ≤ 50 h, ≤ 20 targets, names ≤ 80 characters,
+  uploads ≤ 50 kB, and only known setup values (band, data rate, subbands, channels, polarizations, integration time).
+- **No cross-user data leaks** – Per-station data rates are stored per observation; the shared station catalog is no
+  longer modified, so one user's setup cannot affect another user's results.
+- **SCHED key file hardening** – Quotes and newlines are stripped from user-provided strings, placeholders are filled
+  in a single pass, and `--sched` experiment codes may only contain letters, digits, and underscores.
+- Source names are validated before online name resolution, and the results are cached.
+- CLI output escapes user and catalog strings, so they cannot inject Rich markup.
+- **Export to Polaris** only posts the setup to the exact opener origin (optionally restricted by
+  `PLANOBS_POLARIS_ORIGINS`), never to `*`.
+- **Mixpanel analytics removed** – PlanObs no longer uses any tracker.
+
+### Bug Fixes
+
+- RFC catalog lookups are exact (case-insensitive J2000 or IVS name); a substring match could return the wrong source.
+- The scheduler no longer modifies the `Observation` it schedules, and added calibrators (eMERLIN 3C286, polarization
+  calibrators, fringe finders) are placed using their real visibility. Generated `.key` files may therefore differ
+  from previous versions; polarization calibrators that cannot be placed are skipped with a warning.
+- The CLI time grid no longer duplicates the last time sample.
+- Custom network and station catalogs (`--station-catalog`) are actually read, or fail with a clear error.
+- Fixed eMERLIN-only arrays (per-band maximum data rates), sources that are never visible, visibility windows across
+  midnight, scan blocks with check sources but without phase calibrator (`every=N`), TOML scans without a duration,
+  and catalogs that only contain pulsars.
+- AstroGeo links are correct for sources with −1° < Dec < 0°.
+- GUI antenna highlighting uses exact matching (e.g. `Me` no longer highlights `Me1`).
+- The GUI maximum-duration message now says 50 h, matching the actual limit.
+
+### Performance
+
+- Visibility and elevation computations are vectorized with ERFA (~17× faster).
+- The RFC catalog is parsed once per process (2.2 s → 0.13 s).
+- Scheduling is ~3–5× faster.
+- The GUI sends the uv-coverage plot once per tab (~50 % smaller payload) and highlights antennas in the browser,
+  without a server round-trip.
+
+### Packaging
+
+- Python 3.12+ is required.
+- Added `pyerfa`; dropped the unused `six`, `matplotlib`, `types-PyYAML`, and `Cython` dependencies.
+- `kaleido` is kept below 1 (kaleido ≥ 1 needs a Chrome binary to export figures to PDF).
+- The `Procfile` runs `gunicorn vlbiplanobs.gui.main:server --workers 4 --timeout 120 ...`
+  (see [Web Server](mode-server.md#production-deployment)).
+- Package data (catalogs, templates, GUI assets) is installed correctly.
+
+---
+
+## Version 5.0.5
+
+*Released 2026-10-02.*
+
+### New Features
+
+- **Network Monitoring Experiments** – `planobs ... --nme [--sched CODE]` plans NME schedules (all-antenna
+  fringe-finder scans with periodic ftp fringe tests) and writes the NME `.key` file.
+- **Observation reports** – `planobs observe -o FILE` saves all inputs and results as `.pdf`, `.txt`, `.md`, or `.json`.
+- **SCHED templates** – `--template` selects a custom `.key` template and `planobs --get-key-template FILENAME`
+  copies the bundled one; `--setup` sets the frequency setup line.
+- Improved scheduler output for `--sched`.
+- **GUI** – Redesigned observation-planning dashboard; copy button (Export to Polaris or copy link to clipboard);
+  multi-source export to/from Polaris; fonts served locally (no third-party requests).
+- CLI help is organized in groups and shown through a built-in pager.
+
+### Improvements and Bug Fixes
+
+- The former `--gui` and `--no-tui` options were removed; the observation output is always shown in the terminal.
+- Durations are no longer rounded down to the nearest 10 minutes; short durations are allowed.
+- Grouped antenna chips are properly sorted, and the antenna callbacks stay aligned with them.
+- Fixed `borb` (PDF generation) installation on GNU/Linux and macOS.
+
+## Version 5.0.4
+
+*Released 2026-07-22.*
+
+- Bug fix: removed a leftover `name` property in `sources.py`.
+
+## Version 5.0.2
+
+*Released 2026-07-22.* First 5.0 release. It includes all the changes listed under [Version 4.7.0](#version-470)
+(grouped antenna chips, local horizons, terminal elevation plot, phase calibrator and check-source selection,
+polarization calibration), plus:
+
+- **Multiple sources** in the GUI, and export/import of the GUI configuration (including **Export to Polaris**).
+- The GUI computes results in real time (no "compute" button).
+- pySCHED station names are used in the schedules; faster `planobs source` visibility.
+- 4 Gbps is now the default EVN data rate.
+- GST ranges are shown again when an epoch is defined.
+- File logging is opt-in via `--logging [LOGFILE]`.
+- `kaleido` pinned below 1 (newer versions need Chrome to put figures in PDFs).
+- Bug fixes: durations with more than one decimal fell back to 24 h; mandatory stations set to `all`; GUI networks
+  after station changes; hardening against old cached values.
+
+## Version 4.9.3
+
+*Released 2026-04-08.*
+
+- Python 3.12+ is now required.
+- Handles observations where no baseline is visible.
+- Fixed AstroGeo links for sources with negative declination.
+
+## Version 4.9.2
+
+*Released 2026-04-01.*
+
+- Packaging fixes: missing CSS assets, `__version__`, log file path (`~` expansion), and relaxed `borb` version.
+
+## Version 4.9
+
+*Released 2026-03-30.*
+
+- GUI layout changes and real-time dashboard mode.
+- The terminal plot is limited to the targets, and unknown sources give a clearer error.
+
+## Version 4.8.1
+
+*Released 2026-03-16.*
+
+### New Features
+
+- **New CLI modes** – `planobs fringefinders`, `planobs phasecals` (calibrator searches in the RFC catalog),
+  `planobs source` (source information, with `--gst` for GST observing windows), and `planobs antenna`
+  (antenna information).
+- First fully working version of the scheduler and `.key` file generation (`--sched`).
+- Documentation pages for the new modes.
+
+### Bug Fixes
+
+- The Sun-constraint check was hard-coded to a given year.
+- eMERLIN frequencies, and Ce/Ho antenna acceleration parameters.
+- Dark mode and uv-plot highlighting in the GUI; short durations allowed in the GUI; style for small screens.
+
+---
+
+## Version 4.7.0
+
+!!! note
+    These changes were developed after 4.8.1 (under the 4.7.0 / 5.0a1 labels) and were first released in
+    [Version 5.0.2](#version-502).
 
 ### New Features
 
@@ -73,6 +255,17 @@
 - Source resolution via SIMBAD/NED/VizieR
 
 ## Migration Guide
+
+### From 5.0.x to 5.1.0
+
+- Replace the renamed CLI options listed in the [5.1.0 migration table](#breaking-or-deprecated-cli-changes):
+  `-t1`/`--starttime` → `-e`/`--epoch`, `--targets` → `-t`/`--target`, `fringefinders -t` → `-e`,
+  `phasecals -n`/`--n-sources` → `-l`/`--max-lines`, `--catalog-file` → `--rfc-catalog`.
+- Schedules generated with `--sched` may differ from 5.0.x, because added calibrators are now placed where they
+  are visible.
+- Python code that read `station.datarate` after building an observation should use
+  `obs.station_datarate(codename)` or `obs.station_datarates` instead.
+- `RFCCatalog.get_source()` now requires the exact name and returns `None` when the source is not found.
 
 ### From 4.5.x to 4.6.x
 

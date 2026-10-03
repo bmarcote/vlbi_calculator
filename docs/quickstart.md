@@ -1,6 +1,6 @@
 # Quick Start
 
-Get started with PlanObs in under 5 minutes. The `planobs` command provides five modes, each designed for a specific task in the VLBI observation planning workflow.
+Get started with PlanObs in under 5 minutes. The `planobs` command provides six modes, each designed for a specific task in the VLBI observation planning workflow.
 
 ## Modes Overview
 
@@ -10,10 +10,15 @@ Get started with PlanObs in under 5 minutes. The `planobs` command provides five
 | **Fringe Finders** | `planobs fringefinders ...` | Find bright calibrator sources for fringe detection |
 | **Phase Calibrators** | `planobs phasecals ...` | Find compact calibrators near your target |
 | **Source** | `planobs source <name>` | Look up detailed information about a source |
+| **Antenna** | `planobs antenna [name]` | Look up antenna information (SEFDs, diameter, location) |
 | **Server** | `planobs server` | Launch the web-based GUI |
 
 !!! tip "Legacy syntax"
     Running `planobs` without a subcommand (e.g. `planobs -b 6cm ...`) is equivalent to `planobs observe -b 6cm ...`. Both forms work.
+
+!!! note "Same options everywhere"
+    All modes use the same option names: `-b/--band`, `-n/--network`, `-s/--stations`, `-e/--epoch` (start time,
+    UTC), `-d/--duration` (hours), `-t/--target`, and `-l/--max-lines`. See the [CLI overview](cli.md#option-names).
 
 ---
 
@@ -31,7 +36,7 @@ For scheduling with auto-selected calibrators:
 
 ```bash
 planobs -b 6cm -t 'M87' --network EVN \
-  --starttime '2025-03-15 08:00' --duration 8 \
+  --epoch '2025-03-15 08:00' --duration 8 \
   --sched eg123a --fringefinders 3 --phasecal
 ```
 
@@ -44,7 +49,7 @@ planobs -b 6cm -t 'M87' --network EVN \
 Find bright, compact sources visible by your stations during the observation, suitable for fringe detection:
 
 ```bash
-planobs fringefinders -s Ef Hh Mc Tr -t '2025-03-15 08:00' -d 8 -b 6cm
+planobs fringefinders -s Ef Hh Mc Tr -e '2025-03-15 08:00' -d 8 -b 6cm
 ```
 
 Returns a ranked table of candidates with flux densities, elevations, and AstroGeo links.

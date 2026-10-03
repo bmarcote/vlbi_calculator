@@ -1,4 +1,76 @@
 
+v5.1.0  2026-10-03 -- Unified CLI option names in all subcommands: -e/--epoch (start time), -t/--target, -n/--network,
+                      -l/--max-lines, --rfc-catalog. Deprecated aliases still work with a warning: -t1, --starttime,
+                      --targets, --n-sources, --catalog-file. Removed (clear error): 'fringefinders -t' (use -e) and
+                      'phasecals -n' (use -l). observe -d accepts decimal hours. phasecals accepts -sc.
+                   -- Security (GUI): server-side validation of all inputs, also from shared ?config= links and uploads
+                      (duration <= 50 h, <= 20 targets, names <= 80 characters, uploads <= 50 kB, known setup values).
+                   -- Security: station data rates are no longer shared between GUI users.
+                   -- Security: SCHED .key files strip quotes/newlines from user strings, fill placeholders in a single
+                      pass, and only accept experiment codes with letters, digits and underscores.
+                   -- Security: validated and cached online name resolution; Rich markup escaped in the CLI output.
+                   -- Security: Export to Polaris only posts to the opener origin; optional allowlist with the
+                      PLANOBS_POLARIS_ORIGINS environment variable. Mixpanel analytics removed.
+                   -- Bug Fix: RFC source lookups are exact (a substring match could return the wrong source).
+                   -- Bug Fix: the scheduler no longer modifies the observation, and added calibrators (3C286, polcals,
+                      fringe finders) are placed where they are visible. Generated .key files may change; polcals
+                      that cannot be placed are skipped with a warning.
+                   -- Bug Fix: the CLI time grid no longer duplicates the last sample.
+                   -- Bug Fix: custom network/station catalogs are actually read, or fail with a clear error.
+                   -- Bug Fixes: eMERLIN-only arrays, never-visible sources, visibility windows across midnight, scan
+                      blocks with check sources but no phase calibrator, TOML scans without duration, pulsar-only
+                      catalogs, AstroGeo links for -1 < Dec < 0 deg, exact antenna highlighting in the GUI (Me vs Me1).
+                   -- GUI: the maximum-duration message now says 50 h.
+                   -- Performance: vectorized ERFA visibility/elevations (~17x faster), RFC catalog parsed once
+                      (2.2 s -> 0.13 s), scheduling ~3-5x faster, GUI uv plot sent once per tab (~50% smaller).
+                   -- Packaging: added pyerfa; dropped six, matplotlib, types-PyYAML and Cython; kaleido kept < 1;
+                      Procfile runs gunicorn vlbiplanobs.gui.main:server; package data fixed; Python 3.12+.
+v5.0.5  2026-10-02 -- New Feature: Network Monitoring Experiment mode (--nme), writing NME .key files.
+                   -- New Feature: 'planobs observe -o FILE' saves inputs and results as .pdf, .txt, .md or .json.
+                   -- New Feature: --template and --get-key-template for SCHED .key templates; improved --sched output.
+                   -- GUI: redesigned dashboard, copy button (Polaris or clipboard), multi-source Polaris export,
+                      local fonts (no third-party requests).
+                   -- CLI help organized in groups and shown through a built-in pager; --gui and --no-tui removed.
+                   -- Bug Fix: durations were rounded down to the nearest 10 minutes. Short durations allowed.
+                   -- Bug Fix: sorting of grouped antenna chips. Fixed borb installation on GNU/Linux and macOS.
+v5.0.4  2026-07-22 -- Bug Fix: removed a leftover 'name' property in sources.
+v5.0.2  2026-07-22 -- GUI: multiple sources, real-time computation, grouped antenna chips (VLA, MeerKAT, SKAO
+                      configurations), export/import of the configuration (Export to Polaris).
+                   -- Azimuth-dependent local horizons for 25 stations.
+                   -- CLI: plotext elevation plot, --phasecal, --check-source, --polcal, 'name/coordinates' sources,
+                      'fringefinders -n/--network', opt-in file logging (--logging).
+                   -- pySCHED station names; 4 Gbps is the default EVN data rate; GST ranges back when an epoch is set.
+                   -- kaleido pinned < 1 (newer versions need Chrome for PDF figures).
+                   -- Bug Fix: durations with more than one decimal fell back to 24 h (thanks Justin, NRAO).
+                   -- Bug Fixes: mandatory stations set to 'all', networks after station changes, old cached values.
+v4.9.3  2026-04-08 -- Requires Python 3.12+.
+                   -- Bug Fix: handles observations where no baseline is visible.
+                   -- Bug Fix: AstroGeo links for sources with negative declination.
+v4.9.2  2026-04-01 -- Packaging fixes: missing CSS, __version__, '~' in the log file path, borb version.
+v4.9    2026-03-30 -- GUI changes and real-time dashboard mode.
+                   -- Terminal plot limited to the targets; clearer error for unknown sources.
+v4.8.1  2026-03-16 -- New CLI modes: 'planobs fringefinders', 'planobs phasecals', 'planobs source' (with --gst),
+                      and 'planobs antenna'.
+                   -- First fully working version of the scheduler (--sched .key files).
+                   -- Bug Fix: the Sun constraint check was hard-coded to a given year.
+                   -- Bug Fixes: eMERLIN frequencies (thanks Anita), Ce/Ho antenna acceleration parameters, dark mode,
+                      uv-plot highlighting, short durations in the GUI, layout on small screens.
+v4.6.4  2026-01-12 -- Users can specify a new stations catalog.
+                   -- Bug Fix: reading a customized stations file.
+                   -- Bug Fix: uncaught exception when the source is not visible.
+                   -- Bug Fix: data rate passed as a string. LBA updates. More docstrings and tests.
+v4.6.3  2025-08-22 -- Same release as v4.6.2 (both tags point to the same commit).
+v4.6.2  2025-08-22 -- Bug Fix: baseline sensitivities (thanks Jay).
+                   -- ATCA 12 GHz (BIGCAT), Yarragadee extended to 18 cm and updated frequencies (thanks Lucas).
+                   -- Faster GUI by parallelizing the plots.
+v4.6.1  2025-08-08 -- New PDF export with the newer borb version; fixed PDF download issues.
+                   -- Bug Fix: wrong colors in the GUI visibility plot.
+                   -- Previous result cards are removed if the computation fails. Better CLI text output.
+v4.6    2025-07-11 -- Version jump to avoid collisions with older (2021-2023) tags.
+                   -- HSA and GBT at 12 and 15 GHz (thanks J. Linford). APEX at 3 mm (thanks E. Ros).
+                   -- Enforced types, clearer error messages, no IERS downloads, 24-h DatePicker format.
+                   -- Bug Fixes: CLI without a defined time, PDF download cache, hidden band mark in the slider,
+                      logging.
 v3.0.4  2025-05-30 -- Added East Asia VLBI Network stations.
                    -- Added SKA (both AA* and AA4) as a network, for a more explicit selection.
 v3.0.3  2025-05-21 -- Bug Fix: VLBA can be selected at Ku band too (thanks J. Linford for raising it).
@@ -23,6 +95,28 @@ v3.0.1  2025-05-12 -- Bug Fix: synthesized beam is correctly shown in the GUI ca
 v3.0b1  2025-04-27 -- First working version of PlanObs on the Dash server.
 v3.0a2  2025-03-21 -- First (partial) implementation of a PlanObs CLI.
                    -- Multiple sources, with associated calibrators are possible now.
+v.4.1.4 2023-12-18 -- Removed typing syntax not available in Python 3.8.
+v4.1.3  2023-12-18 -- Updated GMVA SEFDs (thanks T. Krichbaum and R. Minchin). Ideal SEFD values in the docs.
+v4.1.2  2023-11-09 -- New stations: Santa Maria (Azores), MIT Haystack 37 m, IAR 30 m. EHT updates.
+                   -- Updated SEFDs: Irbene, GMVA stations, VLBA at 3 mm; ALMA 7 mm for GMVA; Ur at 6 GHz.
+                   -- Fixed positions of APEX/PV, SMA and Haystack. Russian antennas no longer join the EVN.
+                   -- 3 Gbps mode added (requested by J. Blanchard). Mixpanel analytics added.
+v4.1.1  2022-01-12 -- Removed stdout warnings.
+v4.1    2021-12-26 -- New Feature: export the summary as a PDF.
+v4.0    2021-12-24 -- Observations can be set without target or epoch. Dynamic scheduling selection in the front end.
+                   -- Mopra 3 mm, Ww 13 cm, updated LBA antennas and eMERLIN K-band SEFDs.
+                   -- Bug Fix: new_inttime instead of new_bitsampling. Pytest suite and GitHub action.
+v3.3.2  2021-06-02 -- VERA and KaVA added (stations and networks). Fixed out-of-bounds bug in dirty maps.
+v3.3.1  2021-05-31 -- New station: ARO (Kitt Peak) 12 m for EHT. Updated GLT SEFDs.
+                   -- Extra sanity checks (e.g. wrong RA/Dec) and verbose logging of unexpected errors.
+v3.3    2021-03-17 -- World map added; figures computed in parallel. CSS fixes for small windows.
+v3.2    2021-03-16 -- Dirty beam images added. Arecibo 12 m and SKA-MID/MeerKAT single dish added.
+                   -- Bug Fixes: synthesized beam PA, FoV summary, GST values.
+v3.1    2021-03-09 -- Networks defined in an external file. MeerKAT (1 and 27 dishes) added.
+                   -- Wizard order: network then band, only allowed values. Fixed default EVN data rate.
+v3.0.1  2021-03-05 -- Wizard verifies the inserted data before continuing.
+v3.0.0  2021-03-04 -- New GUI with Material Design, with a guided (wizard) and a manual mode.
+                   -- Decommissioned antennas (e.g. Ar) flagged; Noema replaces P. de Bure; GMVA fixes.
 v2.0.3  2020-12-10 -- Bug fix: The option of only one subband is back.
                    -- Minor wording updates.
                    -- Velocity information added to the summary (vel. resolution in full bandwidth and per channel).

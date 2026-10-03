@@ -20,7 +20,7 @@ planobs phasecals 'M87' -b 6cm
 
 | Argument | Description |
 |----------|-------------|
-| `TARGET` (positional) | Target source name. Accepts J2000 names, IVS names from the RFC catalog, or any name resolvable by SIMBAD/NED/VizieR. The former `-t`/`--target` option is still accepted. |
+| `TARGET` (positional) | Target source name. Accepts J2000 names, IVS names from the RFC catalog, or any name resolvable by SIMBAD/NED/VizieR. Alternatively, give it with `-t`/`--target`. With `-sc`, the name is first looked up in your source catalog (block or source name). |
 
 ---
 
@@ -31,8 +31,15 @@ planobs phasecals 'M87' -b 6cm
 | `-b`, `--band` | all bands | Observing band (e.g. `6cm`, `1.3cm`). When omitted, shows average flux across all bands. |
 | `--max-separation` | `5.0` | Maximum angular separation from the target in degrees. |
 | `--min-flux` | `0.1` | Minimum unresolved flux threshold in Jy. |
-| `-n`, `--n-sources` | all | Maximum number of sources to return (sorted by separation). |
-| `--catalog-file` | built-in | Path to a custom RFC catalog file. |
+| `-l`, `--max-lines` | all | Maximum number of sources to return (sorted by separation). |
+| `-sc`, `--source-catalog` | none | Personal source catalog (TOML); `TARGET` is looked up there first, as in the observe mode. |
+| `--rfc-catalog` | built-in | Path to a custom RFC catalog file. |
+| `--logging [LOGFILE]` | off | Log to a file. |
+
+!!! warning "Renamed options (v5.1.0)"
+    `-n`/`--n-sources` became `-l`/`--max-lines` (as in `planobs fringefinders`) and `--catalog-file` became
+    `--rfc-catalog`. `--n-sources` and `--catalog-file` still work with a deprecation warning; `-n` is no longer
+    accepted here (it means `--network` in the other subcommands).
 | `--json` | off | Output results in JSON format instead of a table. |
 
 ---
@@ -74,7 +81,7 @@ Calibrators within 2° with ≥ 0.2 Jy unresolved flux.
 ### All-band search, top 10
 
 ```bash
-planobs phasecals '3C273' --max-separation 10 -n 10
+planobs phasecals '3C273' --max-separation 10 -l 10
 ```
 
 Searches all bands for calibrators within 10° of 3C273, returns the 10 closest.
@@ -136,7 +143,7 @@ A high **unresolved/total flux ratio** indicates a compact source. Extended stru
 
 **Target not found** – check spelling, try coordinates, or verify with `planobs source <name>`.
 
-**Too many weak sources** – increase `--min-flux`, reduce `--max-separation`, or use `-n` to limit output.
+**Too many weak sources** – increase `--min-flux`, reduce `--max-separation`, or use `-l` to limit output.
 
 ---
 
@@ -148,7 +155,7 @@ Once you have identified calibrators, add them to your source catalog file and i
 
 ```bash
 planobs -b 6cm --source-catalog my_sources.toml --network EVN \
-  --starttime '2025-06-15 08:00' --duration 8
+  --epoch '2025-06-15 08:00' --duration 8
 ```
 
 ### Auto-Selection in Scheduling
@@ -157,7 +164,7 @@ When generating a schedule file with `--sched`, you can use auto-selection for p
 
 ```bash
 planobs -b 6cm -t 'M87' --network EVN \
-  --starttime '2025-06-15 08:00' --duration 8 \
+  --epoch '2025-06-15 08:00' --duration 8 \
   --sched eg123a \
   --phasecal
 ```
@@ -172,7 +179,7 @@ To specify named phase calibrators instead of auto-selection:
 
 ```bash
 planobs -b 6cm -t 'M87' --network EVN \
-  --starttime '2025-06-15 08:00' --duration 8 \
+  --epoch '2025-06-15 08:00' --duration 8 \
   --sched eg123a \
   --phasecal 'J1229+0203' 'J1230+1223'
 ```

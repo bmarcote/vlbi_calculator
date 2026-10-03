@@ -24,7 +24,7 @@ python3 -m pip install vlbiplanobs
 ```
 
 
-Once you have it installed, you can simply run it by typing `planobs-server` in the terminal.  It will start to run the server and you will be able to access it in your browser by following the typed url (likely http://0.0.0.0:8050/).
+Once you have it installed, you can simply run it by typing `planobs server` in the terminal.  It will start to run the server and you will be able to access it in your browser by following the typed url (by default http://127.0.0.1:8050/).
 
 
 > **But PlanObs also has a lovely command-line interface!
@@ -59,9 +59,24 @@ planobs -b 6cm -t 'Altair' --network EVN eMERLIN
 If you want to specify an epoch and some particular stations, you can do:
 
 ```bash
-planobs --band 6cm --target 'Altair' --stations Ef Hh Ir Mc Tr Hh T6 O8 Wb Cm --starttime '2020-06-15 20:00' --duration 12
-    --no-gui   # if you don't want to visualize the plots in the browser but only within the terminal
+planobs --band 6cm --target 'Altair' --stations Ef Hh Ir Mc Tr T6 O8 Wb Cm --epoch '2020-06-15 20:00' --duration 12
 ```
+
+Add `-o report.pdf` (or `.txt`, `.md`, `.json`) to save all inputs and results to a file, and `--sched EXPCODE` to
+produce a SCHED `.key` schedule file.
+
+2. Other modes are available as subcommands (run `planobs <mode> -h` for details):
+
+```bash
+planobs fringefinders -n EVN -e '2025-06-15 20:00' -d 8 -b 6cm   # bright fringe finders
+planobs phasecals 'M87' -b 6cm                                  # phase calibrators near a target
+planobs source '3C273'                                          # source information
+planobs antenna Ef                                              # antenna information
+planobs server                                                  # local web GUI
+```
+
+The same option names are used in every mode: `-b/--band`, `-n/--network`, `-s/--stations`, `-e/--epoch`,
+`-d/--duration`, `-t/--target`, and `-l/--max-lines`. The full documentation is in the `docs/` directory.
 
 
 

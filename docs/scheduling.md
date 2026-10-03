@@ -9,8 +9,9 @@ The scheduler arranges scan blocks across your observation following VLBI conven
 - **Fringe finders**: Auto-selected or specified sources, distributed throughout the observation
 - **Phase calibrators**: Auto-selected or specified sources for phase referencing
 - **Check sources**: Auto-selected or specified sources for calibration verification
-- **Polarization calibration**: Standard polcal sources (3C84, OQ208, DA193) at 10%, 50%, 90% of observation time
-- **eMERLIN 3C286**: Automatically added when eMERLIN stations are present
+- **Polarization calibration**: Standard polcal sources (3C84, OQ208, DA193) near 10%, 50%, 90% of observation time,
+  at the closest time when each source is visible (polcals that cannot be placed are skipped with a warning)
+- **eMERLIN 3C286**: Automatically added when eMERLIN stations are present, at a time when it is visible
 - **Science blocks**: Optimized for antenna participation and elevation
 
 ## Generating a Schedule File
@@ -19,7 +20,7 @@ The scheduler arranges scan blocks across your observation following VLBI conven
 
 ```bash
 planobs -b 6cm -t 'M87' --network EVN \
-  --starttime '2025-03-15 08:00' \
+  --epoch '2025-03-15 08:00' \
   --duration 8 \
   --sched my_experiment
 ```
@@ -32,7 +33,7 @@ Use `--setup` to write a given frequency setup in the `setup = ...` line of the 
 
 ```bash
 planobs -b 6cm -t 'M87' --network EVN \
-  --starttime '2025-03-15 08:00' \
+  --epoch '2025-03-15 08:00' \
   --duration 8 \
   --sched my_experiment \
   --setup 'evn6cm-2Gbps-32MHz.set'
@@ -44,22 +45,27 @@ If `--setup` is not given, PlanObs guesses the setup from the observation, and w
 ### Via Python
 
 ```python
-from vlbiplanobs import Observation
+from astropy.time import Time
+from astropy import units as u
+from vlbiplanobs import cli
+from vlbiplanobs.scheduler import ObservationScheduler
 
-obs = Observation()
-# ... configure observation ...
+obs = cli.main(band='6cm', networks=['EVN'], targets=['J1230+1223'],
+               start_time=Time('2025-03-15 20:00', scale='utc'), duration=8*u.h)
 
-key_content = obs.schedule_file(
-    experiment_code='EG123A',
-    pi_name='Your Name',
-    pi_email='you@example.com',
-    pi_institute='Your Institute',
-    setup_file='evn6cm-2Gbps-32MHz.set'
-)
+scheduler = ObservationScheduler(obs, fringefinder_spec=['3'], polcal=True)
+scheduler.schedule()   # must be called before generate_key_file()
+key_content = scheduler.generate_key_file(experiment_code='EG123A', pi_name='Your Name',
+                                          pi_email='you@example.com', pi_institute='Your Institute',
+                                          setup_file='evn6cm-2Gbps-32MHz.set')
 
 with open('eg123a.key', 'w') as f:
     f.write(key_content)
 ```
+
+User-provided strings (experiment code, PI fields, source names) have quotes and newlines removed before they
+are written. With `--sched`, the experiment code is the file name stem in upper case and may only contain
+letters, digits and underscores.
 
 ## Schedule File Format
 
@@ -132,16 +138,15 @@ The scheduler optimizes science blocks for:
 ### Python API
 
 ```python
-from vlbiplanobs.scheduler import ObservationScheduler
-
 scheduler = ObservationScheduler(
-    observation,
+    obs,
     min_antennas=3,           # Require at least 3 antennas
     require_all_antennas=True # All stations must observe
 )
 
 schedule = scheduler.schedule()
-scheduler.print_schedule()
+for block in scheduler.get_scheduled_blocks():
+    print(block.name, block.start_time.iso, block.end_time.iso, block.n_antennas)
 ```
 
 ## Network Monitoring Experiments

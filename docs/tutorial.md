@@ -23,17 +23,17 @@ PlanObs scans the full GST range and reports optimal observing windows.
 
 ```bash
 planobs -b 6cm -t 'Altair' --stations Ef Hh Ir Mc Tr T6 O8 Wb Cm \
-  --starttime '2025-06-15 20:00' --duration 12
+  --epoch '2025-06-15 20:00' --duration 12
 ```
 
 This evaluates visibility and sensitivity for the given 12-hour window.
 
-### Suppress the GUI
+### Save a report
 
-Add `--no-tui` to skip the graphical elevation plots and keep only the terminal output:
+Add `-o` to save all inputs and results; the extension selects the format (`.pdf`, `.txt`, `.md`, or `.json`):
 
 ```bash
-planobs -b 6cm -t 'Altair' --network EVN --no-tui
+planobs -b 6cm -t 'Altair' --network EVN -o altair.pdf
 ```
 
 :material-arrow-right: Full reference: **[Observation Planning](mode-observe.md)**
@@ -45,7 +45,7 @@ planobs -b 6cm -t 'Altair' --network EVN --no-tui
 Fringe finders are bright calibrators used to detect and correct instrumental delays. Use the `fringefinders` mode:
 
 ```bash
-planobs fringefinders -s Ef Hh Mc Tr -t '2025-03-15 08:00' -d 8 -b 6cm
+planobs fringefinders -s Ef Hh Mc Tr -e '2025-03-15 08:00' -d 8 -b 6cm
 ```
 
 This searches the RFC catalog and returns a ranked table of candidates with flux densities, elevations, and AstroGeo links.
@@ -88,7 +88,7 @@ Create a pySCHED-compatible `.key` file by adding `--sched`:
 
 ```bash
 planobs -b 6cm -t 'M87' --network EVN \
-  --starttime '2025-03-15 08:00' --duration 8 \
+  --epoch '2025-03-15 08:00' --duration 8 \
   --sched eg123a
 ```
 
@@ -96,7 +96,7 @@ This produces `eg123a.key`. You can control fringe finder selection and add cali
 
 ```bash
 planobs -b 6cm -t 'M87' --network EVN \
-  --starttime '2025-03-15 08:00' --duration 8 \
+  --epoch '2025-03-15 08:00' --duration 8 \
   --sched eg123a --fringefinders 3 --polcal
 ```
 

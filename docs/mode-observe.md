@@ -11,6 +11,11 @@ planobs observe -b BAND [OPTIONS]
 !!! tip "Legacy syntax"
     You can omit the `observe` subcommand. Running `planobs -b 6cm ...` is equivalent to `planobs observe -b 6cm ...`.
 
+!!! note "Renamed options (v5.1.0)"
+    The start time is now `-e/--epoch` and the target(s) `-t/--target`, as in every other subcommand.
+    The old spellings `-t1`, `--starttime` and `--targets` still work but print a deprecation warning.
+    See the [release notes](release-notes.md) for the full list.
+
 ---
 
 ## Required Arguments
@@ -51,7 +56,7 @@ planobs -b 6cm --network EVN --stations Ar Ys
 Use only specific stations:
 
 ```bash
-planobs -b 6cm --stations Ef Hh Mc Tr Wb On
+planobs -b 6cm --stations Ef Hh Mc Tr Wb O8
 ```
 
 ---
@@ -60,8 +65,8 @@ planobs -b 6cm --stations Ef Hh Mc Tr Wb On
 
 | Argument | Description |
 |----------|-------------|
-| `-t`, `--targets` | One or more source names or coordinates. Names are resolved via SIMBAD/NED/VizieR. Coordinates use `hh:mm:ss dd:mm:ss` or `XXhXXmXXs XXdXXmXXs` format. |
-| `-sc`, `--source-catalog` | Path to a TOML source catalog file. When combined with `--targets`, only the named blocks from the file are used. |
+| `-t`, `--target` | One or more source names or coordinates. Names are resolved via SIMBAD/NED/VizieR. Coordinates use `hh:mm:ss dd:mm:ss` or `XXhXXmXXs XXdXXmXXs` format. |
+| `-sc`, `--source-catalog` | Path to a TOML source catalog file. When combined with `--target`, only the named blocks from the file are used. |
 
 !!! note "Name/Coordinates Parsing"
     Target sources can be specified as names or coordinates. Use the `name/coordinates` format to override catalog lookup with custom coordinates:
@@ -104,15 +109,15 @@ planobs -b 6cm --source-catalog my_sources.toml -t block1 block2 --network EVN
 
 | Argument | Description |
 |----------|-------------|
-| `-t1`, `--starttime` | Start of the observation in `'YYYY-MM-DD HH:MM'` format (UTC). |
-| `-d`, `--duration` | Total duration of the observation in hours. |
+| `-e`, `--epoch` | Start of the observation in `'YYYY-MM-DD HH:MM'` format (UTC). |
+| `-d`, `--duration` | Total duration of the observation in hours (decimal values such as `1.5` are accepted; maximum 96 h in the CLI). |
 
 When **no time is specified**, PlanObs searches for the optimal GST range and reports when the source is observable.
 
 When **both start time and duration are given**, PlanObs evaluates visibility and sensitivity for that specific epoch.
 
 !!! warning
-    If you provide `--starttime`, you must also provide `--duration`.
+    If you provide `--epoch`, you must also provide `--duration`.
 
 ### Examples
 
@@ -125,7 +130,7 @@ planobs -b 6cm -t 'M87' --network EVN
 Fixed epoch observation:
 
 ```bash
-planobs -b 6cm -t 'M87' --network EVN --starttime '2025-06-15 08:00' --duration 12
+planobs -b 6cm -t 'M87' --network EVN --epoch '2025-06-15 08:00' --duration 12
 ```
 
 ---
@@ -144,6 +149,7 @@ planobs -b 6cm -t 'M87' --network EVN --starttime '2025-06-15 08:00' --duration 
 |----------|-------------|
 | `--sched` | Generate a pySCHED `.key` schedule file. The value is used as the experiment code and filename. |
 | `--setup` | Frequency setup written in the `setup = ...` line of the `.key` file. If not given, PlanObs guesses it. |
+| `--template` | Custom SCHED `.key` template. Get a copy of the bundled one with `planobs --get-key-template FILENAME`. |
 | `--fringefinders` | Fringe finder source(s) or a number of automatic selections (default: `2`). |
 | `--polcal` | Include polarization calibration scans. |
 | `--phasecal` | Phase calibrator source(s) or empty for auto-selection. |
@@ -156,7 +162,7 @@ Generate a schedule file with automatic fringe finder and phase calibrator selec
 
 ```bash
 planobs -b 6cm -t 'M87' --network EVN \
-  --starttime '2025-03-15 08:00' --duration 8 \
+  --epoch '2025-03-15 08:00' --duration 8 \
   --sched eg123a \
   --fringefinders 3 \
   --polcal
@@ -166,7 +172,7 @@ This creates `eg123a.key`. See **[Scheduling](scheduling.md)** for details on th
 
 ### Network Monitoring Experiments (`--nme`)
 
-`--nme` plans a Network Monitoring Experiment: no targets are needed, only the band, the antennas, `-t1` and `-d`.
+`--nme` plans a Network Monitoring Experiment: no targets are needed, only the band, the antennas, `-e` and `-d`.
 The full observation is covered by ~15-min fringe-finder scans that all antennas can observe (minimum elevation 15°,
 RFC sources with unresolved flux ≥ 1 Jy at the band, or the sources given with `--fringefinders NAME ...`).
 
@@ -181,7 +187,7 @@ scans. With `--sched`, it also writes the NME `.key` file (bundled template `nme
 with `--template`):
 
 ```bash
-planobs -b 18cm -s Jb1 Wb Ef Nt O8 T6 Ur Tr Hh Ir -t1 '2025-02-20 12:00' -d 3 --nme --sched n25l1
+planobs -b 18cm -s Jb1 Wb Ef Nt O8 T6 Ur Tr Hh Ir -e '2025-02-20 12:00' -d 3 --nme --sched n25l1
 ```
 
 ---
@@ -190,10 +196,9 @@ planobs -b 18cm -s Jb1 Wb Ef Nt O8 T6 Ur Tr Hh Ir -t1 '2025-02-20 12:00' -d 3 --
 
 | Argument | Description |
 |----------|-------------|
-| `--gui` | Open graphical plots in the browser. |
-| `--no-tui` | Suppress the terminal (TUI) output. |
 | `-o`, `--output FILENAME` | Write the observation report. Accepted extensions are `.pdf`, `.txt`, `.md`, and `.json` (case-insensitive). |
 | `--debug` | Show debug messages and execution time. |
+| `--logging [LOGFILE]` | Log to a file (default `/var/log/planobs.log` if writable, otherwise `~/log-planobs.log`). Disabled by default. |
 
 The filename extension selects the report format. PDF uses the same summary generator as the web GUI, with one page per source. Text and Markdown provide human-readable summaries. JSON contains reusable observation inputs plus calculated outputs such as sensitivity, synthesized beam, observability, smearing, elevations, and UV values.
 
@@ -252,7 +257,7 @@ planobs -b 6cm \
   -t 'Cygnus A' \
   --network EVN eMERLIN \
   --stations Ar Ys \
-  --starttime '2025-06-15 08:00' \
+  --epoch '2025-06-15 08:00' \
   --duration 12 \
   --data-rate 2048
 ```
@@ -263,7 +268,7 @@ planobs -b 6cm \
 planobs -b 6cm \
   -t 'M87' \
   --network EVN \
-  --starttime '2025-03-15 08:00' \
+  --epoch '2025-03-15 08:00' \
   --duration 8 \
   --sched eg123a \
   --fringefinders 3 \
@@ -278,10 +283,4 @@ planobs -b 6cm \
   --station-catalog my_stations.inp \
   -t MyTarget \
   --network EVN
-```
-
-### Terminal-only output (no GUI)
-
-```bash
-planobs -b 6cm -t 'M87' --network EVN --no-tui
 ```

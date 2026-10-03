@@ -92,3 +92,23 @@ The table gains a **GST** column showing the sidereal time range(s) when each ne
 - **Before planning an observation** – check whether a potential calibrator has sufficient flux.
 - **Evaluating calibrators** – compare total vs. unresolved flux to judge compactness.
 - **Quick coordinate lookup** – get precise J2000 coordinates for any source.
+
+---
+
+## Antenna Lookup (`planobs antenna`)
+
+`planobs antenna` (alias `planobs ant`) prints information about the antennas in the catalog.
+
+```bash
+planobs antenna [ANTENNA] [-b BAND]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `ANTENNA` | Name, short name, or codename of the antenna. If omitted, all antennas are listed. |
+| `-b`, `--band` | Only list the antennas that observe at this band (e.g. `18cm`, `1.3cm`), with their SEFD at that band. |
+
+```bash
+planobs antenna Ef          # name, codename, diameter, country, and SEFD per band
+planobs ant -b 1.3cm        # all antennas observing at 1.3 cm
+```

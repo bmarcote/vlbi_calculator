@@ -165,3 +165,59 @@ def test_nme_accepts_regular_source_name():
     """A normal source name is written unchanged."""
     line = nme._source_catalog_line(_fake_source('J1200+3000'))
     assert line.startswith("source='J1200+3000'")
+
+
+def _subparser_help(add_arguments) -> dict[str, str]:
+    """Return {dest: help} for a parser built with the given cli add_*_arguments function."""
+    parser = argparse.ArgumentParser()
+    add_arguments(parser)
+    return {action.dest: action.help or '' for action in parser._actions if action.help != argparse.SUPPRESS}
+
+
+def test_fringefinder_help_defaults_match_calibrators_constants():
+    """The '(default: X)' texts of 'planobs fringefinders' match the calibrators.FRINGE_DEFAULT_* constants."""
+    from vlbiplanobs import calibrators
+    helps = _subparser_help(cli.add_fringe_finder_arguments)
+    assert f"(default: {calibrators.FRINGE_DEFAULT_MIN_FLUX_JY})" in helps['min_flux']
+    assert f"(default: {calibrators.FRINGE_DEFAULT_MIN_ELEVATION_DEG:g})" in helps['min_elevation']
+    assert f"(default: {calibrators.FRINGE_DEFAULT_MAX_LINES})" in helps['max_lines']
+
+
+def test_phasecal_help_defaults_match_calibrators_constants():
+    """The '(default: X)' texts of 'planobs phasecals' match the calibrators.PHASECAL_DEFAULT_* constants."""
+    from vlbiplanobs import calibrators
+    helps = _subparser_help(cli.add_phase_cal_arguments)
+    assert f"(default: {calibrators.PHASECAL_DEFAULT_MAX_SEPARATION_DEG})" in helps['max_separation']
+    assert f"(default: {calibrators.PHASECAL_DEFAULT_MIN_FLUX_JY})" in helps['min_flux']
+
+
+def test_fringefinders_handler_passes_parsed_values(monkeypatch):
+    """handle_fringe_finder_command forwards parsed values and fills omitted ones from the constants."""
+    from vlbiplanobs import calibrators
+    captured = {}
+    monkeypatch.setattr(calibrators, 'run_fringe_finders', lambda **kw: captured.update(kw) or 0)
+    parser = argparse.ArgumentParser()
+    cli.add_fringe_finder_arguments(parser)
+    args = parser.parse_args(['-n', 'EVN', '-e', '2025-03-15 08:00', '-d', '4', '--min-flux', '0.7', '--json'])
+    with pytest.raises(SystemExit) as exc:
+        cli.handle_fringe_finder_command(args)
+    assert exc.value.code == 0
+    assert captured['networks'] == ['EVN'] and captured['min_flux'] == 0.7 and captured['as_json'] is True
+    assert captured['min_elevation'] == calibrators.FRINGE_DEFAULT_MIN_ELEVATION_DEG
+    assert captured['max_lines'] == calibrators.FRINGE_DEFAULT_MAX_LINES
+
+
+def test_phasecals_handler_passes_parsed_values(monkeypatch):
+    """handle_phase_cal_command forwards the target and fills omitted thresholds from the constants."""
+    from vlbiplanobs import calibrators
+    captured = {}
+    monkeypatch.setattr(calibrators, 'run_phasecals', lambda **kw: captured.update(kw) or 1)
+    parser = argparse.ArgumentParser()
+    cli.add_phase_cal_arguments(parser)
+    args = parser.parse_args(['J1230+1223', '-l', '5', '-b', '6cm'])
+    with pytest.raises(SystemExit) as exc:
+        cli.handle_phase_cal_command(args)
+    assert exc.value.code == 1
+    assert captured['target'] == 'J1230+1223' and captured['n_sources'] == 5 and captured['band'] == '6cm'
+    assert captured['max_separation'] == calibrators.PHASECAL_DEFAULT_MAX_SEPARATION_DEG
+    assert captured['min_flux'] == calibrators.PHASECAL_DEFAULT_MIN_FLUX_JY

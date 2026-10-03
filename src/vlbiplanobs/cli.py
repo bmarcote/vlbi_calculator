@@ -16,6 +16,7 @@ from rich.text import Text
 from rich.live import Live
 from rich.markup import escape
 from rich_argparse import RawTextRichHelpFormatter
+from vlbiplanobs.cli_options import add_deprecated_alias, add_removed_option
 
 if TYPE_CHECKING:
     # Static bindings for the lazily-imported heavy names (see `_load_heavy`).
@@ -723,23 +724,25 @@ def add_observation_arguments(parser):
                             "of the antennas that will participate in the\nobservation. "
                             "You can use either antenna codenames or the standard name,\n"
                             "as given in the catalogs. [green]See '--list-antennas' to get a list.[/green]")
-    main_group.add_argument('-t1', '--starttime', type=str, default=None,
+    main_group.add_argument('-e', '--epoch', type=str, default=None, dest='epoch',
                             help="Start of the observation, with the format 'YYYY-MM-DD HH:MM' "
                             "in UTC.")
-    main_group.add_argument('-d', '--duration', type=str, default=None,
+    add_deprecated_alias(main_group, '-t1', '--starttime', dest='epoch', new_option='-e/--epoch', type=str)
+    main_group.add_argument('-d', '--duration', type=float, default=None,
                             help="Total duration of the observation, in hours.")
 
     source_group = parser.add_argument_group('Source-related options')
-    source_group.add_argument('-t', '--targets', type=str, default=None, nargs='+',
+    source_group.add_argument('-t', '--target', type=str, default=None, nargs='+', dest='targets', metavar='TARGET',
                               help="Source(s) to be observed. Each entry can be:\n"
                               "  a) A source name (looked up in SIMBAD/NED/VizieR/RFC).\n"
                               "  b) Coordinates: 'hh:mm:ss dd:mm:ss' or 'XXhXXmXXs XXdXXmXXs'.\n"
                               "  c) 'name/coordinates' to provide both (coordinates override lookup).\n"
                               "Or if '--source-catalog' is defined, selects the block(s) in that file.\n"
                               "Multiple sources can be provided.")
+    add_deprecated_alias(source_group, '--targets', dest='targets', new_option='-t/--target', type=str, nargs='+')
     source_group.add_argument('-sc', '--source-catalog', '--sc', type=str, default=None,
                               help="Input file containing the personal source catalog.\n"
-                              "If provided, then '--targets' will select the block(s) "
+                              "If provided, then '--target' will select the block(s) "
                               "defined in\nthis file, ignoring the rest.")
     source_group.add_argument('--fringefinders', default=['2'], type=str, nargs='+',
                                 help="Defines the fringe finder source(s) to be scheduled "
@@ -782,7 +785,7 @@ def add_observation_arguments(parser):
                            help="If set, shows some debuging messages.")
     obs_group.add_argument('--nme', action="store_true", default=False,
                            help="Network Monitoring Experiment mode (no targets needed; requires\n"
-                           "'-t1' and '-d'). The full time is covered with ~15-min fringe-finder\n"
+                           "'-e' and '-d'). The full time is covered with ~15-min fringe-finder\n"
                            "scans visible by all antennas, with ftp fringe-test grabs every 30 min\n"
                            "(every 15 min if the duration is <= 2.5 h). Without '--sched' it lists\n"
                            "the visible fringe finders and the proposed scans; with '--sched' it\n"
@@ -807,9 +810,7 @@ def add_observation_arguments(parser):
 
 
 def add_fringe_finder_arguments(parser):
-    """Add arguments for fringe finder search."""
-    # Import the main_fringe function to get its argument parser
-    # We'll recreate the arguments here
+    """Add arguments for fringe finder search (also used by calibrators.main_fringe)."""
     parser.add_argument('-n', '--network', type=str, nargs='+',
                         help="The VLBI network(s) that will participate in\nthe observation. "
                         "It will take the default stations in each network.\nIf 'stations' "
@@ -817,14 +818,21 @@ def add_fringe_finder_arguments(parser):
                         "the ones given in stations. [green]See '--list-networks' to get a list.[/green]")
     parser.add_argument('-s', '--stations', type=str, nargs='+',
                         help="List of antenna codenames or names that will participate in the observation.")
-    parser.add_argument('-t', '--starttime', type=str, required=True,
-                        help="Start of the observation in format 'YYYY-MM-DD HH:MM' (UTC).")
+    # Not required=True at the argparse level so that the deprecated aliases also satisfy it; enforced in
+    # handle_fringe_finder_command.
+    parser.add_argument('-e', '--epoch', type=str, default=None, dest='epoch',
+                        help="Start of the observation in format 'YYYY-MM-DD HH:MM' (UTC). Required.")
+    add_deprecated_alias(parser, '-t1', '--starttime', dest='epoch', new_option='-e/--epoch', type=str)
+    add_removed_option(parser, '-t', new_option='-e/--epoch', reason="'-t' means '--target' in the other commands")
     parser.add_argument('-d', '--duration', type=float, required=True, help="Duration of the observation in hours.")
-    parser.add_argument('--min-flux', type=float, default=0.5,
+    # Defaults are None here and resolved in handle_fringe_finder_command from the calibrators.FRINGE_DEFAULT_*
+    # constants (single source of truth); calibrators is heavy and is only imported lazily (see _load_heavy).
+    # The '(default: X)' help texts are checked against those constants in tests/test_fixes_cli.py.
+    parser.add_argument('--min-flux', type=float, default=None,
                         help="Minimum unresolved flux threshold in Jy (default: 0.5).")
-    parser.add_argument('--min-elevation', type=float, default=20.0,
+    parser.add_argument('--min-elevation', type=float, default=None,
                         help="Minimum elevation in degrees (default: 20).")
-    parser.add_argument('-l', '--max-lines', type=int, default=20,
+    parser.add_argument('-l', '--max-lines', type=int, default=None,
                         help="Maximum number of sources to return (default: 20).")
     parser.add_argument('--require-all', action='store_true', default=False,
                         help="Require source to be visible by ALL stations (default: False).")
@@ -836,26 +844,31 @@ def add_fringe_finder_arguments(parser):
 
 
 def add_phase_cal_arguments(parser):
-    """Add arguments for phase calibrator search."""
+    """Add arguments for phase calibrator search (also used by calibrators.main_phasecal)."""
     parser.add_argument('target', type=str, nargs='?', default=None,
                         help="Target source name (J2000 or IVS name from RFC catalog;\n"
                         "or a block/source name from '--source-catalog' if provided).")
-    parser.add_argument('-t', '--target', type=str, default=None, dest='target_option',
-                        help="Deprecated alias of the positional TARGET argument.")
+    parser.add_argument('-t', '--target', type=str, default=None, dest='target_option', metavar='TARGET',
+                        help="Target source, as an alternative to the positional TARGET argument.")
     parser.add_argument('-sc', '--source-catalog', '--sc', type=str, default=None,
                         help="Input file containing the personal source catalog.\n"
                         "If provided, then '--target' will first be looked up in\nthis file "
                         "(block or source name), as in the observe mode.")
-    parser.add_argument('--max-separation', type=float, default=5.0,
+    # Defaults are None here and resolved in handle_phase_cal_command from the calibrators.PHASECAL_DEFAULT_*
+    # constants (see add_fringe_finder_arguments for the rationale).
+    parser.add_argument('--max-separation', type=float, default=None,
                         help="Maximum angular separation in degrees (default: 5.0).")
-    parser.add_argument('--min-flux', type=float, default=0.1,
+    parser.add_argument('--min-flux', type=float, default=None,
                         help="Minimum unresolved flux threshold in Jy (default: 0.1).")
-    parser.add_argument('-n', '--n-sources', type=int, default=None,
+    parser.add_argument('-l', '--max-lines', type=int, default=None, dest='max_lines',
                         help="Maximum number of sources to return (default: all).")
+    add_deprecated_alias(parser, '--n-sources', dest='max_lines', new_option='-l/--max-lines', type=int)
+    add_removed_option(parser, '-n', new_option='-l/--max-lines', reason="'-n' means '--network' in the other commands")
     parser.add_argument('-b', '--band', type=str, default=None,
                         help="Observing band for flux display (e.g., '18cm', '6cm'). If not provided, shows flux for all available bands.")
-    parser.add_argument('--catalog-file', type=str, default=None,
+    parser.add_argument('--rfc-catalog', type=str, default=None, dest='rfc_catalog',
                         help="Path to custom RFC catalog file.")
+    add_deprecated_alias(parser, '--catalog-file', dest='rfc_catalog', new_option='--rfc-catalog', type=str)
     parser.add_argument('--json', action='store_true', default=False,
                         help="Output results in JSON format instead of a table.")
 
@@ -991,7 +1004,7 @@ def handle_observation_command(args):
                "or a list of antennas that will participate in the observation.[/bold red]")
         sys.exit(1)
 
-    if args.duration is None and args.starttime is not None:
+    if args.duration is None and args.epoch is not None:
         rprint("[bold red]If you provide a start time, you also need to provide a duration for"
                " the observation.[/bold red]")
         sys.exit(1)
@@ -1033,8 +1046,8 @@ def handle_observation_command(args):
     try:
         o = main(band=args.band, networks=args.network, stations=args.stations,
                  src_catalog=args.source_catalog, station_catalog=args.station_catalog,
-                 targets=args.targets, start_time=Time(args.starttime, scale='utc') if args.starttime else None,
-                 duration=float(args.duration)*u.hour if args.duration is not None else None,
+                 targets=args.targets, start_time=Time(args.epoch, scale='utc') if args.epoch else None,
+                 duration=args.duration*u.hour if args.duration is not None else None,
                  datarate=args.data_rate*u.Mbit/u.s if args.data_rate is not None else None,
                  phasecal_names=phasecal_arg, check_source_names=check_source_arg,
                  fringefinder_spec=fringefinder_arg, polcal=polcal_arg)
@@ -1140,8 +1153,8 @@ def handle_nme_command(args):
     """
     from vlbiplanobs import nme
     from vlbiplanobs.scheduler import format_setup_line, guess_setup_file
-    if args.starttime is None or args.duration is None:
-        rprint("[bold red]The NME mode requires both the start time (-t1) and the duration (-d).[/bold red]")
+    if args.epoch is None or args.duration is None:
+        rprint("[bold red]The NME mode requires both the start epoch (-e/--epoch) and the duration (-d).[/bold red]")
         sys.exit(1)
     if args.targets is not None or args.source_catalog is not None:
         rprint("[bold yellow]Targets/source catalogs are ignored in NME mode.[/bold yellow]")
@@ -1150,12 +1163,12 @@ def handle_nme_command(args):
     ff_names = None if (len(ff_arg) == 1 and ff_arg[0].isdigit()) else ff_arg
     try:
         o = main(band=args.band, networks=args.network, stations=args.stations,
-                 station_catalog=args.station_catalog, start_time=Time(args.starttime, scale='utc'),
-                 duration=float(args.duration)*u.hour,
+                 station_catalog=args.station_catalog, start_time=Time(args.epoch, scale='utc'),
+                 duration=args.duration*u.hour,
                  datarate=args.data_rate*u.Mbit/u.s if args.data_rate is not None else None)
         fringefinders = nme.resolve_fringe_finders(ff_names) if ff_names else None
-        start = Time(args.starttime, scale='utc')
-        scans, sources_ff, counts, times = nme.plan_nme(o.stations, start, float(args.duration)*u.hour,
+        start = Time(args.epoch, scale='utc')
+        scans, sources_ff, counts, times = nme.plan_nme(o.stations, start, args.duration*u.hour,
                                                         args.band, fringefinders=fringefinders)
     except ValueError as e:
         rprint(f"[bold red]Error: {escape(str(e))}[/bold red]")
@@ -1189,71 +1202,58 @@ def handle_nme_command(args):
 
 
 def handle_fringe_finder_command(args):
-    """Handle the fringe finder command."""
+    """Handles 'planobs fringefinders': validates the parsed args and runs calibrators.run_fringe_finders.
+
+    Inputs
+        args : argparse.Namespace — parsed arguments from add_fringe_finder_arguments.
+
+    Exits
+        With the exit code returned by calibrators.run_fringe_finders (1 if no epoch or no network/stations given).
+    """
+    if args.epoch is None:
+        rprint("[bold red]The start of the observation (-e/--epoch 'YYYY-MM-DD HH:MM') is required.[/bold red]")
+        sys.exit(1)
     _load_heavy()
     if args.network is None and args.stations is None:
         rprint("[bold red]You need to provide at least a VLBI network "
                "or a list of antennas that will participate in the observation.[/bold red]")
         sys.exit(1)
 
-    original_argv = sys.argv.copy()
-    sys.argv = ['planobs_fringefinder']
-    if args.network is not None:
-        sys.argv.extend(['-n'] + args.network)
-    if args.stations is not None:
-        sys.argv.extend(['-s'] + args.stations)
-    sys.argv.extend(['-t', args.starttime, '-d', str(args.duration)])
-    if args.min_flux != 0.5:
-        sys.argv.extend(['--min-flux', str(args.min_flux)])
-    if args.min_elevation != 20.0:
-        sys.argv.extend(['--min-elevation', str(args.min_elevation)])
-    if args.max_lines != 20:
-        sys.argv.extend(['-l', str(args.max_lines)])
-    if args.require_all:
-        sys.argv.append('--require-all')
-    if args.band is not None:
-        sys.argv.extend(['-b', args.band])
-    if args.station_catalog is not None:
-        sys.argv.extend(['--station-catalog', args.station_catalog])
-    if args.json:
-        sys.argv.append('--json')
-    try:
-        calibrators.main_fringe()
-    finally:
-        sys.argv = original_argv
+    min_flux = calibrators.FRINGE_DEFAULT_MIN_FLUX_JY if args.min_flux is None else args.min_flux
+    min_elevation = calibrators.FRINGE_DEFAULT_MIN_ELEVATION_DEG if args.min_elevation is None else args.min_elevation
+    max_lines = calibrators.FRINGE_DEFAULT_MAX_LINES if args.max_lines is None else args.max_lines
+    sys.exit(calibrators.run_fringe_finders(starttime=args.epoch, duration=args.duration, networks=args.network,
+                                            stations=args.stations, min_flux=min_flux, min_elevation=min_elevation,
+                                            max_lines=max_lines, require_all=args.require_all, band=args.band,
+                                            station_catalog=args.station_catalog, as_json=args.json))
 
 
 def handle_phase_cal_command(args):
-    """Handle the phase calibrator command."""
+    """Handles 'planobs phasecals': resolves the target (positional or '-t/--target') and runs
+    calibrators.run_phasecals.
+
+    Inputs
+        args : argparse.Namespace — parsed arguments from add_phase_cal_arguments.
+
+    Exits
+        With the exit code returned by calibrators.run_phasecals (1 if the target is missing or ambiguous).
+    """
     target = args.target if args.target is not None else args.target_option
     if target is None:
         rprint("[bold red]A target source is required: 'planobs phasecals TARGET \\[options]'.[/bold red]")
         sys.exit(1)
     if args.target is not None and args.target_option is not None and args.target != args.target_option:
-        rprint("[bold red]Two different targets were given (positional and '-t'); provide only one.[/bold red]")
+        rprint("[bold red]Two different targets were given (positional and '-t/--target'); "
+               "provide only one.[/bold red]")
         sys.exit(1)
 
     _load_heavy()
-    original_argv = sys.argv.copy()
-    sys.argv = ['planobs_phasecal', '-t', target]
-    if args.source_catalog is not None:
-        sys.argv.extend(['-sc', args.source_catalog])
-    if args.max_separation != 5.0:
-        sys.argv.extend(['--max-separation', str(args.max_separation)])
-    # Always forward: keeps the effective default in sync with main_phasecal's parser.
-    sys.argv.extend(['--min-flux', str(args.min_flux)])
-    if args.n_sources is not None:
-        sys.argv.extend(['-n', str(args.n_sources)])
-    if args.band is not None:
-        sys.argv.extend(['-b', args.band])
-    if args.catalog_file is not None:
-        sys.argv.extend(['--catalog-file', args.catalog_file])
-    if args.json:
-        sys.argv.append('--json')
-    try:
-        calibrators.main_phasecal()
-    finally:
-        sys.argv = original_argv
+    max_separation = calibrators.PHASECAL_DEFAULT_MAX_SEPARATION_DEG if args.max_separation is None \
+        else args.max_separation
+    min_flux = calibrators.PHASECAL_DEFAULT_MIN_FLUX_JY if args.min_flux is None else args.min_flux
+    sys.exit(calibrators.run_phasecals(target=target, max_separation=max_separation, min_flux=min_flux,
+                                       n_sources=args.max_lines, band=args.band, catalog_file=args.rfc_catalog,
+                                       source_catalog=args.source_catalog, as_json=args.json))
 
 
 def _format_gst_ranges(gst_pairs: list[tuple]) -> str:

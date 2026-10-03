@@ -1,6 +1,5 @@
 """Calibrator source module for finding fringe finders and nearby sources."""
 
-import sys
 import argparse
 import json
 import logging
@@ -1077,229 +1076,225 @@ def _wavelength_to_rfc_band(band: str) -> str:
     return 'c'
 
 
-def main_fringe():
-    usage = "%(prog)s [-h] OPTIONS"
-    description = "Find fringe finder sources for VLBI observations"
-    parser = argparse.ArgumentParser(description=description, prog="planobs_fringefinder", usage=usage,
-                                  formatter_class=RawTextRichHelpFormatter)
-    parser.add_argument('-n', '--network', type=str, nargs='+',
-                        help="The VLBI network(s) that will participate in the observation. "
-                        "It will take the default stations in each network.")
-    parser.add_argument('-s', '--stations', type=str, nargs='+',
-                        help="List of antenna codenames or names that will participate in the observation.")
-    parser.add_argument('-t', '--starttime', type=str, required=True,
-                        help="Start of the observation in format 'YYYY-MM-DD HH:MM' (UTC).")
-    parser.add_argument('-d', '--duration', type=float, required=True, help="Duration of the observation in hours.")
-    parser.add_argument('--min-flux', type=float, default=0.5,
-                        help="Minimum unresolved flux threshold in Jy (default: 0.5).")
-    parser.add_argument('--min-elevation', type=float, default=20.0,
-                        help="Minimum elevation in degrees (default: 20).")
-    parser.add_argument('-l', '--max-lines', type=int, default=20,
-                        help="Maximum number of sources to return (default: 20).")
-    parser.add_argument('--require-all', action='store_true', default=False,
-                        help="Require source to be visible by ALL stations (default: False).")
-    parser.add_argument('-b', '--band', type=str, default=None,
-                        help="Observing band for flux display (e.g., '18cm', '6cm'). "
-                             "If not provided, shows flux for all available bands.")
-    parser.add_argument('--station-catalog', type=str, default=None, help="Path to custom station catalog file.")
-    parser.add_argument('--json', action='store_true', default=False,
-                        help="Output results in JSON format instead of a table.")
-    args = parser.parse_args()
-    if args.network is None and args.stations is None:
-        error_msg = "You need to provide at least a VLBI network or a list of antennas."
-        if args.json:
-            print(json.dumps({"error": error_msg}, indent=2))
-        else:
-            rprint(f"[bold red]{error_msg}[/bold red]")
-        sys.exit(1)
+# Single source of truth for the CLI defaults of the fringe-finder and phase-calibrator searches.
+# Used by the 'planobs fringefinders/phasecals' option handlers in cli.py (also behind main_fringe/main_phasecal).
+FRINGE_DEFAULT_MIN_FLUX_JY: float = 0.5
+FRINGE_DEFAULT_MIN_ELEVATION_DEG: float = 20.0
+FRINGE_DEFAULT_MAX_LINES: int = 20
+PHASECAL_DEFAULT_MAX_SEPARATION_DEG: float = 5.0
+PHASECAL_DEFAULT_MIN_FLUX_JY: float = 0.1
 
-    obs._STATIONS = obs.Stations(filename=args.station_catalog)
-    stations_list = []
-    if args.network is not None:
-        try:
-            for n in args.network:
-                network = obs._NETWORKS[n]
-                for s in network.station_codenames:
-                    if s not in stations_list:
-                        stations_list.append(s)
-        except KeyError:
-            unknown_networks = [n for n in args.network if n not in obs._NETWORKS]
-            n_networks = len(unknown_networks)
-            error_msg = (f"The network{'s' if n_networks > 1 else ''} {', '.join(unknown_networks)} "
-                         f"{'are' if n_networks > 1 else 'is'} not known.")
-            if args.json:
-                print(json.dumps({"error": error_msg}, indent=2))
-            else:
-                rprint(f"[bold red]{error_msg}[/bold red]")
-            sys.exit(1)
 
-    for s in args.stations or []:
-        try:
-            # Try case-sensitive lookup first
-            a_station = obs._STATIONS[s.strip()].codename
-        except KeyError:
-            try:
-                # Try case-insensitive lookup by searching through all stations
-                s_upper = s.strip().upper()
-                found_station = None
-                for codename in obs._STATIONS.station_codenames:
-                    if codename.upper() == s_upper:
-                        found_station = obs._STATIONS[codename].codename
-                        break
+def _print_error(message: str, as_json: bool) -> None:
+    """Prints an error message either as a JSON object ({"error": message}) or as bold red rich text.
 
-                if found_station is None:
-                    # Also try full station names (case insensitive)
-                    for name in obs._STATIONS.station_names:
-                        if name.upper() == s_upper:
-                            found_station = obs._STATIONS[name].codename
-                            break
+    Inputs
+        message : str — the error message.
+        as_json : bool — if True, print JSON to stdout; otherwise print rich-formatted text.
+    """
+    if as_json:
+        print(json.dumps({"error": message}, indent=2))
+    else:
+        rprint(f"[bold red]{message}[/bold red]")
 
-                if found_station is None:
-                    raise KeyError(f"Station {s} not found")
 
-                a_station = found_station
-            except KeyError:
-                error_msg = f"The station {s} is not known."
-                if args.json:
-                    print(json.dumps({"error": error_msg}, indent=2))
-                else:
-                    rprint(f"[bold red]{error_msg}[/bold red]")
-                sys.exit(1)
+def _display_fluxes(src: Source, band: Optional[str]) -> tuple[float, float]:
+    """Returns the (total, unresolved) flux in Jy to display for a source.
 
+    Inputs
+        src : Source — a calibrator source with flux information.
+        band : Optional[str] — observing band; if None, the maximum flux over all bands is used.
+
+    Returns
+        tuple[float, float] — (total_flux_jy, unresolved_flux_jy); 0.0 when no positive flux is available.
+    """
+    if band:
+        return src.get_flux_at_band(band)
+
+    total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
+    unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
+    return total_flux, unresolved_flux
+
+
+def _find_station_codename(name: str) -> Optional[str]:
+    """Resolves an antenna name or codename to its codename in the loaded station catalog (obs._STATIONS).
+
+    Inputs
+        name : str — antenna codename or full name. Exact match first, then case-insensitive
+                     match against codenames and then against full names.
+
+    Returns
+        Optional[str] — the station codename, or None if the antenna is unknown.
+    """
+    try:
+        return obs._STATIONS[name.strip()].codename
+    except KeyError:
+        pass
+
+    name_upper = name.strip().upper()
+    for codename in obs._STATIONS.station_codenames:
+        if codename.upper() == name_upper:
+            return obs._STATIONS[codename].codename
+
+    for full_name in obs._STATIONS.station_names:
+        if full_name.upper() == name_upper:
+            return obs._STATIONS[full_name].codename
+
+    return None
+
+
+def _visibility_text(visibility: tuple, long_form: bool) -> str:
+    """Formats the per-source antenna visibility summary.
+
+    Inputs
+        visibility : tuple — (visible_count, total_count, visible_all_times, min_elev_all) as returned
+                     by get_fringe_finder_sources.
+        long_form : bool — True for the table wording ("all, all time"), False for the JSON wording
+                    ("all ant. all time").
+
+    Returns
+        str — human-readable visibility summary.
+    """
+    visible_count, total_count, visible_all_times, _ = visibility
+    if visible_count == total_count and visible_all_times:
+        return "all, all time" if long_form else "all ant. all time"
+    if visible_count == total_count:
+        return "all, partial time" if long_form else "all ant. partial time"
+    return f"{visible_count}/{total_count} antennas" if long_form else f"{visible_count}/{total_count} ant."
+
+
+def run_fringe_finders(*, starttime: str | Time, duration: float, networks: Optional[list[str]] = None,
+                       stations: Optional[list[str]] = None, min_flux: float = FRINGE_DEFAULT_MIN_FLUX_JY,
+                       min_elevation: float = FRINGE_DEFAULT_MIN_ELEVATION_DEG,
+                       max_lines: int = FRINGE_DEFAULT_MAX_LINES, require_all: bool = False,
+                       band: Optional[str] = None, station_catalog: Optional[str] = None,
+                       as_json: bool = False) -> int:
+    """Searches for fringe-finder candidates for the given antennas/time range and prints the results.
+
+    Side effect: replaces the global station catalog (obs._STATIONS) with the one from `station_catalog`
+    (or the default catalog if None).
+
+    Inputs
+        starttime : str | Time — start of the observation (UTC), e.g. '2025-03-15 08:00'.
+        duration : float — duration of the observation in hours.
+        networks : Optional[list[str]] — VLBI network names; their default stations are included.
+        stations : Optional[list[str]] — antenna codenames or names to include.
+        min_flux : float — minimum unresolved flux in Jy.
+        min_elevation : float — minimum elevation in degrees.
+        max_lines : int — maximum number of sources to print.
+        require_all : bool — require the source to be visible by all antennas.
+        band : Optional[str] — band for the flux display (e.g. '6cm'); None shows the maximum over all bands.
+        station_catalog : Optional[str] — path to a custom station catalog file.
+        as_json : bool — print JSON instead of a rich table.
+
+    Returns
+        int — process exit code: 0 on success (also when no candidates are found), 1 on input errors.
+    """
+    if networks is None and stations is None:
+        _print_error("You need to provide at least a VLBI network or a list of antennas.", as_json)
+        return 1
+
+    obs._STATIONS = obs.Stations(filename=station_catalog)
+    stations_list: list[str] = []
+    unknown_networks = [n for n in networks or [] if n not in obs._NETWORKS]
+    if unknown_networks:
+        n_networks = len(unknown_networks)
+        _print_error(f"The network{'s' if n_networks > 1 else ''} {', '.join(unknown_networks)} "
+                     f"{'are' if n_networks > 1 else 'is'} not known.", as_json)
+        return 1
+
+    for n in networks or []:
+        for s in obs._NETWORKS[n].station_codenames:
+            if s not in stations_list:
+                stations_list.append(s)
+
+    for s in stations or []:
+        a_station = _find_station_codename(s)
+        if a_station is None:
+            _print_error(f"The station {s} is not known.", as_json)
+            return 1
         if a_station not in stations_list:
             stations_list.append(a_station)
 
     stations_obj = obs._STATIONS.filter_antennas(stations_list)
     if not stations_obj:
-        error_msg = "No valid antennas have been selected."
-        if args.json:
-            print(json.dumps({"error": error_msg}, indent=2))
-        else:
-            rprint(f"[bold red]{error_msg}[/bold red]")
-        sys.exit(1)
+        _print_error("No valid antennas have been selected.", as_json)
+        return 1
 
-    times = Time(args.starttime, scale='utc') + np.arange(0, args.duration + 0.1, 0.1) * u.hour
+    _log.info("Fringe-finder search: stations=%s start=%s duration=%sh min_flux=%sJy min_elev=%sdeg",
+              stations_list, starttime, duration, min_flux, min_elevation)
+    times = Time(starttime, scale='utc') + np.arange(0, duration + 0.1, 0.1) * u.hour
     sources, min_elevs, antenna_visibility = get_fringe_finder_sources(stations_obj, times,
-                                               min_elevation=args.min_elevation * u.deg,
-                                               min_flux=args.min_flux * u.Jy,
-                                               require_all_stations=args.require_all)
+                                                                       min_elevation=min_elevation * u.deg,
+                                                                       min_flux=min_flux * u.Jy,
+                                                                       require_all_stations=require_all)
     if not sources:
-        err_msg = (f"No fringe finder candidates found above {args.min_elevation} degrees elevation "
-                   f"and with a unresolved flux above {args.min_flux} Jy.")
-        result = {"error": err_msg}
-        if args.json:
-            print(json.dumps(result, indent=2))
-        else:
-            rprint(f"[bold red]{err_msg}[/bold red]")
-        sys.exit(0)
+        _print_error(f"No fringe finder candidates found above {min_elevation} degrees elevation "
+                     f"and with a unresolved flux above {min_flux} Jy.", as_json)
+        return 0
 
-    max_display = min(args.max_lines, len(sources))
-    sources_slice = sources[:max_display]
-    min_elevs_slice = min_elevs[:max_display]
-
-    result_data = []
-    if antenna_visibility is not None:
+    max_display = min(max_lines, len(sources))
+    if as_json:
+        result_data = []
         for i in range(max_display):
-            src = sources_slice[i]
-            min_elev = min_elevs_slice[i]
-            visible_count, total_count, visible_all_times, min_elev_all = antenna_visibility[i]
-
-            if visible_count == total_count and visible_all_times:
-                visibility_text = "all ant. all time"
-            elif visible_count == total_count:
-                visibility_text = "all ant. partial time"
-            else:
-                visibility_text = f"{visible_count}/{total_count} ant."
-
-            # Get flux information for the specified band
-            if args.band:
-                total_flux, unresolved_flux = src.get_flux_at_band(args.band)
-            else:
-                # Use first available band for total flux display
-                total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
-                unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
-
-            result_data.append({"name": src.name, "ivs_name": src.ivsname,
-                            "min_elevation_deg": min_elev if min_elev > 0.0 else 0,
-                            "total_flux_jy": total_flux, "unresolved_flux_jy": unresolved_flux,
-                            "bands": src.get_observed_bands(),
-                            "astrogeo_url": src.get_astrogeo_link(),
-                            "antenna_visibility": visibility_text})
-    else:
-        for i in range(max_display):
-            src = sources_slice[i]
-            min_elev = min_elevs_slice[i]
-
-            # Get flux information for the specified band
-            if args.band:
-                total_flux, unresolved_flux = src.get_flux_at_band(args.band)
-            else:
-                # Use first available band for total flux display
-                total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
-                unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
-
-            result_data.append({"name": src.name, "ivs_name": src.ivsname,
-                            "min_elevation_deg": min_elev if min_elev > 0.0 else 0,
-                            "total_flux_jy": total_flux, "unresolved_flux_jy": unresolved_flux,
-                            "bands": src.get_observed_bands(),
-                            "astrogeo_url": src.get_astrogeo_link()})
-
-    result = {"min_elevation_deg": args.min_elevation, "min_flux_jy": args.min_flux,
-              "require_all_stations": args.require_all, "sources": result_data,
-              "total_found": len(sources), "shown": max_display}
-
-    if args.json:
-        print(json.dumps(result, indent=2))
-    else:
-        rprint(f"\n[bold green]Found {len(sources)} fringe finder candidates above "
-               f"{args.min_elevation} degrees elevation and with a unresolved flux "
-               f"above {args.min_flux} Jy:[/bold green]")
-
-        table = Table(show_header=True, header_style="bold", show_lines=False, box=box.SIMPLE)
-        table.add_column("Name", style="", width=17)
-        table.add_column("IVS Name", style="", width=10)
-        table.add_column("Min elev. (deg)", justify="right", style="", width=10)
-        table.add_column("Total flux (Jy)", justify="right", style="", width=12)
-        table.add_column("Unresolved (Jy)", justify="right", style="", width=13)
-        table.add_column("Bands", justify="right", style="", width=10)
-        table.add_column("url", style="", width=10)
-
-        if antenna_visibility is not None:
-            table.add_column("Antenna Visibility", justify="center", style="", width=15)
-
-        for i in range(max_display):
-            src = sources_slice[i]
-            min_elev = min_elevs_slice[i]
-
-            # Get flux information for the specified band
-            if args.band:
-                total_flux, unresolved_flux = src.get_flux_at_band(args.band)
-            else:
-                # Use first available band for total flux display
-                total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
-                unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
-
-            row = [src.name, src.ivsname, f"{min_elev if min_elev > 0.0 else 0:>6.1f}",
-                   f"{total_flux:>8.2f}" if total_flux > 0 else "N/A",
-                   f"{unresolved_flux:>8.2f}" if unresolved_flux > 0 else "N/A",
-                   src.get_observed_bands(), f"[link={src.get_astrogeo_link()}]AstroGeo[/link]"]
-
+            src, min_elev = sources[i], min_elevs[i]
+            total_flux, unresolved_flux = _display_fluxes(src, band)
+            entry = {"name": src.name, "ivs_name": src.ivsname,
+                     "min_elevation_deg": min_elev if min_elev > 0.0 else 0,
+                     "total_flux_jy": total_flux, "unresolved_flux_jy": unresolved_flux,
+                     "bands": src.get_observed_bands(), "astrogeo_url": src.get_astrogeo_link()}
             if antenna_visibility is not None:
-                visible_count, total_count, visible_all_times, min_elev_all = antenna_visibility[i]
-                if visible_count == total_count and visible_all_times:
-                    visibility_text = "all, all time"
-                elif visible_count == total_count:
-                    visibility_text = "all, partial time"
-                else:
-                    visibility_text = f"{visible_count}/{total_count} antennas"
-                row.append(visibility_text)
+                entry["antenna_visibility"] = _visibility_text(antenna_visibility[i], long_form=False)
+            result_data.append(entry)
 
-            table.add_row(*row)
+        result = {"min_elevation_deg": min_elevation, "min_flux_jy": min_flux,
+                  "require_all_stations": require_all, "sources": result_data,
+                  "total_found": len(sources), "shown": max_display}
+        print(json.dumps(result, indent=2))
+        return 0
 
-        rprint(table)
-        if len(sources) > max_display:
-            rprint(f"\n... and {len(sources) - max_display} more sources.")
-    sys.exit(0)
+    rprint(f"\n[bold green]Found {len(sources)} fringe finder candidates above "
+           f"{min_elevation} degrees elevation and with a unresolved flux "
+           f"above {min_flux} Jy:[/bold green]")
+    table = Table(show_header=True, header_style="bold", show_lines=False, box=box.SIMPLE)
+    table.add_column("Name", style="", width=17)
+    table.add_column("IVS Name", style="", width=10)
+    table.add_column("Min elev. (deg)", justify="right", style="", width=10)
+    table.add_column("Total flux (Jy)", justify="right", style="", width=12)
+    table.add_column("Unresolved (Jy)", justify="right", style="", width=13)
+    table.add_column("Bands", justify="right", style="", width=10)
+    table.add_column("url", style="", width=10)
+    if antenna_visibility is not None:
+        table.add_column("Antenna Visibility", justify="center", style="", width=15)
+
+    for i in range(max_display):
+        src, min_elev = sources[i], min_elevs[i]
+        total_flux, unresolved_flux = _display_fluxes(src, band)
+        row = [src.name, src.ivsname, f"{min_elev if min_elev > 0.0 else 0:>6.1f}",
+               f"{total_flux:>8.2f}" if total_flux > 0 else "N/A",
+               f"{unresolved_flux:>8.2f}" if unresolved_flux > 0 else "N/A",
+               src.get_observed_bands(), f"[link={src.get_astrogeo_link()}]AstroGeo[/link]"]
+        if antenna_visibility is not None:
+            row.append(_visibility_text(antenna_visibility[i], long_form=True))
+        table.add_row(*row)
+
+    rprint(table)
+    if len(sources) > max_display:
+        rprint(f"\n... and {len(sources) - max_display} more sources.")
+    return 0
+
+
+def main_fringe():
+    """Console entry point 'planobs_fringefinder': same options and behaviour as 'planobs fringefinders'.
+
+    Builds the parser with cli.add_fringe_finder_arguments (single definition of the option names) and
+    exits through cli.handle_fringe_finder_command with run_fringe_finders' exit code.
+    """
+    from vlbiplanobs import cli
+    parser = argparse.ArgumentParser(description="Find fringe finder sources for VLBI observations",
+                                     prog="planobs_fringefinder", formatter_class=RawTextRichHelpFormatter)
+    cli.add_fringe_finder_arguments(parser)
+    cli.handle_fringe_finder_command(parser.parse_args())
 
 
 def _target_from_personal_catalog(catalog_file: str, name: str) -> Optional[Source]:
@@ -1325,119 +1320,101 @@ def _target_from_personal_catalog(catalog_file: str, name: str) -> Optional[Sour
     return catalog.sources(include_calibrators=True).get(name)
 
 
-def main_phasecal():
-    usage = "%(prog)s [-h] OPTIONS"
-    description = "Find phase calibrator sources near a target source"
-    parser = argparse.ArgumentParser(description=description, prog="planobs_phasecal", usage=usage,
-                                  formatter_class=RawTextRichHelpFormatter)
-    parser.add_argument('-t', '--target', type=str, required=True,
-                        help="Target source name (J2000 or IVS name from RFC catalog).")
-    parser.add_argument('--max-separation', type=float, default=5.0,
-                        help="Maximum angular separation in degrees (default: 5.0).")
-    parser.add_argument('--min-flux', type=float, default=0.1,
-                        help="Minimum unresolved flux threshold in Jy (default: 0.1).")
-    parser.add_argument('-n', '--n-sources', type=int, default=None,
-                        help="Maximum number of sources to return (default: all).")
-    parser.add_argument('-b', '--band', type=str, default=None,
-                        help="Observing band for flux display (e.g., '18cm', '6cm'). "
-                             "If not provided, shows flux for all available bands.")
-    parser.add_argument('--catalog-file', type=str, default=None,
-                        help="Path to custom RFC catalog file.")
-    parser.add_argument('-sc', '--source-catalog', '--sc', type=str, default=None,
-                        help="Input file containing the personal source catalog (toml).\n"
-                        "If provided, '--target' is first looked up there (block or source name).")
-    parser.add_argument('--json', action='store_true', default=False,
-                        help="Output results in JSON format instead of a table.")
-    args = parser.parse_args()
+def run_phasecals(*, target: str, max_separation: float = PHASECAL_DEFAULT_MAX_SEPARATION_DEG,
+                  min_flux: float = PHASECAL_DEFAULT_MIN_FLUX_JY, n_sources: Optional[int] = None,
+                  band: Optional[str] = None, catalog_file: Optional[str] = None,
+                  source_catalog: Optional[str] = None, as_json: bool = False) -> int:
+    """Searches for phase-calibrator candidates near a target source and prints the results.
 
-    catalog = RFCCatalog(catalog_filename=args.catalog_file, band='c', min_flux=args.min_flux, include_missing=True)
-    target = None
-    if args.source_catalog is not None:
+    The target is resolved in this order: personal `source_catalog` (block or source name), the RFC
+    catalog, and finally Source.source_from_str (coordinates or online name lookup).
+
+    Inputs
+        target : str — target source name (J2000/IVS name, block/source name in `source_catalog`, or coordinates).
+        max_separation : float — maximum angular separation in degrees.
+        min_flux : float — minimum unresolved flux in Jy.
+        n_sources : Optional[int] — maximum number of sources to return; None returns all.
+        band : Optional[str] — band for the flux display (e.g. '6cm'); None shows the maximum over all bands.
+        catalog_file : Optional[str] — path to a custom RFC catalog file.
+        source_catalog : Optional[str] — path to a personal source catalog (toml).
+        as_json : bool — print JSON instead of a rich table.
+
+    Returns
+        int — process exit code: 0 on success, 1 if the target cannot be resolved or no candidates are found.
+    """
+    catalog = RFCCatalog(catalog_filename=catalog_file, band='c', min_flux=min_flux, include_missing=True)
+    target_src = None
+    if source_catalog is not None:
         try:
-            target = _target_from_personal_catalog(args.source_catalog, args.target)
+            target_src = _target_from_personal_catalog(source_catalog, target)
         except FileNotFoundError:
-            error_msg = f"Source catalog file not found: {args.source_catalog}"
-            if args.json:
-                print(json.dumps({"error": error_msg}, indent=2))
-            else:
-                rprint(f"[bold red]{error_msg}[/bold red]")
-            sys.exit(1)
-        if target is None:
-            rprint(f"[yellow]'{args.target}' not found in {args.source_catalog} — "
+            _print_error(f"Source catalog file not found: {source_catalog}", as_json)
+            return 1
+        if target_src is None:
+            rprint(f"[yellow]'{target}' not found in {source_catalog} — "
                    "falling back to the RFC catalog/online lookup.[/yellow]")
 
-    if not target:
-        target = catalog.get_source(args.target)
-    if not target:
+    if not target_src:
+        target_src = catalog.get_source(target)
+    if not target_src:
         try:
-            target = Source.source_from_str(args.target, source_type=SourceType.TARGET)
+            target_src = Source.source_from_str(target, source_type=SourceType.TARGET)
         except Exception:
-            error_msg = f"Target source '{args.target}' could not be parsed or found in the catalogs."
-            if args.json:
-                print(json.dumps({"error": error_msg}, indent=2))
-            else:
-                rprint(f"[bold red]{error_msg}[/bold red]")
-            sys.exit(1)
+            _print_error(f"Target source '{target}' could not be parsed or found in the catalogs.", as_json)
+            return 1
 
-    nearby = get_nearby_sources(target, max_separation=args.max_separation * u.deg,
-                               catalog=catalog, n_sources=args.n_sources)
+    _log.info("Phase-calibrator search: target=%s max_sep=%sdeg min_flux=%sJy n_sources=%s",
+              target_src.name, max_separation, min_flux, n_sources)
+    nearby = get_nearby_sources(target_src, max_separation=max_separation * u.deg, catalog=catalog,
+                                n_sources=n_sources)
+    target_coords = target_src.coord.to_string('hmsdms')
     if not nearby:
-        result = {"error": f"No phase calibrator candidates found near {target.name} "
-                           f"({target.coord.to_string('hmsdms')})."}
-        if args.json:
-            print(json.dumps(result, indent=2))
-        else:
-            rprint(f"[bold red]No phase calibrator candidates found near {target.name} "
-                   f"({target.coord.to_string('hmsdms')}).[/bold red]")
-        sys.exit(1)
+        _print_error(f"No phase calibrator candidates found near {target_src.name} ({target_coords}).", as_json)
+        return 1
 
-    result_data = []
-    for src, sep in nearby:
-        # Get flux information for the specified band
-        if args.band:
-            total_flux, unresolved_flux = src.get_flux_at_band(args.band)
-        else:
-            # Use first available band for total flux display
-            total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
-            unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
-
-        result_data.append({"name": src.name, "ivs_name": src.ivsname, "separation_deg": sep,
-                            "total_flux_jy": total_flux, "unresolved_flux_jy": unresolved_flux,
-                            "bands": src.get_observed_bands(), "astrogeo_url": src.get_astrogeo_link()})
-
-    result = {"target_name": target.name, "target_coordinates": target.coord.to_string('hmsdms'),
-              "max_separation_deg": args.max_separation, "min_flux_jy": args.min_flux,
-              "sources": result_data, "total_found": len(nearby)}
-
-    if args.json:
-        print(json.dumps(result, indent=2))
-    else:
-        rprint(f"\n[bold green]Found {len(nearby)} phase calibrator candidates near {target.name} "
-               f"({target.coord.to_string('hmsdms')}):[/bold green]")
-
-        table = Table(show_header=True, header_style="bold", show_lines=False, box=box.SIMPLE)
-        table.add_column("Name", style="", width=17)
-        table.add_column("IVS Name", style="", width=10)
-        table.add_column("Separation (deg)", justify="right", style="", width=12)
-        table.add_column("Total flux (Jy)", justify="right", style="", width=12)
-        table.add_column("Unresolved (Jy)", justify="right", style="", width=13)
-        table.add_column("Bands", justify="right", style="", width=10)
-        table.add_column("url", style="", width=10)
-
+    if as_json:
+        result_data = []
         for src, sep in nearby:
-            # Get flux information for the specified band
-            if args.band:
-                total_flux, unresolved_flux = src.get_flux_at_band(args.band)
-            else:
-                # Use first available band for total flux display
-                total_flux = float(np.max(src.flux_resolved)) if np.any(src.flux_resolved > 0) else 0.0
-                unresolved_flux = float(np.max(src.flux_unresolved)) if np.any(src.flux_unresolved > 0) else 0.0
+            total_flux, unresolved_flux = _display_fluxes(src, band)
+            result_data.append({"name": src.name, "ivs_name": src.ivsname, "separation_deg": sep,
+                                "total_flux_jy": total_flux, "unresolved_flux_jy": unresolved_flux,
+                                "bands": src.get_observed_bands(), "astrogeo_url": src.get_astrogeo_link()})
 
-            table.add_row(src.name, src.ivsname, f"{sep:.2f}",
-                          f"{total_flux:>8.2f}" if total_flux > 0 else "N/A",
-                          f"{unresolved_flux:>8.2f}" if unresolved_flux > 0 else "N/A",
-                          src.get_observed_bands(),
-                          f"[link={src.get_astrogeo_link()}]AstroGeo[/link]")
+        result = {"target_name": target_src.name, "target_coordinates": target_coords,
+                  "max_separation_deg": max_separation, "min_flux_jy": min_flux,
+                  "sources": result_data, "total_found": len(nearby)}
+        print(json.dumps(result, indent=2))
+        return 0
 
-        rprint(table)
-    sys.exit(0)
+    rprint(f"\n[bold green]Found {len(nearby)} phase calibrator candidates near {target_src.name} "
+           f"({target_coords}):[/bold green]")
+    table = Table(show_header=True, header_style="bold", show_lines=False, box=box.SIMPLE)
+    table.add_column("Name", style="", width=17)
+    table.add_column("IVS Name", style="", width=10)
+    table.add_column("Separation (deg)", justify="right", style="", width=12)
+    table.add_column("Total flux (Jy)", justify="right", style="", width=12)
+    table.add_column("Unresolved (Jy)", justify="right", style="", width=13)
+    table.add_column("Bands", justify="right", style="", width=10)
+    table.add_column("url", style="", width=10)
+    for src, sep in nearby:
+        total_flux, unresolved_flux = _display_fluxes(src, band)
+        table.add_row(src.name, src.ivsname, f"{sep:.2f}",
+                      f"{total_flux:>8.2f}" if total_flux > 0 else "N/A",
+                      f"{unresolved_flux:>8.2f}" if unresolved_flux > 0 else "N/A",
+                      src.get_observed_bands(), f"[link={src.get_astrogeo_link()}]AstroGeo[/link]")
+
+    rprint(table)
+    return 0
+
+
+def main_phasecal():
+    """Console entry point 'planobs_phasecal': same options and behaviour as 'planobs phasecals'.
+
+    Builds the parser with cli.add_phase_cal_arguments (single definition of the option names) and
+    exits through cli.handle_phase_cal_command with run_phasecals' exit code.
+    """
+    from vlbiplanobs import cli
+    parser = argparse.ArgumentParser(description="Find phase calibrator sources near a target source",
+                                     prog="planobs_phasecal", formatter_class=RawTextRichHelpFormatter)
+    cli.add_phase_cal_arguments(parser)
+    cli.handle_phase_cal_command(parser.parse_args())

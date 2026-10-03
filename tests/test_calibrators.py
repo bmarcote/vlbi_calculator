@@ -522,3 +522,75 @@ class TestCLIIntegration:
         
         assert len(fringe_sig.parameters) == 0
         assert len(phase_sig.parameters) == 0
+
+
+class TestRunFunctions:
+    """Tests for run_fringe_finders / run_phasecals called directly with explicit arguments."""
+
+    @pytest.fixture(autouse=True)
+    def _restore_stations(self, monkeypatch):
+        """run_fringe_finders replaces obs._STATIONS; restore it after each test."""
+        from vlbiplanobs import observation as obs
+        monkeypatch.setattr(obs, '_STATIONS', obs._STATIONS)
+
+    def test_fringe_finders_json(self, capsys):
+        """Valid stations return 0 and JSON echoing the explicit thresholds and line limit."""
+        import json
+        code = calibrators.run_fringe_finders(starttime='2025-03-15 08:00', duration=4.0, stations=['Ef', 'Hh'],
+                                              min_flux=0.8, min_elevation=25.0, max_lines=3, band='6cm', as_json=True)
+        assert code == 0
+        result = json.loads(capsys.readouterr().out)
+        assert result['min_flux_jy'] == 0.8 and result['min_elevation_deg'] == 25.0
+        assert result['shown'] == min(3, result['total_found']) == len(result['sources'])
+        assert all('antenna_visibility' in s for s in result['sources'])
+
+    def test_fringe_finders_table(self, capsys):
+        """Table output reports the candidates found and the defaults used."""
+        code = calibrators.run_fringe_finders(starttime='2025-03-15 08:00', duration=4.0, networks=['EVN'],
+                                              max_lines=2)
+        assert code == 0
+        out = capsys.readouterr().out
+        assert f"above {calibrators.FRINGE_DEFAULT_MIN_ELEVATION_DEG} degrees" in out
+        assert f"above {calibrators.FRINGE_DEFAULT_MIN_FLUX_JY} Jy" in out
+
+    @pytest.mark.parametrize('kwargs, message', [
+        ({}, 'at least a VLBI network'),
+        ({'networks': ['FOO']}, 'The network FOO is not known.'),
+        ({'stations': ['ZZ']}, 'The station ZZ is not known.'),
+    ])
+    def test_fringe_finders_input_errors(self, capsys, kwargs, message):
+        """Invalid inputs return exit code 1 and a JSON error message."""
+        import json
+        code = calibrators.run_fringe_finders(starttime='2025-03-15 08:00', duration=4.0, as_json=True, **kwargs)
+        assert code == 1
+        assert message in json.loads(capsys.readouterr().out)['error']
+
+    def test_fringe_finders_none_found_returns_zero(self, capsys):
+        """No candidates is not an error (exit code 0)."""
+        code = calibrators.run_fringe_finders(starttime='2025-03-15 08:00', duration=1.0, stations=['ef'],
+                                              min_flux=100.0)
+        assert code == 0
+        assert 'No fringe finder candidates' in capsys.readouterr().out
+
+    def test_phasecals_json(self, capsys):
+        """A known RFC target returns 0 and at most n_sources candidates within max_separation."""
+        import json
+        code = calibrators.run_phasecals(target='J1230+1223', max_separation=3.0, min_flux=0.2, n_sources=4,
+                                         band='6cm', as_json=True)
+        assert code == 0
+        result = json.loads(capsys.readouterr().out)
+        assert result['target_name'] == 'J1230+1223' and result['max_separation_deg'] == 3.0
+        assert 0 < len(result['sources']) <= 4
+        assert all(s['separation_deg'] <= 3.0 for s in result['sources'])
+
+    def test_phasecals_none_found_returns_one(self, capsys):
+        """No candidates near the target returns exit code 1."""
+        code = calibrators.run_phasecals(target='J1230+1223', max_separation=0.01, min_flux=50.0)
+        assert code == 1
+        assert 'No phase calibrator candidates' in capsys.readouterr().out
+
+    def test_phasecals_missing_source_catalog(self, capsys):
+        """A missing personal source catalog returns exit code 1."""
+        code = calibrators.run_phasecals(target='J1230+1223', source_catalog='/nonexistent.toml', as_json=True)
+        assert code == 1
+        assert 'Source catalog file not found' in capsys.readouterr().out

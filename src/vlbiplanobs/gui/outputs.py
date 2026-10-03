@@ -993,13 +993,6 @@ def build_target_tab_content(o: cli.VLBIObs, target_spec: str,
 
     has_source_plots = bool(o.scans) and bool(o.sourcenames)
 
-    # Pre-serialize UV data so the per-tab antenna-highlight callback can update the
-    # plot without re-running the computation.
-    try:
-        uv_data = plots.serialize_uv_data(o) if has_source_plots else None
-    except Exception:
-        uv_data = None
-
     children: list = []
 
     # Warnings
@@ -1035,6 +1028,7 @@ def build_target_tab_content(o: cli.VLBIObs, target_spec: str,
 
         children.append(html.Div(className='m-0 p-0', children=card([
             html.Div(className='card-header pb-0', children=html.H5('(u, v) Coverage')),
+            # Antenna highlighting restyles this figure in the browser (callbacks.py, uv_highlight_javascript).
             dcc.Loading(dcc.Graph(id={'type': 'fig-uv', 'index': target_spec},
                                   figure=plots.uvplot(o), responsive=True),
                         type='circle', color='#004990'),
@@ -1042,7 +1036,6 @@ def build_target_tab_content(o: cli.VLBIObs, target_spec: str,
             html.Label("Highlight antennas:"),
             dcc.Dropdown(multi=True, id={'type': 'select-ant-uv', 'index': target_spec},
                          maxHeight=400, options=put_antenna_options(o)),
-            dcc.Store(id={'type': 'store-uv-data', 'index': target_spec}, data=uv_data),
             html.Br(), html.Br(),
             html.Div(className='row', children=print_baseline_lengths(o))])))
 

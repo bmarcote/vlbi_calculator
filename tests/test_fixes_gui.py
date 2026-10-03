@@ -1,5 +1,8 @@
 """Tests for the GUI server-side validation (gui/validation.py) and the uv-plot antenna highlight matching."""
+import json
 import math
+import numpy as np
+import plotly
 import pytest
 from vlbiplanobs import freqsetups as fs
 from vlbiplanobs import observation
@@ -186,8 +189,69 @@ def test_baseline_has_antenna_exact_match():
 
 
 def test_uvplot_highlight_does_not_match_prefix():
-    uv_data = {'Wb-Ef': {'x': [1.0], 'y': [1.0]}, 'Wb14-Ef': {'x': [2.0], 'y': [2.0]}}
-    fig = plots.uvplot_from_data(uv_data, ['Wb'])
-    highlighted = [trace for trace in fig.data if trace.marker.color not in (None, 'black')]
-    xs = [x for trace in highlighted for x in trace.x]
-    assert xs == [1.0]
+    bl_uv = {'Wb-Ef': np.array([[1.0, 1.0]]), 'Wb14-Ef': np.array([[2.0, 2.0]])}
+    fig = plots.uvplot_from_baselines(bl_uv, ['Wb'])
+    highlighted = [trace.name for trace in fig.data if trace.marker.color != plots.UV_BASE_COLOR]
+    assert highlighted == ['Wb-Ef']
+
+
+def test_uvplot_one_trace_per_baseline_without_point_text():
+    bl_uv = {'Ef-Wb': np.array([[1.0, 2.0], [3.0, 4.0]]), 'Ef-Mc': np.array([[5.0, 6.0]]),
+             'Mc-Wb': np.array([[7.0, 8.0]])}
+    fig = plots.uvplot_from_baselines(bl_uv, ['Mc'])
+    assert sorted(trace.name for trace in fig.data) == sorted(bl_uv)
+    # Highlighted traces are drawn last (on top).
+    assert [trace.name for trace in fig.data] == ['Ef-Wb', 'Ef-Mc', 'Mc-Wb']
+    for trace in fig.data:
+        assert trace.text is None and trace.hovertext is None
+        assert '%{fullData.name}' in trace.hovertemplate
+    efwb = fig.data[0]
+    assert list(efwb.x) == [1.0, 3.0, -1.0, -3.0] and list(efwb.y) == [2.0, 4.0, -2.0, -4.0]
+    assert efwb.marker.color == plots.UV_BASE_COLOR and efwb.marker.size == plots.UV_BASE_SIZE
+    assert fig.data[1].marker.color == plots.UV_HIGHLIGHT_COLORS[0]
+    assert fig.data[1].marker.size == plots.UV_HIGHLIGHT_SIZE
+    # Serialized figure carries the uv arrays as compact base64 typed arrays, not per-point lists.
+    payload = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+    assert '"bdata"' in payload and 'Ef-Wb' in payload
+
+
+def test_uv_marker_style_color_follows_selection_order():
+    assert plots.uv_marker_style('Ef-Wb', None)['highlighted'] is False
+    assert plots.uv_marker_style('Ef-Wb', ['Mc', 'Wb'])['color'] == plots.UV_HIGHLIGHT_COLORS[1]
+    assert plots.uv_marker_style('Ef-Wb', ['Ef', 'Wb'])['color'] == plots.UV_HIGHLIGHT_COLORS[0]
+
+
+def test_uv_highlight_is_clientside_and_store_removed():
+    from vlbiplanobs.gui import callbacks
+    import inspect
+    from vlbiplanobs.gui import outputs
+    assert 'store-uv-data' not in inspect.getsource(outputs)
+    assert 'store-uv-data' not in inspect.getsource(callbacks)
+    assert "split('-')" in callbacks.uv_highlight_javascript
+
+
+# ------------------------------------------------------------------------------------------
+# Polaris origin allowlist (PLANOBS_POLARIS_ORIGINS)
+# ------------------------------------------------------------------------------------------
+@pytest.mark.parametrize('raw,expected', [(None, []), ('', []), (' , ', []),
+                                          ('https://polaris.example.org', ['https://polaris.example.org']),
+                                          ('HTTPS://Polaris.Example.org:443/', ['https://polaris.example.org']),
+                                          ('http://localhost:8080, http://localhost:80',
+                                           ['http://localhost:8080', 'http://localhost']),
+                                          ('https://a.org,https://a.org', ['https://a.org']),
+                                          ('https://[::1]:8443', ['https://[::1]:8443'])])
+def test_parse_polaris_origins(raw, expected):
+    assert val.parse_polaris_origins(raw) == expected
+
+
+@pytest.mark.parametrize('bad', ['*', 'polaris.example.org', 'ftp://a.org', 'https://a.org/path', 'https://a.org?x=1',
+                                 'https://user@a.org', 'https://a.org:99999', 'javascript:alert(1)', 'null'])
+def test_parse_polaris_origins_rejects_invalid(bad):
+    assert val.parse_polaris_origins(f"{bad},https://ok.org") == ['https://ok.org']
+
+
+def test_polaris_export_never_posts_to_wildcard():
+    from vlbiplanobs.gui import callbacks
+    assert "postMessage(value, '*')" not in callbacks.callback_javascript
+    assert 'postMessage(value, polarisOrigin)' in callbacks.callback_javascript
+    assert 'document.referrer' in callbacks.callback_javascript

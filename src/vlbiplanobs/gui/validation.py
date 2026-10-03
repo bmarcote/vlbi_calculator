@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 from datetime import datetime as dt
 from typing import Any, Optional
+from urllib.parse import urlsplit
 from loguru import logger
 from astropy.time import Time
 from vlbiplanobs import freqsetups as fs
@@ -409,3 +410,75 @@ def validate_url_component(component_id: Any, prop: str, value: Any) -> tuple[bo
     if component_id in validators:
         return value is not None and _passes_validator(value, validators[component_id]), value
     return False, None
+
+
+# ----------------------------------------------------------------------------------------
+# Polaris (opener window) origin allowlist.
+# ----------------------------------------------------------------------------------------
+_DEFAULT_PORTS: dict[str, int] = {'http': 80, 'https': 443}
+
+
+def normalize_origin(raw_origin: Any) -> Optional[str]:
+    """Normalize one web origin to the exact form the browser reports in `URL.origin` / `event.origin`.
+
+    The scheme and host are lower-cased and the scheme's default port is dropped, e.g.
+    'HTTPS://Polaris.Example.org:443/' -> 'https://polaris.example.org'. Only http(s) origins
+    without user-info, path (other than '/'), query or fragment are accepted.
+
+    Parameters
+    ----------
+    raw_origin : Any
+        Candidate origin string.
+
+    Returns
+    -------
+    str or None
+        The normalized origin, or None if raw_origin is not a valid http(s) origin.
+    """
+    if not isinstance(raw_origin, str) or not raw_origin.strip():
+        return None
+    try:
+        parts = urlsplit(raw_origin.strip())
+        port = parts.port
+    except ValueError:
+        return None
+    scheme = parts.scheme.lower()
+    host = parts.hostname
+    if scheme not in _DEFAULT_PORTS or not host or parts.username is not None or parts.password is not None:
+        return None
+    if parts.path not in ('', '/') or parts.query or parts.fragment:
+        return None
+    host_part = f"[{host}]" if ':' in host else host
+    port_part = f":{port}" if port is not None and port != _DEFAULT_PORTS[scheme] else ''
+    return f"{scheme}://{host_part}{port_part}"
+
+
+def parse_polaris_origins(raw: Optional[str]) -> list[str]:
+    """Parse the PLANOBS_POLARIS_ORIGINS allowlist (comma-separated web origins).
+
+    Invalid entries are skipped with a logged warning; duplicates are removed keeping the first
+    occurrence. An empty result means "no allowlist": the GUI then accepts any opener origin taken
+    from document.referrer (but still posts only to that exact origin, never '*').
+
+    Parameters
+    ----------
+    raw : str or None
+        Raw environment-variable value, e.g. 'https://polaris.example.org, https://test.example.org:8443'.
+
+    Returns
+    -------
+    list[str]
+        Normalized origins (see normalize_origin), in input order.
+    """
+    if not raw:
+        return []
+    origins: list[str] = []
+    for entry in raw.split(','):
+        if not entry.strip():
+            continue
+        origin = normalize_origin(entry)
+        if origin is None:
+            logger.warning(f"PLANOBS_POLARIS_ORIGINS: ignoring invalid origin {entry.strip()!r}.")
+        elif origin not in origins:
+            origins.append(origin)
+    return origins

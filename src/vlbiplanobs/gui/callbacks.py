@@ -1,4 +1,5 @@
 import functools
+import os
 from typing import Optional, NamedTuple
 import base64
 import json
@@ -789,33 +790,47 @@ clientside_callback(
 )
 
 
-# Per-tab UV antenna-highlight callback. Each tab embeds:
+# Per-tab uv antenna-highlight callback (runs in the browser; nothing is sent to the server). Each tab embeds:
 #   - a `dcc.Dropdown(id={'type':'select-ant-uv','index':<src>})`
-#   - a `dcc.Graph(id={'type':'fig-uv','index':<src>})`
-#   - a `dcc.Store(id={'type':'store-uv-data','index':<src>}, data=<serialized uv>)`
-# This pattern-matching callback updates the figure when the user picks antennas.
-@callback(Output({'type': 'fig-uv', 'index': MATCH}, 'figure'),
-          Input({'type': 'select-ant-uv', 'index': MATCH}, 'value'),
-          State({'type': 'store-uv-data', 'index': MATCH}, 'data'),
-          prevent_initial_call=True)
-def update_uv_figure(highlight_antennas: list[str], uv_data: dict):
-    """Update the UV plot figure when antenna selection changes.
-
-    Parameters
-    ----------
-    highlight_antennas : list[str]
-        Antennas to highlight in the plot.
-    uv_data : dict
-        Serialized UV plot data.
-
-    Returns
-    -------
-    dict
-        Updated plotly figure.
-    """
-    if uv_data is None:
-        raise PreventUpdate
-    return plots.uvplot_from_data(uv_data, highlight_antennas)
+#   - a `dcc.Graph(id={'type':'fig-uv','index':<src>})` built by plots.uvplot: one trace per baseline, trace name
+#     = baseline key 'Ant1-Ant2'.
+# The function only rewrites marker color/size of the existing traces (x/y arrays are reused by reference) and moves
+# highlighted traces last so they are drawn on top. `uvStyleFor` mirrors plots.uv_marker_style: exact match of the
+# selected antenna against the two parts of the baseline name split by '-' (plots.baseline_has_antenna).
+uv_highlight_javascript = f"""
+    function(selectedAntennas, figure) {{
+        if (!figure || !Array.isArray(figure.data)) {{
+            return dash_clientside.no_update;
+        }}
+        const colors = {json.dumps(plots.UV_HIGHLIGHT_COLORS)};
+        const antennas = Array.isArray(selectedAntennas) ? selectedAntennas : [];
+        function uvStyleFor(baseline) {{
+            const parts = String(baseline || '').split('-');
+            for (let i = 0; i < antennas.length; i++) {{
+                if (parts.indexOf(antennas[i]) !== -1) {{
+                    return {{color: colors[i % colors.length], size: {plots.UV_HIGHLIGHT_SIZE}, highlighted: true}};
+                }}
+            }}
+            return {{color: {json.dumps(plots.UV_BASE_COLOR)}, size: {plots.UV_BASE_SIZE}, highlighted: false}};
+        }}
+        const baseTraces = [];
+        const highlightedTraces = [];
+        figure.data.forEach(function(trace) {{
+            const style = uvStyleFor(trace.name);
+            const marker = Object.assign({{}}, trace.marker, {{color: style.color, size: style.size}});
+            const newTrace = Object.assign({{}}, trace, {{marker: marker}});
+            (style.highlighted ? highlightedTraces : baseTraces).push(newTrace);
+        }});
+        return Object.assign({{}}, figure, {{data: baseTraces.concat(highlightedTraces)}});
+    }}
+"""
+clientside_callback(
+    uv_highlight_javascript,
+    Output({'type': 'fig-uv', 'index': MATCH}, 'figure'),
+    Input({'type': 'select-ant-uv', 'index': MATCH}, 'value'),
+    State({'type': 'fig-uv', 'index': MATCH}, 'figure'),
+    prevent_initial_call=True
+)
 
 
 @callback([Output('error_duration', 'children'),
@@ -908,11 +923,41 @@ export_component_id_properties: list[IdProperty] = [
 
 current_version = Version(importlib.metadata.version('vlbiplanobs'))
 
+# PLANOBS_POLARIS_ORIGINS (optional, deployment setting): comma-separated list of web origins allowed to act as the
+# Polaris opener window, e.g. "https://polaris.example.org,https://polaris-test.example.org:8443". Read once at import.
+# - Set: 'Export to Polaris' is offered only when the opener origin (from document.referrer) is in this list.
+# - Unset/empty: any opener origin taken from document.referrer is accepted.
+# In both cases the configuration is posted only to that exact origin (never '*'); without a valid referrer origin
+# the button falls back to 'Copy link'.
+POLARIS_ALLOWED_ORIGINS: list[str] = validation.parse_polaris_origins(os.environ.get('PLANOBS_POLARIS_ORIGINS'))
+logger.info(f"Polaris export origins allowlist: {POLARIS_ALLOWED_ORIGINS or 'none (any referrer origin)'}")
+
 json_config = '[' + ','.join(f'[{json.dumps(export_component_id_properties[i].id)}, args[{i}]]'
                              for i in range(len(export_component_id_properties))) + ']'
 callback_javascript = f"""
     function(n_clicks, href, ...args) {{
-        const hasPolarisOpener = Boolean(window.opener && !window.opener.closed);
+        // Origin of the Polaris opener window, or null if this page was not opened by an allowed Polaris page.
+        function polarisOpenerOrigin() {{
+            if (!window.opener || window.opener.closed || !document.referrer) {{
+                return null;
+            }}
+            let origin = null;
+            try {{
+                origin = new URL(document.referrer).origin;
+            }} catch (e) {{
+                return null;
+            }}
+            if (!origin || origin === 'null') {{
+                return null;
+            }}
+            const allowed = {json.dumps(POLARIS_ALLOWED_ORIGINS)};
+            if (allowed.length > 0 && allowed.indexOf(origin) === -1) {{
+                return null;
+            }}
+            return origin;
+        }}
+        const polarisOrigin = polarisOpenerOrigin();
+        const hasPolarisOpener = polarisOrigin !== null;
         const label = hasPolarisOpener ? 'Export to Polaris' : 'Copy link';
         const tooltip = hasPolarisOpener ? '' : 'Copy a link that opens PlanObs with this observation setup';
         if (!n_clicks) {{
@@ -920,7 +965,7 @@ callback_javascript = f"""
         }}
         const value = '?targetversion={quote(str(current_version))}&config=' + encodeURIComponent(JSON.stringify({json_config}));
         if (hasPolarisOpener) {{
-            window.opener.postMessage(value, '*'); // FIX set the true targetOrigin
+            window.opener.postMessage(value, polarisOrigin);
         }} else {{
             navigator.clipboard.writeText(window.location.origin + window.location.pathname + value);
         }}

@@ -372,33 +372,15 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
     return fig
 
 
-def serialize_uv_data(o) -> Optional[dict]:
-    """Serialize UV data for storage in dcc.Store.
-
-    Returns dict of baseline -> {'x': [...], 'y': [...]} with both +/- uv points.
-
-    Parameters
-    ----------
-    o : VLBIObs
-        VLBI observation object.
-
-    Returns
-    -------
-    dict or None
-        Serialized UV data, or None if observation is invalid.
-    """
-    if o is None or not o.scans:
-        return None
-
-    bl_uv = o.get_uv_data()
-    serialized = {}
-    for key, arr in bl_uv[list(bl_uv.keys())[0]].items():
-        arr_values = arr.value if hasattr(arr, 'value') else arr
-        serialized[key] = {
-            'x': arr_values[:, 0].tolist() + (-arr_values[:, 0]).tolist(),
-            'y': arr_values[:, 1].tolist() + (-arr_values[:, 1]).tolist()
-        }
-    return serialized
+# uv-plot styling. The clientside highlight callback in callbacks.py receives these same constants (embedded as
+# JSON) so that the Python-built figure and the browser-restyled figure always look identical.
+UV_HIGHLIGHT_COLORS: list[str] = ["#FF0000", "#0000FF", "#008000", "#FFA500", "#800080",
+                                  "#00FFFF", "#FF00FF", "#FFD700", "#00FF00", "#A52A2A",
+                                  "#FFC0CB", "#808000", "#008080", "#000080", "#FF7F50",
+                                  "#4B0082", "#FF8C00", "#40E0D0", "#6A5ACD", "#006400"]
+UV_BASE_COLOR: str = 'black'
+UV_BASE_SIZE: int = 2
+UV_HIGHLIGHT_SIZE: int = 4
 
 
 def baseline_has_antenna(baseline: str, antenna: str) -> bool:
@@ -423,68 +405,71 @@ def baseline_has_antenna(baseline: str, antenna: str) -> bool:
     return antenna in baseline.split('-')
 
 
-def uvplot_from_data(uv_data: dict, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure]:
-    """Create UV coverage plot from serialized UV data.
+def uv_marker_style(baseline: str, filter_antennas: Optional[list[str]] = None) -> dict:
+    """Return the marker style of one baseline trace in the uv plot.
+
+    The first antenna in filter_antennas that belongs to the baseline decides the highlight color
+    (UV_HIGHLIGHT_COLORS cycled by that antenna's position). Must stay in sync with the JavaScript
+    `uvStyleFor` function in callbacks.py.
 
     Parameters
     ----------
-    uv_data : dict
-        Serialized UV data from serialize_uv_data.
+    baseline : str
+        Baseline key, e.g. 'Ef-Wb'.
+    filter_antennas : list[str] or None, optional
+        Antennas to highlight. Default is None (no highlight).
+
+    Returns
+    -------
+    dict
+        {'color': str, 'size': int, 'highlighted': bool}.
+    """
+    for i, ant in enumerate(filter_antennas or []):
+        if baseline_has_antenna(baseline, ant):
+            return {'color': UV_HIGHLIGHT_COLORS[i % len(UV_HIGHLIGHT_COLORS)], 'size': UV_HIGHLIGHT_SIZE,
+                    'highlighted': True}
+    return {'color': UV_BASE_COLOR, 'size': UV_BASE_SIZE, 'highlighted': False}
+
+
+def uvplot_from_baselines(bl_uv: dict, filter_antennas: Optional[list[str]] = None) -> go.Figure:
+    """Create the uv-coverage figure with one Scattergl trace per baseline.
+
+    Each trace is named after its baseline (e.g. 'Ef-Wb') and contains both the +uv and -uv points as
+    float32 numpy arrays (plotly serializes them as compact base64 typed arrays). The hover label is the
+    trace name via hovertemplate, so no per-point text is shipped. Highlighted traces are placed last so
+    they are drawn on top.
+
+    Parameters
+    ----------
+    bl_uv : dict
+        Mapping baseline key -> array-like (or astropy Quantity) of shape (N, >=2) with u, v in lambda.
     filter_antennas : list[str] or None, optional
         Antennas to highlight in the plot. Default is None.
 
     Returns
     -------
-    go.Figure or None
-        Plotly figure, or None if data is invalid.
+    go.Figure
+        Plotly figure (possibly with no traces if bl_uv is empty).
     """
-    if uv_data is None:
-        return None
+    base_traces: list = []
+    highlighted_traces: list = []
+    for baseline, arr in bl_uv.items():
+        values = np.asarray(arr.value if hasattr(arr, 'value') else arr)
+        if values.ndim != 2 or values.shape[0] == 0:
+            continue
+        uu = values[:, 0].astype(np.float32)
+        vv = values[:, 1].astype(np.float32)
+        style = uv_marker_style(baseline, filter_antennas)
+        trace = go.Scattergl(x=np.concatenate([uu, -uu]), y=np.concatenate([vv, -vv]), name=baseline, mode='markers',
+                             marker=dict(color=style['color'], size=style['size']),
+                             hovertemplate='%{fullData.name}<extra></extra>', showlegend=False)
+        (highlighted_traces if style['highlighted'] else base_traces).append(trace)
 
-    highlight_colors = [
-        "#FF0000", "#0000FF", "#008000", "#FFA500", "#800080",
-        "#00FFFF", "#FF00FF", "#FFD700", "#00FF00", "#A52A2A",
-        "#FFC0CB", "#808000", "#008080", "#000080", "#FF7F50",
-        "#4B0082", "#FF8C00", "#40E0D0", "#6A5ACD", "#006400",
-    ]
-
-    # Group points by color for batching
-    color_groups: dict[str, dict] = {'black': {'x': [], 'y': [], 'text': []}}
-    if filter_antennas:
-        for i, ant in enumerate(filter_antennas):
-            color_groups[highlight_colors[i % len(highlight_colors)]] = {'x': [], 'y': [], 'text': []}
-
-    def get_color(baseline: str) -> str:
-        if filter_antennas:
-            for i, ant in enumerate(filter_antennas):
-                if baseline_has_antenna(baseline, ant):
-                    return highlight_colors[i % len(highlight_colors)]
-        return 'black'
-
-    for baseline, points in uv_data.items():
-        color = get_color(baseline)
-        color_groups[color]['x'].extend(points['x'])
-        color_groups[color]['y'].extend(points['y'])
-        color_groups[color]['text'].extend([baseline] * len(points['x']))
-
-    # Create one trace per color
-    data = []
-    for color, points in color_groups.items():
-        if points['x']:
-            data.append(go.Scattergl(
-                x=points['x'],
-                y=points['y'],
-                mode='markers',
-                marker=dict(color=color, size=2 if color == 'black' else 4),
-                hovertext=points['text'],
-                hoverinfo='text',
-                showlegend=False
-            ))
-
-    fig = go.Figure(data=data)
+    fig = go.Figure(data=base_traces + highlighted_traces)
     fig.update_layout(
         showlegend=False,
         hovermode='closest',
+        uirevision='uv',  # keep zoom/pan when the highlight callback restyles the figure
         xaxis_title='u (λ)',
         yaxis_title='v (λ)',
         title='',
@@ -503,7 +488,7 @@ def uvplot_from_data(uv_data: dict, filter_antennas: Optional[list[str]] = None)
 
 
 def uvplot(o, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure]:
-    """Create UV coverage plot optimized to batch points into fewer traces.
+    """Create the uv-coverage figure (one trace per baseline) for the first source of an observation.
 
     Parameters
     ----------
@@ -515,75 +500,15 @@ def uvplot(o, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure
     Returns
     -------
     go.Figure or None
-        Plotly figure, or None if observation is invalid.
+        Plotly figure, or None if the observation has no scans or no uv data.
     """
     if o is None or not o.scans:
         return None
 
     bl_uv = o.get_uv_data()
-    highlight_colors = [
-        "#FF0000", "#0000FF", "#008000", "#FFA500", "#800080",
-        "#00FFFF", "#FF00FF", "#FFD700", "#00FF00", "#A52A2A",
-        "#FFC0CB", "#808000", "#008080", "#000080", "#FF7F50",
-        "#4B0082", "#FF8C00", "#40E0D0", "#6A5ACD", "#006400",
-    ]
-
-    # Group points by color for batching
-    color_groups: dict[str, dict] = {'black': {'x': [], 'y': [], 'text': []}}
-    if filter_antennas:
-        for i, ant in enumerate(filter_antennas):
-            color_groups[highlight_colors[i % len(highlight_colors)]] = {'x': [], 'y': [], 'text': []}
-
-    def get_color(baseline: str) -> str:
-        if filter_antennas:
-            for i, ant in enumerate(filter_antennas):
-                if baseline_has_antenna(baseline, ant):
-                    return highlight_colors[i % len(highlight_colors)]
-        return 'black'
-
-    for key, arr in bl_uv[list(bl_uv.keys())[0]].items():
-        color = get_color(key)
-        # Add both +uv and -uv points (use .value for Quantity arrays)
-        arr_values = arr.value if hasattr(arr, 'value') else arr
-        color_groups[color]['x'].extend(arr_values[:, 0].tolist())
-        color_groups[color]['x'].extend((-arr_values[:, 0]).tolist())
-        color_groups[color]['y'].extend(arr_values[:, 1].tolist())
-        color_groups[color]['y'].extend((-arr_values[:, 1]).tolist())
-        color_groups[color]['text'].extend([key] * (2 * len(arr_values)))
-
-    # Create one trace per color (much fewer traces)
-    data = []
-    for color, points in color_groups.items():
-        if points['x']:
-            data.append(go.Scattergl(  # Use Scattergl for WebGL rendering - faster
-                x=points['x'],
-                y=points['y'],
-                mode='markers',
-                marker=dict(color=color, size=2 if color == 'black' else 4),
-                hovertext=points['text'],
-                hoverinfo='text',
-                showlegend=False
-            ))
-
-    fig = go.Figure(data=data)
-    fig.update_layout(
-        showlegend=False,
-        hovermode='closest',
-        xaxis_title='u (λ)',
-        yaxis_title='v (λ)',
-        title='',
-        paper_bgcolor='rgba(0,0,0,0)',   # Transparent background
-        plot_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
-                   tickmode='auto', showgrid=False, zeroline=False,
-                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
-                   scaleanchor="x", scaleratio=1, tickmode='auto', showgrid=False, zeroline=False,  # Square aspect ratio
-                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        margin=dict(l=0, r=0, t=0, b=0)
-    )
-    fig.update_xaxes(constrain='domain')
-    return fig
+    if not bl_uv:
+        return None
+    return uvplot_from_baselines(bl_uv[list(bl_uv.keys())[0]], filter_antennas)
 
 
 def serialize_elevation_data(o) -> Optional[dict]:

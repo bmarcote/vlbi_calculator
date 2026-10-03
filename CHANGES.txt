@@ -15,8 +15,8 @@ v5.1.0  2026-10-03 -- Unified CLI option names in all subcommands: -e/--epoch (s
                    -- Bug Fix: the scheduler no longer modifies the observation, and added calibrators (3C286, polcals,
                       fringe finders) are placed where they are visible. Generated .key files may change; polcals
                       that cannot be placed are skipped with a warning.
-                   -- Bug Fix: the eMERLIN 3C286 scan is no longer added to EVN-only observations: Jb2 alone (a regular
-                      EVN station) does not trigger it; any other eMERLIN station does.
+                   -- Bug Fix: the eMERLIN 3C286 scan is no longer added to EVN-only observations: only Cm, Da, De, Kn
+                      or Pi trigger it (not Jodrell Bank, Jb1/Jb2, which observes regularly in the EVN).
                    -- Bug Fix: the CLI time grid no longer duplicates the last sample.
                    -- Silenced the spurious numpy RuntimeWarning 'invalid value encountered in do_format' raised by
                       astropy when printing coordinates (astropy/numpy >= 2.4 incompatibility).

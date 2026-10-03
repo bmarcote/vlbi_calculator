@@ -39,9 +39,9 @@ except ImportError:  # pragma: no cover - exercised only when ortools missing
 
 log = logging.getLogger(__name__)
 
-# eMERLIN stations that trigger the 3C286 flux-scale scan. Jb2 is excluded on purpose: it observes regularly
-# within the EVN, so an EVN-only array with Jb2 must not get an eMERLIN 3C286 scan.
-_EMERLIN_CODES = {'CM', 'KN', 'PI', 'DA', 'DE', 'JB1'}
+# eMERLIN-only stations that trigger the 3C286 flux-scale scan. Jodrell Bank (Jb1, Jb2) is excluded on purpose:
+# it observes regularly within the EVN, so an EVN array with Jodrell Bank must not get an eMERLIN 3C286 scan.
+_EMERLIN_CODES = {'CM', 'KN', 'PI', 'DA', 'DE'}
 _POLCAL_NAMES = ['3C84', 'OQ208', 'DA193']
 _3C286_COORD = '13h31m08.288s +30d30m32.96s'
 _JB1_MAX_SRC_CHANGES_PER_HOUR = 12
@@ -883,7 +883,7 @@ class ObservationScheduler:
         return added
 
     def _has_emerlin(self) -> bool:
-        """Check if eMERLIN stations (other than Jb2, which is a regular EVN station) are in the array.
+        """Check if eMERLIN-only stations (Cm, Kn, Pi, Da, De; not Jodrell Bank) are in the array.
 
         Returns
         -------

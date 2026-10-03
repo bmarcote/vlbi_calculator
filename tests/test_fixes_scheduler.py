@@ -149,8 +149,9 @@ def _scheduler_for(ants: list[str]) -> ObservationScheduler:
 
 
 def test_emerlin_3c286_not_triggered_by_jb2_alone():
-    """Jb2 observes regularly in the EVN: an EVN array with Jb2 but no other eMERLIN station gets no 3C286 scan."""
+    """Jodrell Bank (Jb1/Jb2) observes regularly in the EVN: on its own it does not trigger the 3C286 scan."""
     assert not _scheduler_for(['Ef', 'Jb2', 'O8', 'T6', 'Wb', 'Mc'])._has_emerlin()
+    assert not _scheduler_for(['Ef', 'Jb1', 'O8', 'T6', 'Wb', 'Mc'])._has_emerlin()
     assert _scheduler_for(['Ef', 'Jb2', 'Cm', 'O8', 'T6', 'Wb'])._has_emerlin()
 
 

@@ -64,8 +64,8 @@ parsers as `planobs`, so they accept exactly the same options.
 - The scheduler no longer modifies the `Observation` it schedules, and added calibrators (eMERLIN 3C286, polarization
   calibrators, fringe finders) are placed using their real visibility. Generated `.key` files may therefore differ
   from previous versions; polarization calibrators that cannot be placed are skipped with a warning.
-- The eMERLIN 3C286 flux-scale scan is no longer added to EVN-only observations. Jb2 observes regularly within the
-  EVN, so it does not trigger the scan on its own; any other eMERLIN station (Cm, Kn, Pi, Da, De, Jb1) does.
+- The eMERLIN 3C286 flux-scale scan is no longer added to EVN-only observations. Only the stations Cm, Da, De, Kn and
+  Pi trigger it; Jodrell Bank (Jb1, Jb2) observes regularly within the EVN and does not.
 - The CLI time grid no longer duplicates the last time sample.
 - The spurious `RuntimeWarning: invalid value encountered in do_format` printed when showing coordinates (an
   astropy/numpy ≥ 2.4 incompatibility) is silenced.

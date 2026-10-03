@@ -11,8 +11,8 @@ The scheduler arranges scan blocks across your observation following VLBI conven
 - **Check sources**: Auto-selected or specified sources for calibration verification
 - **Polarization calibration**: Standard polcal sources (3C84, OQ208, DA193) near 10%, 50%, 90% of observation time,
   at the closest time when each source is visible (polcals that cannot be placed are skipped with a warning)
-- **eMERLIN 3C286**: Automatically added when eMERLIN stations other than Jb2 are present (Jb2 alone, as a regular
-  EVN station, does not trigger it), at a time when it is visible
+- **eMERLIN 3C286**: Automatically added when any of the eMERLIN stations Cm, Da, De, Kn or Pi is present (Jodrell
+  Bank, Jb1/Jb2, does not trigger it as it observes regularly in the EVN), at a time when it is visible
 - **Science blocks**: Optimized for antenna participation and elevation
 
 ## Generating a Schedule File

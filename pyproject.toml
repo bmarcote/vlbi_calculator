@@ -1,5 +1,7 @@
 [tool.pytest.ini_options]
 pythonpath = "src"
+# Upstream astropy/numpy>=2.4 noise from Angle.to_string (see src/vlbiplanobs/__init__.py).
+filterwarnings = ["ignore:invalid value encountered in do_format:RuntimeWarning"]
 
 
 [build-system]

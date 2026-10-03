@@ -4,7 +4,13 @@ All public names are re-exported lazily (PEP 562) so that importing the package
 (e.g. by the `planobs` console script) does not pull in the heavy dependencies
 (astropy, numpy, catalogs) until they are actually used.
 """
+import warnings
 from importlib import import_module
+
+# astropy's Angle.to_string formats through np.vectorize(..., otypes=["U"]), which with numpy >= 2.4 emits
+# "RuntimeWarning: invalid value encountered in do_format (vectorized)" for every (valid) angle. The output is
+# correct, so silence only this exact message (upstream astropy/numpy incompatibility, not a data problem).
+warnings.filterwarnings('ignore', message=r'invalid value encountered in do_format', category=RuntimeWarning)
 __all__: list[str] = ["VLBIObs", "Time", "Stations", "Station",
            "Source", "Scan", "ScanBlock", "SourceType", "SourceNotVisible",
            "NETWORKS", "STATIONS",

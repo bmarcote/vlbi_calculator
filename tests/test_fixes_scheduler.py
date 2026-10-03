@@ -136,3 +136,26 @@ def test_key_file_strips_quotes_and_newlines(scheduled):
                                 setup_file='dummy.set')
     assert "piname   = 'Evil expcode=X'" in key
     assert '\nendcover /\n' in key and key.count('endcover /') == 2
+
+
+def _scheduler_for(ants: list[str]) -> ObservationScheduler:
+    """Build an ObservationScheduler (not run) for the given antennas on a simple single-target observation."""
+    tgt = Source('TGT', '13h20m00s +40d00m00s', source_type=SourceType.TARGET)
+    o = obs.Observation(band='18cm', stations=obs._STATIONS.filter_antennas(ants),
+                        scans={'B1': ScanBlock([Scan(tgt, 5 * u.min)])},
+                        times=Time('2024-03-10 18:00', scale='utc') + np.arange(0, 480, 10) * u.min,
+                        datarate=1024 * u.Mbit / u.s)
+    return ObservationScheduler(o)
+
+
+def test_emerlin_3c286_not_triggered_by_jb2_alone():
+    """Jb2 observes regularly in the EVN: an EVN array with Jb2 but no other eMERLIN station gets no 3C286 scan."""
+    assert not _scheduler_for(['Ef', 'Jb2', 'O8', 'T6', 'Wb', 'Mc'])._has_emerlin()
+    assert _scheduler_for(['Ef', 'Jb2', 'Cm', 'O8', 'T6', 'Wb'])._has_emerlin()
+
+
+def test_evn_only_schedule_has_no_3c286():
+    """End to end: scheduling an EVN-only array (with Jb2) never adds the eMERLIN_3C286 block."""
+    sch = _scheduler_for(['Ef', 'Jb2', 'O8', 'T6', 'Wb', 'Mc'])
+    sch.schedule()
+    assert 'eMERLIN_3C286' not in sch._scans

@@ -909,6 +909,11 @@ def get_nearby_sources(source: CalibratorSource | Source, max_separation: u.Quan
     return nearby[:n_sources] if n_sources is not None else nearby
 
 
+# Catalog entries closer than this to the target (or to the phase calibrator) are the same object under another
+# name (e.g. 'M87' resolved online vs RFC 'J1230+1223'; positions differ by < 1"), never a calibrator for it.
+SAME_SOURCE_MAX_SEPARATION: u.Quantity = 5.0 * u.arcsec
+
+
 def select_phase_calibrator(target: Source, band: str, max_separation: u.Quantity = 5.0 * u.deg,
                             catalog: Optional[RFCCatalog] = None) -> Optional[CalibratorSource]:
     """Automatically select the best phase calibrator for a target source.
@@ -947,8 +952,10 @@ def select_phase_calibrator(target: Source, band: str, max_separation: u.Quantit
 
     best_src, best_score = None, -1.0
     for src, sep_deg in nearby:
-        # Skip the target source itself
+        # Skip the target source itself (by name, or by position when it has another name in the catalog)
         if src.name.upper() in target_names or src.ivsname.upper() in target_names:
+            continue
+        if sep_deg * u.deg < SAME_SOURCE_MAX_SEPARATION:
             continue
         flux_unres = src.unresolved_flux(rfc_band)
         if flux_unres <= 0:
@@ -1020,6 +1027,10 @@ def select_check_source(target: Source, phase_cal: Source, band: str,
         if src.name.upper() in exclude_names:
             continue
         if hasattr(src, 'ivsname') and src.ivsname.upper() in exclude_names:
+            continue
+        # Same object as the target or the phase calibrator under another name
+        if sep_deg * u.deg < SAME_SOURCE_MAX_SEPARATION or \
+                src.coord.separation(phase_cal.coord) < SAME_SOURCE_MAX_SEPARATION:
             continue
         flux_unres = src.unresolved_flux(rfc_band)
         if flux_unres <= 0:

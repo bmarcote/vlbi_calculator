@@ -594,3 +594,17 @@ class TestRunFunctions:
         code = calibrators.run_phasecals(target='J1230+1223', source_catalog='/nonexistent.toml', as_json=True)
         assert code == 1
         assert 'Source catalog file not found' in capsys.readouterr().out
+
+
+def test_phase_calibrator_never_the_target_under_another_name():
+    """'M87' (target, other name) must not get its own RFC entry J1230+1223 as phase calibrator or check source."""
+    from vlbiplanobs.sources import Source, SourceType
+    from vlbiplanobs import calibrators as cal
+    m87 = Source('M87', '12h30m49.4234s +12d23m28.044s', source_type=SourceType.TARGET)
+    pc = cal.select_phase_calibrator(m87, '6cm')
+    assert pc is not None
+    assert m87.coord.separation(pc.coord) > cal.SAME_SOURCE_MAX_SEPARATION
+    check = cal.select_check_source(m87, pc, '6cm')
+    if check is not None:
+        assert m87.coord.separation(check.coord) > cal.SAME_SOURCE_MAX_SEPARATION
+        assert pc.coord.separation(check.coord) > cal.SAME_SOURCE_MAX_SEPARATION

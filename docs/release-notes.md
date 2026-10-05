@@ -64,6 +64,8 @@ parsers as `planobs`, so they accept exactly the same options.
 - The scheduler no longer modifies the `Observation` it schedules, and added calibrators (eMERLIN 3C286, polarization
   calibrators, fringe finders) are placed using their real visibility. Generated `.key` files may therefore differ
   from previous versions; polarization calibrators that cannot be placed are skipped with a warning.
+- Automatic phase calibrator / check source selection never picks the target itself under another name (e.g.
+  RFC `J1230+1223` for `M87`): candidates within 5″ of the target or phase calibrator are skipped.
 - The eMERLIN 3C286 flux-scale scan is no longer added to EVN-only observations. Only the stations Cm, Da, De, Kn and
   Pi trigger it; Jodrell Bank (Jb1, Jb2) observes regularly within the EVN and does not.
 - The CLI time grid no longer duplicates the last time sample.
@@ -89,7 +91,9 @@ parsers as `planobs`, so they accept exactly the same options.
 
 - Python 3.12+ is required.
 - Added `pyerfa`; dropped the unused `six`, `matplotlib`, `types-PyYAML`, and `Cython` dependencies.
-- `kaleido` is kept below 1 (kaleido ≥ 1 needs a Chrome binary to export figures to PDF).
+- `kaleido` is kept below 1 (kaleido ≥ 1 needs a Chrome binary to export figures to PDF), excluding 0.2.1.post1
+  (no x86-64 wheels; `uv` could pick it on a fresh install).
+- `plotext` is kept below 6 (plotext 6 is a full API rewrite and breaks the terminal plots).
 - The `Procfile` runs `gunicorn vlbiplanobs.gui.main:server --workers 4 --timeout 120 ...`
   (see [Web Server](mode-server.md#production-deployment)).
 - Package data (catalogs, templates, GUI assets) is installed correctly.

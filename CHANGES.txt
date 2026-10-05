@@ -28,6 +28,8 @@ v5.1.0  2026-10-03 -- Unified CLI option names in all subcommands: -e/--epoch (s
                    -- Bug Fix: the scheduler no longer modifies the observation, and added calibrators (3C286, polcals,
                       fringe finders) are placed where they are visible. Generated .key files may change; polcals
                       that cannot be placed are skipped with a warning.
+                   -- Bug Fix: auto phase-cal/check-source selection never picks the target itself under another
+                      name (e.g. J1230+1223 for M87): candidates within 5 arcsec are skipped.
                    -- Bug Fix: the eMERLIN 3C286 scan is no longer added to EVN-only observations: only Cm, Da, De, Kn
                       or Pi trigger it (not Jodrell Bank, Jb1/Jb2, which observes regularly in the EVN).
                    -- Bug Fix: the CLI time grid no longer duplicates the last sample.
@@ -40,7 +42,8 @@ v5.1.0  2026-10-03 -- Unified CLI option names in all subcommands: -e/--epoch (s
                    -- GUI: the maximum-duration message now says 50 h.
                    -- Performance: vectorized ERFA visibility/elevations (~17x faster), RFC catalog parsed once
                       (2.2 s -> 0.13 s), scheduling ~3-5x faster, GUI uv plot sent once per tab (~50% smaller).
-                   -- Packaging: added pyerfa; dropped six, matplotlib, types-PyYAML and Cython; kaleido kept < 1;
+                   -- Packaging: added pyerfa; dropped six, matplotlib, types-PyYAML and Cython; kaleido kept < 1
+                      (and != 0.2.1.post1: no x86-64 wheels); plotext < 6 (6.x API rewrite breaks terminal plots);
                       Procfile runs gunicorn vlbiplanobs.gui.main:server; package data fixed; Python 3.12+.
 v5.0.5  2026-10-02 -- New Feature: Network Monitoring Experiment mode (--nme), writing NME .key files.
                    -- New Feature: 'planobs observe -o FILE' saves inputs and results as .pdf, .txt, .md or .json.

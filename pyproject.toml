@@ -46,13 +46,13 @@ dependencies = [
   "pyerfa",
   "rich",
   "rich_argparse",
-  "plotext",
+  "plotext<6",  # plotext 6 is a full API rewrite (no clf/scatter/theme): terminal plots break
   "ortools>=9.0",
   "plotly",
   "dash[compress]>=3.0",  # [compress] adds flask-compress: compressed responses of the web app
   "dash-bootstrap-components>=2.0",
   "dash-mantine-components",
-  "kaleido<1",  # kaleido>=1 needs a Chrome binary to export figures (PDF reports break without it)
+  "kaleido<1,!=0.2.1.post1",  # >=1 needs Chrome to export figures (PDF reports); 0.2.1.post1: armv7l wheels only
   "loguru",
   "borb==2.1.25; sys_platform == 'darwin'",  # borb 3.x wheel has case-conflicting files: fails on macOS
   "borb>=3.0; sys_platform != 'darwin'",

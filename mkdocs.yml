@@ -1,5 +1,5 @@
 site_name: EVN Observation Planner (PlanObs)
-site_url: https://vlbiplanobs.github.io
+site_url: https://bmarcote.github.io/vlbi_calculator/
 site_description: VLBI observation planning tool for the European VLBI Network
 site_author: Benito Marcote
 repo_url: https://github.com/bmarcote/vlbi_calculator

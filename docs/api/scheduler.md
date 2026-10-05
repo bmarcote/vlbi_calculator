@@ -12,17 +12,18 @@ ObservationScheduler(observation, min_antennas=2, require_all_antennas=False,
                      fringefinder_spec=None, polcal=False)
 ```
 
-- `fringefinder_spec` - List of fringe finder names (or `name/coordinates`), or a single number (as a string)
-  of fringe finders to auto-select. Same format as the `--fringefinders` CLI option.
+- `fringefinder_spec` - List of fringe finder names (or `name/coordinates`), or a single number (as a string,
+  default `['2']`): how many fringe-finder scans to place on an auto-selected source. Same format as the
+  `--fringefinders` CLI option.
 - `polcal` - Add polarization calibrator scans (3C84, OQ208, DA193).
 
 ### Scheduling Rules
 
 **Fringe Finders:**
 
-- 2× 5-minute scans at observation start
-- 1× 5-minute scan at observation end
-- For observations > 3 hours: additional scans every ~2 hours
+- 5-minute scans, spread across the observation
+- With a number N in `fringefinder_spec`: N scans on one auto-selected source (default 2)
+- With source names: 1 scan up to 1.5 h, 2 up to 3 h, and one more per additional ~2 h; sources are used round-robin
 
 **Added calibrators** (fringe finders, polcals, eMERLIN 3C286) are placed using their real visibility from the
 stations. Polcals that are not visible by enough antennas are skipped with a warning.

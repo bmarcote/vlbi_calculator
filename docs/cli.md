@@ -157,4 +157,13 @@ planobs -b 6cm -t 'M87' --network EVN \
   --fringefinders 3 --phasecal --check-source
 ```
 
+### Schedule templates and Network Monitoring Experiments
+
+```bash
+planobs --get-key-template my_template.key        # copy the bundled SCHED .key template
+planobs -b 6cm -t 'M87' --network EVN \
+  --epoch '2025-03-15 08:00' --duration 8 --sched eg123a --template my_template.key
+planobs -b 18cm --network EVN -e '2025-02-20 12:00' -d 3 --nme --sched n25l1
+```
+
 See **[Scheduling](scheduling.md)** for details on the `.key` file format and auto-selection features.

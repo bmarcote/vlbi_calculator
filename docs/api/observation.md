@@ -18,7 +18,7 @@ obs = cli.main(band='6cm', networks=['EVN'], stations=['Ar'], targets=['J1230+12
 
 Main keyword arguments of `cli.main`: `band`, `networks`, `stations`, `station_catalog`, `src_catalog`, `targets`,
 `start_time` (UTC), `duration` (> 0 and ≤ 96 h), `datarate`, `ontarget`, `subbands`, `channels`, `polarizations`,
-`inttime`, `phasecal_names`, `check_source_names`, `fringefinder_spec`. Without `start_time`/`duration`, the
+`inttime`, `phasecal_names`, `check_source_names`, `fringefinder_spec`, `polcal`. Without `start_time`/`duration`, the
 observation covers a full GST day so that the best observing window can be searched.
 
 ## Key Properties

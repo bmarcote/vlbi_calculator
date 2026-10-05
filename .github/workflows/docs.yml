@@ -1,0 +1,53 @@
+# Builds the MkDocs documentation and publishes it to the 'gh-pages' branch, which GitHub Pages serves at
+# https://bmarcote.github.io/vlbi_calculator/
+# Requires (once): Settings > Pages > Source 'Deploy from a branch', branch 'gh-pages', folder '/ (root)'.
+
+name: Documentation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'src/vlbiplanobs/**'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install documentation dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r docs/requirements.txt
+    - name: Build documentation
+      run: |
+        mkdocs build --strict
+    - name: Deploy to gh-pages
+      if: github.event_name != 'pull_request'
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        mkdocs gh-deploy --force

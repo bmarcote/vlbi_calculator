@@ -33,7 +33,7 @@ You must also specify at least one of `--network` or `--stations`.
 | Argument | Description |
 |----------|-------------|
 | `-n`, `--network` | One or more VLBI network names (e.g. `EVN`, `eMERLIN`, `VLBA`, `LBA`). Takes the default stations of each network. |
-| `-s`, `--stations` | Individual station codenames or full names (e.g. `Ef`, `Wb`, `Jb`). Can be combined with `--network`. |
+| `-s`, `--stations` | Individual station codenames or full names (e.g. `Ef`, `Wb`, `Jb2`). Can be combined with `--network`. |
 | `--station-catalog` | Path to a custom station catalog file. Overrides the built-in catalog. |
 
 !!! note "Terrain Blockage"
@@ -147,10 +147,10 @@ planobs -b 6cm -t 'M87' --network EVN --epoch '2025-06-15 08:00' --duration 12
 
 | Argument | Description |
 |----------|-------------|
-| `--sched` | Generate a pySCHED `.key` schedule file. The value is used as the experiment code and filename. |
+| `--sched` | Generate a pySCHED `.key` schedule file. The value is used as the experiment code (upper case) and filename; it may only contain letters, digits and `_`. |
 | `--setup` | Frequency setup written in the `setup = ...` line of the `.key` file. If not given, PlanObs guesses it. |
 | `--template` | Custom SCHED `.key` template. Get a copy of the bundled one with `planobs --get-key-template FILENAME`. |
-| `--fringefinders` | Fringe finder source(s) or a number of automatic selections (default: `2`). |
+| `--fringefinders` | Fringe finder source name(s), or a single number: how many fringe-finder scans to schedule on an automatically selected source (default: `2`). |
 | `--polcal` | Include polarization calibration scans. |
 | `--phasecal` | Phase calibrator source(s) or empty for auto-selection. |
 | `--check-source` | Check source(s) or empty for auto-selection. |

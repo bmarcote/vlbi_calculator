@@ -70,8 +70,10 @@ The tool prints a table with the following columns:
 - **Unresolved (Jy)** – unresolved flux density (most relevant for fringe finding).
 - **Bands** – bands where the source has been observed.
 - **url** – link to the AstroGeo database page.
+- **Antenna Visibility** – whether all or only some antennas see the source, and for all or part of the time.
 
-When `--json` is used, the same data is printed as a JSON array.
+When `--json` is used, a JSON object is printed with the search parameters, `total_found`, `shown`, and the
+same data in the `sources` list.
 
 ---
 

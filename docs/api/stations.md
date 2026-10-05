@@ -9,7 +9,7 @@ Represents a single radio telescope.
 ### Key Properties
 
 - `name` - Full station name
-- `codename` - Two-letter station code (e.g., 'Ef', 'Wb')
+- `codename` - Short station code, typically two letters (e.g., 'Ef', 'Wb', 'Jb2')
 - `networks` - Networks this station belongs to
 - `location` - Geographic coordinates
 - `bands` - Available observing bands
@@ -31,7 +31,8 @@ print(f"Bands: {effelsberg.bands}")
 print(f"SEFD at 6 cm: {effelsberg.sefd('6cm')}")
 ```
 
-`Stations(filename='my_stations.inp')` reads a custom catalog instead; a missing or invalid file raises an error.
+`Stations(filename='my_stations.inp')` reads a custom catalog on top of the default one (sections with the same
+name replace the default entry); a missing or invalid file raises an error.
 
 ## Stations
 
@@ -93,8 +94,8 @@ Common EVN station codes:
 |------|---------|
 | Ef | Effelsberg (Germany) |
 | Wb | Westerbork (Netherlands) |
-| Jb | Jodrell Bank (UK) |
-| On | Onsala (Sweden) |
+| Jb1, Jb2 | Jodrell Bank Lovell and Mark II (UK) |
+| O8 | Onsala 25 m (Sweden) |
 | Mc | Medicina (Italy) |
 | Nt | Noto (Italy) |
 | Tr | Torun (Poland) |

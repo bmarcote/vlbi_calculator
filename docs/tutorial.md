@@ -112,12 +112,10 @@ Station data is stored in `data/stations_catalog.inp` using [Python configparser
 [Station Name]
 station = Station Name
 code = XX
-network = EVN
-possible_networks = EVN, GMVA
+networks = EVN, GMVA
 country = Netherlands
 diameter = 25 m
 position = X, Y, Z
-min_elevation = 10
 real_time = yes
 SEFD_6 = 420
 SEFD_18 = 700
@@ -126,10 +124,8 @@ SEFD_18 = 700
 | Field | Description |
 |-------|-------------|
 | `code` | Unique codename (e.g. `Ef`, `Wb`). |
-| `network` | Primary network, or `Other`. |
-| `possible_networks` | Comma-separated list of networks the station can join. |
-| `position` | Geocentric X, Y, Z coordinates. |
-| `min_elevation` | Minimum observable elevation in degrees (default 10). |
+| `networks` | Comma-separated list of networks the station can join (can be empty). |
+| `position` | Geocentric X, Y, Z coordinates in meters. |
 | `real_time` | `yes` if the station supports e-VLBI. |
 | `SEFD_YY` | System Equivalent Flux Density at wavelength YY cm (in Jy). One entry per band. |
 

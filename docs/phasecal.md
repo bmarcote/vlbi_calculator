@@ -28,19 +28,19 @@ planobs phasecals 'M87' -b 6cm
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `-b`, `--band` | all bands | Observing band (e.g. `6cm`, `1.3cm`). When omitted, shows average flux across all bands. |
+| `-b`, `--band` | all bands | Observing band (e.g. `6cm`, `1.3cm`). When omitted, shows the maximum flux over all bands. |
 | `--max-separation` | `5.0` | Maximum angular separation from the target in degrees. |
 | `--min-flux` | `0.1` | Minimum unresolved flux threshold in Jy. |
 | `-l`, `--max-lines` | all | Maximum number of sources to return (sorted by separation). |
 | `-sc`, `--source-catalog` | none | Personal source catalog (TOML); `TARGET` is looked up there first, as in the observe mode. |
 | `--rfc-catalog` | built-in | Path to a custom RFC catalog file. |
 | `--logging [LOGFILE]` | off | Log to a file. |
+| `--json` | off | Output results in JSON format instead of a table. |
 
 !!! warning "Renamed options (v5.1.0)"
     `-n`/`--n-sources` became `-l`/`--max-lines` (as in `planobs fringefinders`) and `--catalog-file` became
     `--rfc-catalog`. `--n-sources` and `--catalog-file` still work with a deprecation warning; `-n` is no longer
     accepted here (it means `--network` in the other subcommands).
-| `--json` | off | Output results in JSON format instead of a table. |
 
 ---
 
@@ -56,7 +56,8 @@ The tool prints a table with the following columns:
 - **Bands** – bands where the source has been observed.
 - **url** – link to the AstroGeo database page.
 
-When `--json` is used, the same data is printed as a JSON array.
+When `--json` is used, a JSON object is printed with the target, the search parameters, `total_found`, and the
+same data in the `sources` list.
 
 ---
 

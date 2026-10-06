@@ -86,20 +86,26 @@ def enforce_types(func):
     Note: Parameters with default values can accept None even if not explicitly
     marked as Optional, for backward compatibility.
     """
+    # Resolved lazily on the first call (forward references may not exist at decoration time)
+    # and then reused: get_type_hints/inspect.signature are too slow to run on every call.
+    resolved: list = []
+
     @wraps(func)
     def wrapper(*args, **kwargs):
-        try:
-            hints = get_type_hints(func)
-        except Exception:
-            # If we can't get type hints, just run the function
-            return func(*args, **kwargs)
+        if not resolved:
+            try:
+                hints = get_type_hints(func)
+            except Exception:
+                # If we can't get type hints, just run the function
+                return func(*args, **kwargs)
 
-        sig = inspect.signature(func)
-        params = sig.parameters
+            params = inspect.signature(func).parameters
+            param_names = list(params.keys())
+            resolved.append((hints, params, param_names,
+                             1 if param_names and param_names[0] in ('self', 'cls') else 0))
 
         # Check positional arguments, skipping 'self' and 'cls'
-        param_names = list(params.keys())
-        start_idx = 1 if param_names and param_names[0] in ('self', 'cls') else 0
+        hints, params, param_names, start_idx = resolved[0]
         for i, arg in enumerate(args[start_idx:], start=start_idx):
             if i >= len(param_names):
                 break
@@ -1106,7 +1112,7 @@ class Observation(object):
         if not self.sources():
             return {}
 
-        if times is not None:
+        if times is not None and times is not self.times:
             return self._compute_visibility(times)[0]
 
         with self._mutex:
@@ -1142,9 +1148,8 @@ class Observation(object):
         result: dict[str, Optional[u.Quantity]] = {}
         check_times = times if times is not None else (self._REF_YEAR if not self.fixed_time else self.times)
         min_sep_limit = freqsetups.min_separation_sun(self.band)
-        sun = coord.get_sun(check_times)
         for src in self.sources():
-            sep = np.min(src.coord.transform_to(coord.GCRS(obstime=check_times)).separation(sun))
+            sep = np.min(src.sun_separation(check_times))
             result[src.name] = sep if sep <= min_sep_limit else None
         return result
 
@@ -1192,34 +1197,15 @@ class Observation(object):
 
         with self._mutex:
             if self._is_always_visible is None:
-                self._is_always_visible = {ablockname: {ant.codename: True
-                                           for ant in self.stations} for ablockname in self.scans}
-
-                def compute_is_always_visible_for_source(station_source: tuple) -> tuple:
-                    """Worker function to compute always-visible for a single station-source pair.
-
-                    Parameters
-                    ----------
-                    station_source : tuple
-                        (station, source) tuple.
-
-                    Returns
-                    -------
-                    tuple
-                        (station_name, source_name, is_always_visible) tuple.
-                    """
-                    station, source = station_source[0], station_source[1]
-                    return station.codename, source.name, station.is_always_observable(self.times, source)
-
-                with ThreadPoolExecutor() as executor:
-                    results = list(executor.map(compute_is_always_visible_for_source,
-                                                [(station, source) for station in self.stations
-                                                 for source in self.sources()]))
-
-                for station_codename, source_name, visible in results:
-                    for ablockname, ablock in self.scans.items():
-                        if source_name in ablock.sourcenames():
-                            self._is_always_visible[ablockname][station_codename] &= visible
+                # A source is always observable when it is observable at all the observing times, so this
+                # reuses the (cached) vectorized visibility instead of evaluating the astroplan constraints
+                # again for every station-source pair.
+                per_source = self.per_source_observable()
+                self._is_always_visible = {
+                    ablockname: {ant.codename: all(bool(np.all(per_source[source_name][ant.codename]))
+                                                   for source_name in ablock.sourcenames())
+                                 for ant in self.stations}
+                    for ablockname, ablock in self.scans.items()}
 
             return self._is_always_visible
 
@@ -1302,6 +1288,13 @@ class Observation(object):
         """
         raise NotImplementedError
 
+    @staticmethod
+    def _max_uv_length2(uv: Union[np.ndarray, u.Quantity]) -> float:
+        """Returns the maximum squared length (in the units of uv) of the given (N, 2) array of uv points."""
+        # On the bare values: the same operations on a Quantity are several times slower
+        values = uv.value if isinstance(uv, u.Quantity) else uv
+        return float(np.max(np.einsum('ij,ij->i', values, values)))
+
     def longest_baseline(self) -> dict[str, Tuple[str, u.Quantity]]:
         """Returns the longest baseline for each source.
 
@@ -1317,7 +1310,7 @@ class Observation(object):
             if not nonempty:
                 continue
             bl_names, uv_arrays = zip(*nonempty)
-            max_lengths2 = np.array([np.max(np.einsum('ij,ij->i', uv, uv)) for uv in uv_arrays])
+            max_lengths2 = np.array([Observation._max_uv_length2(uv) for uv in uv_arrays])
             max_idx = np.argmax(max_lengths2)
             longest_bl[src] = (bl_names[max_idx],
                                (np.sqrt(max_lengths2[max_idx])*self.wavelength).to(u.km))
@@ -1339,7 +1332,7 @@ class Observation(object):
             if not nonempty:
                 continue
             bl_names, uv_arrays = zip(*nonempty)
-            max_lengths2 = np.array([np.max(np.einsum('ij,ij->i', uv, uv)) for uv in uv_arrays])
+            max_lengths2 = np.array([Observation._max_uv_length2(uv) for uv in uv_arrays])
             min_idx = np.argmin(max_lengths2)
             shortest_bl[src] = (bl_names[min_idx],
                                 (np.sqrt(max_lengths2[min_idx])*self.wavelength).to(u.km))

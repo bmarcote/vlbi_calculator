@@ -4,6 +4,7 @@ import re
 import logging
 import threading
 import functools
+from collections import OrderedDict
 import numpy as np
 import tomllib
 import operator
@@ -487,7 +488,25 @@ class Source(FixedTarget):
         Sequence[astropy.units.Quantity]
             The angular separation between the source and the Sun at each given time.
         """
-        return self.coord.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
+        key = _sun_cache_key(self.coord, times)
+        if key is None:
+            return self.coord.transform_to(coord.GCRS(obstime=times)).separation(_get_sun(times))
+
+        with _SUN_CACHE_LOCK:
+            separation = _SUN_SEPARATION_CACHE.get(key)
+            if separation is not None:
+                _SUN_SEPARATION_CACHE.move_to_end(key)
+                return separation
+
+        separation = self.coord.transform_to(coord.GCRS(obstime=times)).separation(_get_sun(times))
+        # The cached array is shared between callers, so it must not be modified in place.
+        separation.flags.writeable = False
+        with _SUN_CACHE_LOCK:
+            _SUN_SEPARATION_CACHE[key] = separation
+            while len(_SUN_SEPARATION_CACHE) > _SUN_SEPARATION_CACHE_SIZE:
+                _SUN_SEPARATION_CACHE.popitem(last=False)
+
+        return separation
 
     def sun_constraint(self, min_separation: u.Quantity, times: Optional[Time] = None) -> Time:
         """Returns times when the Sun is too close to observe the source.
@@ -514,6 +533,55 @@ class Source(FixedTarget):
         #     return [times[sun_separation[i] < min_separation] for i in range(len(self.coord))]
         # else:
         return times[sun_separation < min_separation]
+
+
+# The Sun position only depends on the times, and the Sun separation only on (coordinates, times). The GUI
+# evaluates both on the same grids over and over (every day of the current year, or the observing times),
+# and the astropy frame transformations behind them are among the slowest steps of an observation.
+_SUN_CACHE_LOCK = threading.Lock()
+_SUN_POSITION_CACHE: OrderedDict = OrderedDict()
+_SUN_POSITION_CACHE_SIZE = 16
+_SUN_SEPARATION_CACHE: OrderedDict = OrderedDict()
+_SUN_SEPARATION_CACHE_SIZE = 512
+
+
+def _times_cache_key(times: Time) -> tuple:
+    """Returns a hashable key that identifies the exact epochs contained in the given times."""
+    return times.scale, times.shape, np.asarray(times.jd1).tobytes(), np.asarray(times.jd2).tobytes()
+
+
+def _sun_cache_key(coordinates: coord.SkyCoord, times: Time) -> Optional[tuple]:
+    """Returns the cache key of the Sun separation for the given coordinates and times.
+
+    Returns None when the result should not be cached (coordinates that are not plain ICRS positions).
+    """
+    try:
+        if coordinates.frame.name != 'icrs' or 's' in coordinates.data.differentials \
+                or not isinstance(coordinates.data, coord.UnitSphericalRepresentation):
+            return None
+
+        return (np.asarray(coordinates.ra.rad).tobytes(), np.asarray(coordinates.dec.rad).tobytes(),
+                coordinates.shape) + _times_cache_key(times)
+    except Exception:
+        return None
+
+
+def _get_sun(times: Time) -> coord.SkyCoord:
+    """Returns the position of the Sun at the given times (as coord.get_sun), cached by times."""
+    key = _times_cache_key(times)
+    with _SUN_CACHE_LOCK:
+        sun = _SUN_POSITION_CACHE.get(key)
+        if sun is not None:
+            _SUN_POSITION_CACHE.move_to_end(key)
+            return sun
+
+    sun = coord.get_sun(times)
+    with _SUN_CACHE_LOCK:
+        _SUN_POSITION_CACHE[key] = sun
+        while len(_SUN_POSITION_CACHE) > _SUN_POSITION_CACHE_SIZE:
+            _SUN_POSITION_CACHE.popitem(last=False)
+
+    return sun
 
 
 def _load_rfc_catalog() -> dict[str, tuple[str, str, str]]:

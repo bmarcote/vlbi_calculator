@@ -49,7 +49,7 @@ dependencies = [
   "plotext",
   "ortools>=9.0",
   "plotly",
-  "dash>=3.0",
+  "dash[compress]>=3.0",  # [compress] adds flask-compress: compressed responses of the web app
   "dash-bootstrap-components>=2.0",
   "dash-mantine-components",
   "kaleido<1",  # kaleido>=1 needs a Chrome binary to export figures (PDF reports break without it)

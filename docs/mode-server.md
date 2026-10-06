@@ -60,11 +60,54 @@ The server auto-reloads when source files change and shows detailed tracebacks o
 ## Production deployment
 
 `planobs server` runs the Dash development server. For a public deployment, serve the WSGI app
-`vlbiplanobs.gui.main:server` with a production server such as gunicorn (this is the command used in the
-`Procfile` of the repository):
+`vlbiplanobs.gui.main:server` with a production server such as gunicorn, using the settings shipped with the
+package (this is the command used in the `Procfile` of the repository):
 
 ```bash
-gunicorn vlbiplanobs.gui.main:server --workers 4 --timeout 120 --max-requests 500 --max-requests-jitter 50
+gunicorn -c python:vlbiplanobs.gui.gunicorn_conf vlbiplanobs.gui.main:server
+```
+
+These settings preload the app in the gunicorn master process (`preload_app`), so that the warm-up done when the
+app is imported (loading the Earth-rotation table, the astropy/astroplan/plotly internals, and the page layout)
+happens only once and every worker answers its very first request at full speed. They can be tuned with
+environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PLANOBS_BIND` | `127.0.0.1:8050` | Address and port to listen on. |
+| `PLANOBS_WORKERS` | `4` (or the number of CPUs if lower) | Number of worker processes. |
+| `PLANOBS_THREADS` | `4` | Threads per worker. |
+| `PLANOBS_TIMEOUT` | `120` | Seconds before a busy worker is restarted (PDF reports can take several seconds). |
+| `PLANOBS_MAX_REQUESTS` | `5000` | Requests served by a worker before it is replaced. |
+| `PLANOBS_NO_WARMUP` | unset | Set it to skip the warm-up at import time (faster startup, slower first request). |
+
+A systemd unit would then contain:
+
+```ini
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/local/gunicorn/
+ExecStart=/path/to/env/bin/gunicorn -c python:vlbiplanobs.gui.gunicorn_conf vlbiplanobs.gui.main:server
+```
+
+The app compresses its responses when `flask-compress` is installed (it is a dependency, through
+`dash[compress]`) and lets the browsers cache the static files. When running behind nginx, it is more
+efficient to let nginx do both, e.g.:
+
+```nginx
+gzip on;
+gzip_types application/json application/javascript text/css image/svg+xml;
+gzip_min_length 1024;
+
+location /assets/ {
+    alias /path/to/env/lib/python3.x/site-packages/vlbiplanobs/gui/assets/;
+    expires 1d;
+}
+location / {
+    proxy_pass http://127.0.0.1:8050/;
+    include proxy_params;
+}
 ```
 
 Station and network catalogs are shared by all users of a worker process, but each user's observation

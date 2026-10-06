@@ -255,3 +255,95 @@ def test_polaris_export_never_posts_to_wildcard():
     assert "postMessage(value, '*')" not in callbacks.callback_javascript
     assert 'postMessage(value, polarisOrigin)' in callbacks.callback_javascript
     assert 'document.referrer' in callbacks.callback_javascript
+
+
+# ------------------------------------------------------------------------------------------
+# Web app performance helpers (gui/main.py): cached layout, cached output tabs, asset caching
+# ------------------------------------------------------------------------------------------
+@pytest.fixture(scope='module')
+def gui_main():
+    from vlbiplanobs.gui import main
+    return main
+
+
+def test_layout_is_cached_and_conditional(gui_main):
+    client = gui_main.server.test_client()
+    first = client.get('/_dash-layout')
+    assert first.status_code == 200 and first.mimetype == 'application/json'
+    assert json.loads(first.get_data())['namespace'] == 'dash_mantine_components'
+    assert client.get('/_dash-layout').get_data() == first.get_data()
+    etag = first.headers['ETag']
+    assert client.get('/_dash-layout', headers={'If-None-Match': etag}).status_code == 304
+    # flask-compress appends the algorithm to the ETag of compressed responses
+    assert client.get('/_dash-layout', headers={'If-None-Match': etag[:-1] + ':gzip"'}).status_code == 304
+    assert client.get('/_dash-layout', headers={'If-None-Match': '"other"'}).status_code == 200
+
+
+def test_assets_are_cached_by_the_browser(gui_main):
+    client = gui_main.server.test_client()
+    fingerprinted = client.get('/assets/css/style.css?m=123')
+    assert fingerprinted.status_code == 200
+    assert fingerprinted.cache_control.max_age == 31536000 and fingerprinted.cache_control.immutable
+    plain = client.get('/assets/favicon.ico')
+    assert plain.status_code == 200 and plain.cache_control.max_age == 86400
+    assert not plain.cache_control.no_cache
+    # non-asset responses are left untouched
+    assert client.get('/').cache_control.max_age is None
+
+
+def test_tab_cache_key_depends_on_every_input(gui_main):
+    from astropy import units as u
+    kwargs = dict(band='18cm', stations=['Ef', 'Mc'], duration=4 * u.h, ontarget=0.7, start_time=None,
+                  datarate=1024 * u.Mbit / u.s, subbands=8, channels=64, polarizations=4, inttime=2 * u.s)
+    key = gui_main._tab_cache_key('3C273', kwargs)
+    assert key == gui_main._tab_cache_key('3C273', dict(kwargs))
+    hash(key)
+    assert key != gui_main._tab_cache_key('3C84', kwargs)
+    for name, value in (('band', '6cm'), ('stations', ['Ef', 'Mc', 'Nt']), ('duration', 5 * u.h),
+                        ('duration', None), ('ontarget', 0.5), ('datarate', 2048 * u.Mbit / u.s),
+                        ('start_time', val.parse_start_time('2026-11-02', '10:00')), ('inttime', 1 * u.s)):
+        assert key != gui_main._tab_cache_key('3C273', dict(kwargs, **{name: value})), name
+
+
+def test_tab_content_is_reused_but_errors_are_not_cached(gui_main, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from astropy import units as u
+    kwargs = dict(band='18cm', stations=['Ef', 'Mc', 'Nt'], duration=4.25 * u.h, ontarget=0.7, start_time=None,
+                  datarate=1024 * u.Mbit / u.s, subbands=8, channels=64, polarizations=4, inttime=2 * u.s)
+    calls = []
+    compute = gui_main._compute_one_target
+
+    def counting_compute(target_spec, shared_kwargs):
+        calls.append(target_spec)
+        if target_spec == 'failing':
+            return None, "Source not visible"
+        return compute(target_spec, shared_kwargs)
+
+    monkeypatch.setattr(gui_main, '_compute_one_target', counting_compute)
+    target = '12h29m06.7s +02d03m08.6s'
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = gui_main._target_tab_content(target, kwargs, executor)()
+        again = gui_main._target_tab_content(target, kwargs, executor)()
+        other = gui_main._target_tab_content(target, dict(kwargs, duration=4.5 * u.h), executor)()
+        gui_main._target_tab_content('failing', kwargs, executor)()
+        gui_main._target_tab_content('failing', kwargs, executor)()
+
+    assert again is first and other is not first
+    assert calls == [target, target, 'failing', 'failing']
+
+
+def test_fast_figures_match_validated_plotly_figures():
+    """Figures assembled as plain dicts must be accepted as they are by plotly's validation."""
+    import plotly.graph_objects as go
+    from astropy import units as u
+    from astropy.time import Time
+    from vlbiplanobs import cli
+    for start_time, duration in ((None, None), (Time('2026-11-02 10:00'), 6 * u.h)):
+        obs = cli.main(band='18cm', stations=['Ef', 'Mc', 'Nt', 'Wb'], targets=['12h29m06.7s +02d03m08.6s'],
+                       duration=duration, start_time=start_time, datarate=1024 * u.Mbit / u.s, subbands=8,
+                       channels=64, polarizations=4, inttime=2 * u.s, ontarget=0.7)
+        for fig in (plots.elevation_plot(obs), plots.elevation_plot(obs, show_colorbar=True),
+                    plots.elevation_plot_curves(obs), plots.uvplot(obs, ['Ef']), plots.plot_worldmap_stations(obs)):
+            fast = json.loads(plotly.io.to_json(fig))
+            validated = json.loads(plotly.io.to_json(go.Figure(data=fig.data, layout=fig.layout)))
+            assert len(fast['data']) > 0 and fast == validated

@@ -5,7 +5,40 @@ import math
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from plotly.colors import get_colorscale
 from vlbiplanobs import sources
+
+
+_MINOR_TICKS = dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)
+_TRANSPARENT = 'rgba(0,0,0,0)'
+_VIRIDIS = get_colorscale('Viridis')
+
+
+def _figure(traces: list[dict], layout: dict) -> go.Figure:
+    """Build a figure from plain trace/layout dicts, skipping plotly's per-property validation.
+
+    Creating graph objects and calling update_layout validates (and parses the name of) every single
+    property, which takes several times longer than computing the data that is plotted. The figures of
+    the web app are rebuilt on every change of the inputs, so they are assembled as plain dicts instead.
+    The dicts must then be written in plotly's canonical form: no "magic underscore" keys (xaxis_title)
+    and no shorthands (title='...' must be title=dict(text='...')).
+
+    Parameters
+    ----------
+    traces : list[dict]
+        Traces of the figure, each one including its 'type'.
+    layout : dict
+        Layout of the figure.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure.
+    """
+    try:
+        return go.Figure(data=traces, layout=layout, _validate=False)
+    except (TypeError, ValueError):  # plotly version without the (semi-private) _validate option
+        return go.Figure(data=traces, layout=layout)
 
 
 def _compute_gst_ticks(times_dt: list, gst_hours: list) -> tuple[list, list]:
@@ -128,7 +161,7 @@ def _build_gst_axis_config(times_dt: list, gst_hours: list, time_range: list) ->
         tickmode='array', tickvals=tickvals, ticktext=ticktext,
         showline=True, linecolor='black', linewidth=1, mirror=False,
         ticks='inside', showgrid=False, zeroline=False,
-        title='Time (GST)',
+        title=dict(text='Time (GST)'),
     )
 
 
@@ -149,16 +182,37 @@ def _apply_gst_top_axis(fig: go.Figure, axis_cfg: dict, y_anchor: float = 0.0) -
     y_anchor : float, optional
         Y-coordinate for the anchor trace. Default is 0.0.
     """
-    cfg = axis_cfg.get('xaxis2_config')
+    cfg, anchor_trace = _gst_top_axis(axis_cfg, y_anchor)
     if cfg is None:
         return
+
     fig.update_layout(xaxis2=cfg)
+    fig.add_trace(anchor_trace)
+
+
+def _gst_top_axis(axis_cfg: dict, y_anchor: float = 0.0) -> tuple[Optional[dict], Optional[dict]]:
+    """Return the GST top axis (xaxis2) layout and its transparent anchor trace, as plain dicts.
+
+    Parameters
+    ----------
+    axis_cfg : dict
+        Axis configuration dictionary.
+    y_anchor : float, optional
+        Y-coordinate for the anchor trace. Default is 0.0.
+
+    Returns
+    -------
+    tuple[dict or None, dict or None]
+        (xaxis2 layout, anchor trace), or (None, None) when there is no GST top axis.
+    """
+    cfg = axis_cfg.get('xaxis2_config')
+    if cfg is None:
+        return None, None
+
     rng = axis_cfg['xaxis_range']
-    fig.add_trace(go.Scatter(
-        x=[rng[0], rng[-1]], y=[y_anchor, y_anchor], xaxis='x2', yaxis='y',
-        mode='markers', marker=dict(opacity=0, size=1), opacity=0,
-        showlegend=False, hoverinfo='skip',
-    ))
+    return cfg, dict(type='scatter', x=[rng[0], rng[-1]], y=[y_anchor, y_anchor], xaxis='x2', yaxis='y',
+                     mode='markers', marker=dict(opacity=0, size=1), opacity=0,
+                     showlegend=False, hoverinfo='skip')
 
 
 def _get_axis_config(o):
@@ -177,11 +231,12 @@ def _get_axis_config(o):
         - xaxis_title: title for the bottom x-axis.
         - xaxis2_config: layout dict for the secondary GST x-axis (None when not applicable).
     """
-    time_range = [o.times.datetime[0], o.times.datetime[-1]]
+    times_dt = o.times.datetime
+    time_range = [times_dt[0], times_dt[-1]]
 
     if o.fixed_time:
         gst_hours = [float(g.hour) for g in o.gstimes]
-        xaxis2_config = _build_gst_axis_config(list(o.times.datetime), gst_hours, time_range)
+        xaxis2_config = _build_gst_axis_config(list(times_dt), gst_hours, time_range)
         return {
             'xaxis_range': time_range,
             'xaxis_title': 'Time (UTC)',
@@ -210,56 +265,49 @@ def elevation_plot_curves(o) -> Optional[go.Figure]:
 
     srcup = o.is_observable()
     elevs = o.elevations()
-    # fig = make_subplots(rows=min([len(srcup), 4]), cols=len(srcup) // 4 + 1,
-    #                     subplot_titles=[f"Elevations for {src_block}" for src_block in srcup]
-    #                     if len(srcup) > 1 else '')
-
-    fig = make_subplots()
-
-    fig.add_shape(type="rect",
-                  xref="paper", yref="y",
-                  x0=0, y0=0, x1=1, y1=20,
-                  fillcolor="gray", opacity=0.2, layer="below", line_width=0)
-    fig.add_shape(type="rect",
-                  xref="paper", yref="y",
-                  x0=0, y0=0, x1=1, y1=10,
-                  fillcolor="gray", opacity=0.2, layer="below", line_width=0)
-    for src_i, src_block in enumerate(srcup):
-        for anti, ant in enumerate(srcup[src_block]):
-            targets = o.scans[src_block].sources()  # sources.SourceType.TARGET)
-            y = np.full(len(o.times.datetime), None, dtype=float)
+    times_dt = o.times.datetime
+    traces: list[dict] = []
+    for src_block in srcup:
+        targets = o.scans[src_block].sources()  # sources.SourceType.TARGET)
+        for ant in srcup[src_block]:
+            y = np.full(len(times_dt), np.nan)
             y[srcup[src_block][ant]] = elevs[targets[0].name][ant][srcup[src_block][ant]].value
-            fig.add_trace(go.Scatter(x=o.times.datetime, y=y, mode='lines', connectgaps=False, hoverinfo='none',
-                                     hovertemplate=f"<b>{o.stations[ant].name} ({o.stations[ant].codename})</b><br>"
-                                                   "<b>Time</b>: %{x}",  # .strftime('%H:%M')}",
-                                     name=o.stations[ant].name))
+            traces.append(dict(type='scatter', x=times_dt, y=y, mode='lines', connectgaps=False, hoverinfo='none',
+                               hovertemplate=f"<b>{o.stations[ant].name} ({o.stations[ant].codename})</b><br>"
+                                             "<b>Time</b>: %{x}",  # .strftime('%H:%M')}",
+                               name=o.stations[ant].name))
 
     # Get axis configuration based on observation time mode
     axis_cfg = _get_axis_config(o)
+    xaxis2, anchor_trace = _gst_top_axis(axis_cfg)
 
     # When the bottom axis is UTC (fixed_time), the top axis mirrors it as GST,
     # so we keep the bottom axis in 'allticks' mirror mode only without a top axis.
-    bottom_mirror = 'allticks' if axis_cfg.get('xaxis2_config') is None else False
+    bottom_mirror = 'allticks' if xaxis2 is None else False
 
-    layout_kwargs = dict(showlegend=True, hovermode='closest', xaxis_title=axis_cfg['xaxis_title'],
-                         yaxis_title="Elevation (degrees)", title='', paper_bgcolor='rgba(0,0,0,0)',
-                         plot_bgcolor='rgba(0,0,0,0)',
-                         xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
-                                    mirror=bottom_mirror, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
-                                    showgrid=False, zeroline=False,
-                                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-                         yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks',
-                                    ticks='inside', tickmode='auto', range=[0, 90],
-                                    showgrid=False, zeroline=False,
-                                    minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-                         margin=dict(l=2, r=2, t=45, b=0),
-                         legend=dict(x=0.01, y=0.99, xanchor='left', yanchor='top',
-                                     bgcolor='rgba(255, 255, 255, 0.7)',
-                                     bordercolor='rgba(0, 0, 0, 0.3)', borderwidth=1))
+    # Gray bands marking the low elevations (below 20 and 10 degrees)
+    low_elevation = dict(type='rect', xref='paper', yref='y', x0=0, y0=0, x1=1, fillcolor='gray', opacity=0.2,
+                         layer='below', line=dict(width=0))
+    layout = dict(shapes=[dict(low_elevation, y1=20), dict(low_elevation, y1=10)],
+                  showlegend=True, hovermode='closest', title=dict(text=''), paper_bgcolor=_TRANSPARENT,
+                  plot_bgcolor=_TRANSPARENT,
+                  xaxis=dict(anchor='y', domain=[0.0, 1.0], title=dict(text=axis_cfg['xaxis_title']),
+                             type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
+                             mirror=bottom_mirror, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
+                             showgrid=False, zeroline=False, minor=_MINOR_TICKS),
+                  yaxis=dict(anchor='x', domain=[0.0, 1.0], title=dict(text="Elevation (degrees)"),
+                             showline=True, linecolor='black', linewidth=1, mirror='allticks',
+                             ticks='inside', tickmode='auto', range=[0, 90],
+                             showgrid=False, zeroline=False, minor=_MINOR_TICKS),
+                  margin=dict(l=2, r=2, t=45, b=0),
+                  legend=dict(x=0.01, y=0.99, xanchor='left', yanchor='top',
+                              bgcolor='rgba(255, 255, 255, 0.7)',
+                              bordercolor='rgba(0, 0, 0, 0.3)', borderwidth=1))
+    if xaxis2 is not None:
+        layout['xaxis2'] = xaxis2
+        traces.append(anchor_trace)
 
-    fig.update_layout(**layout_kwargs)
-    _apply_gst_top_axis(fig, axis_cfg)
-    return fig
+    return _figure(traces, layout)
 
 
 def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
@@ -284,52 +332,35 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
 
     srcup = o.is_observable()
     elevs = o.elevations()
+    times_dt = o.times.datetime
+    time_labels = [t.strftime('%H:%M') for t in times_dt]
+    n_times = len(times_dt)
 
-    fig = make_subplots(rows=min([len(srcup), 4]), cols=len(srcup) // 4 + 1,
-                        subplot_titles=[f"Elevations for {src_block}" for src_block in srcup]
-                        if len(srcup) > 1 else '')
-
-    # (row, col, ant_names) per subplot so each one gets its own y-axis labels
-    subplot_ant_names: list[tuple[int, int, list[str]]] = []
-    for src_i, src_block in enumerate(srcup):
+    # One heatmap per block, with its antenna names so each subplot gets its own y-axis labels
+    heatmaps: list[tuple[dict, list[str]]] = []
+    for src_block in srcup:
         ant_names = list(srcup[src_block].keys())
         n_ants = len(ant_names)
-        n_times = len(o.times.datetime)
-        subplot_ant_names.append((src_i % 4 + 1, src_i // 4 + 1, ant_names))
+        targets = o.scans[src_block].sources(sources.SourceType.TARGET)
+        target_name = targets[0].name if targets else o.scans[src_block].sources()[0].name
 
         # Build elevation matrix (antennas x times)
         z_matrix = np.full((n_ants, n_times), np.nan)
         for anti, ant in enumerate(ant_names):
-            targets = o.scans[src_block].sources(sources.SourceType.TARGET)
-            if targets:
-                elev_values = elevs[targets[0].name][ant].value
-            else:
-                elev_values = elevs[o.scans[src_block].sources()[0].name][ant].value
-
             visibility = np.array(srcup[src_block][ant], dtype=bool)
-            z_matrix[n_ants - 1 - anti, visibility] = elev_values[visibility]
+            z_matrix[n_ants - 1 - anti, visibility] = elevs[target_name][ant].value[visibility]
 
         # Create hover text matrix
-        hover_text = [[f"<b>{o.stations[ant_names[n_ants - 1 - ai]].name}</b><br>"
-                       f"Elevation: {z_matrix[ai, ti]:.0f}º<br>"
-                       f"Time: {o.times.datetime[ti].strftime('%H:%M')}"
-                       if not np.isnan(z_matrix[ai, ti]) else ""
-                       for ti in range(n_times)] for ai in range(n_ants)]
+        hover_text = []
+        for ai in range(n_ants):
+            station_name = o.stations[ant_names[n_ants - 1 - ai]].name
+            hover_text.append([f"<b>{station_name}</b><br>Elevation: {z:.0f}º<br>Time: {label}"
+                               if not np.isnan(z) else ""
+                               for z, label in zip(z_matrix[ai].tolist(), time_labels)])
 
-        fig.add_trace(
-            go.Heatmap(
-                x=o.times.datetime,
-                y=list(range(1, n_ants + 1)),
-                z=z_matrix,
-                colorscale='Viridis',
-                zmin=5, zmax=90,
-                showscale=show_colorbar,
-                hoverinfo='text',
-                text=hover_text,
-                xgap=0, ygap=1
-            ),
-            row=src_i % 4 + 1,
-            col=src_i // 4 + 1)
+        heatmaps.append((dict(type='heatmap', x=times_dt, y=list(range(1, n_ants + 1)), z=z_matrix,
+                              colorscale=_VIRIDIS, zmin=5, zmax=90, showscale=show_colorbar,
+                              hoverinfo='text', text=hover_text, xgap=0, ygap=1), ant_names))
 
     # Get axis configuration based on observation time mode
     axis_cfg = _get_axis_config(o)
@@ -341,34 +372,45 @@ def elevation_plot(o, show_colorbar: bool = False) -> Optional[go.Figure]:
         axis_cfg = {**axis_cfg, 'xaxis2_config': None}
 
     bottom_mirror = 'allticks' if axis_cfg.get('xaxis2_config') is None else False
-
-    layout_kwargs = dict(
-        showlegend=False,
-        hovermode='closest',
-        xaxis_title=axis_cfg['xaxis_title'],
-        yaxis_title="Antennas",
-        title='',
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
-                   mirror=bottom_mirror, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
-                   showgrid=False, zeroline=False,
-                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        margin=dict(l=2, r=2, t=45, b=0))
-
-    fig.update_layout(**layout_kwargs)
-    # Style all y axes, then label each subplot with its own block's antenna names.
-    fig.update_yaxes(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
-                     showgrid=False, zeroline=False,
-                     minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False))
-    for row, col, names in subplot_ant_names:
-        fig.update_yaxes(tickmode='array', tickvals=list(range(1, len(names) + 1)),
-                         ticktext=list(reversed(names)), row=row, col=col)
+    xaxis = dict(type="date", tickformat="%H:%M", showline=True, linecolor='black', linewidth=1,
+                 mirror=bottom_mirror, ticks='inside', tickmode='auto', range=axis_cfg['xaxis_range'],
+                 showgrid=False, zeroline=False, minor=_MINOR_TICKS)
+    yaxis = dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
+                 showgrid=False, zeroline=False, minor=_MINOR_TICKS)
+    layout = dict(showlegend=False, hovermode='closest', title=dict(text=''), paper_bgcolor=_TRANSPARENT,
+                  plot_bgcolor=_TRANSPARENT, margin=dict(l=2, r=2, t=45, b=0))
     if show_colorbar:
-        fig.update_layout(coloraxis=dict(colorscale='Viridis'),
-                          coloraxis_colorbar=dict(title='Elevation (degrees)'))
+        layout['coloraxis'] = dict(colorscale=_VIRIDIS, colorbar=dict(title=dict(text='Elevation (degrees)')))
 
-    _apply_gst_top_axis(fig, axis_cfg)
+    if single_subplot:
+        # The usual case (always in the web app): a single plot, assembled without plotly's validation.
+        heatmap, names = heatmaps[0]
+        traces = [dict(heatmap, xaxis='x', yaxis='y')]
+        layout['xaxis'] = dict(xaxis, anchor='y', domain=[0.0, 1.0], title=dict(text=axis_cfg['xaxis_title']))
+        layout['yaxis'] = dict(yaxis, anchor='x', domain=[0.0, 1.0], title=dict(text="Antennas"),
+                               tickmode='array', tickvals=list(range(1, len(names) + 1)),
+                               ticktext=list(reversed(names)))
+        xaxis2, anchor_trace = _gst_top_axis(axis_cfg)
+        if xaxis2 is not None:
+            layout['xaxis2'] = xaxis2
+            traces.append(anchor_trace)
+
+        return _figure(traces, layout)
+
+    fig = make_subplots(rows=min([len(srcup), 4]), cols=len(srcup) // 4 + 1,
+                        subplot_titles=[f"Elevations for {src_block}" for src_block in srcup])
+    for src_i, (heatmap, _) in enumerate(heatmaps):
+        fig.add_trace(go.Heatmap(**{key: value for key, value in heatmap.items() if key != 'type'}),
+                      row=src_i % 4 + 1, col=src_i // 4 + 1)
+
+    fig.update_layout(xaxis=dict(xaxis, title=dict(text=axis_cfg['xaxis_title'])),
+                      yaxis=dict(title=dict(text="Antennas")), **layout)
+    # Style all y axes, then label each subplot with its own block's antenna names.
+    fig.update_yaxes(**yaxis)
+    for src_i, (_, names) in enumerate(heatmaps):
+        fig.update_yaxes(tickmode='array', tickvals=list(range(1, len(names) + 1)),
+                         ticktext=list(reversed(names)), row=src_i % 4 + 1, col=src_i // 4 + 1)
+
     return fig
 
 
@@ -460,31 +502,23 @@ def uvplot_from_baselines(bl_uv: dict, filter_antennas: Optional[list[str]] = No
         uu = values[:, 0].astype(np.float32)
         vv = values[:, 1].astype(np.float32)
         style = uv_marker_style(baseline, filter_antennas)
-        trace = go.Scattergl(x=np.concatenate([uu, -uu]), y=np.concatenate([vv, -vv]), name=baseline, mode='markers',
-                             marker=dict(color=style['color'], size=style['size']),
-                             hovertemplate='%{fullData.name}<extra></extra>', showlegend=False)
+        trace = dict(type='scattergl', x=np.concatenate([uu, -uu]), y=np.concatenate([vv, -vv]), name=baseline,
+                     mode='markers', marker=dict(color=style['color'], size=style['size']),
+                     hovertemplate='%{fullData.name}<extra></extra>', showlegend=False)
         (highlighted_traces if style['highlighted'] else base_traces).append(trace)
 
-    fig = go.Figure(data=base_traces + highlighted_traces)
-    fig.update_layout(
+    axis = dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
+                tickmode='auto', showgrid=False, zeroline=False, minor=_MINOR_TICKS)
+    return _figure(base_traces + highlighted_traces, dict(
         showlegend=False,
         hovermode='closest',
         uirevision='uv',  # keep zoom/pan when the highlight callback restyles the figure
-        xaxis_title='u (λ)',
-        yaxis_title='v (λ)',
-        title='',
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
-                   tickmode='auto', showgrid=False, zeroline=False,
-                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        yaxis=dict(showline=True, linecolor='black', linewidth=1, mirror='allticks', ticks='inside',
-                   scaleanchor="x", scaleratio=1, tickmode='auto', showgrid=False, zeroline=False,
-                   minor=dict(ticks='inside', ticklen=4, tickcolor='black', showgrid=False)),
-        margin=dict(l=0, r=0, t=0, b=0)
-    )
-    fig.update_xaxes(constrain='domain')
-    return fig
+        title=dict(text=''),
+        paper_bgcolor=_TRANSPARENT,
+        plot_bgcolor=_TRANSPARENT,
+        xaxis=dict(axis, title=dict(text='u (λ)'), constrain='domain'),
+        yaxis=dict(axis, title=dict(text='v (λ)'), scaleanchor="x", scaleratio=1),
+        margin=dict(l=0, r=0, t=0, b=0)))
 
 
 def uvplot(o, filter_antennas: Optional[list[str]] = None) -> Optional[go.Figure]:
@@ -823,20 +857,12 @@ def plot_worldmap_stations(o) -> Optional[go.Figure]:
         data["text"].append(f"{ant.name}<br>({ant.country})<br> {ant.diameter}")
         data["hovertemplate"].append(f"{ant.name}<br>({ant.country})<br> {ant.diameter}<extra></extra>")
     avg_lon = np.mean(data['lon'])
-    fig = go.Figure(go.Scattergeo(
-        lon=data['lon'],
-        lat=data['lat'],
-        mode='markers',
-        marker=dict(size=10, color=['#a01d26' if q else '#EAB308' for q in data['observes']]),
-        # hover_name=data["text"], hover_data=None,
-        hovertemplate=data["hovertemplate"])
-    )
-
-    fig.update_geos(projection_type='orthographic', showland=True, landcolor='#9DB7C4',
-                    projection_rotation=dict(lon=avg_lon, lat=0), bgcolor='rgba(0,0,0,0)')
-
-    fig.update_layout(autosize=True, hovermode='closest', showlegend=False,
-                      margin={'l': 0, 't': 0, 'b': 0, 'r': 0},
-                      paper_bgcolor='rgba(0,0,0,0)',
-                      plot_bgcolor='rgba(0,0,0,0)')
-    return fig
+    return _figure([dict(type='scattergeo', lon=data['lon'], lat=data['lat'], mode='markers',
+                         marker=dict(size=10, color=['#a01d26' if q else '#EAB308' for q in data['observes']]),
+                         # hover_name=data["text"], hover_data=None,
+                         hovertemplate=data["hovertemplate"])],
+                   dict(geo=dict(projection=dict(type='orthographic', rotation=dict(lon=avg_lon, lat=0)),
+                                 showland=True, landcolor='#9DB7C4', bgcolor=_TRANSPARENT),
+                        autosize=True, hovermode='closest', showlegend=False,
+                        margin={'l': 0, 't': 0, 'b': 0, 'r': 0},
+                        paper_bgcolor=_TRANSPARENT, plot_bgcolor=_TRANSPARENT))

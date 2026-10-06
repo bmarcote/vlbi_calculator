@@ -1,4 +1,17 @@
 
+unreleased         -- Performance (GUI): the first request of each server process takes ~0.3 s instead of ~7 s (the IERS
+                      table was read again by every computing thread; the app is now warmed up when imported).
+                   -- Performance (GUI): updating the outputs is ~5 times faster (figures are built without plotly's
+                      per-property validation, cached Sun positions/separations, no repeated visibility
+                      computations). Output tabs of unchanged targets are reused when the list of targets changes.
+                   -- Performance (GUI): compressed responses (~5 times smaller), page layout serialized once and
+                      served with an ETag, and static files cached by the browser.
+                   -- New gunicorn settings shipped with the package (preloaded app, threaded workers):
+                      gunicorn -c python:vlbiplanobs.gui.gunicorn_conf vlbiplanobs.gui.main:server
+                   -- Observation.is_always_observable() is derived from is_observable() (same result, no astroplan).
+                   -- The web app always uses the IERS table bundled with astropy (astropy-iers-data), also for the
+                      reference day shown when no epoch is defined (elevations change by < 0.0001 deg).
+
 v5.1.0  2026-10-03 -- Unified CLI option names in all subcommands: -e/--epoch (start time), -t/--target, -n/--network,
                       -l/--max-lines, --rfc-catalog. Deprecated aliases still work with a warning: -t1, --starttime,
                       --targets, --n-sources, --catalog-file. Removed (clear error): 'fringefinders -t' (use -e) and

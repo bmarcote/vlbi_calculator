@@ -115,3 +115,40 @@ def test_stations_add_and_delitem_deterministic():
     assert combined.station_codenames == ['Ef', 'Mc', 'Ys']
     del combined[0]
     assert combined.station_codenames == ['Mc', 'Ys']
+
+
+def test_is_always_observable_matches_station_constraints():
+    """is_always_observable() is derived from is_observable(): it must agree with the astroplan constraints."""
+    from vlbiplanobs import cli
+    stations = ['Ef', 'Mc', 'Nt', 'Wb', 'Hh', 'Ys', 'T6', 'Ur', 'Sc', 'Mk']
+    for target in ('12h29m06.7s +02d03m08.6s', '05h00m00s -60d00m00s', '12h00m00s +88d00m00s'):
+        for start_time, duration in ((None, None), (Time('2026-11-02 10:00'), 4 * u.h)):
+            obs = cli.main(band='18cm', stations=stations, targets=[target], duration=duration, start_time=start_time,
+                           datarate=1024 * u.Mbit / u.s, subbands=8, channels=64, polarizations=4, inttime=2 * u.s,
+                           ontarget=0.7)
+            always = obs.is_always_observable()
+            for blockname, block in obs.scans.items():
+                for station in obs.stations:
+                    expected = all(bool(station.is_always_observable(obs.times, src)) for src in block.sources())
+                    assert always[blockname][station.codename] == expected, (target, station.codename)
+                    assert always[blockname][station.codename] == bool(all(obs.is_observable()[blockname]
+                                                                           [station.codename]))
+
+
+def test_sun_separation_is_cached_and_read_only():
+    from astropy import coordinates as coord
+    times = Time('2026-03-01 00:00') + np.arange(0, 30) * u.day
+    src = sources.Source('cache-test', '00h10m00s +01d00m00s')
+    expected = src.coord.transform_to(coord.GCRS(obstime=times)).separation(coord.get_sun(times))
+    first = src.sun_separation(times)
+    assert np.allclose(first.deg, expected.deg, rtol=0, atol=1e-12)
+    # same epochs in a new Time object and a new (equal) source: served from the cache
+    again = sources.Source('cache-test-2', '00h10m00s +01d00m00s').sun_separation(times.copy())
+    assert again is first
+    with pytest.raises(ValueError):
+        first[0] = 0 * u.deg
+    # different epochs or coordinates are computed independently
+    assert src.sun_separation(times + 1 * u.day) is not first
+    other = sources.Source('cache-test-3', '12h10m00s +01d00m00s').sun_separation(times)
+    assert not np.allclose(other.deg, first.deg)
+    assert len(src.sun_constraint(15 * u.deg, times=times)) == int(np.sum(expected < 15 * u.deg))

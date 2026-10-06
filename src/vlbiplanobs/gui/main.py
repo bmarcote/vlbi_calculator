@@ -2,26 +2,38 @@
 from __future__ import annotations
 import os
 import argparse
+import hashlib
+import threading
+import time
+from collections import OrderedDict
+from importlib.util import find_spec
 from typing import Optional
 from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as dt
+import flask
+from plotly.io.json import to_json_plotly
 from dash import Dash, html, dcc, Output, Input, State, MATCH, ALL, no_update
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import dash_mantine_components as dmc
 from astropy.utils.iers import conf as iers_conf
 from astropy import units as u
-from vlbiplanobs import sources
-from vlbiplanobs import observation
-from vlbiplanobs import cli
-from vlbiplanobs.gui import inputs, outputs, validation
-from vlbiplanobs.gui.callbacks import *  # noqa: F401,F403
-from vlbiplanobs.gui import layout
 
-
+# The IERS configuration must be set before importing any vlbiplanobs module: observation.py loads the
+# Earth-rotation (IERS) table when imported. If these options changed afterwards, astropy would try to
+# download the table during the import, and then read the bundled table again on the first user request
+# (once per computing thread: that alone used to take several seconds on the first request of each worker).
 iers_conf.auto_download = False
 iers_conf.auto_max_age = None
+
+from vlbiplanobs import sources  # noqa: E402
+from vlbiplanobs import observation  # noqa: E402
+from vlbiplanobs import cli  # noqa: E402
+from vlbiplanobs.gui import inputs, outputs, validation  # noqa: E402
+from vlbiplanobs.gui.callbacks import *  # noqa: E402,F401,F403
+from vlbiplanobs.gui import layout  # noqa: E402
+
 
 def setup_file_logging(logfilename: Optional[str] = None) -> int:
     """Enable loguru file logging for planobs and return the sink handler id.
@@ -79,13 +91,66 @@ external_scripts: list = []
 assets_ignore = (r'soft-ui-dashboard\.min\.js|Chart\.extension\.js|chartjs\.min\.js|'
                  r'bootstrap-notify\.js|font-awesome\.min\.css|bootstrap\.min\.css|all\.min\.css')
 
-app = Dash(__name__, title='EVN Observation Planner', external_scripts=external_scripts,
-           external_stylesheets=external_stylesheets,
-           assets_folder=current_directory+'/assets/', assets_ignore=assets_ignore,
-           serve_locally=True,
-           eager_loading=False,
-           suppress_callback_exceptions=True,
-           prevent_initial_callbacks=False)  # Allow initial callbacks for real-time updates
+
+class PlanobsDash(Dash):
+    """Dash app that serializes its (static) layout only once.
+
+    Dash builds the JSON of the layout again on every page load. Here the layout never changes and it is
+    large (about 0.5 MB, mostly the cards of all the antennas), which took ~0.25 s per page load. The
+    response also carries an ETag, so a browser that already has the layout only gets back an empty 304.
+    """
+    _layout_body: Optional[bytes] = None
+    _layout_etag: str = ''
+
+    def serve_layout(self):
+        if self._layout_body is None:
+            self._layout_body = super().serve_layout().get_data()
+            self._layout_etag = hashlib.sha1(self._layout_body).hexdigest()
+
+        # A substring match, as flask-compress appends ':<algorithm>' to the ETag of the compressed responses
+        if self._layout_etag in flask.request.headers.get('If-None-Match', ''):
+            response = flask.Response(status=304)
+        else:
+            response = flask.Response(self._layout_body, mimetype='application/json')
+
+        response.set_etag(self._layout_etag)
+        response.cache_control.no_cache = True
+        return response
+
+
+# Compress the responses (layout, callback outputs, JS/CSS bundles are 5-25 times smaller) when
+# flask-compress is available (installed with the 'dash[compress]' dependency).
+app = PlanobsDash(__name__, title='EVN Observation Planner', external_scripts=external_scripts,
+                  external_stylesheets=external_stylesheets,
+                  assets_folder=current_directory+'/assets/', assets_ignore=assets_ignore,
+                  serve_locally=True,
+                  eager_loading=False,
+                  compress=find_spec('flask_compress') is not None,
+                  suppress_callback_exceptions=True,
+                  prevent_initial_callbacks=False)  # Allow initial callbacks for real-time updates
+
+
+@app.server.after_request
+def _cache_static_assets(response: flask.Response) -> flask.Response:
+    """Let the browsers cache the files under assets/ instead of asking for every one on each page load.
+
+    Flask serves them with 'Cache-Control: no-cache', so each of them costs a request on every visit.
+    The CSS/JS files that Dash loads carry their modification time in the URL (?m=...), so they can be
+    cached "forever". Everything else (images, fonts, vendored CSS) is cached for a day.
+    """
+    if response.status_code in (200, 304) and flask.request.path.startswith(_ASSETS_URL_PATH):
+        response.cache_control.no_cache = None
+        response.cache_control.public = True
+        if 'm' in flask.request.args:
+            response.cache_control.max_age = 31536000
+            response.cache_control.immutable = True
+        else:
+            response.cache_control.max_age = 86400
+
+    return response
+
+
+_ASSETS_URL_PATH: str = f"{app.config.routes_pathname_prefix}{app.config.assets_url_path.strip('/')}/"
 
 
 # --------------------------------------------------------------------------------------
@@ -247,6 +312,80 @@ def _compute_one_target(target_spec: Optional[str], shared_kwargs: dict) -> tupl
     except Exception as e:
         logger.debug(f"Error computing target '{target_spec}': {e}")
         return None, f"{type(e).__name__}: {e}"
+
+
+# Content of the output tab already built for a (target, observation setup). The real-time callback
+# builds all tabs again on every change of the inputs, so when the user adds or removes a target, or gets
+# back to a previous setup, the tabs of the unchanged targets are reused instead of computed again.
+_TAB_CACHE: OrderedDict = OrderedDict()
+_TAB_CACHE_LOCK = threading.Lock()
+_TAB_CACHE_SIZE = 48
+_TAB_CACHE_MAX_AGE = 3600.0  # seconds
+
+
+def _tab_cache_key(target_spec: str, shared_kwargs: dict) -> tuple:
+    """Return a hashable key identifying the output tab of a target under the given observation setup.
+
+    Parameters
+    ----------
+    target_spec : str
+        Target specification.
+    shared_kwargs : dict
+        Shared keyword arguments for cli.main.
+
+    Returns
+    -------
+    tuple
+        Hashable key. It includes the current date as the outputs without a defined epoch refer to the
+        current year.
+    """
+    return (target_spec, dt.now().date().isoformat()) + tuple(
+        (name, tuple(value) if isinstance(value, list) else str(value))
+        for name, value in sorted(shared_kwargs.items()))
+
+
+def _target_tab_content(target_spec: str, shared_kwargs: dict, executor: ThreadPoolExecutor):
+    """Return a function providing the content of the output tab of a target, computed in the executor.
+
+    The computation is skipped when the same tab has been built recently (see _TAB_CACHE). Tabs showing
+    an error are never cached, as the error can be transient (e.g. resolving the name of the source).
+
+    Parameters
+    ----------
+    target_spec : str
+        Target specification.
+    shared_kwargs : dict
+        Shared keyword arguments for cli.main.
+    executor : ThreadPoolExecutor
+        Executor that runs the computation of the observation.
+
+    Returns
+    -------
+    Callable
+        Function without arguments that returns the content of the tab.
+    """
+    key = _tab_cache_key(target_spec, shared_kwargs)
+    with _TAB_CACHE_LOCK:
+        cached = _TAB_CACHE.get(key)
+        if cached is not None and time.monotonic() - cached[0] < _TAB_CACHE_MAX_AGE:
+            _TAB_CACHE.move_to_end(key)
+            return lambda: cached[1]
+
+    future = executor.submit(_compute_one_target, target_spec, shared_kwargs)
+
+    def build():
+        obs_for_target, err = future.result()
+        content = outputs.build_target_tab_content(obs_for_target, target_spec, error=err)
+        if obs_for_target is not None and err is None:
+            with _TAB_CACHE_LOCK:
+                _TAB_CACHE[key] = (time.monotonic(), content)
+                _TAB_CACHE.move_to_end(key)
+                while len(_TAB_CACHE) > _TAB_CACHE_SIZE:
+                    _TAB_CACHE.popitem(last=False)
+
+        return content
+
+    return build
 
 
 def _invalid_outputs(hidden_outputs: tuple, message: str) -> tuple:
@@ -411,15 +550,13 @@ def compute_observation_realtime(band: int, target_specs: Optional[list[str]], o
                 f"targets={target_specs if has_targets else 'none'}, duration={duration}")
 
     if has_targets:
-        # Compute one observation per target in parallel.
+        # Compute one observation per target in parallel (only the ones not built recently).
         with ThreadPoolExecutor(max_workers=max(1, min(len(target_specs), 8))) as executor:
-            futures = {t: executor.submit(_compute_one_target, t, shared_kwargs)
-                       for t in target_specs}
-            results = {t: f.result() for t, f in futures.items()}
+            contents = {t: _target_tab_content(t, shared_kwargs, executor) for t in target_specs}
 
         tabs = []
         target_count = 0
-        for spec, (obs_for_target, err) in results.items():
+        for spec, build_content in contents.items():
             # If the spec looks like coordinates (contains ':' or h/m/s pattern),
             # label as "Target N". Otherwise use the spec as-is (it's a source name).
             is_coords = ':' in spec or all(c in spec for c in ('h', 'm', 's'))
@@ -428,8 +565,7 @@ def compute_observation_realtime(band: int, target_specs: Optional[list[str]], o
                 label = f"Target {target_count}"
             else:
                 label = spec
-            content = outputs.build_target_tab_content(obs_for_target, spec, error=err)
-            tabs.append(dbc.Tab(content, label=label, tab_id=f"tab-{spec}"))
+            tabs.append(dbc.Tab(build_content(), label=label, tab_id=f"tab-{spec}"))
 
         last_tab_id = f"tab-{target_specs[-1]}"
         container_children = html.Div(dbc.Tabs(tabs, id='outputs-tabs',
@@ -497,6 +633,52 @@ app.layout = dmc.MantineProvider(dbc.Container(fluid=True, className='bg-gray-10
                    dbc.Offcanvas(children=inputs.modal_general_info(), id='more-info-modal',
                                  is_open=False, className='shadow-lg blur', placement='end'),
                    html.Div(id='bottom-banner', children=[html.Br(), html.Br(), html.Br()])]))
+
+
+def warm_up() -> None:
+    """Run a small observation through the whole compute and render path.
+
+    The first observation computed by a process is much slower than the following ones (astropy, astroplan
+    and plotly set up their internal tables, frame transformation graphs, templates, etc. on first use).
+    Running one when the app is loaded moves that cost from the first user request to the server startup.
+    With gunicorn's --preload this happens only once, in the master process, before forking the workers.
+
+    It is skipped when the environment variable PLANOBS_NO_WARMUP is set. A failure here is only logged:
+    it must never prevent the server from starting.
+    """
+    if os.environ.get('PLANOBS_NO_WARMUP'):
+        return
+
+    t0 = time.perf_counter()
+    try:
+        band = '18cm'
+        stations = [ant.codename for ant in observation._STATIONS if ant.has_band(band)][:6]
+        shared_kwargs = dict(band=band, stations=sorted(stations), ontarget=0.7, datarate=1024 * u.Mbit / u.s,
+                             subbands=8, channels=64, polarizations=4, inttime=2 * u.s)
+        # Coordinates instead of a source name, so nothing needs to be resolved online. Both the default
+        # (no epoch) and the fixed-epoch modes, as they follow different code paths.
+        for target, duration, start_time in (('12h29m06.7s +02d03m08.6s', None, None),
+                                             ('12h29m06.7s +02d03m08.6s', 4 * u.h,
+                                              validation.parse_start_time(dt.now().date().isoformat(), '12:00')),
+                                             (None, 4 * u.h, None)):
+            obs, err = _compute_one_target(target, dict(shared_kwargs, duration=duration, start_time=start_time))
+            if obs is None:
+                logger.warning(f"Warm-up observation could not be computed: {err}")
+            elif target is not None:
+                to_json_plotly(outputs.build_target_tab_content(obs, target))
+            else:
+                outputs.build_no_target_panel(obs)
+
+        # Serializes (and caches) the layout, so the workers forked afterwards share it
+        with app.server.test_request_context('/_dash-layout'):
+            app.serve_layout()
+
+        logger.info(f"Warm-up completed in {time.perf_counter() - t0:.2f}s")
+    except Exception as e:
+        logger.warning(f"Warm-up failed ({type(e).__name__}: {e}); the first request will be slower.")
+
+
+warm_up()
 
 
 def main(debug: bool = False, host: str = '127.0.0.1', port: int = 8050,

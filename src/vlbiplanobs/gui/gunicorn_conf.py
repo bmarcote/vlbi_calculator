@@ -8,7 +8,7 @@ Every value can be changed through the environment variables named below, withou
 """
 import os
 
-bind = os.environ.get('PLANOBS_BIND', '127.0.0.1:8050')
+#bind = os.environ.get('PLANOBS_BIND', '127.0.0.1:8050')
 
 # The app is imported (and warmed up, see vlbiplanobs.gui.main.warm_up) once in the master process and the
 # workers are forked from it. Hence all workers answer their very first request at full speed, a worker

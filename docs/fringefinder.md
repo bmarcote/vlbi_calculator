@@ -72,8 +72,36 @@ The tool prints a table with the following columns:
 - **url** – link to the AstroGeo database page.
 - **Antenna Visibility** – whether all or only some antennas see the source, and for all or part of the time.
 
+### Visibility strip
+
+Right below each source line there is a strip of coloured squares showing when the source can be observed
+along the observation, from the start (left) to the end (right):
+
+| Square | Meaning |
+|--------|---------|
+| Green | **All** antennas can observe the source. |
+| Yellow | Not all antennas, but **more than 3**, can observe it. |
+| Black | Any other case (3 or fewer antennas, and not all of them). |
+
+```text
+Antennas observing: ■ all  ■ more than 3  ■ fewer  (10 min each, from 08:00 UTC)
+
+ Name                IVS Name   ...
+ J1719+0817          1717+083   ...
+ ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+```
+
+- An antenna can observe the source when it is above `--min-elevation` and within the antenna limits
+  (the same criterion used to select the candidates).
+- The strip is as wide as your terminal allows. The time covered by one square is the shortest of
+  1, 2, 5, 10, 15, 30 min, 1, 2, 3 or 6 h for which the whole observation fits; widen the terminal to get finer
+  squares. The legend above the table shows the time per square and the start time.
+- A square takes the colour of the worst moment within its time span: it is only green if all antennas see
+  the source during the whole span.
+- If the output has no colours (e.g. redirected to a file), the three levels are drawn as `■`, `□` and `·`.
+
 When `--json` is used, a JSON object is printed with the search parameters, `total_found`, `shown`, and the
-same data in the `sources` list.
+same data in the `sources` list (without the visibility strip).
 
 ---
 

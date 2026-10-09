@@ -553,6 +553,22 @@ class TestRunFunctions:
         assert f"above {calibrators.FRINGE_DEFAULT_MIN_ELEVATION_DEG} degrees" in out
         assert f"above {calibrators.FRINGE_DEFAULT_MIN_FLUX_JY} Jy" in out
 
+    @pytest.mark.parametrize('columns, block, n_squares', [('130', '2 min', 120), ('80', '5 min', 48)])
+    def test_fringe_finders_table_visibility_strips(self, capsys, monkeypatch, columns, block, n_squares):
+        """A legend at the top and, right below each source line, a strip as wide as the terminal allows."""
+        monkeypatch.setenv('COLUMNS', columns)
+        code = calibrators.run_fringe_finders(starttime='2025-03-15 08:00', duration=4.0, stations=['Ef', 'Mc'],
+                                              max_lines=3)
+        assert code == 0
+        lines = capsys.readouterr().out.splitlines()
+        legend = next(i for i, line in enumerate(lines) if 'Antennas observing:' in line)
+        assert f'({block} each, from 08:00 UTC)' in lines[legend]
+        strip_chars = set(calibrators._STRIP_PLAIN_CHARS.values())
+        strips = [i for i, line in enumerate(lines) if line.strip() and set(line.strip()) <= strip_chars]
+        assert len(strips) == 3 and strips[0] > legend
+        assert all(lines[i - 1].lstrip().startswith('J') for i in strips)
+        assert all(len(lines[i].strip()) == n_squares for i in strips)
+
     @pytest.mark.parametrize('kwargs, message', [
         ({}, 'at least a VLBI network'),
         ({'networks': ['FOO']}, 'The network FOO is not known.'),
@@ -594,6 +610,91 @@ class TestRunFunctions:
         code = calibrators.run_phasecals(target='J1230+1223', source_catalog='/nonexistent.toml', as_json=True)
         assert code == 1
         assert 'Source catalog file not found' in capsys.readouterr().out
+
+
+class TestVisibilityStrip:
+    """Tests for the visibility strip printed below each fringe finder ('planobs fringefinders')."""
+
+    @pytest.fixture
+    def two_stations(self):
+        """Effelsberg and Medicina."""
+        sefds = {'21cm': 500 * u.Jy, '6cm': 100 * u.Jy}
+        ef = sts.Station('Ef', 'Ef', ('EVN',), coord.EarthLocation(4033949.5 * u.m, 486989.1 * u.m, 4900430.9 * u.m),
+                         sefds)
+        mc = sts.Station('Mc', 'Mc', ('EVN',), coord.EarthLocation(4461369.9 * u.m, 919596.8 * u.m, 4449559.2 * u.m),
+                         sefds)
+        return sts.Stations(stations=[ef, mc])
+
+    @pytest.fixture
+    def bright_sources(self):
+        """A few bright RFC sources spread over the sky."""
+        return calibrators.RFCCatalog(min_flux=2.0 * u.Jy, band='c').sources[::10]
+
+    def test_count_observing_stations_shape_and_range(self, two_stations, bright_sources):
+        """One row per source, one column per time, between 0 and the number of stations."""
+        times = Time('2025-03-15 08:00') + np.arange(0, 12, 0.5) * u.h
+        counts = calibrators.count_observing_stations(two_stations, times, bright_sources, 20 * u.deg)
+        assert counts.shape == (len(bright_sources), len(times))
+        assert counts.min() >= 0 and counts.max() <= 2
+        assert len(np.unique(counts)) > 1
+
+    def test_count_observing_stations_matches_fringe_finder_search(self, two_stations):
+        """Sources found with require_all_stations are observed by all stations at all times."""
+        times = Time('2025-03-15 08:00') + np.arange(0, 2, 0.5) * u.h
+        sources, _, _ = calibrators.get_fringe_finder_sources(two_stations, times, min_elevation=20 * u.deg,
+                                                              min_flux=2.0 * u.Jy, require_all_stations=True)
+        assert len(sources) > 0
+        assert np.all(calibrators.count_observing_stations(two_stations, times, sources, 20 * u.deg) == 2)
+
+    def test_count_observing_stations_without_sources(self, two_stations):
+        """No sources gives an empty array with one column per time."""
+        times = Time('2025-03-15 08:00') + np.arange(0, 2, 0.5) * u.h
+        assert calibrators.count_observing_stations(two_stations, times, [], 20 * u.deg).shape == (0, 4)
+
+    @pytest.mark.parametrize('duration, max_blocks, expected', [
+        (1, 128, 1), (8, 128, 5), (8, 78, 10), (24, 98, 15), (24, 78, 30), (48, 78, 60), (1000, 78, 780)])
+    def test_strip_block_minutes(self, duration, max_blocks, expected):
+        """The shortest allowed block for which the whole observation fits in the available width."""
+        assert calibrators._strip_block_minutes(duration, max_blocks) == expected
+        assert np.ceil(duration * 60 / expected) <= max_blocks
+
+    def test_visibility_block_counts_is_block_minimum(self, two_stations, bright_sources):
+        """Each block holds the lowest count sampled inside it; the last block ends with the observation."""
+        start, duration = Time('2025-03-15 08:00'), 7.5
+        blocks = calibrators._visibility_block_counts(two_stations, start, duration, 60, bright_sources, 20.0)
+        assert blocks.shape == (len(bright_sources), 8)
+        minutes = np.arange(0, 451, 5)
+        counts = calibrators.count_observing_stations(two_stations, start + minutes * u.min, bright_sources, 20 * u.deg)
+        for j in range(8):
+            in_block = (minutes >= 60 * j) & (minutes <= 60 * (j + 1))
+            assert np.array_equal(blocks[:, j], counts[:, in_block].min(axis=1))
+
+    @pytest.mark.parametrize('count, n_stations, expected', [
+        (10, 10, 'green'), (3, 3, 'green'), (1, 1, 'green'), (9, 10, 'yellow'), (4, 10, 'yellow'),
+        (3, 10, 'black'), (0, 10, 'black'), (2, 3, 'black')])
+    def test_strip_style(self, count, n_stations, expected):
+        """Green if all antennas observe, yellow if not all but more than 3, black otherwise."""
+        assert calibrators._strip_style(count, n_stations) == expected
+
+    def test_visibility_strip_colours(self):
+        """One square per block without gaps, coloured by the number of observing antennas."""
+        strip = calibrators._visibility_strip(np.array([0, 3, 4, 9, 10, 10, 2]), 10, use_color=True)
+        assert strip.plain == ' ' * calibrators._STRIP_INDENT + calibrators._STRIP_CHAR * 7
+        assert [(span.end - span.start, str(span.style)) for span in strip.spans] == [
+            (2, 'black'), (2, 'yellow'), (2, 'green'), (1, 'black')]
+
+    def test_visibility_strip_without_colours(self):
+        """Without colours each level is drawn with its own character."""
+        strip = calibrators._visibility_strip(np.array([0, 3, 4, 9, 10, 10]), 10, use_color=False)
+        assert strip.plain.strip() == '\u00b7\u00b7\u25a1\u25a1\u25a0\u25a0'
+
+    @pytest.mark.parametrize('block_minutes, span', [(15, '15 min each'), (60, '1 h each'), (120, '2 h each')])
+    def test_visibility_legend(self, block_minutes, span):
+        """The legend explains the three colours, the time per square and the start time."""
+        legend = calibrators._visibility_legend(block_minutes, Time('2025-03-15 08:30'), use_color=True)
+        assert all(text in legend.plain for text in ('all', 'more than 3', 'fewer', span, 'from 08:30 UTC'))
+        assert [str(span.style) for span in legend.spans] == ['green', 'yellow', 'black']
+        assert len(legend.plain) <= 80
 
 
 def test_phase_calibrator_never_the_target_under_another_name():

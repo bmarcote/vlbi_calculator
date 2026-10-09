@@ -1,5 +1,9 @@
 
-unreleased         -- Performance (GUI): the first request of each server process takes ~0.3 s instead of ~7 s (the IERS
+unreleased         -- planobs fringefinders: a visibility strip below each source shows when it can be observed along
+                      the observation (green: all antennas; yellow: not all but more than 3; black: otherwise). It
+                      spans the terminal width (one square = 1 min to 6 h) and a legend is printed above the table.
+                      New calibrators.count_observing_stations().
+                   -- Performance (GUI): the first request of each server process takes ~0.3 s instead of ~7 s (the IERS
                       table was read again by every computing thread; the app is now warmed up when imported).
                    -- Performance (GUI): updating the outputs is ~5 times faster (figures are built without plotly's
                       per-property validation, cached Sun positions/separations, no repeated visibility

@@ -1,9 +1,11 @@
 """Calibrator source module for finding fringe finders and nearby sources."""
 
 import argparse
+import itertools
 import json
 import logging
 import functools
+import math
 from typing import NamedTuple, Optional, Self
 from importlib import resources
 import numpy as np
@@ -11,8 +13,9 @@ import erfa
 from astropy import units as u, coordinates as coord
 from astropy.time import Time
 
-from rich import print as rprint, box
+from rich import print as rprint, box, get_console
 from rich.table import Table
+from rich.text import Text
 from rich_argparse import RawTextRichHelpFormatter
 from urllib import parse
 
@@ -758,6 +761,77 @@ def _station_observable_mask(elev: np.ndarray, az: np.ndarray, ha_hours: np.ndar
     return mask
 
 
+def _observability_cubes(station_list: list, times: Time, ra_rad: np.ndarray, dec_rad: np.ndarray,
+                         min_el_deg: float) -> tuple[np.ndarray, np.ndarray]:
+    """Elevation and observability of every source from every station at every time.
+
+    A source is observable from a station when it is within the mount limits, above the local horizon
+    (see _station_observable_mask) and at or above the minimum elevation.
+
+    Parameters
+    ----------
+    station_list : list[Station]
+        Participating stations (at least one).
+    times : Time
+        Array of observation times.
+    ra_rad : np.ndarray
+        Source right ascensions in radians.
+    dec_rad : np.ndarray
+        Source declinations in radians.
+    min_el_deg : float
+        Minimum elevation in degrees.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        (elevation_deg, observable), each shaped (n_stations, n_times, n_sources); observable is boolean.
+    """
+    n_stations, n_times, n_sources = len(station_list), len(times), len(ra_rad)
+    elev_matrices = np.empty((n_stations, n_times, n_sources))
+    meets_all = np.empty((n_stations, n_times, n_sources), dtype=bool)
+    dec_deg = np.degrees(dec_rad)
+    for s_idx, station in enumerate(station_list):
+        elev, az, ha_hours = _batch_altaz_erfa(ra_rad, dec_rad, times, station)
+        obs_mask = _station_observable_mask(elev, az, ha_hours, dec_deg, station)
+        elev_matrices[s_idx] = elev
+        meets_all[s_idx] = obs_mask & (elev >= min_el_deg)
+
+    return elev_matrices, meets_all
+
+
+def count_observing_stations(stations: Stations, times: Time, sources: list[CalibratorSource],
+                             min_elevation: u.Quantity = _DEFAULT_MIN_ELEVATION) -> np.ndarray:
+    """Number of stations that can observe each source at each time.
+
+    Uses the same criterion as get_fringe_finder_sources (mount limits, local horizon, minimum elevation).
+
+    Parameters
+    ----------
+    stations : Stations
+        Stations object containing participating antennas.
+    times : Time
+        Array of observation times.
+    sources : list[CalibratorSource]
+        Sources to evaluate.
+    min_elevation : Quantity, optional
+        Minimum elevation threshold. Default is 20 degrees.
+
+    Returns
+    -------
+    np.ndarray
+        Integer array of shape (n_sources, n_times) with the number of observing stations.
+    """
+    station_list = stations.stations
+    if not station_list or not sources:
+        return np.zeros((len(sources), len(times)), dtype=int)
+
+    min_el_deg = float(min_elevation.to(u.deg).value) if hasattr(min_elevation, 'to') else float(min_elevation)
+    ra_rad = np.radians(np.array([s.ra_deg for s in sources], dtype=np.float64))
+    dec_rad = np.radians(np.array([s.dec_deg for s in sources], dtype=np.float64))
+    _, observable = _observability_cubes(station_list, times, ra_rad, dec_rad, min_el_deg)
+    return observable.sum(axis=0).T
+
+
 def get_fringe_finder_sources(
         stations: Stations, times: Time,
         min_elevation: u.Quantity = _DEFAULT_MIN_ELEVATION,
@@ -805,20 +879,9 @@ def get_fringe_finder_sources(
     if not valid_sources:
         return [], [], None if not require_all_stations else None
 
-    n_sources = len(valid_sources)
-    n_times = len(times)
     ra_rad = np.radians(np.array([s.ra_deg for s in valid_sources], dtype=np.float64))
     dec_rad = np.radians(np.array([s.dec_deg for s in valid_sources], dtype=np.float64))
-
-    elev_matrices = np.empty((n_stations, n_times, n_sources))
-    meets_all = np.empty((n_stations, n_times, n_sources), dtype=bool)
-
-    dec_deg = np.degrees(dec_rad)
-    for s_idx, station in enumerate(station_list):
-        elev, az, ha_hours = _batch_altaz_erfa(ra_rad, dec_rad, times, station)
-        obs_mask = _station_observable_mask(elev, az, ha_hours, dec_deg, station)
-        elev_matrices[s_idx] = elev
-        meets_all[s_idx] = obs_mask & (elev >= min_el_deg)
+    elev_matrices, meets_all = _observability_cubes(station_list, times, ra_rad, dec_rad, min_el_deg)
 
     if require_all_stations:
         all_times_per_station = np.all(meets_all, axis=1)
@@ -1092,6 +1155,26 @@ def _wavelength_to_rfc_band(band: str) -> str:
 FRINGE_DEFAULT_MIN_FLUX_JY: float = 0.5
 FRINGE_DEFAULT_MIN_ELEVATION_DEG: float = 20.0
 FRINGE_DEFAULT_MAX_LINES: int = 20
+
+# Fringe-finder table columns as (header, width, justify). The widths are fixed so the header table and the
+# one-row table printed per source line up (the visibility strip goes between consecutive source lines).
+_FRINGE_COLUMNS: tuple[tuple[str, int, str], ...] = (
+    ("Name", 17, "left"), ("IVS Name", 10, "left"), ("Min elev.\n(deg)", 10, "right"),
+    ("Total flux\n(Jy)", 12, "right"), ("Unresolved\n(Jy)", 13, "right"), ("Bands", 10, "right"), ("url", 10, "left"))
+_FRINGE_VISIBILITY_COLUMN: tuple[str, int, str] = ("Antenna\nVisibility", 17, "center")
+
+# Visibility strip printed below each fringe-finder line: one square per time block, no gaps between squares.
+_STRIP_CHAR: str = "\u25a0"
+_STRIP_INDENT: int = 1  # columns left of the strip (same as the table text) and kept free at the right edge
+_STRIP_STYLE_ALL: str = "green"  # all antennas can observe the source during the whole block
+_STRIP_STYLE_PARTIAL: str = "yellow"  # not all antennas, but more than _STRIP_PARTIAL_ABOVE
+_STRIP_STYLE_FEW: str = "black"  # any other case
+# Characters that replace _STRIP_CHAR when the output has no colours (e.g. redirected to a file or a pager).
+_STRIP_PLAIN_CHARS: dict[str, str] = {_STRIP_STYLE_ALL: "\u25a0", _STRIP_STYLE_PARTIAL: "\u25a1",
+                                      _STRIP_STYLE_FEW: "\u00b7"}
+_STRIP_PARTIAL_ABOVE: int = 3
+_STRIP_BLOCK_MINUTES: tuple[int, ...] = (1, 2, 5, 10, 15, 30, 60, 120, 180, 360)  # allowed block durations
+_STRIP_SAMPLE_MINUTES: int = 5  # longest time between two visibility samples inside a block
 PHASECAL_DEFAULT_MAX_SEPARATION_DEG: float = 5.0
 PHASECAL_DEFAULT_MIN_FLUX_JY: float = 0.1
 
@@ -1172,6 +1255,137 @@ def _visibility_text(visibility: tuple, long_form: bool) -> str:
     if visible_count == total_count:
         return "all, partial time" if long_form else "all ant. partial time"
     return f"{visible_count}/{total_count} antennas" if long_form else f"{visible_count}/{total_count} ant."
+
+
+def _strip_block_minutes(duration: float, max_blocks: int) -> int:
+    """Picks the time span of one visibility-strip square so the strip is as wide as possible but still fits.
+
+    Inputs
+        duration : float — duration of the observation in hours.
+        max_blocks : int — maximum number of squares that fit in the terminal (at least 1).
+
+    Returns
+        int — minutes per square: the shortest value in _STRIP_BLOCK_MINUTES that needs at most max_blocks
+              squares; a whole number of hours if not even the longest one fits.
+    """
+    for minutes in _STRIP_BLOCK_MINUTES:
+        if math.ceil(duration * 60 / minutes) <= max_blocks:
+            return minutes
+
+    return 60 * math.ceil(duration / max_blocks)
+
+
+def _visibility_block_counts(stations: Stations, start: Time, duration: float, block_minutes: int,
+                             sources: list[CalibratorSource], min_elevation: float) -> np.ndarray:
+    """Number of antennas that can observe each source during each block of the observation.
+
+    The visibility is sampled at both edges of each block and at most every _STRIP_SAMPLE_MINUTES inside it.
+    A block gets the lowest count of its samples, so an antenna counts only if it sees the source during the
+    whole block. The last block is cut at the end of the observation.
+
+    Inputs
+        stations : Stations — participating antennas.
+        start : Time — start of the observation.
+        duration : float — duration of the observation in hours.
+        block_minutes : int — time span of one block in minutes.
+        sources : list[CalibratorSource] — sources to evaluate.
+        min_elevation : float — minimum elevation in degrees.
+
+    Returns
+        np.ndarray — integer array of shape (n_sources, n_blocks).
+    """
+    n_blocks = max(1, math.ceil(duration * 60 / block_minutes))
+    n_sub = max(1, round(block_minutes / _STRIP_SAMPLE_MINUTES))
+    offsets_h = np.minimum(np.arange(n_blocks * n_sub + 1) * block_minutes / n_sub / 60, duration)
+    counts = count_observing_stations(stations, start + offsets_h * u.hour, sources, min_elevation * u.deg)
+    return np.stack([counts[:, k:k + n_blocks * n_sub:n_sub] for k in range(n_sub + 1)]).min(axis=0)
+
+
+def _strip_style(count: int, n_stations: int) -> str:
+    """Rich style of one visibility-strip square.
+
+    Inputs
+        count : int — number of antennas that can observe the source during the block.
+        n_stations : int — total number of antennas.
+
+    Returns
+        str — _STRIP_STYLE_ALL if all antennas observe, _STRIP_STYLE_PARTIAL if not all but more than
+              _STRIP_PARTIAL_ABOVE do, _STRIP_STYLE_FEW otherwise.
+    """
+    if count == n_stations:
+        return _STRIP_STYLE_ALL
+    if count > _STRIP_PARTIAL_ABOVE:
+        return _STRIP_STYLE_PARTIAL
+    return _STRIP_STYLE_FEW
+
+
+def _strip_char(style: str, use_color: bool) -> str:
+    """Character of one visibility-strip square.
+
+    Inputs
+        style : str — one of _STRIP_STYLE_ALL, _STRIP_STYLE_PARTIAL, _STRIP_STYLE_FEW.
+        use_color : bool — whether the output shows colours.
+
+    Returns
+        str — _STRIP_CHAR with colours; the character of that style in _STRIP_PLAIN_CHARS without them.
+    """
+    return _STRIP_CHAR if use_color else _STRIP_PLAIN_CHARS[style]
+
+
+def _visibility_strip(block_counts: np.ndarray, n_stations: int, use_color: bool) -> Text:
+    """Renders the visibility of one source along the observation as a row of coloured squares.
+
+    Inputs
+        block_counts : np.ndarray — number of observing antennas per block (one row of _visibility_block_counts).
+        n_stations : int — total number of antennas.
+        use_color : bool — whether the output shows colours (see _strip_char).
+
+    Returns
+        Text — _STRIP_INDENT spaces followed by one square per block, without gaps.
+    """
+    strip = Text(" " * _STRIP_INDENT)
+    for style, run in itertools.groupby(_strip_style(int(count), n_stations) for count in block_counts):
+        strip.append(_strip_char(style, use_color) * len(list(run)), style=style)
+    return strip
+
+
+def _visibility_legend(block_minutes: int, start: Time, use_color: bool) -> Text:
+    """Builds the legend of the visibility strips (meaning of each colour and time span of one square).
+
+    Inputs
+        block_minutes : int — time span of one square in minutes.
+        start : Time — start of the observation (time of the first square).
+        use_color : bool — whether the output shows colours (see _strip_char).
+
+    Returns
+        Text — one line (at most 80 characters). A Text (not a str) so Rich does not highlight the numbers in it.
+    """
+    span = f"{block_minutes} min" if block_minutes < 60 else f"{block_minutes // 60} h"
+    labels = ((_STRIP_STYLE_ALL, "all"), (_STRIP_STYLE_PARTIAL, f"more than {_STRIP_PARTIAL_ABOVE}"),
+              (_STRIP_STYLE_FEW, "fewer"))
+    legend = Text("Antennas observing: ")
+    for style, label in labels:
+        legend.append(_strip_char(style, use_color), style=style)
+        legend.append(f" {label}  ")
+
+    legend.append(f"({span} each, from {start.utc.strftime('%H:%M')} UTC)")
+    return legend
+
+
+def _fringe_table(show_header: bool, with_visibility: bool) -> Table:
+    """Builds an empty table with the fringe-finder columns (_FRINGE_COLUMNS).
+
+    Inputs
+        show_header : bool — True for the header table, False for the one-row table of a source.
+        with_visibility : bool — add the 'Antenna Visibility' column.
+
+    Returns
+        Table — table without rows. Tables built with the same with_visibility have identical column widths.
+    """
+    table = Table(show_header=show_header, header_style="bold", show_lines=False, box=box.SIMPLE, show_edge=False)
+    for header, width, justify in _FRINGE_COLUMNS + ((_FRINGE_VISIBILITY_COLUMN,) if with_visibility else ()):
+        table.add_column(header, justify=justify, width=width, no_wrap=True)
+    return table
 
 
 def run_fringe_finders(*, starttime: str | Time, duration: float, networks: Optional[list[str]] = None,
@@ -1267,17 +1481,17 @@ def run_fringe_finders(*, starttime: str | Time, duration: float, networks: Opti
     rprint(f"\n[bold green]Found {len(sources)} fringe finder candidates above "
            f"{min_elevation} degrees elevation and with a unresolved flux "
            f"above {min_flux} Jy:[/bold green]")
-    table = Table(show_header=True, header_style="bold", show_lines=False, box=box.SIMPLE)
-    table.add_column("Name", style="", width=17)
-    table.add_column("IVS Name", style="", width=10)
-    table.add_column("Min elev. (deg)", justify="right", style="", width=10)
-    table.add_column("Total flux (Jy)", justify="right", style="", width=12)
-    table.add_column("Unresolved (Jy)", justify="right", style="", width=13)
-    table.add_column("Bands", justify="right", style="", width=10)
-    table.add_column("url", style="", width=10)
-    if antenna_visibility is not None:
-        table.add_column("Antenna Visibility", justify="center", style="", width=15)
-
+    start = Time(starttime, scale='utc')
+    n_stations = len(stations_obj.stations)
+    console = get_console()
+    use_color = console.color_system is not None and not console.no_color
+    block_minutes = _strip_block_minutes(duration, max(1, console.width - 2 * _STRIP_INDENT))
+    block_counts = _visibility_block_counts(stations_obj, start, duration, block_minutes, sources[:max_display],
+                                            min_elevation)
+    with_visibility = antenna_visibility is not None
+    rprint(_visibility_legend(block_minutes, start, use_color))
+    rprint()
+    rprint(_fringe_table(show_header=True, with_visibility=with_visibility))
     for i in range(max_display):
         src, min_elev = sources[i], min_elevs[i]
         total_flux, unresolved_flux = _display_fluxes(src, band)
@@ -1285,11 +1499,13 @@ def run_fringe_finders(*, starttime: str | Time, duration: float, networks: Opti
                f"{total_flux:>8.2f}" if total_flux > 0 else "N/A",
                f"{unresolved_flux:>8.2f}" if unresolved_flux > 0 else "N/A",
                src.get_observed_bands(), f"[link={src.get_astrogeo_link()}]AstroGeo[/link]"]
-        if antenna_visibility is not None:
+        if with_visibility:
             row.append(_visibility_text(antenna_visibility[i], long_form=True))
+        table = _fringe_table(show_header=False, with_visibility=with_visibility)
         table.add_row(*row)
+        rprint(table)
+        rprint(_visibility_strip(block_counts[i], n_stations, use_color))
 
-    rprint(table)
     if len(sources) > max_display:
         rprint(f"\n... and {len(sources) - max_display} more sources.")
     return 0

@@ -771,6 +771,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Output">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#visibility-strip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visibility strip
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1515,6 +1532,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Output">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#visibility-strip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visibility strip
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1748,28 +1782,69 @@ observe mode, which also accepts the <code>name/coordinates</code> format to ove
 <li><strong>url</strong> – link to the AstroGeo database page.</li>
 <li><strong>Antenna Visibility</strong> – whether all or only some antennas see the source, and for all or part of the time.</li>
 </ul>
+<h3 id="visibility-strip">Visibility strip<a class="headerlink" href="#visibility-strip" title="Permanent link">&para;</a></h3>
+<p>Right below each source line there is a strip of coloured squares showing when the source can be observed
+along the observation, from the start (left) to the end (right):</p>
+<table>
+<thead>
+<tr>
+<th>Square</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Green</td>
+<td><strong>All</strong> antennas can observe the source.</td>
+</tr>
+<tr>
+<td>Yellow</td>
+<td>Not all antennas, but <strong>more than 3</strong>, can observe it.</td>
+</tr>
+<tr>
+<td>Black</td>
+<td>Any other case (3 or fewer antennas, and not all of them).</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Antennas observing: ■ all  ■ more than 3  ■ fewer  (10 min each, from 08:00 UTC)
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a> Name                IVS Name   ...
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a> J1719+0817          1717+083   ...
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a> ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+</code></pre></div>
+<ul>
+<li>An antenna can observe the source when it is above <code>--min-elevation</code> and within the antenna limits
+  (the same criterion used to select the candidates).</li>
+<li>The strip is as wide as your terminal allows. The time covered by one square is the shortest of
+  1, 2, 5, 10, 15, 30 min, 1, 2, 3 or 6 h for which the whole observation fits; widen the terminal to get finer
+  squares. The legend above the table shows the time per square and the start time.</li>
+<li>A square takes the colour of the worst moment within its time span: it is only green if all antennas see
+  the source during the whole span.</li>
+<li>If the output has no colours (e.g. redirected to a file), the three levels are drawn as <code>■</code>, <code>□</code> and <code>·</code>.</li>
+</ul>
 <p>When <code>--json</code> is used, a JSON object is printed with the search parameters, <code>total_found</code>, <code>shown</code>, and the
-same data in the <code>sources</code> list.</p>
+same data in the <code>sources</code> list (without the visibility strip).</p>
 <hr />
 <h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
 <h3 id="evn-fringe-finders-at-6-cm">EVN fringe finders at 6 cm<a class="headerlink" href="#evn-fringe-finders-at-6-cm" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>planobs<span class="w"> </span>fringefinders<span class="w"> </span>-s<span class="w"> </span>Ef<span class="w"> </span>Hh<span class="w"> </span>Mc<span class="w"> </span>Tr<span class="w"> </span>Wb<span class="w"> </span>O8<span class="w"> </span>-e<span class="w"> </span><span class="s1">'2025-06-15 20:00'</span><span class="w"> </span>-d<span class="w"> </span><span class="m">12</span><span class="w"> </span>-b<span class="w"> </span>6cm
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>planobs<span class="w"> </span>fringefinders<span class="w"> </span>-s<span class="w"> </span>Ef<span class="w"> </span>Hh<span class="w"> </span>Mc<span class="w"> </span>Tr<span class="w"> </span>Wb<span class="w"> </span>O8<span class="w"> </span>-e<span class="w"> </span><span class="s1">'2025-06-15 20:00'</span><span class="w"> </span>-d<span class="w"> </span><span class="m">12</span><span class="w"> </span>-b<span class="w"> </span>6cm
 </code></pre></div>
 <p>Finds candidates for a 12-hour EVN observation at 6 cm.</p>
 <h3 id="using-a-whole-network">Using a whole network<a class="headerlink" href="#using-a-whole-network" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>planobs<span class="w"> </span>fringefinders<span class="w"> </span>-n<span class="w"> </span>EVN<span class="w"> </span>-e<span class="w"> </span><span class="s1">'2025-06-15 20:00'</span><span class="w"> </span>-d<span class="w"> </span><span class="m">6</span>.5<span class="w"> </span>-b<span class="w"> </span>18cm
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>planobs<span class="w"> </span>fringefinders<span class="w"> </span>-n<span class="w"> </span>EVN<span class="w"> </span>-e<span class="w"> </span><span class="s1">'2025-06-15 20:00'</span><span class="w"> </span>-d<span class="w"> </span><span class="m">6</span>.5<span class="w"> </span>-b<span class="w"> </span>18cm
 </code></pre></div>
 <h3 id="high-elevation-and-flux-requirements">High elevation and flux requirements<a class="headerlink" href="#high-elevation-and-flux-requirements" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>planobs<span class="w"> </span>fringefinders<span class="w"> </span>-s<span class="w"> </span>Ef<span class="w"> </span>Hh<span class="w"> </span>Mc<span class="w"> </span>Tr<span class="w"> </span>-e<span class="w"> </span><span class="s1">'2025-06-15 20:00'</span><span class="w"> </span>-d<span class="w"> </span><span class="m">8</span><span class="w"> </span>-b<span class="w"> </span>6cm<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span>--min-elevation<span class="w"> </span><span class="m">30</span><span class="w"> </span>--min-flux<span class="w"> </span><span class="m">0</span>.8
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>planobs<span class="w"> </span>fringefinders<span class="w"> </span>-s<span class="w"> </span>Ef<span class="w"> </span>Hh<span class="w"> </span>Mc<span class="w"> </span>Tr<span class="w"> </span>-e<span class="w"> </span><span class="s1">'2025-06-15 20:00'</span><span class="w"> </span>-d<span class="w"> </span><span class="m">8</span><span class="w"> </span>-b<span class="w"> </span>6cm<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span>--min-elevation<span class="w"> </span><span class="m">30</span><span class="w"> </span>--min-flux<span class="w"> </span><span class="m">0</span>.8
 </code></pre></div>
 <p>Returns only sources above 30° elevation with ≥ 0.8 Jy unresolved flux.</p>
 <h3 id="strict-visible-by-all-stations-top-5-only">Strict: visible by all stations, top 5 only<a class="headerlink" href="#strict-visible-by-all-stations-top-5-only" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>planobs<span class="w"> </span>fringefinders<span class="w"> </span>-s<span class="w"> </span>Ef<span class="w"> </span>Hh<span class="w"> </span>Mc<span class="w"> </span>Tr<span class="w"> </span>Ys<span class="w"> </span>-e<span class="w"> </span><span class="s1">'2025-06-15 20:00'</span><span class="w"> </span>-d<span class="w"> </span><span class="m">8</span><span class="w"> </span>-b<span class="w"> </span>6cm<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span>--require-all<span class="w"> </span>--min-flux<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>-l<span class="w"> </span><span class="m">5</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>planobs<span class="w"> </span>fringefinders<span class="w"> </span>-s<span class="w"> </span>Ef<span class="w"> </span>Hh<span class="w"> </span>Mc<span class="w"> </span>Tr<span class="w"> </span>Ys<span class="w"> </span>-e<span class="w"> </span><span class="s1">'2025-06-15 20:00'</span><span class="w"> </span>-d<span class="w"> </span><span class="m">8</span><span class="w"> </span>-b<span class="w"> </span>6cm<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span>--require-all<span class="w"> </span>--min-flux<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>-l<span class="w"> </span><span class="m">5</span>
 </code></pre></div>
 <h3 id="json-output-for-scripting">JSON output for scripting<a class="headerlink" href="#json-output-for-scripting" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>planobs<span class="w"> </span>fringefinders<span class="w"> </span>-s<span class="w"> </span>Ef<span class="w"> </span>Hh<span class="w"> </span>Mc<span class="w"> </span>Tr<span class="w"> </span>-e<span class="w"> </span><span class="s1">'2025-03-15 08:00'</span><span class="w"> </span>-d<span class="w"> </span><span class="m">8</span><span class="w"> </span>-b<span class="w"> </span>6cm<span class="w"> </span>--json
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>planobs<span class="w"> </span>fringefinders<span class="w"> </span>-s<span class="w"> </span>Ef<span class="w"> </span>Hh<span class="w"> </span>Mc<span class="w"> </span>Tr<span class="w"> </span>-e<span class="w"> </span><span class="s1">'2025-03-15 08:00'</span><span class="w"> </span>-d<span class="w"> </span><span class="m">8</span><span class="w"> </span>-b<span class="w"> </span>6cm<span class="w"> </span>--json
 </code></pre></div>
 <hr />
 <h2 id="tips-for-good-fringe-finders">Tips for Good Fringe Finders<a class="headerlink" href="#tips-for-good-fringe-finders" title="Permanent link">&para;</a></h2>

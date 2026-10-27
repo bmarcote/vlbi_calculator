@@ -66,7 +66,7 @@ The `planobs` command is organised into six modes:
 - :material-download: **[Installation](installation.md)** – Get PlanObs running locally
 - :material-rocket-launch: **[Quick Start](quickstart.md)** – All modes in 5 minutes
 - :material-telescope: **[Observation Planning](mode-observe.md)** – Full observe mode reference
-- :material-satellite-antenna: **[Fringe Finders](fringefinder.md)** – Find bright calibrator sources
+- :material-radio-tower: **[Fringe Finders](fringefinder.md)** – Find bright calibrator sources
 - :material-target-account: **[Phase Calibrators](phasecal.md)** – Find nearby phase calibrators
 - :material-api: **[API Reference](api/index.md)** – Full Python API documentation
 
